@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Recruitment Tracking</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <aside class="sidebar">
+        <div class="brand">
+          <p class="eyebrow">Internal Recruitment</p>
+          <h1>Recruitment</h1>
+        </div>
+        <nav class="nav" aria-label="Main navigation">
+          <button class="nav-item is-active" type="button" data-view="dashboard">Dashboard</button>
+          <button class="nav-item" type="button" data-view="requisitions">Requisitions</button>
+          <button class="nav-item" type="button" data-view="candidates">Candidates</button>
+          <button class="nav-item" type="button" data-view="pipeline">Pipeline</button>
+          <button class="nav-item" type="button" data-view="offers">Offers</button>
+          <button class="nav-item" type="button" data-view="setup">Setup</button>
+          <button class="nav-item" type="button" data-view="audit">Audit Log</button>
+        </nav>
+      </aside>
+
+      <section class="workspace">
+        <header class="topbar">
+          <div>
+            <p id="view-kicker" class="eyebrow">Work Queue</p>
+            <h2 id="view-title">Dashboard</h2>
+          </div>
+          <div class="actions">
+            <button type="button" data-open-form="requisition-dialog">New Requisition</button>
+            <button type="button" data-open-form="candidate-dialog">New Candidate</button>
+            <button type="button" data-open-form="process-dialog">Process Update</button>
+            <button id="refresh-button" type="button" class="secondary">Refresh</button>
+          </div>
+        </header>
+
+        <section class="filters">
+          <label>Site<input id="site-filter" list="site-options" placeholder="All sites" /></label>
+          <label>Person in Charge<input id="pic-filter" list="pic-options" placeholder="All owners" /></label>
+          <button id="clear-filters" type="button" class="secondary">Clear</button>
+        </section>
+
+        <section id="status" class="status" aria-live="polite">Loading recruitment records...</section>
+
+        <section id="dashboard" class="view is-active">
+          <div class="metrics">
+            <article><span id="metric-requisitions">0</span><p>Active Requisitions</p></article>
+            <article><span id="metric-candidates">0</span><p>Candidates</p></article>
+            <article><span id="metric-offers">0</span><p>Accepted Offers</p></article>
+            <article><span id="metric-open-hc">0</span><p>Open Headcount</p></article>
+          </div>
+
+          <div class="layout">
+            <article>
+              <div class="section-title">
+                <h3>Needs Action</h3>
+                <button type="button" class="small secondary" data-view-jump="requisitions">Open List</button>
+              </div>
+              <div id="needs-action-list" class="work-list"></div>
+            </article>
+
+            <article>
+              <div class="section-title">
+                <h3>Recent Activity</h3>
+                <button type="button" class="small secondary" data-view-jump="audit">Audit</button>
+              </div>
+              <div id="activity-list" class="activity"></div>
+            </article>
+          </div>
+
+          <article>
+            <div class="section-title">
+              <h3>Candidate Pipeline</h3>
+              <button type="button" class="small secondary" data-view-jump="pipeline">Full Pipeline</button>
+            </div>
+            <div id="pipeline-board" class="pipeline"></div>
+          </article>
+        </section>
+
+        <section id="requisitions" class="view">
+          <article>
+            <div class="section-title">
+              <h3>Requisitions</h3>
+              <div class="section-actions">
+                <button type="button" class="small" data-open-form="requisition-dialog">New</button>
+                <button type="button" class="small secondary" data-open-form="status-dialog">Status</button>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Doc ID</th>
+                    <th>Position</th>
+                    <th>Department</th>
+                    <th>Section</th>
+                    <th>Owner</th>
+                    <th>Status</th>
+                    <th>HC</th>
+                    <th>Accepted</th>
+                    <th>Candidates</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="requisition-table"></tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+
+        <section id="candidates" class="view">
+          <article>
+            <div class="section-title">
+              <h3>Candidates</h3>
+              <div class="section-actions">
+                <button type="button" class="small" data-open-form="candidate-dialog">New</button>
+                <button type="button" class="small secondary" data-open-form="process-dialog">Update Process</button>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Group</th>
+                    <th>Site</th>
+                    <th>Owner</th>
+                    <th>Latest Process</th>
+                    <th>Result</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="candidate-table"></tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+
+        <section id="pipeline" class="view">
+          <article>
+            <div class="section-title">
+              <h3>Candidate Pipeline</h3>
+              <button type="button" class="small" data-open-form="process-dialog">Add Update</button>
+            </div>
+            <div id="pipeline-board-full" class="pipeline"></div>
+          </article>
+        </section>
+
+        <section id="offers" class="view">
+          <article>
+            <div class="section-title">
+              <h3>Offers</h3>
+              <button type="button" class="small" data-open-form="offer-dialog">New Offer</button>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Candidate</th>
+                    <th>Requisition</th>
+                    <th>Position</th>
+                    <th>Accepted</th>
+                    <th>First Working</th>
+                    <th>Type</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="offer-table"></tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+
+        <section id="setup" class="view">
+          <div class="layout">
+            <article>
+              <div class="section-title">
+                <h3>Position Groups</h3>
+                <button type="button" class="small" data-open-form="group-dialog">New Group</button>
+              </div>
+              <div id="position-group-list" class="work-list"></div>
+            </article>
+            <article>
+              <div class="section-title">
+                <h3>Requisition Matches</h3>
+                <button type="button" class="small" data-open-form="match-dialog">Add Match</button>
+              </div>
+              <div id="group-match-list" class="work-list"></div>
+            </article>
+          </div>
+        </section>
+
+        <section id="audit" class="view">
+          <article>
+            <div class="section-title">
+              <h3>Change Log</h3>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>Entity</th>
+                    <th>ID</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="audit-table"></tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+      </section>
+
+      <dialog id="requisition-dialog" class="form-dialog">
+        <form data-endpoint="/api/requisitions" data-entity="Requisition">
+          <div class="dialog-head"><h3>Requisition</h3><button type="button" class="icon close-dialog">Close</button></div>
+          <div class="mode-row">
+            <label><input type="radio" name="mode" value="new" checked /> New</label>
+            <label><input type="radio" name="mode" value="change" /> Change</label>
+          </div>
+          <div class="form-grid">
+            <label>Doc ID<input name="doc_id" list="requisition-id-options" required placeholder="REQ-2026-001" /></label>
+            <label>PR Approved Date<input name="pr_approved_date" type="date" /></label>
+            <label>Site<input name="site" list="site-options" required /></label>
+            <label>Position<input name="position" list="position-options" required /></label>
+            <label>Department<input name="department" list="department-options" required /></label>
+            <label>Section<input name="section" list="section-options" /></label>
+            <label>Level<input name="level" list="level-options" /></label>
+            <label>Head Count<input name="head_count" type="number" min="1" value="1" required /></label>
+            <label>Person in Charge<input name="person_in_charge" list="pic-options" /></label>
+            <label>Line Manager<input name="line_manager" list="manager-options" /></label>
+            <label>Status<select name="status"><option value="ongoing">Ongoing</option><option value="cancel">Cancel</option></select></label>
+          </div>
+          <button type="submit">Save Requisition</button>
+        </form>
+      </dialog>
+
+      <dialog id="status-dialog" class="form-dialog">
+        <form data-endpoint="/api/requisition-logs" data-entity="Requisition Status">
+          <div class="dialog-head"><h3>Requisition Status</h3><button type="button" class="icon close-dialog">Close</button></div>
+          <div class="form-grid">
+            <label>Doc ID<select name="doc_id" data-source="requisitions" required></select></label>
+            <label>Date<input name="log_date" type="date" required /></label>
+            <label>Status<select name="status" required><option value="ongoing">Ongoing</option><option value="filled">Filled</option><option value="cancel">Cancel</option></select></label>
+            <label class="wide">Remark<textarea name="remark" rows="3"></textarea></label>
+          </div>
+          <button type="submit">Add Status Log</button>
+        </form>
+      </dialog>
+
+      <dialog id="group-dialog" class="form-dialog">
+        <form data-endpoint="/api/groups" data-entity="Position Group">
+          <div class="dialog-head"><h3>Position Group</h3><button type="button" class="icon close-dialog">Close</button></div>
+          <div class="mode-row">
+            <label><input type="radio" name="mode" value="new" checked /> New</label>
+            <label><input type="radio" name="mode" value="change" /> Change</label>
+          </div>
+          <div class="form-grid">
+            <label>Group ID<select name="group_id" data-source="position-groups"></select></label>
+            <label class="wide">Group Position<input name="group_position" list="group-position-options" required /></label>
+          </div>
+          <div class="checks">
+            <label><input name="channel_fb" type="checkbox" value="1" /> Facebook</label>
+            <label><input name="channel_jobthai" type="checkbox" value="1" /> JobThai</label>
+            <label><input name="channel_jobtopgun" type="checkbox" value="1" /> JobTopGun</label>
+            <label><input name="channel_jobdb" type="checkbox" value="1" /> JobDB</label>
+          </div>
+          <button type="submit">Save Group</button>
+        </form>
+      </dialog>
+
+      <dialog id="match-dialog" class="form-dialog">
+        <form data-endpoint="/api/group-matches" data-entity="Requisition Group Match">
+          <div class="dialog-head"><h3>Match Requisition and Group</h3><button type="button" class="icon close-dialog">Close</button></div>
+          <div class="form-grid">
+            <label>Doc ID<select name="doc_id" data-source="requisitions" required></select></label>
+            <label>Group ID<select name="group_id" data-source="position-groups" required></select></label>
+          </div>
+          <button type="submit">Add Match</button>
+        </form>
+      </dialog>
+
+      <dialog id="candidate-dialog" class="form-dialog">
+        <form data-endpoint="/api/candidates" data-entity="Candidate">
+          <div class="dialog-head"><h3>Candidate</h3><button type="button" class="icon close-dialog">Close</button></div>
+          <div class="mode-row">
+            <label><input type="radio" name="mode" value="new" checked /> New</label>
+            <label><input type="radio" name="mode" value="change" /> Change</label>
+          </div>
+          <div class="form-grid">
+            <label>Candidate ID<select name="candidate_id" data-source="candidates"></select></label>
+            <label>Name<input name="name" required /></label>
+            <label>Phone No.<input name="phone_no" /></label>
+            <label>Group ID<select name="doc_group_id" data-source="groups" required></select></label>
+            <label>Channel<input name="channel" list="candidate-channel-options" /></label>
+            <label>Reference Name<input name="ref_name" list="ref-name-options" /></label>
+            <label>First Contact Date<input name="first_contact_date" type="date" /></label>
+          </div>
+          <button type="submit">Save Candidate</button>
+        </form>
+      </dialog>
+
+      <dialog id="process-dialog" class="form-dialog">
+        <form data-endpoint="/api/recruitment-logs" data-entity="Recruitment Process">
+          <div class="dialog-head"><h3>Process Update</h3><button type="button" class="icon close-dialog">Close</button></div>
+          <div class="form-grid">
+            <label>Candidate<select name="candidate_id" data-source="candidates" required></select></label>
+            <label>Date<input name="log_date" type="date" required /></label>
+            <label>Process<select name="recruitment_process" required><option value="First Contact">First Contact</option><option value="Phone Screen">Phone Screen</option><option value="HR Interview">HR Interview</option><option value="Line Interview">Line Interview</option><option value="Test">Test</option><option value="Reference Check">Reference Check</option><option value="Offer">Offer</option><option value="Rejected">Rejected</option><option value="Withdrawn">Withdrawn</option></select></label>
+            <label>Round<input name="round" type="number" min="1" value="1" required /></label>
+            <label>Interviewer<input name="interviewer" list="interviewer-options" /></label>
+            <label>Result<select name="result"><option value="">Pending</option><option value="1">Pass</option><option value="0">Fail</option></select></label>
+            <label class="wide">Remark<textarea name="remark" rows="3"></textarea></label>
+          </div>
+          <button type="submit">Add Process Update</button>
+        </form>
+      </dialog>
+
+      <dialog id="offer-dialog" class="form-dialog">
+        <form data-endpoint="/api/offers" data-entity="Offer">
+          <div class="dialog-head"><h3>Offer</h3><button type="button" class="icon close-dialog">Close</button></div>
+          <div class="mode-row">
+            <label><input type="radio" name="mode" value="new" checked /> New</label>
+            <label><input type="radio" name="mode" value="change" /> Change</label>
+          </div>
+          <div class="form-grid">
+            <label>Candidate<select name="candidate_id" data-source="candidates" required></select></label>
+            <label>Doc ID<select name="doc_id" data-source="requisitions" required></select></label>
+            <label>Accepted Date<input name="accepted_date" type="date" /></label>
+            <label>First Working Date<input name="first_working_date" type="date" /></label>
+            <label>Offer Type<input name="offered_type" list="offer-type-options" /></label>
+            <label>Replaced<input name="replaced" list="replaced-options" /></label>
+            <label class="wide">Remark<textarea name="remark" rows="3"></textarea></label>
+          </div>
+          <button type="submit">Save Offer</button>
+        </form>
+      </dialog>
+
+      <datalist id="site-options"></datalist>
+      <datalist id="requisition-id-options"></datalist>
+      <datalist id="position-options"></datalist>
+      <datalist id="department-options"></datalist>
+      <datalist id="section-options"></datalist>
+      <datalist id="level-options"></datalist>
+      <datalist id="pic-options"></datalist>
+      <datalist id="manager-options"></datalist>
+      <datalist id="group-position-options"></datalist>
+      <datalist id="candidate-channel-options"></datalist>
+      <datalist id="ref-name-options"></datalist>
+      <datalist id="interviewer-options"></datalist>
+      <datalist id="offer-type-options"></datalist>
+      <datalist id="replaced-options"></datalist>
+
+      <dialog id="confirm-dialog">
+        <form method="dialog" class="confirm-box">
+          <h3 id="confirm-title">Confirm Save</h3>
+          <p id="confirm-summary"></p>
+          <dl id="confirm-details"></dl>
+          <div class="confirm-actions">
+            <button id="cancel-submit" value="cancel" type="button" class="secondary">Cancel</button>
+            <button id="confirm-submit" value="confirm" type="button">Confirm</button>
+          </div>
+        </form>
+      </dialog>
+    </main>
+
+    <script src="script.js"></script>
+  </body>
+</html>

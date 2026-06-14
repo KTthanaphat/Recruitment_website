@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+
+# Local databases and SQLite runtime files contain live/private data.
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+*.wal
+*.shm
+
+.env
+.venv/
+venv/
+
+.DS_Store
+Thumbs.db
