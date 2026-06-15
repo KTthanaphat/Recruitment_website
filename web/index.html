@@ -31,6 +31,7 @@
             <h2 id="view-title">Dashboard</h2>
           </div>
           <div class="actions">
+            <button id="language-toggle" type="button" class="secondary">TH</button>
             <button type="button" data-open-form="requisition-dialog">New Requisition</button>
             <button type="button" data-open-form="candidate-dialog">New Candidate</button>
             <button type="button" data-open-form="process-dialog">Process Update</button>
@@ -340,6 +341,32 @@
           </div>
           <button type="submit">Save Offer</button>
         </form>
+      </dialog>
+
+      <dialog id="requisition-detail-dialog" class="detail-dialog">
+        <div class="detail-panel">
+          <div class="dialog-head">
+            <div>
+              <p class="eyebrow" id="requisition-detail-kicker">Requisition Detail</p>
+              <h3 id="requisition-detail-title">Requisition</h3>
+            </div>
+            <button type="button" class="icon close-dialog">Close</button>
+          </div>
+          <div id="requisition-detail-body" class="detail-body"></div>
+        </div>
+      </dialog>
+
+      <dialog id="candidate-detail-dialog" class="detail-dialog">
+        <div class="detail-panel">
+          <div class="dialog-head">
+            <div>
+              <p class="eyebrow" id="candidate-detail-kicker">Candidate Detail</p>
+              <h3 id="candidate-detail-title">Candidate</h3>
+            </div>
+            <button type="button" class="icon close-dialog">Close</button>
+          </div>
+          <div id="candidate-detail-body" class="detail-body"></div>
+        </div>
       </dialog>
 
       <datalist id="site-options"></datalist>
