@@ -1,5 +1,8 @@
 # Recruitment Website Deployment Guide
 
+> Current cloud deployment documentation lives in `docs/DEPLOYMENT.md`.
+> The content below is the legacy Python/SQLite deployment reference retained for historical context.
+
 Last updated: 2026-06-15
 
 ## Purpose
@@ -191,4 +194,3 @@ Every functional, UI, database, deployment, or workflow change should update doc
 
 - Update this file when deployment, hosting, database, environment, or Git workflow changes.
 - Update `WEBSITE_STRUCTURE.md` when pages, UI flows, files, APIs, database tables, or user journeys change.
-

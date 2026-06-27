@@ -1,5 +1,8 @@
 # Recruitment Website Structure
 
+> Current cloud prototype documentation lives in `docs/WEBSITE_STRUCTURE.md`.
+> The content below is the legacy Python/SQLite reference retained for historical context.
+
 Last updated: 2026-06-15
 
 ## Overview
@@ -473,4 +476,3 @@ Update `DEPLOYMENT.md` when changing:
 - Port/server behavior
 - Database location
 - Backup/deployment instructions
-

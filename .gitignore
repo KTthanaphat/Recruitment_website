@@ -10,8 +10,18 @@ __pycache__/
 *.shm
 
 .env
+.env*.local
 .venv/
 venv/
+
+# Next.js / Node
+node_modules/
+.next/
+out/
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
 
 .DS_Store
 Thumbs.db
