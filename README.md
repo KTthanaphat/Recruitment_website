@@ -34,6 +34,13 @@ The Playwright browser install is needed only once per machine.
 
 This repository includes `render.yaml` for a Render web service deployment.
 
+Render build settings:
+
+```text
+Build Command: npm install && npm run build
+Start Command: npm run start -- -H 0.0.0.0 -p $PORT
+```
+
 Render environment variables:
 
 ```text
