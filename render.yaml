@@ -3,9 +3,11 @@ services:
     name: recruitment-tracking
     runtime: node
     plan: free
-    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build
+    buildCommand: pnpm install --frozen-lockfile && pnpm build
     startCommand: pnpm start -- -H 0.0.0.0 -p $PORT
     envVars:
+      - key: PNPM_VERSION
+        value: 11.7.0
       - key: NEXT_PUBLIC_SUPABASE_URL
         sync: false
       - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
