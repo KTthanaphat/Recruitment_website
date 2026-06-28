@@ -69,7 +69,7 @@ export function DashboardOverviewView({
 
   return (
     <div className="grid gap-4">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard label={translate(language, "activeRequisitions")} value={activeRequisitions.length} icon={<BriefcaseBusiness size={22} />} />
         <StatCard label={translate(language, "responsibleUnfilled")} value={responsibleUnfilled.length} icon={<BriefcaseBusiness size={22} />} />
         <StatCard label={translate(language, "ongoingCandidates")} value={ongoingCandidates.length} icon={<UsersRound size={22} />} />
@@ -82,17 +82,17 @@ export function DashboardOverviewView({
         <div className="mb-9 grid gap-5 lg:grid-cols-[1fr_auto] lg:items-start">
           <h2 className="text-2xl font-extrabold tracking-normal text-navy sm:text-[28px]">{translate(language, "vacancyWaterfall")}</h2>
           <div className="grid gap-3 sm:flex sm:items-start sm:justify-end">
-            <Field label={translate(language, "startDate")} className="text-sm font-extrabold">
+            <Field label={translate(language, "startDate")} className="text-xs font-extrabold">
               <TextInput
-                className="min-h-11 w-full rounded-md border border-[#D7DEE8] bg-white px-3 py-2 text-base font-normal text-navy shadow-none focus:border-electric sm:w-44"
+                className="min-h-9 w-full rounded-md border border-[#D7DEE8] bg-white px-2.5 py-1.5 text-sm font-normal text-navy shadow-none focus:border-electric sm:w-36"
                 type="date"
                 value={startDate}
                 onChange={(event) => setStartDate(event.target.value)}
               />
             </Field>
-            <Field label={translate(language, "endDate")} className="text-sm font-extrabold">
+            <Field label={translate(language, "endDate")} className="text-xs font-extrabold">
               <TextInput
-                className="min-h-11 w-full rounded-md border border-[#D7DEE8] bg-white px-3 py-2 text-base font-normal text-navy shadow-none focus:border-electric sm:w-44"
+                className="min-h-9 w-full rounded-md border border-[#D7DEE8] bg-white px-2.5 py-1.5 text-sm font-normal text-navy shadow-none focus:border-electric sm:w-36"
                 type="date"
                 value={endDate}
                 onChange={(event) => setEndDate(event.target.value)}
@@ -218,13 +218,13 @@ function VacancyWaterfallChart({ language, rows }: { language: Language; rows: W
   return (
     <div className="overflow-x-auto pb-2">
       <div className="min-w-[1120px]">
-        <h3 className="text-[32px] font-extrabold leading-tight tracking-normal text-navy sm:text-[34px]">
+        <h3 className="text-2xl font-extrabold leading-tight tracking-normal text-navy sm:text-[26px]">
           {translate(language, "weeklyRecruitmentPerformance")}
         </h3>
-        <div className="mt-6 flex flex-wrap items-center gap-x-7 gap-y-3">
+        <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2">
           {chart.legend.map((item) => (
-            <div key={item.label} className="flex items-center gap-2 text-lg font-extrabold text-slate">
-              <span className="h-[18px] w-[18px] shrink-0" style={{ backgroundColor: item.color }} />
+            <div key={item.label} className="flex items-center gap-2 text-sm font-extrabold text-slate">
+              <span className="h-3 w-3 shrink-0" style={{ backgroundColor: item.color }} />
               <span>{formatLegendLabel(language, item.label)}</span>
             </div>
           ))}
@@ -241,6 +241,22 @@ function VacancyWaterfallChart({ language, rows }: { language: Language; rows: W
               <line x1={leftPad - 8} x2={leftPad} y1={y} y2={y} stroke="#475569" strokeWidth={1.5} />
               <text x={leftPad - 18} y={y + 8} textAnchor="end" className="fill-slate text-[22px] font-extrabold">{tick}</text>
             </g>
+          );
+        })}
+        {chart.connectors.map((connector) => {
+          const x1 = categoryX(connector.from, step, leftPad) + barWidth / 2;
+          const x2 = categoryX(connector.to, step, leftPad) - barWidth / 2;
+          const y = yScale(connector.value);
+          return (
+            <line
+              key={`${connector.from}-${connector.to}`}
+              x1={x1}
+              x2={x2}
+              y1={y}
+              y2={y}
+              stroke="#64748B"
+              strokeWidth={1.5}
+            />
           );
         })}
         {chart.bars.map((bar) => {
@@ -324,6 +340,7 @@ function buildWaterfall(rows: WaterfallRow[]) {
   const categoryRows = categories.map((category) => rowsForCategory(rows, category));
   const totals = categoryRows.map((items) => items.reduce((sum, row) => sum + row.vacancy_count, 0));
   const bars = [];
+  const connectors = [];
   let running = 0;
   const yMax = waterfallAxisMax(rows);
 
@@ -332,6 +349,8 @@ function buildWaterfall(rows: WaterfallRow[]) {
     const isTotal = category === "Total";
     const isFilled = category.endsWith(" Filled");
     const base = category === "Week Start" || isTotal ? 0 : running;
+    const startValue = base;
+    const endValue = isTotal ? totals[index] : base + totals[index];
     const segments = [];
     let positiveCursor = base;
     let downwardCursor = base;
@@ -364,18 +383,50 @@ function buildWaterfall(rows: WaterfallRow[]) {
       segments,
       total: totals[index],
       label: formatChartValue(totals[index], isFilled),
-      labelAnchor: Math.max(top, 0)
+      labelAnchor: Math.max(top, 0),
+      startValue,
+      endValue,
+      topValue: Math.max(startValue, endValue),
+      bottomValue: Math.min(startValue, endValue),
+      categoryType: categoryType(category)
+    });
+  }
+
+  for (let index = 0; index < bars.length - 1; index += 1) {
+    connectors.push({
+      from: index,
+      to: index + 1,
+      value: connectorValue(bars[index], bars[index + 1])
     });
   }
 
   return {
     categories,
     bars,
+    connectors,
     yTicks: yAxisTicks(yMax),
     yMax,
     legend: stackItems(rows),
     totalBreakdown: totalBreakdown(rows)
   };
+}
+
+function categoryType(category: string) {
+  if (category === "Week Start") return "weekStart";
+  if (category === "Total") return "total";
+  if (category.endsWith(" Filled")) return "filled";
+  return "open";
+}
+
+function connectorValue(
+  previous: { categoryType: string; endValue: number; bottomValue: number; topValue: number },
+  next: { categoryType: string; startValue: number; endValue: number; topValue: number }
+) {
+  if (previous.categoryType === "filled" && next.categoryType === "total") return next.topValue;
+  if (previous.categoryType === "filled") return previous.bottomValue;
+  if (next.categoryType === "filled") return next.startValue;
+  if (next.categoryType === "total") return previous.endValue;
+  return previous.topValue;
 }
 
 function rowsForCategory(rows: WaterfallRow[], category: string) {
