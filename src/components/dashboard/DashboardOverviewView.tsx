@@ -71,8 +71,8 @@ export function DashboardOverviewView({
     <div className="grid gap-4">
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <StatCard label={translate(language, "activeRequisitions")} value={activeRequisitions.length} icon={<BriefcaseBusiness size={22} />} />
-        <StatCard label="Responsible Unfilled" value={responsibleUnfilled.length} icon={<BriefcaseBusiness size={22} />} />
-        <StatCard label="Ongoing Candidates" value={ongoingCandidates.length} icon={<UsersRound size={22} />} />
+        <StatCard label={translate(language, "responsibleUnfilled")} value={responsibleUnfilled.length} icon={<BriefcaseBusiness size={22} />} />
+        <StatCard label={translate(language, "ongoingCandidates")} value={ongoingCandidates.length} icon={<UsersRound size={22} />} />
         <StatCard label={translate(language, "candidateCount")} value={candidates.length} icon={<UsersRound size={22} />} />
         <StatCard label={translate(language, "acceptedOffers")} value={acceptedOffers} icon={<HandCoins size={22} />} />
         <StatCard label={translate(language, "openHeadcount")} value={openHeadcount} icon={<Workflow size={22} />} />
@@ -80,22 +80,22 @@ export function DashboardOverviewView({
 
       <Panel>
         <SectionTitle
-          title="Vacancy Waterfall"
+          title={translate(language, "vacancyWaterfall")}
           action={
             <div className="grid gap-2 sm:grid-cols-2">
-              <Field label="Start Date">
+              <Field label={translate(language, "startDate")}>
                 <TextInput type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
               </Field>
-              <Field label="End Date">
+              <Field label={translate(language, "endDate")}>
                 <TextInput type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} />
               </Field>
             </div>
           }
         />
         {waterfallRows.length === 0 ? (
-          <EmptyState message="No requisition or accepted offer data for the selected date range." />
+          <EmptyState message={translate(language, "noWaterfallData")} />
         ) : (
-          <VacancyWaterfallChart rows={waterfallRows} />
+          <VacancyWaterfallChart language={language} rows={waterfallRows} />
         )}
       </Panel>
 
@@ -107,7 +107,7 @@ export function DashboardOverviewView({
           />
           <div className="grid gap-2">
             {needsAction.length === 0 ? (
-              <EmptyState message="No open headcount needs action." />
+              <EmptyState message={translate(language, "noOpenHeadcount")} />
             ) : (
               needsAction.map((row) => (
                 <button
@@ -118,9 +118,9 @@ export function DashboardOverviewView({
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <strong className="text-navy">{row.doc_id} - {row.position}</strong>
-                    <Tag tone="warning">{row.open_headcount} open</Tag>
+                    <Tag tone="warning">{row.open_headcount} {translate(language, "open")}</Tag>
                   </div>
-                  <p className="text-sm font-bold text-slate">{row.department} - {row.site} - {row.person_in_charge ?? "Unassigned"}</p>
+                  <p className="text-sm font-bold text-slate">{row.department} - {row.site} - {row.person_in_charge ?? translate(language, "unassigned")}</p>
                 </button>
               ))
             )}
@@ -134,7 +134,7 @@ export function DashboardOverviewView({
           />
           <div className="grid gap-2">
             {changeLogs.length === 0 ? (
-              <EmptyState message="No recent activity." />
+              <EmptyState message={translate(language, "noRecentActivity")} />
             ) : (
               changeLogs.slice(0, 6).map((log) => (
                 <div key={log.log_id} className="rounded-md border border-[#D7DEE8] bg-lightgray/50 p-3">
@@ -142,7 +142,7 @@ export function DashboardOverviewView({
                     <strong className="text-sm text-navy">{toTitle(log.entity)} - {log.entity_id}</strong>
                     <Tag tone={statusTone(log.action) as never}>{log.action}</Tag>
                   </div>
-                  <p className="mt-1 text-sm font-bold text-slate">{log.changed_by_email ?? "System"} - {formatDateTime(log.changed_at)}</p>
+                  <p className="mt-1 text-sm font-bold text-slate">{log.changed_by_email ?? translate(language, "system")} - {formatDateTime(log.changed_at)}</p>
                 </div>
               ))
             )}
@@ -158,7 +158,7 @@ export function DashboardOverviewView({
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           {pipelinePreview.length === 0 ? (
             <div className="md:col-span-2 xl:col-span-4">
-              <EmptyState message="No active candidates in pipeline." />
+              <EmptyState message={translate(language, "noActiveCandidates")} />
             </div>
           ) : (
             pipelinePreview.map((candidate) => (
@@ -173,7 +173,7 @@ export function DashboardOverviewView({
                   <Tag tone="teal">{processLabel(candidate.latest_process)}</Tag>
                 </div>
                 <p className="text-sm font-bold text-slate">{candidate.candidate_id} - {candidate.group_position ?? "-"}</p>
-                <p className="text-sm font-bold text-slate">{candidate.site ?? "-"} - {candidate.person_in_charge ?? "Unassigned"}</p>
+                <p className="text-sm font-bold text-slate">{candidate.site ?? "-"} - {candidate.person_in_charge ?? translate(language, "unassigned")}</p>
               </button>
             ))
           )}
@@ -190,19 +190,19 @@ type WaterfallRow = {
   vacancy_count: number;
 };
 
-function VacancyWaterfallChart({ rows }: { rows: WaterfallRow[] }) {
+function VacancyWaterfallChart({ language, rows }: { language: Language; rows: WaterfallRow[] }) {
   const chart = buildWaterfall(rows);
   const plotSize = 420;
   const width = 620;
   const height = 540;
-  const topPad = 34;
-  const bottomPad = 70;
+  const topPad = 76;
+  const bottomPad = 44;
   const leftPad = 42;
   const plotRight = leftPad + plotSize;
   const plotHeight = plotSize;
-  const yMin = chart.yMin;
+  const yMin = 0;
   const yMax = chart.yMax;
-  const yScale = (value: number) => topPad + ((yMax - value) / Math.max(yMax - yMin, 1)) * plotHeight;
+  const yScale = (value: number) => topPad + ((yMax - Math.max(value, 0)) / Math.max(yMax - yMin, 1)) * plotHeight;
   const step = plotSize / Math.max(chart.categories.length, 1);
   const barWidth = Math.min(42, step * 0.58);
   const zeroY = yScale(0);
@@ -210,22 +210,36 @@ function VacancyWaterfallChart({ rows }: { rows: WaterfallRow[] }) {
   return (
     <div className="overflow-x-auto">
       <svg viewBox={`0 0 ${width} ${height}`} className="min-w-[620px]">
+        <text x={leftPad} y={22} className="fill-navy text-[16px] font-extrabold">{translate(language, "weeklyRecruitmentPerformance")}</text>
+        <g transform={`translate(${leftPad}, 38)`}>
+          {chart.legend.map((item, index) => {
+            const column = index % 3;
+            const row = Math.floor(index / 3);
+            return (
+              <g key={item.label} transform={`translate(${column * 138}, ${row * 16})`}>
+                <rect width={8} height={8} fill={item.color} rx={0} />
+                <text x={12} y={8} className="fill-slate text-[9px] font-bold">{formatLegendLabel(language, item.label)}</text>
+              </g>
+            );
+          })}
+        </g>
+        <g transform={`translate(${plotRight + 18}, 20)`}>
+          <path d="M 0 0 C 10 0 10 10 20 10 L 86 10 C 96 10 96 0 106 0" fill="none" stroke="#475569" strokeWidth={1.2} />
+          {chart.totalBreakdown.map((item, index) => (
+            <text key={item.label} x={0} y={28 + index * 16} className="fill-slate text-[10px] font-bold">{item.label}</text>
+          ))}
+        </g>
         <line x1={leftPad} x2={plotRight} y1={zeroY} y2={zeroY} stroke="#475569" strokeWidth={1} />
-        {[0, 0.25, 0.5, 0.75, 1].map((tick) => {
-          const y = topPad + tick * plotHeight;
-          return <line key={tick} x1={leftPad} x2={plotRight} y1={y} y2={y} stroke="#D7DEE8" strokeDasharray="4 4" />;
+        <line x1={leftPad} x2={leftPad} y1={topPad} y2={zeroY} stroke="#475569" strokeWidth={1} />
+        {chart.yTicks.map((tick) => {
+          const y = yScale(tick);
+          return (
+            <g key={tick}>
+              <line x1={leftPad - 4} x2={leftPad} y1={y} y2={y} stroke="#475569" />
+              <text x={leftPad - 8} y={y + 4} textAnchor="end" className="fill-slate text-[10px] font-bold">{tick}</text>
+            </g>
+          );
         })}
-        {chart.connectors.map((connector) => (
-          <line
-            key={`${connector.from}-${connector.to}`}
-            x1={categoryX(connector.from, step, leftPad) + barWidth / 2}
-            x2={categoryX(connector.to, step, leftPad) - barWidth / 2}
-            y1={yScale(connector.value)}
-            y2={yScale(connector.value)}
-            stroke="#94A3B8"
-            strokeDasharray="5 4"
-          />
-        ))}
         {chart.bars.map((bar) => {
           const x = categoryX(bar.categoryIndex, step, leftPad) - barWidth / 2;
           return (
@@ -243,37 +257,21 @@ function VacancyWaterfallChart({ rows }: { rows: WaterfallRow[] }) {
                     width={barWidth}
                     height={rectHeight}
                     fill={segment.color}
-                    rx={3}
+                    rx={0}
                   />
                 );
               })}
               <text x={x + barWidth / 2} y={yScale(bar.labelAnchor) - 8} textAnchor="middle" className="fill-navy text-[12px] font-bold">
-                {formatChartValue(bar.total)}
+                {bar.label}
               </text>
             </g>
           );
         })}
         {chart.categories.map((category, index) => (
-          <text key={category} x={categoryX(index, step, leftPad)} y={height - 28} textAnchor="middle" className="fill-slate text-[11px] font-bold">
-            {category}
+          <text key={category} x={categoryX(index, step, leftPad)} y={height - 18} textAnchor="middle" className="fill-slate text-[10px] font-bold">
+            {formatCategoryLabel(language, category)}
           </text>
         ))}
-        <g transform={`translate(${plotRight + 18}, ${topPad})`}>
-          <text x={0} y={0} className="fill-navy text-[11px] font-extrabold">Legend</text>
-          {chart.legend.map((item, index) => (
-            <g key={item.label} transform={`translate(0, ${14 + index * 18})`}>
-              <rect width={10} height={10} fill={item.color} rx={2} />
-              <text x={14} y={9} className="fill-slate text-[10px] font-bold">{item.label}</text>
-            </g>
-          ))}
-        </g>
-        <g transform={`translate(${plotRight + 18}, ${topPad + 138})`}>
-          <text x={12} y={0} className="fill-navy text-[11px] font-extrabold">Total remaining</text>
-          <path d="M 6 12 C -2 12 -2 24 6 24 L 6 24 C -2 24 -2 36 6 36" fill="none" stroke="#475569" strokeWidth={1.5} />
-          {chart.totalBreakdown.map((item, index) => (
-            <text key={item.label} x={16} y={18 + index * 16} className="fill-slate text-[10px] font-bold">{item.label}</text>
-          ))}
-        </g>
       </svg>
     </div>
   );
@@ -290,29 +288,28 @@ function buildWaterfall(rows: WaterfallRow[]) {
   const categoryRows = categories.map((category) => rowsForCategory(rows, category));
   const totals = categoryRows.map((items) => items.reduce((sum, row) => sum + row.vacancy_count, 0));
   const bars = [];
-  const connectors = [];
   let running = 0;
-  let yMin = 0;
-  let yMax = 1;
+  const yMax = waterfallAxisMax(rows);
 
   for (let index = 0; index < categories.length; index += 1) {
     const category = categories[index];
     const isTotal = category === "Total";
-    const base = isTotal ? 0 : running;
+    const isFilled = category.endsWith(" Filled");
+    const base = category === "Week Start" || isTotal ? 0 : running;
     const segments = [];
-    let positiveBottom = base;
-    let negativeBottom = base;
+    let positiveCursor = base;
+    let downwardCursor = base;
     let top = base;
-    let bottom = base;
 
     for (const row of sortSnapshotRows(categoryRows[index])) {
       if (row.vacancy_count === 0) continue;
-      const segmentBottom = row.vacancy_count > 0 ? positiveBottom : negativeBottom;
-      const segmentTop = segmentBottom + row.vacancy_count;
-      if (row.vacancy_count > 0) positiveBottom = segmentTop;
-      else negativeBottom = segmentTop;
+      const magnitude = Math.abs(row.vacancy_count);
+      const isDownward = isFilled || row.vacancy_count < 0;
+      const segmentBottom = isDownward ? Math.max(downwardCursor - magnitude, 0) : positiveCursor;
+      const segmentTop = isDownward ? downwardCursor : positiveCursor + magnitude;
+      if (isDownward) downwardCursor = segmentBottom;
+      else positiveCursor = segmentTop;
       top = Math.max(top, segmentTop);
-      bottom = Math.min(bottom, segmentTop);
       segments.push({
         key: `${category}-${row.site}-${row.request_type}`,
         bottom: segmentBottom,
@@ -323,30 +320,26 @@ function buildWaterfall(rows: WaterfallRow[]) {
 
     if (!isTotal) {
       running += totals[index];
-      if (index < categories.length - 1) connectors.push({ from: index, to: index + 1, value: running });
     }
 
-    yMin = Math.min(yMin, bottom);
-    yMax = Math.max(yMax, top);
     bars.push({
       key: category,
       categoryIndex: index,
       segments,
       total: totals[index],
-      labelAnchor: top
+      label: formatChartValue(totals[index], isFilled),
+      labelAnchor: Math.max(top, 0)
     });
   }
 
-  const pad = Math.max(Math.abs(yMax - yMin) * 0.15, 4);
   return {
     categories,
     bars,
-    connectors,
-    yMin: yMin - pad,
-    yMax: yMax + pad,
+    yTicks: yAxisTicks(yMax),
+    yMax,
     legend: sites.flatMap((site) => [
-      { label: `${site} New`, color: snapshotColor(site, "New") },
-      { label: `${site} Rep`, color: snapshotColor(site, "Replacement") }
+      { label: `${site} Replacement`, color: snapshotColor(site, "Replacement") },
+      { label: `${site} New`, color: snapshotColor(site, "New") }
     ]),
     totalBreakdown: totalBreakdown(rows)
   };
@@ -362,13 +355,17 @@ function sortSnapshotRows(rows: WaterfallRow[]) {
   return [...rows].sort((a, b) => {
     const siteDelta = siteRank(a.site) - siteRank(b.site);
     if (siteDelta !== 0) return siteDelta;
-    return a.request_type === b.request_type ? 0 : a.request_type === "New" ? -1 : 1;
+    return requestTypeRank(a.request_type) - requestTypeRank(b.request_type);
   });
 }
 
 function siteRank(site: string) {
   const index = siteOrder.indexOf(site);
   return index === -1 ? siteOrder.length : index;
+}
+
+function requestTypeRank(requestType: RequisitionRequestType) {
+  return requestType === "Replacement" ? 0 : 1;
 }
 
 function snapshotColor(site: string, requestType: string) {
@@ -382,8 +379,38 @@ function categoryX(index: number, step: number, leftPad: number) {
   return leftPad + step * index + step / 2;
 }
 
-function formatChartValue(value: number) {
-  return value < 0 ? `( ${Math.abs(value).toLocaleString()} )` : value.toLocaleString();
+function formatChartValue(value: number, isFilled = false) {
+  const amount = Math.abs(value).toLocaleString();
+  return isFilled || value < 0 ? `(${amount})` : amount;
+}
+
+function waterfallAxisMax(rows: WaterfallRow[]) {
+  const startTotal = rows
+    .filter((row) => row.waterfall_category === "Week Start")
+    .reduce((sum, row) => sum + row.vacancy_count, 0);
+  const openTotal = rows
+    .filter((row) => row.waterfall_category === "Open" && siteOrder.includes(row.site))
+    .reduce((sum, row) => sum + Math.max(row.vacancy_count, 0), 0);
+  return Math.max(Math.ceil((startTotal + openTotal) * 1.1), 1);
+}
+
+function yAxisTicks(max: number) {
+  const step = Math.max(Math.ceil(max / 4), 1);
+  return [0, step, step * 2, step * 3, max].filter((value, index, values) => values.indexOf(value) === index);
+}
+
+function formatCategoryLabel(language: Language, category: string) {
+  if (category === "Week Start") return translate(language, "weekStart");
+  if (category === "Total") return translate(language, "total");
+  if (category.endsWith(" Open")) return `${category.replace(" Open", "")} ${translate(language, "open")}`;
+  if (category.endsWith(" Filled")) return `${category.replace(" Filled", "")} ${translate(language, "filled")}`;
+  return category;
+}
+
+function formatLegendLabel(language: Language, label: string) {
+  const [site, requestType] = label.split(" ");
+  const suffix = requestType === "Replacement" ? translate(language, "replacementVacancy") : translate(language, "newVacancy");
+  return `${site} ${suffix}`;
 }
 
 function totalBreakdown(rows: WaterfallRow[]) {
@@ -392,7 +419,7 @@ function totalBreakdown(rows: WaterfallRow[]) {
   if (visibleTotals.length === 0) return [{ label: "No remaining vacancy" }];
 
   return visibleTotals.map((row) => ({
-    label: `${row.site}-${row.request_type}: ${row.vacancy_count.toLocaleString()}`
+    label: `${row.site}-${row.request_type === "Replacement" ? "REP" : "NEW"}: ${row.vacancy_count.toLocaleString()}`
   }));
 }
 
@@ -483,10 +510,6 @@ function currentYearStart() {
 
 function today() {
   return new Date().toISOString().slice(0, 10);
-}
-
-function uniqueValues(values: string[]) {
-  return Array.from(new Set(values.filter(Boolean)));
 }
 
 function dateOnly(value: string | null | undefined) {

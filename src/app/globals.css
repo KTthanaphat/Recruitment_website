@@ -20,7 +20,7 @@ body {
   margin: 0;
   background: #fafafc;
   color: #0b132b;
-  font-family: Arial, "Noto Sans Thai", sans-serif;
+  font-family: var(--font-prompt), Prompt, Arial, "Noto Sans Thai", sans-serif;
 }
 
 button,
