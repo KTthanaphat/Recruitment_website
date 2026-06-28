@@ -110,6 +110,8 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     setError(null);
     const session = await supabase.auth.getSession();
     if (!session.data.session) {
+      setLoading(false);
+      setStatus("No active session. Redirecting to login...");
       router.replace("/login");
       return;
     }

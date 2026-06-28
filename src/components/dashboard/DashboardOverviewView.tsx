@@ -78,26 +78,34 @@ export function DashboardOverviewView({
         <StatCard label={translate(language, "openHeadcount")} value={openHeadcount} icon={<Workflow size={22} />} />
       </div>
 
-      <Panel>
-        <SectionTitle
-          title={translate(language, "vacancyWaterfall")}
-          action={
-            <div className="grid gap-2 sm:grid-cols-2">
-              <Field label={translate(language, "startDate")}>
-                <TextInput type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
-              </Field>
-              <Field label={translate(language, "endDate")}>
-                <TextInput type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} />
-              </Field>
-            </div>
-          }
-        />
+      <section className="min-w-0 bg-white px-4 py-6 sm:px-6 lg:px-8">
+        <div className="mb-9 grid gap-5 lg:grid-cols-[1fr_auto] lg:items-start">
+          <h2 className="text-2xl font-extrabold tracking-normal text-navy sm:text-[28px]">{translate(language, "vacancyWaterfall")}</h2>
+          <div className="grid gap-3 sm:flex sm:items-start sm:justify-end">
+            <Field label={translate(language, "startDate")} className="text-sm font-extrabold">
+              <TextInput
+                className="min-h-11 w-full rounded-md border border-[#D7DEE8] bg-white px-3 py-2 text-base font-normal text-navy shadow-none focus:border-electric sm:w-44"
+                type="date"
+                value={startDate}
+                onChange={(event) => setStartDate(event.target.value)}
+              />
+            </Field>
+            <Field label={translate(language, "endDate")} className="text-sm font-extrabold">
+              <TextInput
+                className="min-h-11 w-full rounded-md border border-[#D7DEE8] bg-white px-3 py-2 text-base font-normal text-navy shadow-none focus:border-electric sm:w-44"
+                type="date"
+                value={endDate}
+                onChange={(event) => setEndDate(event.target.value)}
+              />
+            </Field>
+          </div>
+        </div>
         {waterfallRows.length === 0 ? (
           <EmptyState message={translate(language, "noWaterfallData")} />
         ) : (
           <VacancyWaterfallChart language={language} rows={waterfallRows} />
         )}
-      </Panel>
+      </section>
 
       <div className="grid gap-4 xl:grid-cols-2">
         <Panel>
@@ -192,51 +200,46 @@ type WaterfallRow = {
 
 function VacancyWaterfallChart({ language, rows }: { language: Language; rows: WaterfallRow[] }) {
   const chart = buildWaterfall(rows);
-  const plotSize = 420;
-  const width = 620;
-  const height = 540;
-  const topPad = 76;
-  const bottomPad = 44;
-  const leftPad = 42;
+  const plotSize = 560;
+  const width = 1120;
+  const topPad = 112;
+  const bottomPad = 64;
+  const height = topPad + plotSize + bottomPad;
+  const leftPad = 70;
   const plotRight = leftPad + plotSize;
   const plotHeight = plotSize;
   const yMin = 0;
   const yMax = chart.yMax;
   const yScale = (value: number) => topPad + ((yMax - Math.max(value, 0)) / Math.max(yMax - yMin, 1)) * plotHeight;
   const step = plotSize / Math.max(chart.categories.length, 1);
-  const barWidth = Math.min(42, step * 0.58);
+  const barWidth = Math.min(96, Math.max(52, step * 0.5));
   const zeroY = yScale(0);
 
   return (
-    <div className="overflow-x-auto">
-      <svg viewBox={`0 0 ${width} ${height}`} className="min-w-[620px]">
-        <text x={leftPad} y={22} className="fill-navy text-[16px] font-extrabold">{translate(language, "weeklyRecruitmentPerformance")}</text>
-        <g transform={`translate(${leftPad}, 38)`}>
-          {chart.legend.map((item, index) => {
-            const column = index % 3;
-            const row = Math.floor(index / 3);
-            return (
-              <g key={item.label} transform={`translate(${column * 138}, ${row * 16})`}>
-                <rect width={8} height={8} fill={item.color} rx={0} />
-                <text x={12} y={8} className="fill-slate text-[9px] font-bold">{formatLegendLabel(language, item.label)}</text>
-              </g>
-            );
-          })}
-        </g>
-        <g transform={`translate(${plotRight + 18}, 20)`}>
-          <path d="M 0 0 C 10 0 10 10 20 10 L 86 10 C 96 10 96 0 106 0" fill="none" stroke="#475569" strokeWidth={1.2} />
-          {chart.totalBreakdown.map((item, index) => (
-            <text key={item.label} x={0} y={28 + index * 16} className="fill-slate text-[10px] font-bold">{item.label}</text>
+    <div className="overflow-x-auto pb-2">
+      <div className="min-w-[1120px]">
+        <h3 className="text-[32px] font-extrabold leading-tight tracking-normal text-navy sm:text-[34px]">
+          {translate(language, "weeklyRecruitmentPerformance")}
+        </h3>
+        <div className="mt-6 flex flex-wrap items-center gap-x-7 gap-y-3">
+          {chart.legend.map((item) => (
+            <div key={item.label} className="flex items-center gap-2 text-lg font-extrabold text-slate">
+              <span className="h-[18px] w-[18px] shrink-0" style={{ backgroundColor: item.color }} />
+              <span>{formatLegendLabel(language, item.label)}</span>
+            </div>
           ))}
-        </g>
+        </div>
+      </div>
+      <svg viewBox={`0 0 ${width} ${height}`} className="min-w-[1120px]">
+        <TopBreakdownBracket x={plotRight + 240} y={16} items={chart.totalBreakdown} />
         <line x1={leftPad} x2={plotRight} y1={zeroY} y2={zeroY} stroke="#475569" strokeWidth={1} />
-        <line x1={leftPad} x2={leftPad} y1={topPad} y2={zeroY} stroke="#475569" strokeWidth={1} />
-        {chart.yTicks.map((tick) => {
+        <line x1={leftPad} x2={leftPad} y1={topPad} y2={zeroY} stroke="#475569" strokeWidth={2} />
+        {chart.yTicks.filter((tick) => tick > 0).map((tick) => {
           const y = yScale(tick);
           return (
             <g key={tick}>
-              <line x1={leftPad - 4} x2={leftPad} y1={y} y2={y} stroke="#475569" />
-              <text x={leftPad - 8} y={y + 4} textAnchor="end" className="fill-slate text-[10px] font-bold">{tick}</text>
+              <line x1={leftPad - 8} x2={leftPad} y1={y} y2={y} stroke="#475569" strokeWidth={1.5} />
+              <text x={leftPad - 18} y={y + 8} textAnchor="end" className="fill-slate text-[22px] font-extrabold">{tick}</text>
             </g>
           );
         })}
@@ -261,19 +264,52 @@ function VacancyWaterfallChart({ language, rows }: { language: Language; rows: W
                   />
                 );
               })}
-              <text x={x + barWidth / 2} y={yScale(bar.labelAnchor) - 8} textAnchor="middle" className="fill-navy text-[12px] font-bold">
+              <text x={x + barWidth / 2} y={yScale(bar.labelAnchor) - 14} textAnchor="middle" className="fill-navy text-[24px] font-extrabold">
                 {bar.label}
               </text>
             </g>
           );
         })}
         {chart.categories.map((category, index) => (
-          <text key={category} x={categoryX(index, step, leftPad)} y={height - 18} textAnchor="middle" className="fill-slate text-[10px] font-bold">
+          <text key={category} x={categoryX(index, step, leftPad)} y={height - 22} textAnchor="middle" className="fill-slate text-[13px] font-extrabold">
             {formatCategoryLabel(language, category)}
           </text>
         ))}
       </svg>
     </div>
+  );
+}
+
+function TopBreakdownBracket({ x, y, items }: { x: number; y: number; items: { label: string }[] }) {
+  const bracketWidth = 230;
+  const twoColumns = items.length > 3;
+
+  return (
+    <g transform={`translate(${x}, ${y})`}>
+      <path
+        d={`M 0 0 C 22 0 22 24 44 24 L ${bracketWidth - 44} 24 C ${bracketWidth - 22} 24 ${bracketWidth - 22} 0 ${bracketWidth} 0`}
+        fill="none"
+        stroke="#475569"
+        strokeWidth={2.5}
+      />
+      {items.map((item, index) => {
+        const column = twoColumns ? index % 2 : 0;
+        const row = twoColumns ? Math.floor(index / 2) : index;
+        const labelX = twoColumns ? column * 118 : bracketWidth / 2;
+        const labelY = 64 + row * 30;
+        return (
+          <text
+            key={item.label}
+            x={labelX}
+            y={labelY}
+            textAnchor={twoColumns ? "start" : "middle"}
+            className="fill-slate text-[22px] font-extrabold"
+          >
+            {item.label}
+          </text>
+        );
+      })}
+    </g>
   );
 }
 
@@ -337,10 +373,7 @@ function buildWaterfall(rows: WaterfallRow[]) {
     bars,
     yTicks: yAxisTicks(yMax),
     yMax,
-    legend: sites.flatMap((site) => [
-      { label: `${site} Replacement`, color: snapshotColor(site, "Replacement") },
-      { label: `${site} New`, color: snapshotColor(site, "New") }
-    ]),
+    legend: stackItems(rows),
     totalBreakdown: totalBreakdown(rows)
   };
 }
@@ -395,8 +428,15 @@ function waterfallAxisMax(rows: WaterfallRow[]) {
 }
 
 function yAxisTicks(max: number) {
+  if (max <= 6) {
+    return Array.from({ length: max + 1 }, (_, index) => index);
+  }
+
   const step = Math.max(Math.ceil(max / 4), 1);
-  return [0, step, step * 2, step * 3, max].filter((value, index, values) => values.indexOf(value) === index);
+  return [0, step, step * 2, step * 3, max]
+    .filter((value) => value <= max)
+    .filter((value, index, values) => values.indexOf(value) === index)
+    .sort((a, b) => a - b);
 }
 
 function formatCategoryLabel(language: Language, category: string) {
@@ -421,6 +461,21 @@ function totalBreakdown(rows: WaterfallRow[]) {
   return visibleTotals.map((row) => ({
     label: `${row.site}-${row.request_type === "Replacement" ? "REP" : "NEW"}: ${row.vacancy_count.toLocaleString()}`
   }));
+}
+
+function stackItems(rows: WaterfallRow[]) {
+  const seen = new Set<string>();
+  const items = [];
+  for (const row of sortSnapshotRows(rows.filter((item) => item.vacancy_count !== 0 && siteOrder.includes(item.site)))) {
+    const key = `${row.site}|${row.request_type}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    items.push({
+      label: `${row.site} ${row.request_type}`,
+      color: snapshotColor(row.site, row.request_type)
+    });
+  }
+  return items;
 }
 
 function buildLiveWaterfallRows(
