@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { AdminView } from "@/components/admin/AdminView";
 import { AuditView } from "@/components/audit/AuditView";
 import { CandidatesView } from "@/components/candidates/CandidatesView";
 import { DashboardOverviewView } from "@/components/dashboard/DashboardOverviewView";
@@ -16,7 +17,7 @@ import { Field, SelectInput, TextArea, TextInput } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { Panel } from "@/components/ui/Panel";
 import { Tag } from "@/components/ui/Tag";
-import { ACTIVE_PIPELINE_STAGES, canManageSetup as canManageSetupRole, canManageUsers as canManageUsersRole, canWrite as canWriteRole, PROCESS_UPDATE_STAGES, processLabel, ROLE_LABELS, ROLES, WRITABLE_REQUISITION_STATUSES } from "@/lib/constants";
+import { ACTIVE_PIPELINE_STAGES, canManageSetup as canManageSetupRole, canManageUsers as canManageUsersRole, canWrite as canWriteRole, PROCESS_UPDATE_STAGES, processLabel, recruiterNicknameOptions, ROLE_LABELS, ROLES, SITE_OPTIONS, WRITABLE_REQUISITION_STATUSES } from "@/lib/constants";
 import {
   emptyDashboardData,
   enrichCandidates,
@@ -152,8 +153,8 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const filteredCandidates = useMemo(() => filterByText(enrichedCandidates, filters), [enrichedCandidates, filters]);
   const filteredOffers = useMemo(() => filterByText(enrichedOffers, filters), [enrichedOffers, filters]);
 
-  const siteOptions = uniqueValues(enrichedRequisitions.map((row) => row.site));
-  const ownerOptions = uniqueValues(enrichedRequisitions.map((row) => row.person_in_charge));
+  const siteOptions = SITE_OPTIONS;
+  const ownerOptions = recruiterNicknameOptions(data.profiles);
 
   async function signOut() {
     if (supabase) await supabase.auth.signOut();
@@ -258,16 +259,20 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     >
       <div className="mb-4 grid gap-3 rounded-lg border border-[#D7DEE8] bg-white p-4 shadow-panel md:grid-cols-[1fr_1fr_auto]">
         <Field label="Site">
-          <TextInput list="site-options" value={filters.site} placeholder="All sites" onChange={(event) => setFilters((old) => ({ ...old, site: event.target.value }))} />
+          <SelectInput value={filters.site} onChange={(event) => setFilters((old) => ({ ...old, site: event.target.value }))}>
+            <option value="">All sites</option>
+            {siteOptions.map((value) => <option key={value} value={value}>{value}</option>)}
+          </SelectInput>
         </Field>
         <Field label="Person in Charge">
-          <TextInput list="owner-options" value={filters.owner} placeholder="All owners" onChange={(event) => setFilters((old) => ({ ...old, owner: event.target.value }))} />
+          <SelectInput value={filters.owner} onChange={(event) => setFilters((old) => ({ ...old, owner: event.target.value }))}>
+            <option value="">All owners</option>
+            {ownerOptions.map((value) => <option key={value} value={value}>{value}</option>)}
+          </SelectInput>
         </Field>
         <div className="flex items-end">
           <Button type="button" variant="secondary" onClick={() => setFilters({ site: "", owner: "" })}>Clear</Button>
         </div>
-        <datalist id="site-options">{siteOptions.map((value) => <option key={value} value={value} />)}</datalist>
-        <datalist id="owner-options">{ownerOptions.map((value) => <option key={value} value={value} />)}</datalist>
       </div>
 
       <p className={`mb-4 min-h-6 text-sm font-bold ${error ? "text-orange" : "text-slate"}`}>{loading ? "Loading recruitment records..." : error ?? status}</p>
@@ -297,15 +302,15 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
           profile={data.profile}
           canWrite={canWrite}
           canManageSetup={canManageSetup}
-          canManageUsers={canManageUsers}
           weekStart={sourcingWeek}
           onWeekChange={setSourcingWeek}
           onSaveSourcing={(payload, summary) => prepareRpcAction("app_upsert_sourcing_weekly_update", payload, summary)}
           onGroup={() => setActiveModal("group")}
           onMatch={() => setActiveModal("match")}
-          onInvite={() => setActiveModal("user")}
         />
       ) : null}
+
+      {initialView === "admin" ? <AdminView language={language} data={data} canManageUsers={canManageUsers} onInvite={() => setActiveModal("user")} /> : null}
 
       {initialView === "audit" ? <AuditView language={language} rows={data.change_logs} /> : null}
 
@@ -514,7 +519,21 @@ function RecordModal({
   onSubmit: (modal: Exclude<ModalName, null>, form: HTMLFormElement) => void;
   onValidationError: (message: string) => void;
 }) {
+  const [mode, setMode] = useState<"new" | "change">("new");
+  const [selectedId, setSelectedId] = useState("");
+
+  useEffect(() => {
+    setMode("new");
+    setSelectedId(processDefaults.candidate_id ?? "");
+  }, [modal, processDefaults.candidate_id]);
+
   if (!modal) return null;
+  const selectedRecords = selectedModalRecords(data, selectedId);
+
+  function handleModeChange(nextMode: "new" | "change") {
+    setMode(nextMode);
+    setSelectedId("");
+  }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -527,18 +546,18 @@ function RecordModal({
 
   return (
     <Modal open={Boolean(modal)} title={modalTitle(modal)} onClose={onClose}>
-      <form className="grid gap-4" onSubmit={handleSubmit}>
-        {["requisition", "candidate", "offer", "group", "user"].includes(modal) ? <ModeRow /> : null}
-        {modal === "requisition" ? <RequisitionFields data={data} profile={profile} /> : null}
-        {modal === "status" ? <StatusFields data={data} /> : null}
-        {modal === "candidate" ? <CandidateFields data={data} /> : null}
-        {modal === "process" ? <ProcessFields data={data} defaults={processDefaults} /> : null}
+      <form key={`${modal}-${mode}-${selectedId}`} className="grid gap-4" onSubmit={handleSubmit}>
+        {["requisition", "candidate", "offer", "group", "user"].includes(modal) ? <ModeRow mode={mode} onModeChange={handleModeChange} /> : null}
+        {modal === "requisition" ? <RequisitionFields data={data} profile={profile} mode={mode} selectedId={selectedId} selected={selectedRecords.requisition} onSelect={setSelectedId} /> : null}
+        {modal === "status" ? <StatusFields data={data} selectedId={selectedId} selected={selectedRecords.requisition} onSelect={setSelectedId} /> : null}
+        {modal === "candidate" ? <CandidatePrefillFields data={data} mode={mode} selectedId={selectedId} selected={selectedRecords.candidate} onSelect={setSelectedId} /> : null}
+        {modal === "process" ? <ProcessPrefillFields data={data} defaults={processDefaults} selectedId={selectedId} selected={selectedRecords.candidate} onSelect={setSelectedId} /> : null}
         {modal === "pipeline_pass" ? <PipelinePassFields data={data} defaults={processDefaults} /> : null}
-        {modal === "offer" ? <OfferFields data={data} /> : null}
-        {modal === "group" ? <GroupFields data={data} /> : null}
+        {modal === "offer" ? <OfferPrefillFields data={data} mode={mode} selectedId={selectedId} selected={selectedRecords.offer} onSelect={setSelectedId} /> : null}
+        {modal === "group" ? <GroupPrefillFields data={data} mode={mode} selectedId={selectedId} selected={selectedRecords.group} onSelect={setSelectedId} /> : null}
         {modal === "match" ? <MatchFields data={data} /> : null}
         {modal === "snapshot" ? <SnapshotFields data={data} /> : null}
-        {modal === "user" ? <UserFields canManageUsers={canManageUsers} data={data} /> : null}
+        {modal === "user" ? <UserPrefillFields canManageUsers={canManageUsers} data={data} mode={mode} selectedId={selectedId} selected={selectedRecords.profile} onSelect={setSelectedId} /> : null}
         <div className="flex justify-end gap-2 border-t border-[#D7DEE8] pt-4">
           <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
           <Button type="submit">Review Save</Button>
@@ -548,52 +567,116 @@ function RecordModal({
   );
 }
 
-function ModeRow() {
+function selectedModalRecords(data: DashboardData, selectedId: string) {
+  return {
+    requisition: data.requisitions.find((row) => row.doc_id === selectedId) ?? null,
+    candidate: data.candidates.find((row) => row.candidate_id === selectedId) ?? null,
+    offer: data.offers.find((row) => String(row.offer_id) === selectedId) ?? null,
+    group: data.position_groups.find((row) => row.group_id === selectedId) ?? null,
+    profile: data.profiles.find((row) => row.id === selectedId) ?? null
+  };
+}
+
+function ModeRow({
+  mode,
+  onModeChange
+}: {
+  mode: "new" | "change";
+  onModeChange: (mode: "new" | "change") => void;
+}) {
   return (
     <div className="flex flex-wrap gap-3 rounded-md bg-lightgray p-3 text-sm font-bold text-navy">
-      <label className="flex items-center gap-2"><input type="radio" name="mode" value="new" defaultChecked /> New</label>
-      <label className="flex items-center gap-2"><input type="radio" name="mode" value="change" /> Change</label>
+      <label className="flex items-center gap-2"><input type="radio" name="mode" value="new" checked={mode === "new"} onChange={() => onModeChange("new")} /> New</label>
+      <label className="flex items-center gap-2"><input type="radio" name="mode" value="change" checked={mode === "change"} onChange={() => onModeChange("change")} /> Change</label>
     </div>
   );
 }
 
-function RequisitionFields({ data, profile }: { data: DashboardData; profile: DashboardData["profile"] }) {
+function RequisitionFields({
+  data,
+  profile,
+  mode,
+  selectedId,
+  selected,
+  onSelect
+}: {
+  data: DashboardData;
+  profile: DashboardData["profile"];
+  mode: "new" | "change";
+  selectedId: string;
+  selected: DashboardData["requisitions"][number] | null;
+  onSelect: (value: string) => void;
+}) {
   const isSiteRecruiter = profile?.role === "site_recruiter";
   const nickname = profile?.nickname ?? profile?.full_name ?? "";
   const assignedSite = profile?.site ?? "";
+  const personOptions = recruiterNicknameOptions(data.profiles);
+  const siteValue = isSiteRecruiter ? assignedSite : selected?.site;
+  const ownerValue = isSiteRecruiter ? nickname : selected?.person_in_charge;
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      <Field label="Doc ID"><TextInput name="doc_id" list="doc-id-options" required /></Field>
-      <Field label="PR Approved Date"><TextInput name="pr_approved_date" type="date" /></Field>
+      <Field label="Doc ID">
+        {mode === "change" ? (
+          <SelectInput name="doc_id" required value={selectedId} onChange={(event) => onSelect(event.target.value)}>
+            <option value="">Select requisition</option>
+            {data.requisitions.map((row) => <option key={row.doc_id} value={row.doc_id}>{row.doc_id}</option>)}
+          </SelectInput>
+        ) : (
+          <TextInput name="doc_id" list="doc-id-options" required />
+        )}
+      </Field>
+      <Field label="PR Approved Date"><TextInput name="pr_approved_date" type="date" defaultValue={selected?.pr_approved_date ?? ""} /></Field>
       <Field label="Request Type">
-        <SelectInput name="request_type" defaultValue="New">
+        <SelectInput name="request_type" defaultValue={selected?.request_type ?? "New"}>
           <option value="New">New Position</option>
           <option value="Replacement">Replacement Position</option>
         </SelectInput>
       </Field>
-      <Field label="Site"><TextInput name="site" list="site-options-form" required defaultValue={isSiteRecruiter ? assignedSite : undefined} readOnly={isSiteRecruiter} /></Field>
-      <Field label="Position"><TextInput name="position" list="position-options" required /></Field>
-      <Field label="Department"><TextInput name="department" list="department-options" required /></Field>
-      <Field label="Section"><TextInput name="section" list="section-options" /></Field>
-      <Field label="Level"><TextInput name="level" list="level-options" /></Field>
-      <Field label="Head Count"><TextInput name="head_count" type="number" min={1} defaultValue={1} required /></Field>
-      <Field label="Person in Charge"><TextInput name="person_in_charge" list="pic-options-form" defaultValue={isSiteRecruiter ? nickname : undefined} readOnly={isSiteRecruiter} /></Field>
-      <Field label="Line Manager"><TextInput name="line_manager" list="manager-options" /></Field>
+      <Field label="Site">
+        {isSiteRecruiter ? <input type="hidden" name="site" value={assignedSite} /> : null}
+        <SelectInput name={isSiteRecruiter ? undefined : "site"} required defaultValue={siteValue ?? ""} disabled={isSiteRecruiter}>
+          <option value="">Select site</option>
+          {SITE_OPTIONS.map((site) => <option key={site} value={site}>{site}</option>)}
+        </SelectInput>
+      </Field>
+      <Field label="Position"><TextInput name="position" list="position-options" required defaultValue={selected?.position ?? ""} /></Field>
+      <Field label="Department"><TextInput name="department" list="department-options" required defaultValue={selected?.department ?? ""} /></Field>
+      <Field label="Section"><TextInput name="section" list="section-options" defaultValue={selected?.section ?? ""} /></Field>
+      <Field label="Level"><TextInput name="level" list="level-options" defaultValue={selected?.level ?? ""} /></Field>
+      <Field label="Head Count"><TextInput name="head_count" type="number" min={1} defaultValue={selected?.head_count ?? 1} required /></Field>
+      <Field label="Person in Charge">
+        {isSiteRecruiter ? <input type="hidden" name="person_in_charge" value={nickname} /> : null}
+        <SelectInput name={isSiteRecruiter ? undefined : "person_in_charge"} defaultValue={ownerValue ?? ""} disabled={isSiteRecruiter}>
+          <option value="">Unassigned</option>
+          {personOptions.map((person) => <option key={person} value={person}>{person}</option>)}
+        </SelectInput>
+      </Field>
+      <Field label="Line Manager"><TextInput name="line_manager" list="manager-options" defaultValue={selected?.line_manager ?? ""} /></Field>
       <Field label="Status">
-        <SelectInput name="status">{WRITABLE_REQUISITION_STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}</SelectInput>
+        <SelectInput name="status" defaultValue={selected?.status === "filled" ? "ongoing" : selected?.status ?? "ongoing"}>{WRITABLE_REQUISITION_STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}</SelectInput>
       </Field>
       <DataLists data={data} />
     </div>
   );
 }
 
-function StatusFields({ data }: { data: DashboardData }) {
+function StatusFields({
+  data,
+  selectedId,
+  selected,
+  onSelect
+}: {
+  data: DashboardData;
+  selectedId: string;
+  selected: DashboardData["requisitions"][number] | null;
+  onSelect: (value: string) => void;
+}) {
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      <Field label="Doc ID"><SelectInput name="doc_id" required>{data.requisitions.map((row) => <option key={row.doc_id}>{row.doc_id}</option>)}</SelectInput></Field>
+      <Field label="Doc ID"><SelectInput name="doc_id" required value={selectedId} onChange={(event) => onSelect(event.target.value)}><option value="">Select requisition</option>{data.requisitions.map((row) => <option key={row.doc_id}>{row.doc_id}</option>)}</SelectInput></Field>
       <Field label="Date"><TextInput name="log_date" type="date" required defaultValue={today()} /></Field>
-      <Field label="Status"><SelectInput name="status">{["ongoing", "filled", "cancel"].map((status) => <option key={status}>{status}</option>)}</SelectInput></Field>
+      <Field label="Status"><SelectInput name="status" defaultValue={selected?.status ?? "ongoing"}>{["ongoing", "filled", "cancel"].map((status) => <option key={status}>{status}</option>)}</SelectInput></Field>
       <Field label="Remark" className="md:col-span-2"><TextArea name="remark" rows={3} /></Field>
     </div>
   );
@@ -623,6 +706,83 @@ function ProcessFields({ data, defaults }: { data: DashboardData; defaults: Proc
       <Field label="Process"><SelectInput name="recruitment_process" required defaultValue={defaults.recruitment_process}>{PROCESS_UPDATE_STAGES.map((stage) => <option key={stage} value={stage}>{processLabel(stage)}</option>)}</SelectInput></Field>
       <Field label="Round"><TextInput name="round" type="number" min={1} defaultValue={1} required /></Field>
       <Field label="Interviewer"><TextInput name="interviewer" list="interviewer-options" /></Field>
+      <Field label="Result"><SelectInput name="result"><option value="">Pending</option><option value="1">Pass</option><option value="0">Fail</option></SelectInput></Field>
+      <Field label="Remark" className="md:col-span-2"><TextArea name="remark" rows={3} defaultValue={defaults.remark ?? ""} /></Field>
+      <DataLists data={data} />
+    </div>
+  );
+}
+
+function CandidatePrefillFields({
+  data,
+  mode,
+  selectedId,
+  selected,
+  onSelect
+}: {
+  data: DashboardData;
+  mode: "new" | "change";
+  selectedId: string;
+  selected: DashboardData["candidates"][number] | null;
+  onSelect: (value: string) => void;
+}) {
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      <Field label="Candidate ID">
+        {mode === "change" ? (
+          <SelectInput name="candidate_id" required value={selectedId} onChange={(event) => onSelect(event.target.value)}>
+            <option value="">Select candidate</option>
+            {data.candidates.map((row) => <option key={row.candidate_id} value={row.candidate_id}>{row.candidate_id} - {row.name}</option>)}
+          </SelectInput>
+        ) : (
+          <SelectInput name="candidate_id"><option value="">Auto in New mode</option>{data.candidates.map((row) => <option key={row.candidate_id}>{row.candidate_id}</option>)}</SelectInput>
+        )}
+      </Field>
+      <Field label="Name"><TextInput name="name" required defaultValue={selected?.name ?? ""} /></Field>
+      <Field label="Phone No."><TextInput name="phone_no" defaultValue={selected?.phone_no ?? ""} /></Field>
+      <Field label="Group ID">
+        <SelectInput name="doc_group_id" required defaultValue={selected?.doc_group_id ?? ""}>
+          <option value="">Select group</option>
+          {data.document_groups.map((row) => <option key={row.doc_group_id} value={row.doc_group_id}>{row.doc_group_id} - {row.group_position}</option>)}
+        </SelectInput>
+      </Field>
+      <Field label="Channel"><TextInput name="channel" list="channel-options" defaultValue={selected?.channel ?? ""} /></Field>
+      <Field label="Reference Name"><TextInput name="ref_name" list="ref-options" defaultValue={selected?.ref_name ?? ""} /></Field>
+      <Field label="First Contact Date"><TextInput name="first_contact_date" type="date" defaultValue={selected?.first_contact_date ?? ""} /></Field>
+      <DataLists data={data} />
+    </div>
+  );
+}
+
+function ProcessPrefillFields({
+  data,
+  defaults,
+  selectedId,
+  selected,
+  onSelect
+}: {
+  data: DashboardData;
+  defaults: ProcessDefaults;
+  selectedId: string;
+  selected: DashboardData["candidates"][number] | null;
+  onSelect: (value: string) => void;
+}) {
+  const candidateId = selectedId || defaults.candidate_id || "";
+  const latest = selected ? latestLogsForCandidate(data, selected.candidate_id)[0] : null;
+
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      <input type="hidden" name="source" value={defaults.source ?? "manual"} />
+      <Field label="Candidate">
+        <SelectInput name="candidate_id" required value={candidateId} onChange={(event) => onSelect(event.target.value)}>
+          <option value="">Select candidate</option>
+          {data.candidates.map((row) => <option key={row.candidate_id} value={row.candidate_id}>{row.candidate_id} - {row.name}</option>)}
+        </SelectInput>
+      </Field>
+      <Field label="Date"><TextInput name="log_date" type="date" defaultValue={today()} required /></Field>
+      <Field label="Process"><SelectInput name="recruitment_process" required defaultValue={defaults.recruitment_process ?? latest?.recruitment_process}>{PROCESS_UPDATE_STAGES.map((stage) => <option key={stage} value={stage}>{processLabel(stage)}</option>)}</SelectInput></Field>
+      <Field label="Round"><TextInput name="round" type="number" min={1} defaultValue={latest?.round ?? 1} required /></Field>
+      <Field label="Interviewer"><TextInput name="interviewer" list="interviewer-options" defaultValue={latest?.interviewer ?? ""} /></Field>
       <Field label="Result"><SelectInput name="result"><option value="">Pending</option><option value="1">Pass</option><option value="0">Fail</option></SelectInput></Field>
       <Field label="Remark" className="md:col-span-2"><TextArea name="remark" rows={3} defaultValue={defaults.remark ?? ""} /></Field>
       <DataLists data={data} />
@@ -707,7 +867,12 @@ function SnapshotFields({ data }: { data: DashboardData }) {
           {["Week Start", "Open", "Filled", "Total"].map((category) => <option key={category} value={category}>{category}</option>)}
         </SelectInput>
       </Field>
-      <Field label="Site"><TextInput name="site" list="site-options-form" required /></Field>
+      <Field label="Site">
+        <SelectInput name="site" required>
+          <option value="">Select site</option>
+          {SITE_OPTIONS.map((site) => <option key={site} value={site}>{site}</option>)}
+        </SelectInput>
+      </Field>
       <Field label="Request Type">
         <SelectInput name="request_type">
           <option value="New">New</option>
@@ -739,6 +904,142 @@ function UserFields({ canManageUsers, data }: { canManageUsers: boolean; data: D
       <Field label="Full Name"><TextInput name="full_name" /></Field>
       <Field label="Assigned Site"><TextInput name="site" list="site-options-form" /></Field>
       <Field label="Role"><SelectInput name="role">{ROLES.map((role) => <option key={role} value={role}>{ROLE_LABELS[role]}</option>)}</SelectInput></Field>
+      <DataLists data={data} />
+    </div>
+  );
+}
+
+function OfferPrefillFields({
+  data,
+  mode,
+  selectedId,
+  selected,
+  onSelect
+}: {
+  data: DashboardData;
+  mode: "new" | "change";
+  selectedId: string;
+  selected: DashboardData["offers"][number] | null;
+  onSelect: (value: string) => void;
+}) {
+  const eligibleCandidates = data.candidates.filter((candidate) => hasLatestOfferPass(data, candidate.candidate_id));
+  const selectedCandidate = selected ? data.candidates.find((candidate) => candidate.candidate_id === selected.candidate_id) : null;
+  const candidateOptions = selectedCandidate && !eligibleCandidates.some((candidate) => candidate.candidate_id === selectedCandidate.candidate_id)
+    ? [...eligibleCandidates, selectedCandidate]
+    : eligibleCandidates;
+
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      {mode === "change" ? (
+        <Field label="Existing Offer">
+          <SelectInput name="offer_selector" required value={selectedId} onChange={(event) => onSelect(event.target.value)}>
+            <option value="">Select offer</option>
+            {data.offers.map((offer) => {
+              const candidate = data.candidates.find((row) => row.candidate_id === offer.candidate_id);
+              return <option key={offer.offer_id} value={offer.offer_id}>{offer.candidate_id} - {candidate?.name ?? offer.doc_id}</option>;
+            })}
+          </SelectInput>
+        </Field>
+      ) : null}
+      {mode === "change" ? <input type="hidden" name="candidate_id" value={selected?.candidate_id ?? ""} /> : null}
+      <Field label="Candidate">
+        <SelectInput name={mode === "change" ? undefined : "candidate_id"} required defaultValue={selected?.candidate_id ?? ""} disabled={mode === "change"}>
+          <option value="">Select Offer Pass candidate</option>
+          {candidateOptions.map((row) => <option key={row.candidate_id} value={row.candidate_id}>{row.candidate_id} - {row.name}</option>)}
+        </SelectInput>
+      </Field>
+      {mode === "change" ? <input type="hidden" name="doc_id" value={selected?.doc_id ?? ""} /> : null}
+      <Field label="Doc ID">
+        <SelectInput name={mode === "change" ? undefined : "doc_id"} required defaultValue={selected?.doc_id ?? ""} disabled={mode === "change"}>
+          <option value="">Select requisition</option>
+          {data.requisitions.map((row) => <option key={row.doc_id} value={row.doc_id}>{row.doc_id}</option>)}
+        </SelectInput>
+      </Field>
+      <Field label="Accepted Date"><TextInput name="accepted_date" type="date" defaultValue={selected?.accepted_date ?? ""} /></Field>
+      <Field label="First Working Date"><TextInput name="first_working_date" type="date" defaultValue={selected?.first_working_date ?? ""} /></Field>
+      <Field label="Offer Type"><TextInput name="offered_type" list="offer-type-options" defaultValue={selected?.offered_type ?? ""} /></Field>
+      <Field label="Replaced"><TextInput name="replaced" list="replaced-options" defaultValue={selected?.replaced ?? ""} /></Field>
+      <Field label="Remark" className="md:col-span-2"><TextArea name="remark" rows={3} defaultValue={selected?.remark ?? ""} /></Field>
+      <DataLists data={data} />
+    </div>
+  );
+}
+
+function GroupPrefillFields({
+  data,
+  mode,
+  selectedId,
+  selected,
+  onSelect
+}: {
+  data: DashboardData;
+  mode: "new" | "change";
+  selectedId: string;
+  selected: DashboardData["position_groups"][number] | null;
+  onSelect: (value: string) => void;
+}) {
+  return (
+    <div className="grid gap-4">
+      <Field label="Group ID">
+        {mode === "change" ? (
+          <SelectInput name="group_id" required value={selectedId} onChange={(event) => onSelect(event.target.value)}>
+            <option value="">Select group</option>
+            {data.position_groups.map((row) => <option key={row.group_id} value={row.group_id}>{row.group_id} - {row.group_position}</option>)}
+          </SelectInput>
+        ) : (
+          <SelectInput name="group_id"><option value="">Auto in New mode</option>{data.position_groups.map((row) => <option key={row.group_id}>{row.group_id}</option>)}</SelectInput>
+        )}
+      </Field>
+      <Field label="Group Position"><TextInput name="group_position" list="group-position-options" required defaultValue={selected?.group_position ?? ""} /></Field>
+      <div className="grid gap-2 rounded-md bg-lightgray p-3 text-sm font-bold text-navy md:grid-cols-4">
+        <label className="flex items-center gap-2"><input name="channel_fb" type="checkbox" defaultChecked={selected?.channel_fb ?? false} /> Facebook</label>
+        <label className="flex items-center gap-2"><input name="channel_jobthai" type="checkbox" defaultChecked={selected?.channel_jobthai ?? false} /> JobThai</label>
+        <label className="flex items-center gap-2"><input name="channel_jobtopgun" type="checkbox" defaultChecked={selected?.channel_jobtopgun ?? false} /> JobTopGun</label>
+        <label className="flex items-center gap-2"><input name="channel_jobdb" type="checkbox" defaultChecked={selected?.channel_jobdb ?? false} /> JobDB</label>
+      </div>
+      <DataLists data={data} />
+    </div>
+  );
+}
+
+function UserPrefillFields({
+  canManageUsers,
+  data,
+  mode,
+  selectedId,
+  selected,
+  onSelect
+}: {
+  canManageUsers: boolean;
+  data: DashboardData;
+  mode: "new" | "change";
+  selectedId: string;
+  selected: DashboardData["profiles"][number] | null;
+  onSelect: (value: string) => void;
+}) {
+  if (!canManageUsers) return <p className="text-sm font-bold text-orange">Only system admins can manage app accounts.</p>;
+
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      {mode === "change" ? <Field label="Existing User">
+        <SelectInput name="user_id" required={mode === "change"} value={selectedId} onChange={(event) => onSelect(event.target.value)}>
+          <option value="">Select user</option>
+          {data.profiles.map((profile) => (
+            <option key={profile.id} value={profile.id}>{profile.nickname ?? profile.full_name ?? profile.email ?? profile.id}</option>
+          ))}
+        </SelectInput>
+      </Field> : null}
+      <Field label="Email"><TextInput name="email" type="email" defaultValue={selected?.email ?? ""} /></Field>
+      <Field label="Temporary Password"><TextInput name="password" type="password" minLength={8} /></Field>
+      <Field label="Nickname / Account Name"><TextInput name="nickname" list="pic-options-form" required defaultValue={selected?.nickname ?? ""} /></Field>
+      <Field label="Full Name"><TextInput name="full_name" defaultValue={selected?.full_name ?? ""} /></Field>
+      <Field label="Assigned Site">
+        <SelectInput name="site" defaultValue={selected?.site ?? ""}>
+          <option value="">No assigned site</option>
+          {SITE_OPTIONS.map((site) => <option key={site} value={site}>{site}</option>)}
+        </SelectInput>
+      </Field>
+      <Field label="Role"><SelectInput name="role" defaultValue={selected?.role ?? "viewer"}>{ROLES.map((role) => <option key={role} value={role}>{ROLE_LABELS[role]}</option>)}</SelectInput></Field>
       <DataLists data={data} />
     </div>
   );
@@ -889,6 +1190,11 @@ function DetailList({ title, rows }: { title: string; rows: string[] }) {
       </div>
     </div>
   );
+}
+
+function hasLatestOfferPass(data: DashboardData, candidateId: string) {
+  const latest = latestLogsForCandidate(data, candidateId)[0];
+  return latest?.recruitment_process === "Offer" && latest.result === 1;
 }
 
 function modalTitle(modal: ModalName) {

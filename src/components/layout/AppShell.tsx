@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   LogOut,
   RefreshCw,
+  ShieldCheck,
   Settings,
   UserRound,
   UsersRound
@@ -28,6 +29,7 @@ const icons: Record<ViewId, ReactNode> = {
   pipeline: <BarChart3 size={18} />,
   offers: <HandCoins size={18} />,
   sourcing: <Settings size={18} />,
+  admin: <ShieldCheck size={18} />,
   audit: <FileClock size={18} />
 };
 
@@ -38,6 +40,7 @@ const paths: Record<ViewId, string> = {
   pipeline: "/pipeline",
   offers: "/offers",
   sourcing: "/sourcing",
+  admin: "/admin",
   audit: "/audit"
 };
 
@@ -48,6 +51,7 @@ const kicker: Record<ViewId, string> = {
   pipeline: "Process Board",
   offers: "Hiring Outcome",
   sourcing: "Jobsite Sourcing",
+  admin: "System Control",
   audit: "History"
 };
 
@@ -70,6 +74,7 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const accountName = profile?.nickname ?? profile?.full_name ?? profile?.email ?? "Unknown";
+  const visibleViews = VIEWS.filter((view) => view !== "admin" || profile?.role === "system_admin");
 
   return (
     <main className="grid min-h-screen grid-cols-1 bg-offwhite lg:grid-cols-[248px_minmax(0,1fr)]">
@@ -80,7 +85,7 @@ export function AppShell({
         </div>
 
         <nav aria-label="Main navigation" className="grid grid-flow-col gap-1.5 overflow-x-auto pb-1 lg:grid-flow-row lg:overflow-visible lg:pb-0">
-          {VIEWS.map((view) => {
+          {visibleViews.map((view) => {
             const active = pathname === paths[view] || activeView === view;
             return (
               <Link

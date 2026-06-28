@@ -1,13 +1,11 @@
-import { Link2, Plus, Save, UserPlus } from "lucide-react";
+import { Link2, Plus, Save } from "lucide-react";
 import { FormEvent } from "react";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, TextInput } from "@/components/ui/Field";
 import { Panel, SectionTitle } from "@/components/ui/Panel";
 import { Tag } from "@/components/ui/Tag";
-import { ROLE_LABELS } from "@/lib/constants";
 import { enrichSourcingGroups } from "@/lib/data";
-import { statusTone } from "@/lib/format";
 import { translate } from "@/lib/i18n/dictionary";
 import type { DashboardData, EnrichedSourcingGroup, Language, Profile } from "@/types/recruitment";
 
@@ -24,29 +22,24 @@ export function SourcingView({
   profile,
   canWrite,
   canManageSetup,
-  canManageUsers,
   weekStart,
   onWeekChange,
   onSaveSourcing,
   onGroup,
-  onMatch,
-  onInvite
+  onMatch
 }: {
   language: Language;
   data: DashboardData;
   profile: Profile | null;
   canWrite: boolean;
   canManageSetup: boolean;
-  canManageUsers: boolean;
   weekStart: string;
   onWeekChange: (value: string) => void;
   onSaveSourcing: (payload: Record<string, unknown>, summary: string) => void;
   onGroup: () => void;
   onMatch: () => void;
-  onInvite: () => void;
 }) {
   const groups = visibleSourcingGroups(enrichSourcingGroups(data, weekStart), profile);
-  const canUseAdminTools = canManageSetup || canManageUsers;
 
   function saveGroup(event: FormEvent<HTMLFormElement>, group: EnrichedSourcingGroup) {
     event.preventDefault();
@@ -68,6 +61,21 @@ export function SourcingView({
 
   return (
     <div className="grid gap-4">
+      {canManageSetup ? (
+        <Panel>
+          <SectionTitle
+            title="Sourcing Setup"
+            eyebrow="Groups and requisition matching"
+            action={
+              <>
+                <Button type="button" size="sm" icon={<Plus size={16} />} onClick={onGroup}>New Group</Button>
+                <Button type="button" size="sm" variant="secondary" icon={<Link2 size={16} />} onClick={onMatch}>Add Match</Button>
+              </>
+            }
+          />
+        </Panel>
+      ) : null}
+
       <Panel>
         <SectionTitle
           title="Weekly Sourcing Updates"
@@ -135,31 +143,6 @@ export function SourcingView({
         )}
       </Panel>
 
-      {canUseAdminTools ? (
-        <Panel>
-          <SectionTitle title="Administration" eyebrow="Setup and users" />
-          <div className="flex flex-wrap gap-2">
-            {canManageSetup ? <Button type="button" size="sm" icon={<Plus size={16} />} onClick={onGroup}>New Group</Button> : null}
-            {canManageSetup ? <Button type="button" size="sm" variant="secondary" icon={<Link2 size={16} />} onClick={onMatch}>Add Match</Button> : null}
-            {canManageUsers ? <Button type="button" size="sm" variant="secondary" icon={<UserPlus size={16} />} onClick={onInvite}>Manage User</Button> : null}
-          </div>
-
-          {canManageUsers && data.profiles.length > 0 ? (
-            <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-              {data.profiles.map((account) => (
-                <div key={account.id} className="rounded-md border border-[#D7DEE8] p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <strong className="text-navy">{account.nickname ?? account.full_name ?? account.email ?? "User"}</strong>
-                    <Tag tone={statusTone(account.role)}>{ROLE_LABELS[account.role]}</Tag>
-                  </div>
-                  <p className="mt-1 text-sm font-bold text-slate">{account.email ?? "-"}</p>
-                  <p className="text-sm font-bold text-slate">Site: {account.site ?? "-"}</p>
-                </div>
-              ))}
-            </div>
-          ) : null}
-        </Panel>
-      ) : null}
     </div>
   );
 }

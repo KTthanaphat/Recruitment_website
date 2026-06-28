@@ -1,4 +1,4 @@
-import type { ProcessStage, RequisitionStatus, Role, ViewId } from "@/types/recruitment";
+import type { ProcessStage, Profile, RequisitionStatus, Role, ViewId } from "@/types/recruitment";
 
 export const VIEWS: ViewId[] = [
   "dashboard",
@@ -7,8 +7,13 @@ export const VIEWS: ViewId[] = [
   "pipeline",
   "offers",
   "sourcing",
+  "admin",
   "audit"
 ];
+
+export const SITE_OPTIONS = ["HQ", "KT1", "KT2"] as const;
+
+export const PERSON_IN_CHARGE_ROLES: Role[] = ["admin_recruiter", "site_recruiter"];
 
 export const PROCESS_STAGES: ProcessStage[] = [
   "First Contact",
@@ -52,6 +57,17 @@ export const ROLE_LABELS: Record<Role, string> = {
   site_recruiter: "Site Recruiter",
   viewer: "Viewer"
 };
+
+export function recruiterNicknameOptions(profiles: Profile[]) {
+  return Array.from(
+    new Set(
+      profiles
+        .filter((profile) => PERSON_IN_CHARGE_ROLES.includes(profile.role))
+        .map((profile) => profile.nickname?.trim())
+        .filter(Boolean) as string[]
+    )
+  ).sort((a, b) => a.localeCompare(b));
+}
 
 export const RESULT_LABELS = {
   pending: "Pending",

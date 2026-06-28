@@ -30,7 +30,9 @@ export function PipelineBoardView({
 }) {
   const [dragged, setDragged] = useState<EnrichedCandidate | null>(null);
   const [blockedStage, setBlockedStage] = useState<ProcessStage | null>(null);
+  const activeRows = rows.filter((row) => row.latest_result !== 0 && !(row.latest_process === "Offer" && row.latest_result === 1));
   const failedGroups = failedCandidatesByStage(rows);
+  const passedOfferRows = passedOfferCandidates(rows);
 
   return (
     <div className="grid gap-4">
@@ -48,7 +50,7 @@ export function PipelineBoardView({
         />
         <div className="grid grid-flow-col gap-3 overflow-x-auto pb-2" style={{ gridAutoColumns: "minmax(190px, 1fr)" }}>
           {ACTIVE_PIPELINE_STAGES.map((stage) => {
-            const stageRows = rows.filter((row) => row.latest_process === stage);
+            const stageRows = activeRows.filter((row) => row.latest_process === stage);
             const isBlocked = blockedStage === stage;
 
             return (
@@ -116,36 +118,59 @@ export function PipelineBoardView({
         </div>
       </Panel>
 
-      <Panel>
-        <SectionTitle title="Failed Candidates - Last 7 Days" />
-        {failedGroups.length === 0 ? (
-          <EmptyState message="No failed candidates in the last 7 days." />
-        ) : (
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {failedGroups.map((group) => (
-              <div key={group.stage} className="rounded-lg border border-[#D7DEE8] bg-lightgray/65 p-3">
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <strong className="text-sm text-navy">{processLabel(group.stage)}</strong>
-                  <Tag tone="danger">{group.rows.length}</Tag>
+      <div className="grid gap-4 xl:grid-cols-2">
+        <Panel>
+          <SectionTitle title="Failed Candidates - Last 7 Days" />
+          {failedGroups.length === 0 ? (
+            <EmptyState message="No failed candidates in the last 7 days." />
+          ) : (
+            <div className="grid gap-3">
+              {failedGroups.map((group) => (
+                <div key={group.stage} className="rounded-lg border border-[#D7DEE8] bg-lightgray/65 p-3">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <strong className="text-sm text-navy">{processLabel(group.stage)}</strong>
+                    <Tag tone="danger">{group.rows.length}</Tag>
+                  </div>
+                  <div className="grid gap-2">
+                    {group.rows.map((candidate) => (
+                      <button
+                        key={candidate.candidate_id}
+                        type="button"
+                        className="rounded-md bg-white p-2 text-left text-sm font-bold text-slate transition hover:bg-[#EEF4FF]"
+                        onClick={() => onOpen(candidate.candidate_id)}
+                      >
+                        <span className="block text-navy">{candidate.name}</span>
+                        <span className="block text-xs">{candidate.candidate_id} - {candidate.site ?? "-"} - {formatDate(candidate.latest_log_date)}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div className="grid gap-2">
-                  {group.rows.map((candidate) => (
-                    <button
-                      key={candidate.candidate_id}
-                      type="button"
-                      className="rounded-md bg-white p-2 text-left text-sm font-bold text-slate transition hover:bg-[#EEF4FF]"
-                      onClick={() => onOpen(candidate.candidate_id)}
-                    >
-                      <span className="block text-navy">{candidate.name}</span>
-                      <span className="block text-xs">{candidate.candidate_id} - {candidate.site ?? "-"} - {formatDate(candidate.latest_log_date)}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </Panel>
+              ))}
+            </div>
+          )}
+        </Panel>
+
+        <Panel>
+          <SectionTitle title="Passed Offer - Last 7 Days" />
+          {passedOfferRows.length === 0 ? (
+            <EmptyState message="No Offer Pass candidates in the last 7 days." />
+          ) : (
+            <div className="grid gap-2">
+              {passedOfferRows.map((candidate) => (
+                <button
+                  key={candidate.candidate_id}
+                  type="button"
+                  className="rounded-md border border-[#D7DEE8] bg-white p-3 text-left text-sm font-bold text-slate transition hover:bg-[#EEF4FF]"
+                  onClick={() => onOpen(candidate.candidate_id)}
+                >
+                  <span className="block text-navy">{candidate.name}</span>
+                  <span className="block text-xs">{candidate.candidate_id} - {candidate.site ?? "-"} - {formatDate(candidate.latest_log_date)}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </Panel>
+      </div>
     </div>
   );
 }
@@ -166,4 +191,17 @@ function failedCandidatesByStage(rows: EnrichedCandidate[]) {
     stage,
     rows: stageRows.sort((a, b) => (b.latest_log_date ?? "").localeCompare(a.latest_log_date ?? ""))
   }));
+}
+
+function passedOfferCandidates(rows: EnrichedCandidate[]) {
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 7);
+
+  return rows
+    .filter((row) => {
+      if (row.latest_process !== "Offer" || row.latest_result !== 1 || !row.latest_log_date) return false;
+      const logDate = new Date(`${row.latest_log_date}T00:00:00`);
+      return logDate >= cutoff;
+    })
+    .sort((a, b) => (b.latest_log_date ?? "").localeCompare(a.latest_log_date ?? ""));
 }

@@ -23,7 +23,6 @@ import type {
 } from "@/types/recruitment";
 
 const siteOrder = ["HQ", "KT1", "KT2"];
-const categoryOrder = ["Week Start", "Open", "Filled", "Total"];
 
 export function DashboardOverviewView({
   language,
@@ -193,27 +192,28 @@ type WaterfallRow = {
 
 function VacancyWaterfallChart({ rows }: { rows: WaterfallRow[] }) {
   const chart = buildWaterfall(rows);
-  const width = Math.max(chart.categories.length * 96, 720);
-  const height = 340;
-  const topPad = 32;
-  const bottomPad = 64;
+  const plotSize = 420;
+  const width = 620;
+  const height = 540;
+  const topPad = 34;
+  const bottomPad = 70;
   const leftPad = 42;
-  const rightPad = 64;
-  const plotHeight = height - topPad - bottomPad;
+  const plotRight = leftPad + plotSize;
+  const plotHeight = plotSize;
   const yMin = chart.yMin;
   const yMax = chart.yMax;
   const yScale = (value: number) => topPad + ((yMax - value) / Math.max(yMax - yMin, 1)) * plotHeight;
-  const step = (width - leftPad - rightPad) / Math.max(chart.categories.length, 1);
-  const barWidth = Math.min(54, step * 0.62);
+  const step = plotSize / Math.max(chart.categories.length, 1);
+  const barWidth = Math.min(42, step * 0.58);
   const zeroY = yScale(0);
 
   return (
     <div className="overflow-x-auto">
-      <svg viewBox={`0 0 ${width} ${height}`} className="min-w-[720px]">
-        <line x1={leftPad} x2={width - rightPad} y1={zeroY} y2={zeroY} stroke="#475569" strokeWidth={1} />
+      <svg viewBox={`0 0 ${width} ${height}`} className="min-w-[620px]">
+        <line x1={leftPad} x2={plotRight} y1={zeroY} y2={zeroY} stroke="#475569" strokeWidth={1} />
         {[0, 0.25, 0.5, 0.75, 1].map((tick) => {
           const y = topPad + tick * plotHeight;
-          return <line key={tick} x1={leftPad} x2={width - rightPad} y1={y} y2={y} stroke="#D7DEE8" strokeDasharray="4 4" />;
+          return <line key={tick} x1={leftPad} x2={plotRight} y1={y} y2={y} stroke="#D7DEE8" strokeDasharray="4 4" />;
         })}
         {chart.connectors.map((connector) => (
           <line
@@ -258,12 +258,20 @@ function VacancyWaterfallChart({ rows }: { rows: WaterfallRow[] }) {
             {category}
           </text>
         ))}
-        <g transform={`translate(${width - rightPad + 8}, ${topPad})`}>
+        <g transform={`translate(${plotRight + 18}, ${topPad})`}>
+          <text x={0} y={0} className="fill-navy text-[11px] font-extrabold">Legend</text>
           {chart.legend.map((item, index) => (
-            <g key={item.label} transform={`translate(0, ${index * 18})`}>
+            <g key={item.label} transform={`translate(0, ${14 + index * 18})`}>
               <rect width={10} height={10} fill={item.color} rx={2} />
               <text x={14} y={9} className="fill-slate text-[10px] font-bold">{item.label}</text>
             </g>
+          ))}
+        </g>
+        <g transform={`translate(${plotRight + 18}, ${topPad + 138})`}>
+          <text x={12} y={0} className="fill-navy text-[11px] font-extrabold">Total remaining</text>
+          <path d="M 6 12 C -2 12 -2 24 6 24 L 6 24 C -2 24 -2 36 6 36" fill="none" stroke="#475569" strokeWidth={1.5} />
+          {chart.totalBreakdown.map((item, index) => (
+            <text key={item.label} x={16} y={18 + index * 16} className="fill-slate text-[10px] font-bold">{item.label}</text>
           ))}
         </g>
       </svg>
@@ -272,15 +280,12 @@ function VacancyWaterfallChart({ rows }: { rows: WaterfallRow[] }) {
 }
 
 function buildWaterfall(rows: WaterfallRow[]) {
-  const sites = uniqueValues([...siteOrder, ...rows.map((row) => row.site)]).filter((site) => rows.some((row) => row.site === site));
+  const sites = siteOrder.filter((site) => rows.some((row) => row.site === site));
   const categories: string[] = [];
   if (rows.some((row) => row.waterfall_category === "Week Start")) categories.push("Week Start");
-  for (const site of sites) if (rows.some((row) => row.waterfall_category === "Open" && row.site === site)) categories.push(`Open ${site}`);
-  for (const site of sites) if (rows.some((row) => row.waterfall_category === "Filled" && row.site === site)) categories.push(`Filled ${site}`);
+  for (const site of sites) if (rows.some((row) => row.waterfall_category === "Open" && row.site === site)) categories.push(`${site} Open`);
+  for (const site of sites) if (rows.some((row) => row.waterfall_category === "Filled" && row.site === site)) categories.push(`${site} Filled`);
   if (rows.some((row) => row.waterfall_category === "Total")) categories.push("Total");
-  for (const category of categoryOrder) {
-    if (!categories.includes(category) && rows.some((row) => row.waterfall_category === category)) categories.push(category);
-  }
 
   const categoryRows = categories.map((category) => rowsForCategory(rows, category));
   const totals = categoryRows.map((items) => items.reduce((sum, row) => sum + row.vacancy_count, 0));
@@ -340,15 +345,16 @@ function buildWaterfall(rows: WaterfallRow[]) {
     yMin: yMin - pad,
     yMax: yMax + pad,
     legend: sites.flatMap((site) => [
-      { label: `${site} Rep`, color: snapshotColor(site, "Replacement") },
-      { label: `${site} New`, color: snapshotColor(site, "New") }
-    ])
+      { label: `${site} New`, color: snapshotColor(site, "New") },
+      { label: `${site} Rep`, color: snapshotColor(site, "Replacement") }
+    ]),
+    totalBreakdown: totalBreakdown(rows)
   };
 }
 
 function rowsForCategory(rows: WaterfallRow[], category: string) {
-  if (category.startsWith("Open ")) return rows.filter((row) => row.waterfall_category === "Open" && row.site === category.replace("Open ", ""));
-  if (category.startsWith("Filled ")) return rows.filter((row) => row.waterfall_category === "Filled" && row.site === category.replace("Filled ", ""));
+  if (category.endsWith(" Open")) return rows.filter((row) => row.waterfall_category === "Open" && row.site === category.replace(" Open", ""));
+  if (category.endsWith(" Filled")) return rows.filter((row) => row.waterfall_category === "Filled" && row.site === category.replace(" Filled", ""));
   return rows.filter((row) => row.waterfall_category === category);
 }
 
@@ -356,7 +362,7 @@ function sortSnapshotRows(rows: WaterfallRow[]) {
   return [...rows].sort((a, b) => {
     const siteDelta = siteRank(a.site) - siteRank(b.site);
     if (siteDelta !== 0) return siteDelta;
-    return a.request_type === b.request_type ? 0 : a.request_type === "Replacement" ? -1 : 1;
+    return a.request_type === b.request_type ? 0 : a.request_type === "New" ? -1 : 1;
   });
 }
 
@@ -380,6 +386,16 @@ function formatChartValue(value: number) {
   return value < 0 ? `( ${Math.abs(value).toLocaleString()} )` : value.toLocaleString();
 }
 
+function totalBreakdown(rows: WaterfallRow[]) {
+  const totals = sortSnapshotRows(rows.filter((row) => row.waterfall_category === "Total" && siteOrder.includes(row.site)));
+  const visibleTotals = totals.filter((row) => row.vacancy_count !== 0);
+  if (visibleTotals.length === 0) return [{ label: "No remaining vacancy" }];
+
+  return visibleTotals.map((row) => ({
+    label: `${row.site}-${row.request_type}: ${row.vacancy_count.toLocaleString()}`
+  }));
+}
+
 function buildLiveWaterfallRows(
   requisitions: EnrichedRequisition[],
   offers: EnrichedOffer[],
@@ -394,6 +410,7 @@ function buildLiveWaterfallRows(
 
   for (const requisition of requisitions) {
     if (requisition.status === "cancel") continue;
+    if (!siteOrder.includes(requisition.site)) continue;
     const openedDate = dateOnly(requisition.pr_approved_date) ?? dateOnly(requisition.created_at);
     const requestType = requisition.request_type ?? "New";
     if (!openedDate) continue;

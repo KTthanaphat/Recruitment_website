@@ -223,6 +223,7 @@ export type ViewId =
   | "pipeline"
   | "offers"
   | "sourcing"
+  | "admin"
   | "audit";
 
 export type RpcResult = {
