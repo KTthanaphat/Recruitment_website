@@ -16,7 +16,7 @@ import { Field, SelectInput, TextArea, TextInput } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { Panel } from "@/components/ui/Panel";
 import { Tag } from "@/components/ui/Tag";
-import { canManageSetup as canManageSetupRole, canManageUsers as canManageUsersRole, canWrite as canWriteRole, PROCESS_UPDATE_STAGES, processLabel, ROLE_LABELS, ROLES, WRITABLE_REQUISITION_STATUSES } from "@/lib/constants";
+import { ACTIVE_PIPELINE_STAGES, canManageSetup as canManageSetupRole, canManageUsers as canManageUsersRole, canWrite as canWriteRole, PROCESS_UPDATE_STAGES, processLabel, ROLE_LABELS, ROLES, WRITABLE_REQUISITION_STATUSES } from "@/lib/constants";
 import {
   emptyDashboardData,
   enrichCandidates,
@@ -46,6 +46,7 @@ type ModalName =
   | "status"
   | "candidate"
   | "process"
+  | "pipeline_pass"
   | "offer"
   | "group"
   | "match"
@@ -61,11 +62,21 @@ type PendingAction = {
   route?: "rpc" | "api";
 };
 
+type ProcessDefaults = {
+  candidate_id?: string;
+  recruitment_process?: string;
+  target_stage?: string;
+  source?: string;
+  remark?: string;
+  passed_stages?: ProcessStage[];
+};
+
 const rpcByModal: Record<Exclude<ModalName, null | "user">, string> = {
   requisition: "app_upsert_requisition",
   status: "app_insert_requisition_log",
   candidate: "app_upsert_candidate",
   process: "app_insert_recruitment_log",
+  pipeline_pass: "app_insert_pipeline_passes",
   offer: "app_upsert_offer",
   group: "app_upsert_position_group",
   match: "app_create_group_match",
@@ -83,7 +94,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const [sourcingWeek, setSourcingWeek] = useState(currentWeekStart());
   const [activeModal, setActiveModal] = useState<ModalName>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
-  const [processDefaults, setProcessDefaults] = useState<Partial<Record<string, string>>>({});
+  const [processDefaults, setProcessDefaults] = useState<ProcessDefaults>({});
   const [detail, setDetail] = useState<{ type: "requisition" | "candidate"; id: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -151,13 +162,18 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   }
 
   function openProcessForMove(candidate: EnrichedCandidate, nextStage: ProcessStage) {
+    const currentIndex = ACTIVE_PIPELINE_STAGES.indexOf(candidate.latest_process as ProcessStage);
+    const targetIndex = ACTIVE_PIPELINE_STAGES.indexOf(nextStage);
+    if (currentIndex === -1 || targetIndex <= currentIndex) return;
+    const passedStages = ACTIVE_PIPELINE_STAGES.slice(currentIndex, targetIndex);
     setProcessDefaults({
       candidate_id: candidate.candidate_id,
-      recruitment_process: nextStage,
+      target_stage: nextStage,
       source: "pipeline",
-      remark: `Moved from ${candidate.latest_process || "No activity"} to ${nextStage} by pipeline drag and drop`
+      passed_stages: passedStages,
+      remark: `Progressed from ${processLabel(candidate.latest_process)} to ${processLabel(nextStage)} by pipeline drag and drop`
     });
-    setActiveModal("process");
+    setActiveModal("pipeline_pass");
   }
 
   function prepareAction(modal: Exclude<ModalName, null>, form: HTMLFormElement) {
@@ -390,6 +406,28 @@ function buildPayload(modal: Exclude<ModalName, null>, formData: FormData) {
     return payload;
   }
 
+  if (modal === "pipeline_pass") {
+    const stageCount = asNumber(formData.get("stage_count"), 0);
+    const stages = Array.from({ length: stageCount }, (_, index) => ({
+      index,
+      stage: emptyToNull(formData.get(`stage_${index}`)),
+      log_date: emptyToNull(formData.get(`log_date_${index}`)),
+      round: asNumber(formData.get(`round_${index}`), 1),
+      interviewer: emptyToNull(formData.get(`interviewer_${index}`)),
+      remark: emptyToNull(formData.get(`remark_${index}`))
+    }));
+    const payload = {
+      candidate_id: emptyToNull(formData.get("candidate_id")),
+      target_stage: emptyToNull(formData.get("target_stage")),
+      stages
+    };
+    requireFields(payload, ["candidate_id", "target_stage"]);
+    if (stages.length === 0 || stages.some((stage) => !stage.stage || !stage.log_date)) {
+      throw new Error("Every passed stage needs a stage and date.");
+    }
+    return payload;
+  }
+
   if (modal === "offer") {
     const payload = {
       mode: String(formData.get("mode") ?? "new"),
@@ -455,7 +493,7 @@ function buildPayload(modal: Exclude<ModalName, null>, formData: FormData) {
 }
 
 function buildSummary(modal: Exclude<ModalName, null>, payload: Record<string, unknown>) {
-  const key = String(payload.doc_id ?? payload.candidate_id ?? payload.group_id ?? payload.email ?? payload.user_id ?? "record");
+  const key = String(payload.doc_id ?? payload.candidate_id ?? payload.group_id ?? payload.target_stage ?? payload.email ?? payload.user_id ?? "record");
   return `${modal} · ${key}`;
 }
 
@@ -473,7 +511,7 @@ function RecordModal({
   data: DashboardData;
   profile: DashboardData["profile"];
   canManageUsers: boolean;
-  processDefaults: Partial<Record<string, string>>;
+  processDefaults: ProcessDefaults;
   onClose: () => void;
   onSubmit: (modal: Exclude<ModalName, null>, form: HTMLFormElement) => void;
   onValidationError: (message: string) => void;
@@ -497,6 +535,7 @@ function RecordModal({
         {modal === "status" ? <StatusFields data={data} /> : null}
         {modal === "candidate" ? <CandidateFields data={data} /> : null}
         {modal === "process" ? <ProcessFields data={data} defaults={processDefaults} /> : null}
+        {modal === "pipeline_pass" ? <PipelinePassFields data={data} defaults={processDefaults} /> : null}
         {modal === "offer" ? <OfferFields data={data} /> : null}
         {modal === "group" ? <GroupFields data={data} /> : null}
         {modal === "match" ? <MatchFields data={data} /> : null}
@@ -571,7 +610,7 @@ function CandidateFields({ data }: { data: DashboardData }) {
   );
 }
 
-function ProcessFields({ data, defaults }: { data: DashboardData; defaults: Partial<Record<string, string>> }) {
+function ProcessFields({ data, defaults }: { data: DashboardData; defaults: ProcessDefaults }) {
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <input type="hidden" name="source" value={defaults.source ?? "manual"} />
@@ -582,6 +621,34 @@ function ProcessFields({ data, defaults }: { data: DashboardData; defaults: Part
       <Field label="Interviewer"><TextInput name="interviewer" list="interviewer-options" /></Field>
       <Field label="Result"><SelectInput name="result"><option value="">Pending</option><option value="1">Pass</option><option value="0">Fail</option></SelectInput></Field>
       <Field label="Remark" className="md:col-span-2"><TextArea name="remark" rows={3} defaultValue={defaults.remark ?? ""} /></Field>
+      <DataLists data={data} />
+    </div>
+  );
+}
+
+function PipelinePassFields({ data, defaults }: { data: DashboardData; defaults: ProcessDefaults }) {
+  const stages = defaults.passed_stages ?? [];
+
+  return (
+    <div className="grid gap-4">
+      <input type="hidden" name="candidate_id" value={defaults.candidate_id ?? ""} />
+      <input type="hidden" name="target_stage" value={defaults.target_stage ?? ""} />
+      <input type="hidden" name="stage_count" value={stages.length} />
+      <div className="rounded-md bg-lightgray p-3 text-sm font-bold text-slate">
+        Confirm each passed stage. After save, {processLabel(defaults.target_stage as ProcessStage)} will be created as Pending automatically.
+      </div>
+      {stages.map((stage, index) => (
+        <div key={stage} className="grid gap-4 rounded-md border border-[#D7DEE8] p-3 md:grid-cols-2">
+          <input type="hidden" name={`stage_${index}`} value={stage} />
+          <div className="md:col-span-2">
+            <Tag tone="teal">{processLabel(stage)}</Tag>
+          </div>
+          <Field label="Date"><TextInput name={`log_date_${index}`} type="date" defaultValue={today()} required /></Field>
+          <Field label="Round"><TextInput name={`round_${index}`} type="number" min={1} defaultValue={1} required /></Field>
+          <Field label="Interviewer"><TextInput name={`interviewer_${index}`} list="interviewer-options" /></Field>
+          <Field label="Remark"><TextArea name={`remark_${index}`} rows={2} defaultValue={index === stages.length - 1 ? defaults.remark ?? "" : ""} /></Field>
+        </div>
+      ))}
       <DataLists data={data} />
     </div>
   );
@@ -825,6 +892,7 @@ function modalTitle(modal: ModalName) {
     status: "Requisition Status",
     candidate: "Candidate",
     process: "Process Update",
+    pipeline_pass: "Confirm Passed Stages",
     offer: "Offer",
     group: "Position Group",
     match: "Match Requisition and Group",

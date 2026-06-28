@@ -2,9 +2,9 @@
 
 import { BriefcaseBusiness, HandCoins, UsersRound, Workflow } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Field, SelectInput } from "@/components/ui/Field";
+import { Field, TextInput } from "@/components/ui/Field";
 import { Panel, SectionTitle } from "@/components/ui/Panel";
 import { StatCard } from "@/components/ui/StatCard";
 import { Tag } from "@/components/ui/Tag";
@@ -35,12 +35,8 @@ export function DashboardOverviewView({
   onOpenRequisition: (docId: string) => void;
   onOpenCandidate: (candidateId: string) => void;
 }) {
-  const weeks = useMemo(() => uniqueValues(vacancySnapshots.map((row) => row.week_start)).sort().reverse(), [vacancySnapshots]);
-  const [selectedWeek, setSelectedWeek] = useState("");
-
-  useEffect(() => {
-    if (!selectedWeek && weeks[0]) setSelectedWeek(weeks[0]);
-  }, [selectedWeek, weeks]);
+  const [startDate, setStartDate] = useState(currentYearStart());
+  const [endDate, setEndDate] = useState(today());
 
   const activeRequisitions = requisitions.filter((row) => row.status === "ongoing");
   const acceptedOffers = requisitions.reduce((sum, row) => sum + row.accepted_count, 0);
@@ -58,7 +54,10 @@ export function DashboardOverviewView({
     .sort((a, b) => b.open_headcount - a.open_headcount)
     .slice(0, 6);
   const pipelinePreview = ongoingCandidates.slice(0, 8);
-  const selectedSnapshots = vacancySnapshots.filter((row) => row.week_start === selectedWeek);
+  const selectedSnapshots = useMemo(
+    () => aggregateSnapshots(vacancySnapshots.filter((row) => row.week_start >= startDate && row.week_start <= endDate)),
+    [endDate, startDate, vacancySnapshots]
+  );
 
   return (
     <div className="grid gap-4">
@@ -73,18 +72,20 @@ export function DashboardOverviewView({
 
       <Panel>
         <SectionTitle
-          title="Weekly Vacancy Waterfall"
+          title="Vacancy Waterfall"
           action={
-            <Field label="Week">
-              <SelectInput value={selectedWeek} onChange={(event) => setSelectedWeek(event.target.value)}>
-                {weeks.length === 0 ? <option value="">No snapshots</option> : null}
-                {weeks.map((week) => <option key={week} value={week}>{week}</option>)}
-              </SelectInput>
-            </Field>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Field label="Start Date">
+                <TextInput type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
+              </Field>
+              <Field label="End Date">
+                <TextInput type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} />
+              </Field>
+            </div>
           }
         />
         {selectedSnapshots.length === 0 ? (
-          <EmptyState message="No vacancy snapshot rows for the selected week." />
+          <EmptyState message="No vacancy snapshot rows for the selected date range." />
         ) : (
           <VacancyWaterfallChart rows={selectedSnapshots} />
         )}
@@ -361,6 +362,28 @@ function categoryX(index: number, step: number, leftPad: number) {
 
 function formatChartValue(value: number) {
   return value < 0 ? `( ${Math.abs(value).toLocaleString()} )` : value.toLocaleString();
+}
+
+function aggregateSnapshots(rows: VacancyWeeklySnapshot[]): VacancyWeeklySnapshot[] {
+  const totals = new Map<string, VacancyWeeklySnapshot>();
+  for (const row of rows) {
+    const key = `${row.waterfall_category}|${row.site}|${row.request_type}`;
+    const existing = totals.get(key);
+    if (existing) {
+      totals.set(key, { ...existing, vacancy_count: existing.vacancy_count + row.vacancy_count });
+    } else {
+      totals.set(key, { ...row, snapshot_id: 0 });
+    }
+  }
+  return Array.from(totals.values());
+}
+
+function currentYearStart() {
+  return `${new Date().getFullYear()}-01-01`;
+}
+
+function today() {
+  return new Date().toISOString().slice(0, 10);
 }
 
 function uniqueValues(values: string[]) {

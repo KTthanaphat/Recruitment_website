@@ -95,7 +95,7 @@ The repository ignores SQLite database files and local environment files.
 - Sourcing weekly updates save by `group_id` and are restricted to responsible groups for site recruiters.
 - Creating a candidate creates an initial pending Phone Screening log.
 - Marking a pending active stage as Pass appends the next stage as Pending.
-- Dashboard weekly waterfall renders from `vacancy_weekly_snapshots`.
+- Dashboard waterfall renders from `vacancy_weekly_snapshots` with start/end date filters.
 - Accepted offers auto-fill requisitions when accepted count reaches headcount.
-- Pipeline drag/drop rejects backward moves.
+- Pipeline drag/drop rejects backward moves and requires all passed stages to be confirmed before the next pending stage is created.
 - Audit log records changes with actor, action, old data, and new data.
