@@ -34,6 +34,8 @@ http://localhost:3000
 1. Create a Supabase project.
 2. Open SQL Editor.
 3. Run the SQL files in `supabase/migrations/` in filename order.
+   - For a brand-new reset prototype, you can instead run `supabase/restructured/00_fresh_schema.sql`.
+   - For an existing migrated database, back up the database first, then run `supabase/restructured/01_existing_db_optimization.sql`.
 4. Disable public signup unless the company explicitly wants self-registration.
 5. Create the first Auth user manually.
 6. Promote the first user:
