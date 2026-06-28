@@ -59,16 +59,25 @@ https://recruitment-tracking.onrender.com
 ## Required Supabase Setup
 
 1. Create a Supabase project.
-2. Run `supabase/migrations/202606270001_recruitment_tracking_v1.sql` in SQL Editor.
+2. Run the SQL files in `supabase/migrations/` in filename order.
 3. Create the first Auth user manually.
-4. Promote that user to admin:
+4. Promote that user to system admin:
 
 ```sql
 update public.profiles
-set role = 'admin'
+set role = 'system_admin'
 where email = 'your-admin-email@example.com';
 ```
 
 5. Add the Supabase URL, anon key, and service role key to `.env.local` or Vercel.
 
+Roles:
+
+- `system_admin`: manage users, setup, and all recruitment records.
+- `admin_recruiter`: see all sites and create/edit all recruitment records.
+- `site_recruiter`: see assigned-site records and create/edit only records where their nickname is `person_in_charge`.
+- `viewer`: see all sites, read only.
+
 Do not upload real `.db`, `.xlsx`, candidate, employee, or offer files to GitHub or Vercel.
+
+System admins can create users or update existing account nickname/site/role mappings from Setup > Users and Roles > Manage User.

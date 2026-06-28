@@ -1,6 +1,6 @@
 # Recruitment Website Structure
 
-Last updated: 2026-06-27
+Last updated: 2026-06-28
 
 ## Overview
 
@@ -70,7 +70,7 @@ recruitment_website/
 - `/candidates`: candidate list, create/change, latest process/result, and candidate detail drawer.
 - `/pipeline`: drag/drop candidate board. Drag/drop saves only after a full process update confirmation.
 - `/offers`: accepted/start dates, offer type, replacement, and automatic requisition fill logic.
-- `/setup`: position groups, requisition-group matching, and admin user creation.
+- `/setup`: position groups, requisition-group matching, and system-admin user creation.
 - `/audit`: audit trigger history with old/new JSON values.
 
 ## Data Model
@@ -101,10 +101,12 @@ Protected RPC functions handle all recruitment writes:
 
 - Anonymous users cannot read or write recruitment data.
 - Authenticated users receive access by `profiles.role`.
-- Roles: `admin`, `recruiter`, `viewer`.
-- Viewers can read only.
-- Recruiters can create/change recruitment records.
-- Admins can create app accounts through `/api/admin/users`.
+- Roles: `system_admin`, `admin_recruiter`, `site_recruiter`, `viewer`.
+- `system_admin`: manage users, setup, and all recruitment records.
+- `admin_recruiter`: see all sites and create/edit all recruitment records.
+- `site_recruiter`: see assigned-site records and create/edit only records where their nickname is `person_in_charge`; new requisitions are automatically assigned to their site and nickname.
+- `viewer`: see all sites, read only.
+- System admins can create app accounts and update nickname/site/role mappings through `/api/admin/users`.
 - Audit triggers write `change_logs` for every important table mutation.
 
 ## Visual System

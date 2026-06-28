@@ -33,18 +33,18 @@ http://localhost:3000
 
 1. Create a Supabase project.
 2. Open SQL Editor.
-3. Run `supabase/migrations/202606270001_recruitment_tracking_v1.sql`.
+3. Run the SQL files in `supabase/migrations/` in filename order.
 4. Disable public signup unless the company explicitly wants self-registration.
 5. Create the first Auth user manually.
 6. Promote the first user:
 
 ```sql
 update public.profiles
-set role = 'admin'
+set role = 'system_admin'
 where email = 'your-admin-email@example.com';
 ```
 
-7. Sign in to the app and create recruiter/viewer accounts from Setup.
+7. Sign in to the app and create or update accounts from Setup > Users and Roles > Manage User. Each account should have a nickname; site recruiter accounts also need an assigned site.
 
 ## Environment Variables
 
@@ -87,9 +87,10 @@ The repository ignores SQLite database files and local environment files.
 
 - Login redirects to dashboard.
 - Anonymous browser cannot read Supabase tables.
-- Viewer can read dashboards/tables but cannot save.
-- Recruiter can create requisition, candidate, process log, group, match, and offer.
-- Admin can create app accounts.
+- Viewer can read all sites but cannot save.
+- Admin recruiter can read all sites and create/edit recruitment records.
+- Site recruiter can read assigned-site records and create/edit records only when their nickname is the requisition person in charge.
+- System admin can create app accounts, manage setup, and create/edit records.
 - Accepted offers auto-fill requisitions when accepted count reaches headcount.
 - Pipeline drag/drop rejects backward moves.
 - Audit log records changes with actor, action, old data, and new data.

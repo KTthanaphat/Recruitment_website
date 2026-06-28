@@ -30,7 +30,14 @@ export const REQUISITION_STATUSES: RequisitionStatus[] = ["ongoing", "filled", "
 
 export const WRITABLE_REQUISITION_STATUSES: RequisitionStatus[] = ["ongoing", "cancel"];
 
-export const ROLES: Role[] = ["admin", "recruiter", "viewer"];
+export const ROLES: Role[] = ["system_admin", "admin_recruiter", "site_recruiter", "viewer"];
+
+export const ROLE_LABELS: Record<Role, string> = {
+  system_admin: "System Admin",
+  admin_recruiter: "Admin Recruiter",
+  site_recruiter: "Site Recruiter",
+  viewer: "Viewer"
+};
 
 export const RESULT_LABELS = {
   pending: "Pending",
@@ -39,11 +46,19 @@ export const RESULT_LABELS = {
 };
 
 export function canWrite(role?: Role | null) {
-  return role === "admin" || role === "recruiter";
+  return role === "system_admin" || role === "admin_recruiter" || role === "site_recruiter";
 }
 
-export function canAdmin(role?: Role | null) {
-  return role === "admin";
+export function canManageSetup(role?: Role | null) {
+  return role === "system_admin";
+}
+
+export function canManageUsers(role?: Role | null) {
+  return role === "system_admin";
+}
+
+export function canSeeAllSites(role?: Role | null) {
+  return role === "system_admin" || role === "admin_recruiter" || role === "viewer";
 }
 
 export function processIndex(stage: ProcessStage | "No activity" | null | undefined) {

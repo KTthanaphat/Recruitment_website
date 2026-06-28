@@ -17,7 +17,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/Button";
-import { VIEWS } from "@/lib/constants";
+import { ROLE_LABELS, VIEWS } from "@/lib/constants";
 import { translate, viewLabel } from "@/lib/i18n/dictionary";
 import type { Language, Profile, ViewId } from "@/types/recruitment";
 
@@ -69,6 +69,7 @@ export function AppShell({
   activeView: ViewId;
 }) {
   const pathname = usePathname();
+  const accountName = profile?.nickname ?? profile?.full_name ?? profile?.email ?? "Unknown";
 
   return (
     <main className="grid min-h-screen grid-cols-1 bg-offwhite lg:grid-cols-[248px_minmax(0,1fr)]">
@@ -104,8 +105,8 @@ export function AppShell({
             <h2 className="text-3xl font-extrabold tracking-normal text-navy">{viewLabel(language, activeView)}</h2>
             <div className="mt-2 flex flex-wrap items-center gap-2 text-sm font-bold text-slate">
               <UserRound size={16} />
-              <span>{translate(language, "signedInAs")} {profile?.email ?? "Unknown"}</span>
-              <span className="rounded-full bg-lightgray px-2 py-1 text-xs uppercase">{profile?.role ?? "viewer"}</span>
+              <span>{translate(language, "signedInAs")} {accountName}</span>
+              <span className="rounded-full bg-lightgray px-2 py-1 text-xs uppercase">{profile ? ROLE_LABELS[profile.role] : "Viewer"}</span>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">

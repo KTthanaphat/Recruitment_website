@@ -16,7 +16,7 @@ import { Field, SelectInput, TextArea, TextInput } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { Panel } from "@/components/ui/Panel";
 import { Tag } from "@/components/ui/Tag";
-import { canAdmin as canAdminRole, canWrite as canWriteRole, PROCESS_STAGES, ROLES, WRITABLE_REQUISITION_STATUSES } from "@/lib/constants";
+import { canManageSetup as canManageSetupRole, canManageUsers as canManageUsersRole, canWrite as canWriteRole, PROCESS_STAGES, ROLE_LABELS, ROLES, WRITABLE_REQUISITION_STATUSES } from "@/lib/constants";
 import {
   emptyDashboardData,
   enrichCandidates,
@@ -127,7 +127,8 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
 
   const role = data.profile?.role ?? "viewer";
   const canWrite = canWriteRole(role);
-  const canAdmin = canAdminRole(role);
+  const canManageSetup = canManageSetupRole(role);
+  const canManageUsers = canManageUsersRole(role);
 
   const enrichedRequisitions = useMemo(() => enrichRequisitions(data), [data]);
   const enrichedCandidates = useMemo(() => enrichCandidates(data), [data]);
@@ -261,7 +262,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       {initialView === "offers" ? <OffersView language={language} rows={filteredOffers} canWrite={canWrite} onNew={() => setActiveModal("offer")} /> : null}
 
       {initialView === "setup" ? (
-        <SetupView language={language} data={data} canWrite={canWrite} canAdmin={canAdmin} onGroup={() => setActiveModal("group")} onMatch={() => setActiveModal("match")} onInvite={() => setActiveModal("user")} />
+        <SetupView language={language} data={data} canManageSetup={canManageSetup} canManageUsers={canManageUsers} onGroup={() => setActiveModal("group")} onMatch={() => setActiveModal("match")} onInvite={() => setActiveModal("user")} />
       ) : null}
 
       {initialView === "audit" ? <AuditView language={language} rows={data.change_logs} /> : null}
@@ -269,7 +270,8 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       <RecordModal
         modal={activeModal}
         data={data}
-        canAdmin={canAdmin}
+        profile={data.profile}
+        canManageUsers={canManageUsers}
         processDefaults={processDefaults}
         onClose={() => {
           setActiveModal(null);
@@ -398,24 +400,29 @@ function buildPayload(modal: Exclude<ModalName, null>, formData: FormData) {
   }
 
   const payload = {
+    mode: String(formData.get("mode") ?? "new"),
+    user_id: emptyToNull(formData.get("user_id")),
     email: emptyToNull(formData.get("email")),
     password: emptyToNull(formData.get("password")),
     full_name: emptyToNull(formData.get("full_name")),
+    nickname: emptyToNull(formData.get("nickname")),
+    site: emptyToNull(formData.get("site")),
     role: String(formData.get("role") ?? "viewer")
   };
-  requireFields(payload, ["email", "password", "role"]);
+  requireFields(payload, payload.mode === "change" ? ["user_id", "nickname", "role"] : ["email", "password", "nickname", "role"]);
   return payload;
 }
 
 function buildSummary(modal: Exclude<ModalName, null>, payload: Record<string, unknown>) {
-  const key = String(payload.doc_id ?? payload.candidate_id ?? payload.group_id ?? payload.email ?? "record");
+  const key = String(payload.doc_id ?? payload.candidate_id ?? payload.group_id ?? payload.email ?? payload.user_id ?? "record");
   return `${modal} · ${key}`;
 }
 
 function RecordModal({
   modal,
   data,
-  canAdmin,
+  profile,
+  canManageUsers,
   processDefaults,
   onClose,
   onSubmit,
@@ -423,7 +430,8 @@ function RecordModal({
 }: {
   modal: ModalName;
   data: DashboardData;
-  canAdmin: boolean;
+  profile: DashboardData["profile"];
+  canManageUsers: boolean;
   processDefaults: Partial<Record<string, string>>;
   onClose: () => void;
   onSubmit: (modal: Exclude<ModalName, null>, form: HTMLFormElement) => void;
@@ -443,15 +451,15 @@ function RecordModal({
   return (
     <Modal open={Boolean(modal)} title={modalTitle(modal)} onClose={onClose}>
       <form className="grid gap-4" onSubmit={handleSubmit}>
-        {["requisition", "candidate", "offer", "group"].includes(modal) ? <ModeRow /> : null}
-        {modal === "requisition" ? <RequisitionFields data={data} /> : null}
+        {["requisition", "candidate", "offer", "group", "user"].includes(modal) ? <ModeRow /> : null}
+        {modal === "requisition" ? <RequisitionFields data={data} profile={profile} /> : null}
         {modal === "status" ? <StatusFields data={data} /> : null}
         {modal === "candidate" ? <CandidateFields data={data} /> : null}
         {modal === "process" ? <ProcessFields data={data} defaults={processDefaults} /> : null}
         {modal === "offer" ? <OfferFields data={data} /> : null}
         {modal === "group" ? <GroupFields data={data} /> : null}
         {modal === "match" ? <MatchFields data={data} /> : null}
-        {modal === "user" ? <UserFields canAdmin={canAdmin} /> : null}
+        {modal === "user" ? <UserFields canManageUsers={canManageUsers} data={data} /> : null}
         <div className="flex justify-end gap-2 border-t border-[#D7DEE8] pt-4">
           <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
           <Button type="submit">Review Save</Button>
@@ -470,18 +478,22 @@ function ModeRow() {
   );
 }
 
-function RequisitionFields({ data }: { data: DashboardData }) {
+function RequisitionFields({ data, profile }: { data: DashboardData; profile: DashboardData["profile"] }) {
+  const isSiteRecruiter = profile?.role === "site_recruiter";
+  const nickname = profile?.nickname ?? profile?.full_name ?? "";
+  const assignedSite = profile?.site ?? "";
+
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <Field label="Doc ID"><TextInput name="doc_id" list="doc-id-options" required /></Field>
       <Field label="PR Approved Date"><TextInput name="pr_approved_date" type="date" /></Field>
-      <Field label="Site"><TextInput name="site" list="site-options-form" required /></Field>
+      <Field label="Site"><TextInput name="site" list="site-options-form" required defaultValue={isSiteRecruiter ? assignedSite : undefined} readOnly={isSiteRecruiter} /></Field>
       <Field label="Position"><TextInput name="position" list="position-options" required /></Field>
       <Field label="Department"><TextInput name="department" list="department-options" required /></Field>
       <Field label="Section"><TextInput name="section" list="section-options" /></Field>
       <Field label="Level"><TextInput name="level" list="level-options" /></Field>
       <Field label="Head Count"><TextInput name="head_count" type="number" min={1} defaultValue={1} required /></Field>
-      <Field label="Person in Charge"><TextInput name="person_in_charge" list="pic-options-form" /></Field>
+      <Field label="Person in Charge"><TextInput name="person_in_charge" list="pic-options-form" defaultValue={isSiteRecruiter ? nickname : undefined} readOnly={isSiteRecruiter} /></Field>
       <Field label="Line Manager"><TextInput name="line_manager" list="manager-options" /></Field>
       <Field label="Status">
         <SelectInput name="status">{WRITABLE_REQUISITION_STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}</SelectInput>
@@ -573,15 +585,26 @@ function MatchFields({ data }: { data: DashboardData }) {
   );
 }
 
-function UserFields({ canAdmin }: { canAdmin: boolean }) {
-  if (!canAdmin) return <p className="text-sm font-bold text-orange">Only admins can create app accounts.</p>;
+function UserFields({ canManageUsers, data }: { canManageUsers: boolean; data: DashboardData }) {
+  if (!canManageUsers) return <p className="text-sm font-bold text-orange">Only system admins can manage app accounts.</p>;
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      <Field label="Email"><TextInput name="email" type="email" required /></Field>
-      <Field label="Temporary Password"><TextInput name="password" type="password" minLength={8} required /></Field>
+      <Field label="Existing User">
+        <SelectInput name="user_id">
+          <option value="">Required in Change mode</option>
+          {data.profiles.map((profile) => (
+            <option key={profile.id} value={profile.id}>{profile.nickname ?? profile.full_name ?? profile.email ?? profile.id}</option>
+          ))}
+        </SelectInput>
+      </Field>
+      <Field label="Email"><TextInput name="email" type="email" /></Field>
+      <Field label="Temporary Password"><TextInput name="password" type="password" minLength={8} /></Field>
+      <Field label="Nickname / Account Name"><TextInput name="nickname" list="pic-options-form" required /></Field>
       <Field label="Full Name"><TextInput name="full_name" /></Field>
-      <Field label="Role"><SelectInput name="role">{ROLES.map((role) => <option key={role}>{role}</option>)}</SelectInput></Field>
+      <Field label="Assigned Site"><TextInput name="site" list="site-options-form" /></Field>
+      <Field label="Role"><SelectInput name="role">{ROLES.map((role) => <option key={role} value={role}>{ROLE_LABELS[role]}</option>)}</SelectInput></Field>
+      <DataLists data={data} />
     </div>
   );
 }
@@ -741,7 +764,7 @@ function modalTitle(modal: ModalName) {
     offer: "Offer",
     group: "Position Group",
     match: "Match Requisition and Group",
-    user: "Create User"
+    user: "Manage User"
   };
   return modal ? titles[modal] : "";
 }

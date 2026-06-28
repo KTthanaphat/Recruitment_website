@@ -9,8 +9,8 @@ For first setup:
 
 ```sql
 update public.profiles
-set role = 'admin'
+set role = 'system_admin'
 where email = 'your-admin-email@example.com';
 ```
 
-3. Sign in to the app and create recruiter/viewer accounts from Setup.
+3. Sign in to the app and create or update admin recruiter, site recruiter, and viewer accounts from Setup.

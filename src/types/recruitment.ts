@@ -1,6 +1,6 @@
 export type Language = "en" | "th";
 
-export type Role = "admin" | "recruiter" | "viewer";
+export type Role = "system_admin" | "admin_recruiter" | "site_recruiter" | "viewer";
 
 export type RequisitionStatus = "ongoing" | "filled" | "cancel";
 
@@ -21,6 +21,8 @@ export type Profile = {
   id: string;
   email: string | null;
   full_name: string | null;
+  nickname: string | null;
+  site: string | null;
   role: Role;
   created_at: string;
   updated_at: string;

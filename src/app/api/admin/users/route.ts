@@ -12,14 +12,35 @@ export async function POST(request: NextRequest) {
     }
 
     const payload = (await request.json()) as {
+      mode?: string;
+      user_id?: string | null;
       email?: string;
       password?: string;
       full_name?: string | null;
+      nickname?: string | null;
+      site?: string | null;
       role?: Role;
     };
 
-    if (!payload.email || !payload.password || !payload.role) {
-      return NextResponse.json({ ok: false, error: "Email, password, and role are required." }, { status: 400 });
+    const mode = payload.mode ?? "new";
+    if (!["new", "change"].includes(mode)) {
+      return NextResponse.json({ ok: false, error: "Mode must be new or change." }, { status: 400 });
+    }
+
+    if (!payload.role || !payload.nickname) {
+      return NextResponse.json({ ok: false, error: "Nickname and role are required." }, { status: 400 });
+    }
+
+    if (mode === "new" && (!payload.email || !payload.password)) {
+      return NextResponse.json({ ok: false, error: "Email and password are required for new accounts." }, { status: 400 });
+    }
+
+    if (mode === "change" && !payload.user_id) {
+      return NextResponse.json({ ok: false, error: "Existing user is required in Change mode." }, { status: 400 });
+    }
+
+    if (payload.role === "site_recruiter" && !payload.site) {
+      return NextResponse.json({ ok: false, error: "Site is required for site recruiter accounts." }, { status: 400 });
     }
 
     if (!ROLES.includes(payload.role)) {
@@ -38,16 +59,50 @@ export async function POST(request: NextRequest) {
       .eq("id", userData.user.id)
       .single();
 
-    if (profileError || profile?.role !== "admin") {
-      return NextResponse.json({ ok: false, error: "Admin role is required." }, { status: 403 });
+    if (profileError || profile?.role !== "system_admin") {
+      return NextResponse.json({ ok: false, error: "System admin role is required." }, { status: 403 });
+    }
+
+    if (mode === "change") {
+      const { error: updateAuthError } = await service.auth.admin.updateUserById(payload.user_id!, {
+        user_metadata: {
+          full_name: payload.full_name ?? payload.nickname,
+          nickname: payload.nickname,
+          site: payload.site ?? null,
+          role: payload.role
+        }
+      });
+
+      if (updateAuthError) {
+        return NextResponse.json({ ok: false, error: updateAuthError.message }, { status: 400 });
+      }
+
+      const { error: updateProfileError } = await service
+        .from("profiles")
+        .update({
+          full_name: payload.full_name ?? payload.nickname,
+          nickname: payload.nickname,
+          site: payload.site ?? null,
+          role: payload.role
+        })
+        .eq("id", payload.user_id);
+
+      if (updateProfileError) {
+        return NextResponse.json({ ok: false, error: updateProfileError.message }, { status: 400 });
+      }
+
+      return NextResponse.json({ ok: true, id: payload.user_id });
     }
 
     const { data: created, error: createError } = await service.auth.admin.createUser({
-      email: payload.email,
-      password: payload.password,
+      email: payload.email!,
+      password: payload.password!,
       email_confirm: true,
       user_metadata: {
-        full_name: payload.full_name ?? null
+        full_name: payload.full_name ?? payload.nickname,
+        nickname: payload.nickname,
+        site: payload.site ?? null,
+        role: payload.role
       }
     });
 
@@ -57,8 +112,10 @@ export async function POST(request: NextRequest) {
 
     const { error: upsertError } = await service.from("profiles").upsert({
       id: created.user.id,
-      email: payload.email,
-      full_name: payload.full_name ?? null,
+      email: payload.email!,
+      full_name: payload.full_name ?? payload.nickname,
+      nickname: payload.nickname,
+      site: payload.site ?? null,
       role: payload.role
     });
 

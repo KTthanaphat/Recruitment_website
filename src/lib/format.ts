@@ -19,10 +19,10 @@ export function resultText(result: ResultValue) {
 }
 
 export function statusTone(status: string): "primary" | "success" | "warning" | "danger" | "muted" | "teal" | "purple" {
-  if (["filled", "pass", "accepted", "admin"].includes(status)) return "success";
+  if (["filled", "pass", "accepted", "system_admin"].includes(status)) return "success";
   if (["cancel", "fail", "rejected", "Withdrawn"].includes(status)) return "danger";
   if (["viewer", "pending"].includes(status)) return "muted";
-  if (["recruiter", "ongoing"].includes(status)) return "primary";
+  if (["admin_recruiter", "site_recruiter", "ongoing"].includes(status)) return "primary";
   return "warning";
 }
 

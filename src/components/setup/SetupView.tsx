@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Panel, SectionTitle } from "@/components/ui/Panel";
 import { Tag } from "@/components/ui/Tag";
+import { ROLE_LABELS } from "@/lib/constants";
 import { statusTone } from "@/lib/format";
 import { translate } from "@/lib/i18n/dictionary";
 import type { DashboardData, Language } from "@/types/recruitment";
@@ -10,16 +11,16 @@ import type { DashboardData, Language } from "@/types/recruitment";
 export function SetupView({
   language,
   data,
-  canWrite,
-  canAdmin,
+  canManageSetup,
+  canManageUsers,
   onGroup,
   onMatch,
   onInvite
 }: {
   language: Language;
   data: DashboardData;
-  canWrite: boolean;
-  canAdmin: boolean;
+  canManageSetup: boolean;
+  canManageUsers: boolean;
   onGroup: () => void;
   onMatch: () => void;
   onInvite: () => void;
@@ -29,7 +30,7 @@ export function SetupView({
       <Panel>
         <SectionTitle
           title="Position Groups"
-          action={canWrite ? <Button type="button" size="sm" icon={<Plus size={16} />} onClick={onGroup}>New Group</Button> : null}
+          action={canManageSetup ? <Button type="button" size="sm" icon={<Plus size={16} />} onClick={onGroup}>New Group</Button> : null}
         />
         <div className="grid gap-2">
           {data.position_groups.length === 0 ? (
@@ -55,7 +56,7 @@ export function SetupView({
       <Panel>
         <SectionTitle
           title="Requisition Matches"
-          action={canWrite ? <Button type="button" size="sm" icon={<Link2 size={16} />} onClick={onMatch}>Add Match</Button> : null}
+          action={canManageSetup ? <Button type="button" size="sm" icon={<Link2 size={16} />} onClick={onMatch}>Add Match</Button> : null}
         />
         <div className="grid gap-2">
           {data.document_groups.length === 0 ? (
@@ -77,8 +78,8 @@ export function SetupView({
       <Panel className="xl:col-span-2">
         <SectionTitle
           title="Users and Roles"
-          eyebrow={canAdmin ? "Admin" : translate(language, "adminOnly")}
-          action={canAdmin ? <Button type="button" size="sm" icon={<UserPlus size={16} />} onClick={onInvite}>Create User</Button> : null}
+          eyebrow={canManageUsers ? "System Admin" : translate(language, "adminOnly")}
+          action={canManageUsers ? <Button type="button" size="sm" icon={<UserPlus size={16} />} onClick={onInvite}>Manage User</Button> : null}
         />
         {data.profiles.length === 0 ? (
           <EmptyState message="No readable user profiles. Confirm the first admin profile exists in Supabase." />
@@ -88,7 +89,8 @@ export function SetupView({
               <thead className="bg-lightgray text-xs uppercase text-slate">
                 <tr>
                   <th className="px-3 py-3">Email</th>
-                  <th className="px-3 py-3">Name</th>
+                  <th className="px-3 py-3">Nickname</th>
+                  <th className="px-3 py-3">Site</th>
                   <th className="px-3 py-3">Role</th>
                   <th className="px-3 py-3">Updated</th>
                 </tr>
@@ -97,8 +99,9 @@ export function SetupView({
                 {data.profiles.map((profile) => (
                   <tr key={profile.id} className="border-b border-[#D7DEE8] last:border-0">
                     <td className="px-3 py-3 font-bold text-navy">{profile.email ?? "-"}</td>
-                    <td className="px-3 py-3 text-slate">{profile.full_name ?? "-"}</td>
-                    <td className="px-3 py-3"><Tag tone={statusTone(profile.role) as never}>{profile.role}</Tag></td>
+                    <td className="px-3 py-3 text-slate">{profile.nickname ?? profile.full_name ?? "-"}</td>
+                    <td className="px-3 py-3 text-slate">{profile.site ?? "-"}</td>
+                    <td className="px-3 py-3"><Tag tone={statusTone(profile.role)}>{ROLE_LABELS[profile.role]}</Tag></td>
                     <td className="px-3 py-3 text-slate">{profile.updated_at.slice(0, 10)}</td>
                   </tr>
                 ))}
