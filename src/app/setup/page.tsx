@@ -1,5 +1,5 @@
-import { RecruitmentWorkspace } from "@/components/RecruitmentWorkspace";
+import { redirect } from "next/navigation";
 
 export default function SetupPage() {
-  return <RecruitmentWorkspace initialView="setup" />;
+  redirect("/sourcing");
 }

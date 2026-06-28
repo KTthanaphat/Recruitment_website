@@ -27,7 +27,7 @@ const icons: Record<ViewId, ReactNode> = {
   candidates: <UsersRound size={18} />,
   pipeline: <BarChart3 size={18} />,
   offers: <HandCoins size={18} />,
-  setup: <Settings size={18} />,
+  sourcing: <Settings size={18} />,
   audit: <FileClock size={18} />
 };
 
@@ -37,7 +37,7 @@ const paths: Record<ViewId, string> = {
   candidates: "/candidates",
   pipeline: "/pipeline",
   offers: "/offers",
-  setup: "/setup",
+  sourcing: "/sourcing",
   audit: "/audit"
 };
 
@@ -47,7 +47,7 @@ const kicker: Record<ViewId, string> = {
   candidates: "Talent Records",
   pipeline: "Process Board",
   offers: "Hiring Outcome",
-  setup: "Configuration",
+  sourcing: "Jobsite Sourcing",
   audit: "History"
 };
 
@@ -73,20 +73,20 @@ export function AppShell({
 
   return (
     <main className="grid min-h-screen grid-cols-1 bg-offwhite lg:grid-cols-[248px_minmax(0,1fr)]">
-      <aside className="bg-navy px-4 py-5 text-white lg:sticky lg:top-0 lg:h-screen">
-        <div className="mb-7 px-2">
+      <aside className="bg-navy px-4 py-4 text-white lg:sticky lg:top-0 lg:h-screen lg:py-5">
+        <div className="mb-4 px-2 lg:mb-7">
           <p className="mb-1 text-xs font-extrabold uppercase tracking-normal text-cool">Internal Recruitment</p>
           <h1 className="text-2xl font-extrabold tracking-normal">Recruitment</h1>
         </div>
 
-        <nav aria-label="Main navigation" className="grid gap-1.5">
+        <nav aria-label="Main navigation" className="grid grid-flow-col gap-1.5 overflow-x-auto pb-1 lg:grid-flow-row lg:overflow-visible lg:pb-0">
           {VIEWS.map((view) => {
             const active = pathname === paths[view] || activeView === view;
             return (
               <Link
                 key={view}
                 href={paths[view]}
-                className={`flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-bold transition ${
+                className={`flex min-h-11 min-w-max items-center gap-3 rounded-md px-3 text-sm font-bold transition lg:min-w-0 ${
                   active ? "bg-primary text-white" : "text-lightgray hover:bg-white/10"
                 }`}
               >

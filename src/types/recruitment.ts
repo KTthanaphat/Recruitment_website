@@ -114,6 +114,38 @@ export type Offer = {
   updated_at: string;
 };
 
+export type SourcingWeeklyUpdate = {
+  group_id: string;
+  week_start: string;
+  channel_fb: boolean;
+  channel_jobthai: boolean;
+  channel_jobtopgun: boolean;
+  channel_jobdb: boolean;
+  applicants_fb: number;
+  applicants_jobthai: number;
+  applicants_jobtopgun: number;
+  applicants_jobdb: number;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type VacancyWaterfallCategory = "Week Start" | "Open" | "Filled" | "Total";
+
+export type VacancyRequestType = "New" | "Replacement";
+
+export type VacancyWeeklySnapshot = {
+  snapshot_id: number;
+  week_start: string;
+  waterfall_category: VacancyWaterfallCategory;
+  site: string;
+  request_type: VacancyRequestType;
+  vacancy_count: number;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type ChangeLog = {
   log_id: number;
   entity: string;
@@ -136,6 +168,8 @@ export type DashboardData = {
   candidates: Candidate[];
   recruitment_logs: RecruitmentLog[];
   offers: Offer[];
+  sourcing_weekly_updates: SourcingWeeklyUpdate[];
+  vacancy_weekly_snapshots: VacancyWeeklySnapshot[];
   change_logs: ChangeLog[];
 };
 
@@ -152,6 +186,7 @@ export type EnrichedCandidate = Candidate & {
   person_in_charge: string | null;
   latest_process: ProcessStage | "No activity";
   latest_result: ResultValue;
+  latest_log_date: string | null;
   accepted_date: string | null;
 };
 
@@ -162,13 +197,28 @@ export type EnrichedOffer = Offer & {
   person_in_charge: string | null;
 };
 
+export type EnrichedSourcingGroup = {
+  group_id: string;
+  group_position: string;
+  sites: string[];
+  owners: string[];
+  doc_ids: string[];
+  open_headcount: number;
+  candidate_count: number;
+  channel_fb: boolean;
+  channel_jobthai: boolean;
+  channel_jobtopgun: boolean;
+  channel_jobdb: boolean;
+  latest_update: SourcingWeeklyUpdate | null;
+};
+
 export type ViewId =
   | "dashboard"
   | "requisitions"
   | "candidates"
   | "pipeline"
   | "offers"
-  | "setup"
+  | "sourcing"
   | "audit";
 
 export type RpcResult = {

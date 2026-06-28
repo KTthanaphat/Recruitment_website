@@ -6,7 +6,7 @@ export const VIEWS: ViewId[] = [
   "candidates",
   "pipeline",
   "offers",
-  "setup",
+  "sourcing",
   "audit"
 ];
 
@@ -23,8 +23,22 @@ export const PROCESS_STAGES: ProcessStage[] = [
 ];
 
 export const ACTIVE_PIPELINE_STAGES: ProcessStage[] = PROCESS_STAGES.filter(
-  (stage) => !["Rejected", "Withdrawn"].includes(stage)
+  (stage) => !["First Contact", "Rejected", "Withdrawn"].includes(stage)
 );
+
+export const PROCESS_UPDATE_STAGES: ProcessStage[] = PROCESS_STAGES.filter((stage) => stage !== "First Contact");
+
+export const PROCESS_LABELS: Record<ProcessStage, string> = {
+  "First Contact": "First Contact",
+  "Phone Screen": "Phone Screening",
+  "HR Interview": "HR Interview",
+  "Line Interview": "Line Interview",
+  Test: "Test",
+  "Reference Check": "Reference Check",
+  Offer: "Offer",
+  Rejected: "Rejected",
+  Withdrawn: "Withdrawn"
+};
 
 export const REQUISITION_STATUSES: RequisitionStatus[] = ["ongoing", "filled", "cancel"];
 
@@ -64,4 +78,9 @@ export function canSeeAllSites(role?: Role | null) {
 export function processIndex(stage: ProcessStage | "No activity" | null | undefined) {
   const index = PROCESS_STAGES.indexOf(stage as ProcessStage);
   return index === -1 ? -1 : index;
+}
+
+export function processLabel(stage: ProcessStage | "No activity" | null | undefined) {
+  if (!stage || stage === "No activity") return "No activity";
+  return PROCESS_LABELS[stage] ?? stage;
 }

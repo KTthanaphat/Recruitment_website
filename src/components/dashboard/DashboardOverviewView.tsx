@@ -1,0 +1,368 @@
+"use client";
+
+import { BriefcaseBusiness, HandCoins, UsersRound, Workflow } from "lucide-react";
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Field, SelectInput } from "@/components/ui/Field";
+import { Panel, SectionTitle } from "@/components/ui/Panel";
+import { StatCard } from "@/components/ui/StatCard";
+import { Tag } from "@/components/ui/Tag";
+import { ACTIVE_PIPELINE_STAGES, processLabel } from "@/lib/constants";
+import { formatDateTime, statusTone, toTitle } from "@/lib/format";
+import { translate } from "@/lib/i18n/dictionary";
+import type { ChangeLog, EnrichedCandidate, EnrichedRequisition, Language, Profile, VacancyWeeklySnapshot } from "@/types/recruitment";
+
+const siteOrder = ["HQ", "KT1", "KT2"];
+const categoryOrder = ["Week Start", "Open", "Filled", "Total"];
+
+export function DashboardOverviewView({
+  language,
+  profile,
+  requisitions,
+  candidates,
+  vacancySnapshots,
+  changeLogs,
+  onOpenRequisition,
+  onOpenCandidate
+}: {
+  language: Language;
+  profile: Profile | null;
+  requisitions: EnrichedRequisition[];
+  candidates: EnrichedCandidate[];
+  vacancySnapshots: VacancyWeeklySnapshot[];
+  changeLogs: ChangeLog[];
+  onOpenRequisition: (docId: string) => void;
+  onOpenCandidate: (candidateId: string) => void;
+}) {
+  const weeks = useMemo(() => uniqueValues(vacancySnapshots.map((row) => row.week_start)).sort().reverse(), [vacancySnapshots]);
+  const [selectedWeek, setSelectedWeek] = useState("");
+
+  useEffect(() => {
+    if (!selectedWeek && weeks[0]) setSelectedWeek(weeks[0]);
+  }, [selectedWeek, weeks]);
+
+  const activeRequisitions = requisitions.filter((row) => row.status === "ongoing");
+  const acceptedOffers = requisitions.reduce((sum, row) => sum + row.accepted_count, 0);
+  const openHeadcount = requisitions.reduce((sum, row) => sum + row.open_headcount, 0);
+  const ownerName = profile?.nickname ?? profile?.full_name ?? "";
+  const responsibleUnfilled = activeRequisitions.filter((row) => row.open_headcount > 0 && row.person_in_charge === ownerName);
+  const ongoingCandidates = candidates.filter(
+    (row) => row.latest_process !== "No activity"
+      && ACTIVE_PIPELINE_STAGES.includes(row.latest_process)
+      && row.latest_result !== 0
+      && !row.accepted_date
+  );
+  const needsAction = activeRequisitions
+    .filter((row) => row.open_headcount > 0)
+    .sort((a, b) => b.open_headcount - a.open_headcount)
+    .slice(0, 6);
+  const pipelinePreview = ongoingCandidates.slice(0, 8);
+  const selectedSnapshots = vacancySnapshots.filter((row) => row.week_start === selectedWeek);
+
+  return (
+    <div className="grid gap-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+        <StatCard label={translate(language, "activeRequisitions")} value={activeRequisitions.length} icon={<BriefcaseBusiness size={22} />} />
+        <StatCard label="Responsible Unfilled" value={responsibleUnfilled.length} icon={<BriefcaseBusiness size={22} />} />
+        <StatCard label="Ongoing Candidates" value={ongoingCandidates.length} icon={<UsersRound size={22} />} />
+        <StatCard label={translate(language, "candidateCount")} value={candidates.length} icon={<UsersRound size={22} />} />
+        <StatCard label={translate(language, "acceptedOffers")} value={acceptedOffers} icon={<HandCoins size={22} />} />
+        <StatCard label={translate(language, "openHeadcount")} value={openHeadcount} icon={<Workflow size={22} />} />
+      </div>
+
+      <Panel>
+        <SectionTitle
+          title="Weekly Vacancy Waterfall"
+          action={
+            <Field label="Week">
+              <SelectInput value={selectedWeek} onChange={(event) => setSelectedWeek(event.target.value)}>
+                {weeks.length === 0 ? <option value="">No snapshots</option> : null}
+                {weeks.map((week) => <option key={week} value={week}>{week}</option>)}
+              </SelectInput>
+            </Field>
+          }
+        />
+        {selectedSnapshots.length === 0 ? (
+          <EmptyState message="No vacancy snapshot rows for the selected week." />
+        ) : (
+          <VacancyWaterfallChart rows={selectedSnapshots} />
+        )}
+      </Panel>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <Panel>
+          <SectionTitle
+            title={translate(language, "needsAction")}
+            action={<Link className="text-sm font-bold text-primary" href="/requisitions">{translate(language, "openList")}</Link>}
+          />
+          <div className="grid gap-2">
+            {needsAction.length === 0 ? (
+              <EmptyState message="No open headcount needs action." />
+            ) : (
+              needsAction.map((row) => (
+                <button
+                  key={row.doc_id}
+                  type="button"
+                  className="grid gap-1 rounded-md border border-[#D7DEE8] bg-white p-3 text-left transition hover:bg-[#EEF4FF]"
+                  onClick={() => onOpenRequisition(row.doc_id)}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <strong className="text-navy">{row.doc_id} - {row.position}</strong>
+                    <Tag tone="warning">{row.open_headcount} open</Tag>
+                  </div>
+                  <p className="text-sm font-bold text-slate">{row.department} - {row.site} - {row.person_in_charge ?? "Unassigned"}</p>
+                </button>
+              ))
+            )}
+          </div>
+        </Panel>
+
+        <Panel>
+          <SectionTitle
+            title={translate(language, "recentActivity")}
+            action={<Link className="text-sm font-bold text-primary" href="/audit">{translate(language, "audit")}</Link>}
+          />
+          <div className="grid gap-2">
+            {changeLogs.length === 0 ? (
+              <EmptyState message="No recent activity." />
+            ) : (
+              changeLogs.slice(0, 6).map((log) => (
+                <div key={log.log_id} className="rounded-md border border-[#D7DEE8] bg-lightgray/50 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <strong className="text-sm text-navy">{toTitle(log.entity)} - {log.entity_id}</strong>
+                    <Tag tone={statusTone(log.action) as never}>{log.action}</Tag>
+                  </div>
+                  <p className="mt-1 text-sm font-bold text-slate">{log.changed_by_email ?? "System"} - {formatDateTime(log.changed_at)}</p>
+                </div>
+              ))
+            )}
+          </div>
+        </Panel>
+      </div>
+
+      <Panel>
+        <SectionTitle
+          title={translate(language, "candidatePipeline")}
+          action={<Link className="text-sm font-bold text-primary" href="/pipeline">{translate(language, "fullPipeline")}</Link>}
+        />
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {pipelinePreview.length === 0 ? (
+            <div className="md:col-span-2 xl:col-span-4">
+              <EmptyState message="No active candidates in pipeline." />
+            </div>
+          ) : (
+            pipelinePreview.map((candidate) => (
+              <button
+                type="button"
+                key={candidate.candidate_id}
+                className="rounded-md border border-[#D7DEE8] bg-white p-3 text-left transition hover:-translate-y-0.5 hover:shadow-panel"
+                onClick={() => onOpenCandidate(candidate.candidate_id)}
+              >
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <strong className="text-navy">{candidate.name}</strong>
+                  <Tag tone="teal">{processLabel(candidate.latest_process)}</Tag>
+                </div>
+                <p className="text-sm font-bold text-slate">{candidate.candidate_id} - {candidate.group_position ?? "-"}</p>
+                <p className="text-sm font-bold text-slate">{candidate.site ?? "-"} - {candidate.person_in_charge ?? "Unassigned"}</p>
+              </button>
+            ))
+          )}
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+function VacancyWaterfallChart({ rows }: { rows: VacancyWeeklySnapshot[] }) {
+  const chart = buildWaterfall(rows);
+  const width = Math.max(chart.categories.length * 96, 720);
+  const height = 340;
+  const topPad = 32;
+  const bottomPad = 64;
+  const leftPad = 42;
+  const rightPad = 64;
+  const plotHeight = height - topPad - bottomPad;
+  const yMin = chart.yMin;
+  const yMax = chart.yMax;
+  const yScale = (value: number) => topPad + ((yMax - value) / Math.max(yMax - yMin, 1)) * plotHeight;
+  const step = (width - leftPad - rightPad) / Math.max(chart.categories.length, 1);
+  const barWidth = Math.min(54, step * 0.62);
+  const zeroY = yScale(0);
+
+  return (
+    <div className="overflow-x-auto">
+      <svg viewBox={`0 0 ${width} ${height}`} className="min-w-[720px]">
+        <line x1={leftPad} x2={width - rightPad} y1={zeroY} y2={zeroY} stroke="#475569" strokeWidth={1} />
+        {[0, 0.25, 0.5, 0.75, 1].map((tick) => {
+          const y = topPad + tick * plotHeight;
+          return <line key={tick} x1={leftPad} x2={width - rightPad} y1={y} y2={y} stroke="#D7DEE8" strokeDasharray="4 4" />;
+        })}
+        {chart.connectors.map((connector) => (
+          <line
+            key={`${connector.from}-${connector.to}`}
+            x1={categoryX(connector.from, step, leftPad) + barWidth / 2}
+            x2={categoryX(connector.to, step, leftPad) - barWidth / 2}
+            y1={yScale(connector.value)}
+            y2={yScale(connector.value)}
+            stroke="#94A3B8"
+            strokeDasharray="5 4"
+          />
+        ))}
+        {chart.bars.map((bar) => {
+          const x = categoryX(bar.categoryIndex, step, leftPad) - barWidth / 2;
+          return (
+            <g key={bar.key}>
+              {bar.segments.map((segment) => {
+                const yA = yScale(segment.bottom);
+                const yB = yScale(segment.top);
+                const y = Math.min(yA, yB);
+                const rectHeight = Math.max(Math.abs(yB - yA), 1);
+                return (
+                  <rect
+                    key={segment.key}
+                    x={x}
+                    y={y}
+                    width={barWidth}
+                    height={rectHeight}
+                    fill={segment.color}
+                    rx={3}
+                  />
+                );
+              })}
+              <text x={x + barWidth / 2} y={yScale(bar.labelAnchor) - 8} textAnchor="middle" className="fill-navy text-[12px] font-bold">
+                {formatChartValue(bar.total)}
+              </text>
+            </g>
+          );
+        })}
+        {chart.categories.map((category, index) => (
+          <text key={category} x={categoryX(index, step, leftPad)} y={height - 28} textAnchor="middle" className="fill-slate text-[11px] font-bold">
+            {category}
+          </text>
+        ))}
+        <g transform={`translate(${width - rightPad + 8}, ${topPad})`}>
+          {chart.legend.map((item, index) => (
+            <g key={item.label} transform={`translate(0, ${index * 18})`}>
+              <rect width={10} height={10} fill={item.color} rx={2} />
+              <text x={14} y={9} className="fill-slate text-[10px] font-bold">{item.label}</text>
+            </g>
+          ))}
+        </g>
+      </svg>
+    </div>
+  );
+}
+
+function buildWaterfall(rows: VacancyWeeklySnapshot[]) {
+  const sites = uniqueValues([...siteOrder, ...rows.map((row) => row.site)]).filter((site) => rows.some((row) => row.site === site));
+  const categories: string[] = [];
+  if (rows.some((row) => row.waterfall_category === "Week Start")) categories.push("Week Start");
+  for (const site of sites) if (rows.some((row) => row.waterfall_category === "Open" && row.site === site)) categories.push(`Open ${site}`);
+  for (const site of sites) if (rows.some((row) => row.waterfall_category === "Filled" && row.site === site)) categories.push(`Filled ${site}`);
+  if (rows.some((row) => row.waterfall_category === "Total")) categories.push("Total");
+  for (const category of categoryOrder) {
+    if (!categories.includes(category) && rows.some((row) => row.waterfall_category === category)) categories.push(category);
+  }
+
+  const categoryRows = categories.map((category) => rowsForCategory(rows, category));
+  const totals = categoryRows.map((items) => items.reduce((sum, row) => sum + row.vacancy_count, 0));
+  const bars = [];
+  const connectors = [];
+  let running = 0;
+  let yMin = 0;
+  let yMax = 1;
+
+  for (let index = 0; index < categories.length; index += 1) {
+    const category = categories[index];
+    const isTotal = category === "Total";
+    const base = isTotal ? 0 : running;
+    const segments = [];
+    let positiveBottom = base;
+    let negativeBottom = base;
+    let top = base;
+    let bottom = base;
+
+    for (const row of sortSnapshotRows(categoryRows[index])) {
+      if (row.vacancy_count === 0) continue;
+      const segmentBottom = row.vacancy_count > 0 ? positiveBottom : negativeBottom;
+      const segmentTop = segmentBottom + row.vacancy_count;
+      if (row.vacancy_count > 0) positiveBottom = segmentTop;
+      else negativeBottom = segmentTop;
+      top = Math.max(top, segmentTop);
+      bottom = Math.min(bottom, segmentTop);
+      segments.push({
+        key: `${category}-${row.site}-${row.request_type}`,
+        bottom: segmentBottom,
+        top: segmentTop,
+        color: snapshotColor(row.site, row.request_type)
+      });
+    }
+
+    if (!isTotal) {
+      running += totals[index];
+      if (index < categories.length - 1) connectors.push({ from: index, to: index + 1, value: running });
+    }
+
+    yMin = Math.min(yMin, bottom);
+    yMax = Math.max(yMax, top);
+    bars.push({
+      key: category,
+      categoryIndex: index,
+      segments,
+      total: totals[index],
+      labelAnchor: top
+    });
+  }
+
+  const pad = Math.max(Math.abs(yMax - yMin) * 0.15, 4);
+  return {
+    categories,
+    bars,
+    connectors,
+    yMin: yMin - pad,
+    yMax: yMax + pad,
+    legend: sites.flatMap((site) => [
+      { label: `${site} Rep`, color: snapshotColor(site, "Replacement") },
+      { label: `${site} New`, color: snapshotColor(site, "New") }
+    ])
+  };
+}
+
+function rowsForCategory(rows: VacancyWeeklySnapshot[], category: string) {
+  if (category.startsWith("Open ")) return rows.filter((row) => row.waterfall_category === "Open" && row.site === category.replace("Open ", ""));
+  if (category.startsWith("Filled ")) return rows.filter((row) => row.waterfall_category === "Filled" && row.site === category.replace("Filled ", ""));
+  return rows.filter((row) => row.waterfall_category === category);
+}
+
+function sortSnapshotRows(rows: VacancyWeeklySnapshot[]) {
+  return [...rows].sort((a, b) => {
+    const siteDelta = siteRank(a.site) - siteRank(b.site);
+    if (siteDelta !== 0) return siteDelta;
+    return a.request_type === b.request_type ? 0 : a.request_type === "Replacement" ? -1 : 1;
+  });
+}
+
+function siteRank(site: string) {
+  const index = siteOrder.indexOf(site);
+  return index === -1 ? siteOrder.length : index;
+}
+
+function snapshotColor(site: string, requestType: string) {
+  const rep: Record<string, string> = { HQ: "#0AA0C3", KT1: "#146EFA", KT2: "#411EDC" };
+  const fresh: Record<string, string> = { HQ: "#90F5EC", KT1: "#80BDFF", KT2: "#C7BCF5" };
+  if (requestType === "New") return fresh[site] ?? "#D7DEE8";
+  return rep[site] ?? "#475569";
+}
+
+function categoryX(index: number, step: number, leftPad: number) {
+  return leftPad + step * index + step / 2;
+}
+
+function formatChartValue(value: number) {
+  return value < 0 ? `( ${Math.abs(value).toLocaleString()} )` : value.toLocaleString();
+}
+
+function uniqueValues(values: string[]) {
+  return Array.from(new Set(values.filter(Boolean)));
+}

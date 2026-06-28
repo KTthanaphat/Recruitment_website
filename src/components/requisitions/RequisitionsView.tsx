@@ -38,7 +38,21 @@ export function RequisitionsView({
       {rows.length === 0 ? (
         <EmptyState message={translate(language, "noData")} />
       ) : (
-        <div className="table-scroll">
+        <>
+        <div className="grid gap-3 md:hidden">
+          {rows.map((row) => (
+            <button key={row.doc_id} type="button" className="rounded-md border border-[#D7DEE8] bg-white p-3 text-left" onClick={() => onOpen(row.doc_id)}>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <strong className="text-primary">{row.doc_id}</strong>
+                <Tag tone={statusTone(row.status) as never}>{row.status}</Tag>
+              </div>
+              <p className="font-bold text-navy">{row.position}</p>
+              <p className="text-sm font-bold text-slate">{row.department} - {row.site}</p>
+              <p className="text-sm font-bold text-slate">{row.person_in_charge ?? "-"} - {row.open_headcount} open - {row.candidate_count} candidates</p>
+            </button>
+          ))}
+        </div>
+        <div className="table-scroll hidden md:block">
           <table className="w-full border-collapse text-left text-sm">
             <thead className="bg-lightgray text-xs uppercase text-slate">
               <tr>
@@ -74,6 +88,7 @@ export function RequisitionsView({
             </tbody>
           </table>
         </div>
+        </>
       )}
     </Panel>
   );

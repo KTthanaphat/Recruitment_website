@@ -4,19 +4,19 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { AuditView } from "@/components/audit/AuditView";
 import { CandidatesView } from "@/components/candidates/CandidatesView";
-import { DashboardView } from "@/components/dashboard/DashboardView";
+import { DashboardOverviewView } from "@/components/dashboard/DashboardOverviewView";
 import { AppShell } from "@/components/layout/AppShell";
 import { OffersView } from "@/components/offers/OffersView";
-import { PipelineView } from "@/components/pipeline/PipelineView";
+import { PipelineBoardView } from "@/components/pipeline/PipelineBoardView";
 import { RequisitionsView } from "@/components/requisitions/RequisitionsView";
-import { SetupView } from "@/components/setup/SetupView";
+import { SourcingView } from "@/components/sourcing/SourcingView";
 import { Button } from "@/components/ui/Button";
 import { Drawer } from "@/components/ui/Drawer";
 import { Field, SelectInput, TextArea, TextInput } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { Panel } from "@/components/ui/Panel";
 import { Tag } from "@/components/ui/Tag";
-import { canManageSetup as canManageSetupRole, canManageUsers as canManageUsersRole, canWrite as canWriteRole, PROCESS_STAGES, ROLE_LABELS, ROLES, WRITABLE_REQUISITION_STATUSES } from "@/lib/constants";
+import { canManageSetup as canManageSetupRole, canManageUsers as canManageUsersRole, canWrite as canWriteRole, PROCESS_UPDATE_STAGES, processLabel, ROLE_LABELS, ROLES, WRITABLE_REQUISITION_STATUSES } from "@/lib/constants";
 import {
   emptyDashboardData,
   enrichCandidates,
@@ -49,6 +49,7 @@ type ModalName =
   | "offer"
   | "group"
   | "match"
+  | "snapshot"
   | "user"
   | null;
 
@@ -67,7 +68,8 @@ const rpcByModal: Record<Exclude<ModalName, null | "user">, string> = {
   process: "app_insert_recruitment_log",
   offer: "app_upsert_offer",
   group: "app_upsert_position_group",
-  match: "app_create_group_match"
+  match: "app_create_group_match",
+  snapshot: "app_upsert_vacancy_weekly_snapshot"
 };
 
 export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
@@ -78,6 +80,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const [status, setStatus] = useState("Loading recruitment records...");
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState({ site: "", owner: "" });
+  const [sourcingWeek, setSourcingWeek] = useState(currentWeekStart());
   const [activeModal, setActiveModal] = useState<ModalName>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [processDefaults, setProcessDefaults] = useState<Partial<Record<string, string>>>({});
@@ -129,6 +132,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const canWrite = canWriteRole(role);
   const canManageSetup = canManageSetupRole(role);
   const canManageUsers = canManageUsersRole(role);
+  const canManageSnapshots = role === "system_admin" || role === "admin_recruiter";
 
   const enrichedRequisitions = useMemo(() => enrichRequisitions(data), [data]);
   const enrichedCandidates = useMemo(() => enrichCandidates(data), [data]);
@@ -167,6 +171,16 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       endpoint: modal === "user" ? "/api/admin/users" : rpcByModal[modal],
       payload,
       route: modal === "user" ? "api" : "rpc"
+    });
+  }
+
+  function prepareRpcAction(endpoint: string, payload: Record<string, unknown>, summary: string) {
+    setPendingAction({
+      title: "Confirm Save",
+      summary,
+      endpoint,
+      payload,
+      route: "rpc"
     });
   }
 
@@ -244,7 +258,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       <p className={`mb-4 min-h-6 text-sm font-bold ${error ? "text-orange" : "text-slate"}`}>{loading ? "Loading recruitment records..." : error ?? status}</p>
 
       {initialView === "dashboard" ? (
-        <DashboardView language={language} requisitions={filteredRequisitions} candidates={filteredCandidates} changeLogs={data.change_logs} onOpenRequisition={(id) => setDetail({ type: "requisition", id })} onOpenCandidate={(id) => setDetail({ type: "candidate", id })} />
+        <DashboardOverviewView language={language} profile={data.profile} requisitions={filteredRequisitions} candidates={filteredCandidates} vacancySnapshots={data.vacancy_weekly_snapshots} changeLogs={data.change_logs} onOpenRequisition={(id) => setDetail({ type: "requisition", id })} onOpenCandidate={(id) => setDetail({ type: "candidate", id })} />
       ) : null}
 
       {initialView === "requisitions" ? (
@@ -256,13 +270,28 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       ) : null}
 
       {initialView === "pipeline" ? (
-        <PipelineView language={language} rows={filteredCandidates} canWrite={canWrite} onAddUpdate={() => setActiveModal("process")} onOpen={(id) => setDetail({ type: "candidate", id })} onMove={openProcessForMove} />
+        <PipelineBoardView language={language} rows={filteredCandidates} canWrite={canWrite} onNewCandidate={() => setActiveModal("candidate")} onAddUpdate={() => setActiveModal("process")} onOpen={(id) => setDetail({ type: "candidate", id })} onMove={openProcessForMove} />
       ) : null}
 
       {initialView === "offers" ? <OffersView language={language} rows={filteredOffers} canWrite={canWrite} onNew={() => setActiveModal("offer")} /> : null}
 
-      {initialView === "setup" ? (
-        <SetupView language={language} data={data} canManageSetup={canManageSetup} canManageUsers={canManageUsers} onGroup={() => setActiveModal("group")} onMatch={() => setActiveModal("match")} onInvite={() => setActiveModal("user")} />
+      {initialView === "sourcing" ? (
+        <SourcingView
+          language={language}
+          data={data}
+          profile={data.profile}
+          canWrite={canWrite}
+          canManageSetup={canManageSetup}
+          canManageUsers={canManageUsers}
+          canManageSnapshots={canManageSnapshots}
+          weekStart={sourcingWeek}
+          onWeekChange={setSourcingWeek}
+          onSaveSourcing={(payload, summary) => prepareRpcAction("app_upsert_sourcing_weekly_update", payload, summary)}
+          onGroup={() => setActiveModal("group")}
+          onMatch={() => setActiveModal("match")}
+          onInvite={() => setActiveModal("user")}
+          onSnapshot={() => setActiveModal("snapshot")}
+        />
       ) : null}
 
       {initialView === "audit" ? <AuditView language={language} rows={data.change_logs} /> : null}
@@ -399,6 +428,18 @@ function buildPayload(modal: Exclude<ModalName, null>, formData: FormData) {
     return payload;
   }
 
+  if (modal === "snapshot") {
+    const payload = {
+      week_start: emptyToNull(formData.get("week_start")),
+      waterfall_category: emptyToNull(formData.get("waterfall_category")),
+      site: emptyToNull(formData.get("site")),
+      request_type: emptyToNull(formData.get("request_type")),
+      vacancy_count: asNumber(formData.get("vacancy_count"), 0)
+    };
+    requireFields(payload, ["week_start", "waterfall_category", "site", "request_type"]);
+    return payload;
+  }
+
   const payload = {
     mode: String(formData.get("mode") ?? "new"),
     user_id: emptyToNull(formData.get("user_id")),
@@ -459,6 +500,7 @@ function RecordModal({
         {modal === "offer" ? <OfferFields data={data} /> : null}
         {modal === "group" ? <GroupFields data={data} /> : null}
         {modal === "match" ? <MatchFields data={data} /> : null}
+        {modal === "snapshot" ? <SnapshotFields data={data} /> : null}
         {modal === "user" ? <UserFields canManageUsers={canManageUsers} data={data} /> : null}
         <div className="flex justify-end gap-2 border-t border-[#D7DEE8] pt-4">
           <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
@@ -535,7 +577,7 @@ function ProcessFields({ data, defaults }: { data: DashboardData; defaults: Part
       <input type="hidden" name="source" value={defaults.source ?? "manual"} />
       <Field label="Candidate"><SelectInput name="candidate_id" required defaultValue={defaults.candidate_id}>{data.candidates.map((row) => <option key={row.candidate_id} value={row.candidate_id}>{row.candidate_id} · {row.name}</option>)}</SelectInput></Field>
       <Field label="Date"><TextInput name="log_date" type="date" defaultValue={today()} required /></Field>
-      <Field label="Process"><SelectInput name="recruitment_process" required defaultValue={defaults.recruitment_process}>{PROCESS_STAGES.map((stage) => <option key={stage}>{stage}</option>)}</SelectInput></Field>
+      <Field label="Process"><SelectInput name="recruitment_process" required defaultValue={defaults.recruitment_process}>{PROCESS_UPDATE_STAGES.map((stage) => <option key={stage} value={stage}>{processLabel(stage)}</option>)}</SelectInput></Field>
       <Field label="Round"><TextInput name="round" type="number" min={1} defaultValue={1} required /></Field>
       <Field label="Interviewer"><TextInput name="interviewer" list="interviewer-options" /></Field>
       <Field label="Result"><SelectInput name="result"><option value="">Pending</option><option value="1">Pass</option><option value="0">Fail</option></SelectInput></Field>
@@ -581,6 +623,28 @@ function MatchFields({ data }: { data: DashboardData }) {
     <div className="grid gap-4 md:grid-cols-2">
       <Field label="Doc ID"><SelectInput name="doc_id" required>{data.requisitions.map((row) => <option key={row.doc_id} value={row.doc_id}>{row.doc_id}</option>)}</SelectInput></Field>
       <Field label="Group ID"><SelectInput name="group_id" required>{data.position_groups.map((row) => <option key={row.group_id} value={row.group_id}>{row.group_id} · {row.group_position}</option>)}</SelectInput></Field>
+    </div>
+  );
+}
+
+function SnapshotFields({ data }: { data: DashboardData }) {
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      <Field label="Week Start"><TextInput name="week_start" type="date" defaultValue={currentWeekStart()} required /></Field>
+      <Field label="Category">
+        <SelectInput name="waterfall_category">
+          {["Week Start", "Open", "Filled", "Total"].map((category) => <option key={category} value={category}>{category}</option>)}
+        </SelectInput>
+      </Field>
+      <Field label="Site"><TextInput name="site" list="site-options-form" required /></Field>
+      <Field label="Request Type">
+        <SelectInput name="request_type">
+          <option value="New">New</option>
+          <option value="Replacement">Replacement</option>
+        </SelectInput>
+      </Field>
+      <Field label="Vacancy Count"><TextInput name="vacancy_count" type="number" defaultValue={0} /></Field>
+      <DataLists data={data} />
     </div>
   );
 }
@@ -712,7 +776,7 @@ function buildDetailBody(detail: { type: "requisition" | "candidate"; id: string
             {logs.length === 0 ? <p className="text-sm font-bold text-slate">No process logs yet.</p> : logs.map((log) => (
               <div key={log.log_id} className="rounded-md border border-[#D7DEE8] p-3">
                 <div className="flex items-center justify-between gap-2">
-                  <strong className="text-navy">{log.recruitment_process}</strong>
+                  <strong className="text-navy">{processLabel(log.recruitment_process)}</strong>
                   <Tag tone={statusTone(resultText(log.result).toLowerCase())}>{resultText(log.result)}</Tag>
                 </div>
                 <p className="mt-1 text-sm font-bold text-slate">{formatDate(log.log_date)} · Round {log.round} · {log.interviewer ?? "No interviewer"}</p>
@@ -764,6 +828,7 @@ function modalTitle(modal: ModalName) {
     offer: "Offer",
     group: "Position Group",
     match: "Match Requisition and Group",
+    snapshot: "Vacancy Snapshot",
     user: "Manage User"
   };
   return modal ? titles[modal] : "";
@@ -771,4 +836,12 @@ function modalTitle(modal: ModalName) {
 
 function today() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function currentWeekStart() {
+  const date = new Date();
+  const day = date.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  date.setDate(date.getDate() + diff);
+  return date.toISOString().slice(0, 10);
 }

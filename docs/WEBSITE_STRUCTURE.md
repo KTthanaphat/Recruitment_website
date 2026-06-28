@@ -35,6 +35,7 @@ recruitment_website/
       candidates/
       pipeline/
       offers/
+      sourcing/
       setup/
       audit/
       api/admin/users/
@@ -45,6 +46,7 @@ recruitment_website/
       candidates/
       pipeline/
       offers/
+      sourcing/
       setup/
       audit/
       ui/
@@ -65,12 +67,13 @@ recruitment_website/
 ## Main Experience
 
 - `/login`: Supabase email/password app account login.
-- `/dashboard`: first screen after login, with KPI metrics, needs-action queue, recent activity, and pipeline preview.
+- `/dashboard`: first screen after login, with KPI metrics, responsible-work metrics, weekly vacancy waterfall, needs-action queue, recent activity, and pipeline preview.
 - `/requisitions`: requisition list, headcount progress, create/change, status log, and detail drawer.
 - `/candidates`: candidate list, create/change, latest process/result, and candidate detail drawer.
-- `/pipeline`: drag/drop candidate board. Drag/drop saves only after a full process update confirmation.
+- `/pipeline`: horizontal candidate board from Phone Screening onward. New candidates receive a pending Phone Screening log, and pass updates append the next pending stage.
 - `/offers`: accepted/start dates, offer type, replacement, and automatic requisition fill logic.
-- `/setup`: position groups, requisition-group matching, and system-admin user creation.
+- `/sourcing`: weekly applicant/channel updates per active `group_id`, plus admin tools for groups, requisition matches, users, and vacancy snapshots.
+- `/setup`: compatibility redirect to `/sourcing`.
 - `/audit`: audit trigger history with old/new JSON values.
 
 ## Data Model
@@ -85,6 +88,8 @@ Supabase tables:
 - `candidates`
 - `recruitment_logs`
 - `offers`
+- `sourcing_weekly_updates`
+- `vacancy_weekly_snapshots`
 - `change_logs`
 
 Protected RPC functions handle all recruitment writes:
@@ -93,6 +98,8 @@ Protected RPC functions handle all recruitment writes:
 - `app_insert_requisition_log`
 - `app_upsert_position_group`
 - `app_create_group_match`
+- `app_upsert_sourcing_weekly_update`
+- `app_upsert_vacancy_weekly_snapshot`
 - `app_upsert_candidate`
 - `app_insert_recruitment_log`
 - `app_upsert_offer`

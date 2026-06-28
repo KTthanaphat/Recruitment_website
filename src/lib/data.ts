@@ -7,12 +7,15 @@ import type {
   EnrichedCandidate,
   EnrichedOffer,
   EnrichedRequisition,
+  EnrichedSourcingGroup,
   Offer,
   PositionGroup,
   Profile,
   RecruitmentLog,
   Requisition,
-  RequisitionLog
+  RequisitionLog,
+  SourcingWeeklyUpdate,
+  VacancyWeeklySnapshot
 } from "@/types/recruitment";
 
 export const emptyDashboardData: DashboardData = {
@@ -25,6 +28,8 @@ export const emptyDashboardData: DashboardData = {
   candidates: [],
   recruitment_logs: [],
   offers: [],
+  sourcing_weekly_updates: [],
+  vacancy_weekly_snapshots: [],
   change_logs: []
 };
 
@@ -65,6 +70,8 @@ export async function loadDashboardData(client: SupabaseLike): Promise<Dashboard
     candidates,
     recruitmentLogs,
     offers,
+    sourcingWeeklyUpdates,
+    vacancyWeeklySnapshots,
     changeLogs
   ] = await Promise.all([
     client.auth.getUser(),
@@ -76,6 +83,8 @@ export async function loadDashboardData(client: SupabaseLike): Promise<Dashboard
     selectAll<Candidate>(client, "candidates", "updated_at"),
     selectLimited<RecruitmentLog>(client, "recruitment_logs", "created_at", 250),
     selectAll<Offer>(client, "offers", "updated_at"),
+    selectAll<SourcingWeeklyUpdate>(client, "sourcing_weekly_updates", "updated_at"),
+    selectAll<VacancyWeeklySnapshot>(client, "vacancy_weekly_snapshots", "updated_at"),
     selectLimited<ChangeLog>(client, "change_logs", "changed_at", 100)
   ]);
 
@@ -94,6 +103,8 @@ export async function loadDashboardData(client: SupabaseLike): Promise<Dashboard
     candidates,
     recruitment_logs: recruitmentLogs,
     offers,
+    sourcing_weekly_updates: sourcingWeeklyUpdates,
+    vacancy_weekly_snapshots: vacancyWeeklySnapshots,
     change_logs: changeLogs
   };
 }
@@ -134,6 +145,7 @@ export function enrichCandidates(data: DashboardData): EnrichedCandidate[] {
       person_in_charge: requisition?.person_in_charge ?? null,
       latest_process: latest?.recruitment_process ?? "No activity",
       latest_result: latest?.result ?? null,
+      latest_log_date: latest?.log_date ?? null,
       accepted_date: acceptedOffer?.accepted_date ?? null
     };
   });
@@ -165,6 +177,53 @@ export function pipelineBoard(candidates: EnrichedCandidate[]) {
     stage,
     rows: candidates.filter((candidate) => candidate.latest_process === stage)
   }));
+}
+
+export function enrichSourcingGroups(data: DashboardData, weekStart: string): EnrichedSourcingGroup[] {
+  const requisitions = enrichRequisitions(data);
+  const candidates = enrichCandidates(data);
+  const groupsById = new Map<string, DocumentGroup[]>();
+
+  for (const match of data.document_groups) {
+    if (!match.group_id) continue;
+    groupsById.set(match.group_id, [...(groupsById.get(match.group_id) ?? []), match]);
+  }
+
+  return Array.from(groupsById.entries())
+    .map(([groupId, matches]) => {
+      const matchedRequisitions = matches
+        .map((match) => requisitions.find((row) => row.doc_id === match.doc_id))
+        .filter((row): row is EnrichedRequisition => Boolean(row))
+        .filter((row) => row.status === "ongoing" && row.open_headcount > 0);
+
+      if (matchedRequisitions.length === 0) return null;
+
+      const positionGroup = data.position_groups.find((group) => group.group_id === groupId);
+      const groupCandidateCount = candidates.filter((candidate) => {
+        const match = data.document_groups.find((row) => row.doc_group_id === candidate.doc_group_id);
+        return match?.group_id === groupId;
+      }).length;
+      const latestUpdate = data.sourcing_weekly_updates.find(
+        (update) => update.group_id === groupId && update.week_start === weekStart
+      ) ?? null;
+
+      return {
+        group_id: groupId,
+        group_position: positionGroup?.group_position ?? matches[0]?.group_position ?? groupId,
+        sites: uniqueValues(matchedRequisitions.map((row) => row.site)),
+        owners: uniqueValues(matchedRequisitions.map((row) => row.person_in_charge)),
+        doc_ids: uniqueValues(matchedRequisitions.map((row) => row.doc_id)),
+        open_headcount: matchedRequisitions.reduce((sum, row) => sum + row.open_headcount, 0),
+        candidate_count: groupCandidateCount,
+        channel_fb: latestUpdate?.channel_fb ?? positionGroup?.channel_fb ?? false,
+        channel_jobthai: latestUpdate?.channel_jobthai ?? positionGroup?.channel_jobthai ?? false,
+        channel_jobtopgun: latestUpdate?.channel_jobtopgun ?? positionGroup?.channel_jobtopgun ?? false,
+        channel_jobdb: latestUpdate?.channel_jobdb ?? positionGroup?.channel_jobdb ?? false,
+        latest_update: latestUpdate
+      };
+    })
+    .filter((group): group is EnrichedSourcingGroup => Boolean(group))
+    .sort((a, b) => a.group_position.localeCompare(b.group_position) || a.group_id.localeCompare(b.group_id));
 }
 
 export function uniqueValues(values: Array<string | null | undefined>) {

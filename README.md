@@ -73,11 +73,13 @@ where email = 'your-admin-email@example.com';
 
 Roles:
 
-- `system_admin`: manage users, setup, and all recruitment records.
+- `system_admin`: manage users, sourcing setup, and all recruitment records.
 - `admin_recruiter`: see all sites and create/edit all recruitment records.
 - `site_recruiter`: see assigned-site records and create/edit only records where their nickname is `person_in_charge`.
 - `viewer`: see all sites, read only.
 
 Do not upload real `.db`, `.xlsx`, candidate, employee, or offer files to GitHub or Vercel.
 
-System admins can create users or update existing account nickname/site/role mappings from Setup > Users and Roles > Manage User.
+System admins can create users or update existing account nickname/site/role mappings from Sourcing > Administration > Manage User.
+
+The Sourcing page stores weekly applicant counts per `group_id`. The dashboard waterfall requires weekly rows in `vacancy_weekly_snapshots`; add them from Sourcing > Administration > Vacancy Snapshot.

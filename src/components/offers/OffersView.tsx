@@ -27,7 +27,21 @@ export function OffersView({
       {rows.length === 0 ? (
         <EmptyState message={translate(language, "noData")} />
       ) : (
-        <div className="table-scroll">
+        <>
+        <div className="grid gap-3 md:hidden">
+          {rows.map((row) => (
+            <article key={row.offer_id} className="rounded-md border border-[#D7DEE8] bg-white p-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <strong className="text-navy">{row.candidate_name ?? row.candidate_id}</strong>
+                {row.accepted_date ? <Tag tone="success">{formatDate(row.accepted_date)}</Tag> : <Tag tone="muted">Pending</Tag>}
+              </div>
+              <p className="text-sm font-bold text-primary">{row.doc_id}</p>
+              <p className="text-sm font-bold text-slate">{row.position ?? "-"} - start {formatDate(row.first_working_date)}</p>
+              <p className="text-sm font-bold text-slate">{row.offered_type ?? "-"} - replaces {row.replaced ?? "-"}</p>
+            </article>
+          ))}
+        </div>
+        <div className="table-scroll hidden md:block">
           <table className="w-full border-collapse text-left text-sm">
             <thead className="bg-lightgray text-xs uppercase text-slate">
               <tr>
@@ -55,6 +69,7 @@ export function OffersView({
             </tbody>
           </table>
         </div>
+        </>
       )}
     </Panel>
   );

@@ -1,6 +1,6 @@
 # Recruitment Website Deployment Guide
 
-Last updated: 2026-06-27
+Last updated: 2026-06-28
 
 ## Target Deployment
 
@@ -44,7 +44,8 @@ set role = 'system_admin'
 where email = 'your-admin-email@example.com';
 ```
 
-7. Sign in to the app and create or update accounts from Setup > Users and Roles > Manage User. Each account should have a nickname; site recruiter accounts also need an assigned site.
+7. Sign in to the app and create or update accounts from Sourcing > Administration > Manage User. Each account should have a nickname; site recruiter accounts also need an assigned site.
+8. Use Sourcing > Administration > Vacancy Snapshot to enter weekly waterfall snapshot rows for the dashboard chart.
 
 ## Environment Variables
 
@@ -90,7 +91,11 @@ The repository ignores SQLite database files and local environment files.
 - Viewer can read all sites but cannot save.
 - Admin recruiter can read all sites and create/edit recruitment records.
 - Site recruiter can read assigned-site records and create/edit records only when their nickname is the requisition person in charge.
-- System admin can create app accounts, manage setup, and create/edit records.
+- System admin can create app accounts, manage sourcing setup, and create/edit records.
+- Sourcing weekly updates save by `group_id` and are restricted to responsible groups for site recruiters.
+- Creating a candidate creates an initial pending Phone Screening log.
+- Marking a pending active stage as Pass appends the next stage as Pending.
+- Dashboard weekly waterfall renders from `vacancy_weekly_snapshots`.
 - Accepted offers auto-fill requisitions when accepted count reaches headcount.
 - Pipeline drag/drop rejects backward moves.
 - Audit log records changes with actor, action, old data, and new data.

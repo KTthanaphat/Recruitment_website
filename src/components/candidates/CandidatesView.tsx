@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Panel, SectionTitle } from "@/components/ui/Panel";
 import { Tag } from "@/components/ui/Tag";
+import { processLabel } from "@/lib/constants";
 import { resultText, statusTone } from "@/lib/format";
 import { translate } from "@/lib/i18n/dictionary";
 import type { EnrichedCandidate, Language } from "@/types/recruitment";
@@ -38,7 +39,21 @@ export function CandidatesView({
       {rows.length === 0 ? (
         <EmptyState message={translate(language, "noData")} />
       ) : (
-        <div className="table-scroll">
+        <>
+        <div className="grid gap-3 md:hidden">
+          {rows.map((row) => (
+            <button key={row.candidate_id} type="button" className="rounded-md border border-[#D7DEE8] bg-white p-3 text-left" onClick={() => onOpen(row.candidate_id)}>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <strong className="text-navy">{row.name}</strong>
+                <Tag tone={statusTone(resultText(row.latest_result).toLowerCase()) as never}>{resultText(row.latest_result)}</Tag>
+              </div>
+              <p className="text-sm font-bold text-primary">{row.candidate_id}</p>
+              <p className="text-sm font-bold text-slate">{row.group_position ?? "-"} - {row.site ?? "-"}</p>
+              <p className="text-sm font-bold text-slate">{processLabel(row.latest_process)} - {row.person_in_charge ?? "-"}</p>
+            </button>
+          ))}
+        </div>
+        <div className="table-scroll hidden md:block">
           <table className="w-full border-collapse text-left text-sm">
             <thead className="bg-lightgray text-xs uppercase text-slate">
               <tr>
@@ -60,7 +75,7 @@ export function CandidatesView({
                   <td className="px-3 py-3 text-slate">{row.group_position ?? "-"}</td>
                   <td className="px-3 py-3 text-slate">{row.site ?? "-"}</td>
                   <td className="px-3 py-3 text-slate">{row.person_in_charge ?? "-"}</td>
-                  <td className="px-3 py-3"><Tag tone={row.latest_process === "No activity" ? "muted" : "teal"}>{row.latest_process}</Tag></td>
+                  <td className="px-3 py-3"><Tag tone={row.latest_process === "No activity" ? "muted" : "teal"}>{processLabel(row.latest_process)}</Tag></td>
                   <td className="px-3 py-3"><Tag tone={statusTone(resultText(row.latest_result).toLowerCase()) as never}>{resultText(row.latest_result)}</Tag></td>
                   <td className="px-3 py-3"><Button type="button" size="sm" variant="secondary" onClick={() => onOpen(row.candidate_id)}>{translate(language, "view")}</Button></td>
                 </tr>
@@ -68,6 +83,7 @@ export function CandidatesView({
             </tbody>
           </table>
         </div>
+        </>
       )}
     </Panel>
   );
