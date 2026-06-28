@@ -4,6 +4,8 @@ export type Role = "system_admin" | "admin_recruiter" | "site_recruiter" | "view
 
 export type RequisitionStatus = "ongoing" | "filled" | "cancel";
 
+export type RequisitionRequestType = "New" | "Replacement";
+
 export type ProcessStage =
   | "First Contact"
   | "Phone Screen"
@@ -39,6 +41,7 @@ export type Requisition = {
   head_count: number;
   person_in_charge: string | null;
   line_manager: string | null;
+  request_type: RequisitionRequestType;
   status: RequisitionStatus;
   created_at: string;
   updated_at: string;
@@ -132,7 +135,7 @@ export type SourcingWeeklyUpdate = {
 
 export type VacancyWaterfallCategory = "Week Start" | "Open" | "Filled" | "Total";
 
-export type VacancyRequestType = "New" | "Replacement";
+export type VacancyRequestType = RequisitionRequestType;
 
 export type VacancyWeeklySnapshot = {
   snapshot_id: number;
@@ -195,6 +198,7 @@ export type EnrichedOffer = Offer & {
   position: string | null;
   site: string | null;
   person_in_charge: string | null;
+  request_type: RequisitionRequestType | null;
 };
 
 export type EnrichedSourcingGroup = {

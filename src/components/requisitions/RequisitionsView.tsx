@@ -48,6 +48,7 @@ export function RequisitionsView({
               </div>
               <p className="font-bold text-navy">{row.position}</p>
               <p className="text-sm font-bold text-slate">{row.department} - {row.site}</p>
+              <p className="text-sm font-bold text-slate">Type: {row.request_type}</p>
               <p className="text-sm font-bold text-slate">{row.person_in_charge ?? "-"} - {row.open_headcount} open - {row.candidate_count} candidates</p>
             </button>
           ))}
@@ -59,6 +60,7 @@ export function RequisitionsView({
                 <th className="px-3 py-3">Doc ID</th>
                 <th className="px-3 py-3">Position</th>
                 <th className="px-3 py-3">Department</th>
+                <th className="px-3 py-3">Type</th>
                 <th className="px-3 py-3">Section</th>
                 <th className="px-3 py-3">{translate(language, "owner")}</th>
                 <th className="px-3 py-3">{translate(language, "status")}</th>
@@ -75,6 +77,7 @@ export function RequisitionsView({
                   <td className="px-3 py-3 font-extrabold text-primary">{row.doc_id}</td>
                   <td className="px-3 py-3 font-bold text-navy">{row.position}</td>
                   <td className="px-3 py-3 text-slate">{row.department}</td>
+                  <td className="px-3 py-3 text-slate">{row.request_type}</td>
                   <td className="px-3 py-3 text-slate">{row.section ?? "-"}</td>
                   <td className="px-3 py-3 text-slate">{row.person_in_charge ?? "-"}</td>
                   <td className="px-3 py-3"><Tag tone={statusTone(row.status) as never}>{row.status}</Tag></td>

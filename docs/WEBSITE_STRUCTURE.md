@@ -67,12 +67,12 @@ recruitment_website/
 ## Main Experience
 
 - `/login`: Supabase email/password app account login.
-- `/dashboard`: first screen after login, with KPI metrics, responsible-work metrics, start/end date vacancy waterfall, needs-action queue, recent activity, and pipeline preview.
-- `/requisitions`: requisition list, headcount progress, create/change, status log, and detail drawer.
+- `/dashboard`: first screen after login, with KPI metrics, responsible-work metrics, start/end date vacancy waterfall derived from requisitions/offers, needs-action queue, recent activity, and pipeline preview.
+- `/requisitions`: requisition list, new/replacement request type, headcount progress, create/change, status log, and detail drawer.
 - `/candidates`: candidate list, create/change, latest process/result, and candidate detail drawer.
 - `/pipeline`: horizontal candidate board from Phone Screening onward. New candidates receive a pending Phone Screening log, pass updates append the next pending stage, and drag/drop asks recruiters to confirm every passed stage before creating the new pending stage.
 - `/offers`: accepted/start dates, offer type, replacement, and automatic requisition fill logic.
-- `/sourcing`: weekly applicant/channel updates per active `group_id`, plus admin tools for groups, requisition matches, users, and vacancy snapshots.
+- `/sourcing`: weekly applicant/channel updates per active `group_id`, plus admin tools for groups, requisition matches, and users.
 - `/setup`: compatibility redirect to `/sourcing`.
 - `/audit`: audit trigger history with old/new JSON values.
 
@@ -92,6 +92,8 @@ Supabase tables:
 - `vacancy_weekly_snapshots`
 - `change_logs`
 
+The dashboard waterfall currently uses live requisitions and accepted offers. `vacancy_weekly_snapshots` remains available for future imported snapshot workflows, but it is no longer required for the dashboard chart.
+
 Protected RPC functions handle all recruitment writes:
 
 - `app_upsert_requisition`
@@ -99,7 +101,6 @@ Protected RPC functions handle all recruitment writes:
 - `app_upsert_position_group`
 - `app_create_group_match`
 - `app_upsert_sourcing_weekly_update`
-- `app_upsert_vacancy_weekly_snapshot`
 - `app_upsert_candidate`
 - `app_insert_recruitment_log`
 - `app_insert_pipeline_passes`

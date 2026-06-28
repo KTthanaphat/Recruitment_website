@@ -45,7 +45,7 @@ where email = 'your-admin-email@example.com';
 ```
 
 7. Sign in to the app and create or update accounts from Sourcing > Administration > Manage User. Each account should have a nickname; site recruiter accounts also need an assigned site.
-8. Use Sourcing > Administration > Vacancy Snapshot to enter weekly waterfall snapshot rows for the dashboard chart.
+8. Create requisitions with the correct request type (`New` or `Replacement`) and record accepted offers. The dashboard waterfall is calculated from those live records.
 
 ## Environment Variables
 
@@ -95,7 +95,8 @@ The repository ignores SQLite database files and local environment files.
 - Sourcing weekly updates save by `group_id` and are restricted to responsible groups for site recruiters.
 - Creating a candidate creates an initial pending Phone Screening log.
 - Marking a pending active stage as Pass appends the next stage as Pending.
-- Dashboard waterfall renders from `vacancy_weekly_snapshots` with start/end date filters.
+- Requisition form captures `New` vs `Replacement`.
+- Dashboard waterfall renders from requisitions and accepted offers with start/end date filters.
 - Accepted offers auto-fill requisitions when accepted count reaches headcount.
 - Pipeline drag/drop rejects backward moves and requires all passed stages to be confirmed before the next pending stage is created.
 - Audit log records changes with actor, action, old data, and new data.

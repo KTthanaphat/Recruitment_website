@@ -82,4 +82,4 @@ Do not upload real `.db`, `.xlsx`, candidate, employee, or offer files to GitHub
 
 System admins can create users or update existing account nickname/site/role mappings from Sourcing > Administration > Manage User.
 
-The Sourcing page stores weekly applicant counts per `group_id`. The dashboard waterfall reads `vacancy_weekly_snapshots`, defaults to January 1 through today, and can be filtered by start/end date.
+The requisition form records whether each opening is a `New` or `Replacement` position. The Sourcing page stores weekly applicant counts per `group_id`. The dashboard waterfall derives from requisition headcount and accepted offers, defaults to January 1 through today, and can be filtered by start/end date.

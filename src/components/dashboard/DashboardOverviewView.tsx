@@ -11,7 +11,16 @@ import { Tag } from "@/components/ui/Tag";
 import { ACTIVE_PIPELINE_STAGES, processLabel } from "@/lib/constants";
 import { formatDateTime, statusTone, toTitle } from "@/lib/format";
 import { translate } from "@/lib/i18n/dictionary";
-import type { ChangeLog, EnrichedCandidate, EnrichedRequisition, Language, Profile, VacancyWeeklySnapshot } from "@/types/recruitment";
+import type {
+  ChangeLog,
+  EnrichedCandidate,
+  EnrichedOffer,
+  EnrichedRequisition,
+  Language,
+  Profile,
+  RequisitionRequestType,
+  VacancyWaterfallCategory
+} from "@/types/recruitment";
 
 const siteOrder = ["HQ", "KT1", "KT2"];
 const categoryOrder = ["Week Start", "Open", "Filled", "Total"];
@@ -21,7 +30,7 @@ export function DashboardOverviewView({
   profile,
   requisitions,
   candidates,
-  vacancySnapshots,
+  offers,
   changeLogs,
   onOpenRequisition,
   onOpenCandidate
@@ -30,7 +39,7 @@ export function DashboardOverviewView({
   profile: Profile | null;
   requisitions: EnrichedRequisition[];
   candidates: EnrichedCandidate[];
-  vacancySnapshots: VacancyWeeklySnapshot[];
+  offers: EnrichedOffer[];
   changeLogs: ChangeLog[];
   onOpenRequisition: (docId: string) => void;
   onOpenCandidate: (candidateId: string) => void;
@@ -54,9 +63,9 @@ export function DashboardOverviewView({
     .sort((a, b) => b.open_headcount - a.open_headcount)
     .slice(0, 6);
   const pipelinePreview = ongoingCandidates.slice(0, 8);
-  const selectedSnapshots = useMemo(
-    () => aggregateSnapshots(vacancySnapshots.filter((row) => row.week_start >= startDate && row.week_start <= endDate)),
-    [endDate, startDate, vacancySnapshots]
+  const waterfallRows = useMemo(
+    () => buildLiveWaterfallRows(requisitions, offers, startDate, endDate),
+    [endDate, offers, requisitions, startDate]
   );
 
   return (
@@ -84,10 +93,10 @@ export function DashboardOverviewView({
             </div>
           }
         />
-        {selectedSnapshots.length === 0 ? (
-          <EmptyState message="No vacancy snapshot rows for the selected date range." />
+        {waterfallRows.length === 0 ? (
+          <EmptyState message="No requisition or accepted offer data for the selected date range." />
         ) : (
-          <VacancyWaterfallChart rows={selectedSnapshots} />
+          <VacancyWaterfallChart rows={waterfallRows} />
         )}
       </Panel>
 
@@ -175,7 +184,14 @@ export function DashboardOverviewView({
   );
 }
 
-function VacancyWaterfallChart({ rows }: { rows: VacancyWeeklySnapshot[] }) {
+type WaterfallRow = {
+  waterfall_category: VacancyWaterfallCategory;
+  site: string;
+  request_type: RequisitionRequestType;
+  vacancy_count: number;
+};
+
+function VacancyWaterfallChart({ rows }: { rows: WaterfallRow[] }) {
   const chart = buildWaterfall(rows);
   const width = Math.max(chart.categories.length * 96, 720);
   const height = 340;
@@ -255,7 +271,7 @@ function VacancyWaterfallChart({ rows }: { rows: VacancyWeeklySnapshot[] }) {
   );
 }
 
-function buildWaterfall(rows: VacancyWeeklySnapshot[]) {
+function buildWaterfall(rows: WaterfallRow[]) {
   const sites = uniqueValues([...siteOrder, ...rows.map((row) => row.site)]).filter((site) => rows.some((row) => row.site === site));
   const categories: string[] = [];
   if (rows.some((row) => row.waterfall_category === "Week Start")) categories.push("Week Start");
@@ -330,13 +346,13 @@ function buildWaterfall(rows: VacancyWeeklySnapshot[]) {
   };
 }
 
-function rowsForCategory(rows: VacancyWeeklySnapshot[], category: string) {
+function rowsForCategory(rows: WaterfallRow[], category: string) {
   if (category.startsWith("Open ")) return rows.filter((row) => row.waterfall_category === "Open" && row.site === category.replace("Open ", ""));
   if (category.startsWith("Filled ")) return rows.filter((row) => row.waterfall_category === "Filled" && row.site === category.replace("Filled ", ""));
   return rows.filter((row) => row.waterfall_category === category);
 }
 
-function sortSnapshotRows(rows: VacancyWeeklySnapshot[]) {
+function sortSnapshotRows(rows: WaterfallRow[]) {
   return [...rows].sort((a, b) => {
     const siteDelta = siteRank(a.site) - siteRank(b.site);
     if (siteDelta !== 0) return siteDelta;
@@ -364,15 +380,81 @@ function formatChartValue(value: number) {
   return value < 0 ? `( ${Math.abs(value).toLocaleString()} )` : value.toLocaleString();
 }
 
-function aggregateSnapshots(rows: VacancyWeeklySnapshot[]): VacancyWeeklySnapshot[] {
-  const totals = new Map<string, VacancyWeeklySnapshot>();
+function buildLiveWaterfallRows(
+  requisitions: EnrichedRequisition[],
+  offers: EnrichedOffer[],
+  startDate: string,
+  endDate: string
+): WaterfallRow[] {
+  if (!startDate || !endDate || startDate > endDate) return [];
+
+  const rows: WaterfallRow[] = [];
+  const requisitionsById = new Map(requisitions.map((row) => [row.doc_id, row]));
+  const acceptedOffers = offers.filter((offer) => Boolean(offer.accepted_date));
+
+  for (const requisition of requisitions) {
+    if (requisition.status === "cancel") continue;
+    const openedDate = dateOnly(requisition.pr_approved_date) ?? dateOnly(requisition.created_at);
+    const requestType = requisition.request_type ?? "New";
+    if (!openedDate) continue;
+
+    if (openedDate < startDate) {
+      const filledBeforeStart = acceptedOffers.filter(
+        (offer) => offer.doc_id === requisition.doc_id && dateOnly(offer.accepted_date) !== null && dateOnly(offer.accepted_date)! < startDate
+      ).length;
+      const openAtStart = Math.max(requisition.head_count - filledBeforeStart, 0);
+      if (openAtStart > 0) rows.push(waterfallRow("Week Start", requisition.site, requestType, openAtStart));
+    }
+
+    if (openedDate >= startDate && openedDate <= endDate) {
+      rows.push(waterfallRow("Open", requisition.site, requestType, requisition.head_count));
+    }
+  }
+
+  for (const offer of acceptedOffers) {
+    const acceptedDate = dateOnly(offer.accepted_date);
+    if (!acceptedDate || acceptedDate < startDate || acceptedDate > endDate) continue;
+
+    const requisition = requisitionsById.get(offer.doc_id);
+    if (!requisition || requisition.status === "cancel") continue;
+    rows.push(waterfallRow("Filled", requisition.site, requisition.request_type ?? "New", -1));
+  }
+
+  const groupedRows = aggregateWaterfallRows(rows);
+  const totals = new Map<string, WaterfallRow>();
+  for (const row of groupedRows) {
+    const key = `${row.site}|${row.request_type}`;
+    const existing = totals.get(key);
+    const value = existing ? existing.vacancy_count + row.vacancy_count : row.vacancy_count;
+    totals.set(key, waterfallRow("Total", row.site, row.request_type, value));
+  }
+
+  return aggregateWaterfallRows([...groupedRows, ...Array.from(totals.values())]);
+}
+
+function waterfallRow(
+  waterfallCategory: VacancyWaterfallCategory,
+  site: string,
+  requestType: RequisitionRequestType,
+  vacancyCount: number
+): WaterfallRow {
+  return {
+    waterfall_category: waterfallCategory,
+    site,
+    request_type: requestType,
+    vacancy_count: vacancyCount
+  };
+}
+
+function aggregateWaterfallRows(rows: WaterfallRow[]): WaterfallRow[] {
+  const totals = new Map<string, WaterfallRow>();
   for (const row of rows) {
     const key = `${row.waterfall_category}|${row.site}|${row.request_type}`;
     const existing = totals.get(key);
     if (existing) {
       totals.set(key, { ...existing, vacancy_count: existing.vacancy_count + row.vacancy_count });
     } else {
-      totals.set(key, { ...row, snapshot_id: 0 });
+      totals.set(key, row);
     }
   }
   return Array.from(totals.values());
@@ -388,4 +470,9 @@ function today() {
 
 function uniqueValues(values: string[]) {
   return Array.from(new Set(values.filter(Boolean)));
+}
+
+function dateOnly(value: string | null | undefined) {
+  if (!value) return null;
+  return value.slice(0, 10);
 }

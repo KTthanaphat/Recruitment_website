@@ -143,7 +143,6 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const canWrite = canWriteRole(role);
   const canManageSetup = canManageSetupRole(role);
   const canManageUsers = canManageUsersRole(role);
-  const canManageSnapshots = role === "system_admin" || role === "admin_recruiter";
 
   const enrichedRequisitions = useMemo(() => enrichRequisitions(data), [data]);
   const enrichedCandidates = useMemo(() => enrichCandidates(data), [data]);
@@ -274,7 +273,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       <p className={`mb-4 min-h-6 text-sm font-bold ${error ? "text-orange" : "text-slate"}`}>{loading ? "Loading recruitment records..." : error ?? status}</p>
 
       {initialView === "dashboard" ? (
-        <DashboardOverviewView language={language} profile={data.profile} requisitions={filteredRequisitions} candidates={filteredCandidates} vacancySnapshots={data.vacancy_weekly_snapshots} changeLogs={data.change_logs} onOpenRequisition={(id) => setDetail({ type: "requisition", id })} onOpenCandidate={(id) => setDetail({ type: "candidate", id })} />
+        <DashboardOverviewView language={language} profile={data.profile} requisitions={filteredRequisitions} candidates={filteredCandidates} offers={filteredOffers} changeLogs={data.change_logs} onOpenRequisition={(id) => setDetail({ type: "requisition", id })} onOpenCandidate={(id) => setDetail({ type: "candidate", id })} />
       ) : null}
 
       {initialView === "requisitions" ? (
@@ -299,14 +298,12 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
           canWrite={canWrite}
           canManageSetup={canManageSetup}
           canManageUsers={canManageUsers}
-          canManageSnapshots={canManageSnapshots}
           weekStart={sourcingWeek}
           onWeekChange={setSourcingWeek}
           onSaveSourcing={(payload, summary) => prepareRpcAction("app_upsert_sourcing_weekly_update", payload, summary)}
           onGroup={() => setActiveModal("group")}
           onMatch={() => setActiveModal("match")}
           onInvite={() => setActiveModal("user")}
-          onSnapshot={() => setActiveModal("snapshot")}
         />
       ) : null}
 
@@ -359,6 +356,7 @@ function buildPayload(modal: Exclude<ModalName, null>, formData: FormData) {
       head_count: asNumber(formData.get("head_count"), 1),
       person_in_charge: emptyToNull(formData.get("person_in_charge")),
       line_manager: emptyToNull(formData.get("line_manager")),
+      request_type: String(formData.get("request_type") ?? "New"),
       status: String(formData.get("status") ?? "ongoing") as RequisitionStatus
     };
     requireFields(payload, ["doc_id", "site", "position", "department", "head_count"]);
@@ -568,6 +566,12 @@ function RequisitionFields({ data, profile }: { data: DashboardData; profile: Da
     <div className="grid gap-4 md:grid-cols-2">
       <Field label="Doc ID"><TextInput name="doc_id" list="doc-id-options" required /></Field>
       <Field label="PR Approved Date"><TextInput name="pr_approved_date" type="date" /></Field>
+      <Field label="Request Type">
+        <SelectInput name="request_type" defaultValue="New">
+          <option value="New">New Position</option>
+          <option value="Replacement">Replacement Position</option>
+        </SelectInput>
+      </Field>
       <Field label="Site"><TextInput name="site" list="site-options-form" required defaultValue={isSiteRecruiter ? assignedSite : undefined} readOnly={isSiteRecruiter} /></Field>
       <Field label="Position"><TextInput name="position" list="position-options" required /></Field>
       <Field label="Department"><TextInput name="department" list="department-options" required /></Field>
@@ -805,6 +809,7 @@ function buildDetailBody(detail: { type: "requisition" | "candidate"; id: string
             ["Site", requisition.site],
             ["Department", requisition.department],
             ["Section", requisition.section ?? "-"],
+            ["Request Type", requisition.request_type],
             ["Owner", requisition.person_in_charge ?? "-"],
             ["Line Manager", requisition.line_manager ?? "-"],
             ["Headcount", String(requisition.head_count)],

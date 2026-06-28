@@ -161,7 +161,8 @@ export function enrichOffers(data: DashboardData): EnrichedOffer[] {
       candidate_name: candidate?.name ?? null,
       position: requisition?.position ?? null,
       site: requisition?.site ?? null,
-      person_in_charge: requisition?.person_in_charge ?? null
+      person_in_charge: requisition?.person_in_charge ?? null,
+      request_type: requisition?.request_type ?? null
     };
   });
 }

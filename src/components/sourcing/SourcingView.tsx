@@ -1,4 +1,4 @@
-import { BarChart3, Link2, Plus, Save, UserPlus } from "lucide-react";
+import { Link2, Plus, Save, UserPlus } from "lucide-react";
 import { FormEvent } from "react";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -25,14 +25,12 @@ export function SourcingView({
   canWrite,
   canManageSetup,
   canManageUsers,
-  canManageSnapshots,
   weekStart,
   onWeekChange,
   onSaveSourcing,
   onGroup,
   onMatch,
-  onInvite,
-  onSnapshot
+  onInvite
 }: {
   language: Language;
   data: DashboardData;
@@ -40,17 +38,15 @@ export function SourcingView({
   canWrite: boolean;
   canManageSetup: boolean;
   canManageUsers: boolean;
-  canManageSnapshots: boolean;
   weekStart: string;
   onWeekChange: (value: string) => void;
   onSaveSourcing: (payload: Record<string, unknown>, summary: string) => void;
   onGroup: () => void;
   onMatch: () => void;
   onInvite: () => void;
-  onSnapshot: () => void;
 }) {
   const groups = visibleSourcingGroups(enrichSourcingGroups(data, weekStart), profile);
-  const canUseAdminTools = canManageSetup || canManageUsers || canManageSnapshots;
+  const canUseAdminTools = canManageSetup || canManageUsers;
 
   function saveGroup(event: FormEvent<HTMLFormElement>, group: EnrichedSourcingGroup) {
     event.preventDefault();
@@ -141,12 +137,11 @@ export function SourcingView({
 
       {canUseAdminTools ? (
         <Panel>
-          <SectionTitle title="Administration" eyebrow="Setup and snapshots" />
+          <SectionTitle title="Administration" eyebrow="Setup and users" />
           <div className="flex flex-wrap gap-2">
             {canManageSetup ? <Button type="button" size="sm" icon={<Plus size={16} />} onClick={onGroup}>New Group</Button> : null}
             {canManageSetup ? <Button type="button" size="sm" variant="secondary" icon={<Link2 size={16} />} onClick={onMatch}>Add Match</Button> : null}
             {canManageUsers ? <Button type="button" size="sm" variant="secondary" icon={<UserPlus size={16} />} onClick={onInvite}>Manage User</Button> : null}
-            {canManageSnapshots ? <Button type="button" size="sm" variant="secondary" icon={<BarChart3 size={16} />} onClick={onSnapshot}>Vacancy Snapshot</Button> : null}
           </div>
 
           {canManageUsers && data.profiles.length > 0 ? (
