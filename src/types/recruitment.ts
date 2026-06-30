@@ -42,6 +42,7 @@ export type Requisition = {
   person_in_charge: string | null;
   line_manager: string | null;
   request_type: RequisitionRequestType;
+  replacement_names: string | null;
   status: RequisitionStatus;
   created_at: string;
   updated_at: string;
@@ -96,6 +97,7 @@ export type Candidate = {
   channel: string | null;
   ref_name: string | null;
   first_contact_date: string | null;
+  candidate_folder_url: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -118,8 +120,6 @@ export type Offer = {
   doc_id: string;
   accepted_date: string | null;
   first_working_date: string | null;
-  offered_type: string | null;
-  replaced: string | null;
   remark: string | null;
   created_at: string;
   updated_at: string;
@@ -200,7 +200,11 @@ export type EnrichedRequisition = Requisition & {
 
 export type EnrichedCandidate = Candidate & {
   doc_id: string | null;
+  doc_ids: string[];
+  group_id: string | null;
   group_position: string | null;
+  sites: string[];
+  person_in_charges: string[];
   site: string | null;
   person_in_charge: string | null;
   latest_process: ProcessStage | "No activity";

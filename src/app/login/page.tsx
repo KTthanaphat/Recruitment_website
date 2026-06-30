@@ -17,7 +17,7 @@ export default function LoginPage() {
   useEffect(() => {
     if (!supabase) return;
     supabase.auth.getSession().then(({ data }) => {
-      if (data.session) router.replace("/dashboard");
+      if (data.session) router.replace("/home");
     });
   }, [router]);
 
@@ -45,7 +45,7 @@ export default function LoginPage() {
         return;
       }
 
-      router.replace("/dashboard");
+      router.replace("/home");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Unable to sign in. Please try again.");
     } finally {

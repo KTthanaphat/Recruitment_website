@@ -1,4 +1,4 @@
-import { Plus, RotateCw } from "lucide-react";
+import { Plus, RotateCw, Search } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Panel, SectionTitle } from "@/components/ui/Panel";
@@ -41,7 +41,7 @@ export function RequisitionsView({
         <>
         <div className="grid gap-3 md:hidden">
           {rows.map((row) => (
-            <button key={row.doc_id} type="button" className="rounded-md border border-[#D7DEE8] bg-white p-3 text-left" onClick={() => onOpen(row.doc_id)}>
+            <button key={row.doc_id} type="button" className="rounded-md border border-[#D7DEE8] bg-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-panel" onClick={() => onOpen(row.doc_id)}>
               <div className="mb-2 flex items-center justify-between gap-2">
                 <strong className="text-primary">{row.doc_id}</strong>
                 <Tag tone={statusTone(row.status) as never}>{row.status}</Tag>
@@ -85,7 +85,17 @@ export function RequisitionsView({
                   <td className="px-3 py-3 text-slate">{row.accepted_count}</td>
                   <td className="px-3 py-3 text-slate">{row.candidate_count}</td>
                   <td className="px-3 py-3 text-slate">{formatDate(row.updated_at)}</td>
-                  <td className="px-3 py-3"><Button type="button" size="sm" variant="secondary" onClick={() => onOpen(row.doc_id)}>{translate(language, "view")}</Button></td>
+                  <td className="px-3 py-3">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      icon={<Search size={16} />}
+                      aria-label={`View requisition ${row.doc_id}`}
+                      title={`View requisition ${row.doc_id}`}
+                      onClick={() => onOpen(row.doc_id)}
+                    />
+                  </td>
                 </tr>
               ))}
             </tbody>

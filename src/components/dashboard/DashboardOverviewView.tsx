@@ -78,13 +78,13 @@ export function DashboardOverviewView({
         <StatCard label={translate(language, "openHeadcount")} value={openHeadcount} icon={<Workflow size={22} />} />
       </div>
 
-      <section className="min-w-0 bg-white py-6 font-light">
+      <section className="min-w-0 rounded-lg border border-[#D7DEE8] bg-white py-6 font-light shadow-panel">
         <div className="mb-9 grid gap-5 px-4 sm:px-6 lg:grid-cols-[1fr_auto] lg:items-start lg:px-8">
           <h2 className="text-2xl font-semibold tracking-normal text-navy sm:text-[28px]">{translate(language, "vacancyWaterfall")}</h2>
           <div className="grid gap-3 sm:flex sm:items-start sm:justify-end">
             <Field label={translate(language, "startDate")} className="text-xs font-light">
               <TextInput
-                className="min-h-9 w-full rounded-md border border-[#D7DEE8] bg-white px-2.5 py-1.5 text-sm font-light text-navy shadow-none focus:border-electric sm:w-36"
+                className="min-h-9 w-full rounded-md border border-[#D7DEE8] bg-white px-2.5 py-1.5 text-sm font-light text-navy shadow-sm focus:border-electric sm:w-36"
                 type="date"
                 value={startDate}
                 onChange={(event) => setStartDate(event.target.value)}
@@ -92,7 +92,7 @@ export function DashboardOverviewView({
             </Field>
             <Field label={translate(language, "endDate")} className="text-xs font-light">
               <TextInput
-                className="min-h-9 w-full rounded-md border border-[#D7DEE8] bg-white px-2.5 py-1.5 text-sm font-light text-navy shadow-none focus:border-electric sm:w-36"
+                className="min-h-9 w-full rounded-md border border-[#D7DEE8] bg-white px-2.5 py-1.5 text-sm font-light text-navy shadow-sm focus:border-electric sm:w-36"
                 type="date"
                 value={endDate}
                 onChange={(event) => setEndDate(event.target.value)}
@@ -113,7 +113,7 @@ export function DashboardOverviewView({
         <Panel>
           <SectionTitle
             title={translate(language, "needsAction")}
-            action={<Link className="text-sm font-bold text-primary" href="/requisitions">{translate(language, "openList")}</Link>}
+            action={<Link className="text-sm font-bold text-primary hover:text-primary" href="/requisitions">{translate(language, "openList")}</Link>}
           />
           <div className="grid gap-2">
             {needsAction.length === 0 ? (
@@ -123,7 +123,7 @@ export function DashboardOverviewView({
                 <button
                   key={row.doc_id}
                   type="button"
-                  className="grid gap-1 rounded-md border border-[#D7DEE8] bg-white p-3 text-left transition hover:bg-[#EEF4FF]"
+                  className="grid gap-1 rounded-md border border-[#D7DEE8] bg-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40 hover:bg-[#EEF4FF] hover:shadow-panel"
                   onClick={() => onOpenRequisition(row.doc_id)}
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -140,14 +140,14 @@ export function DashboardOverviewView({
         <Panel>
           <SectionTitle
             title={translate(language, "recentActivity")}
-            action={<Link className="text-sm font-bold text-primary" href="/audit">{translate(language, "audit")}</Link>}
+            action={<Link className="text-sm font-bold text-primary hover:text-primary" href="/audit">{translate(language, "audit")}</Link>}
           />
           <div className="grid gap-2">
             {changeLogs.length === 0 ? (
               <EmptyState message={translate(language, "noRecentActivity")} />
             ) : (
               changeLogs.slice(0, 6).map((log) => (
-                <div key={log.log_id} className="rounded-md border border-[#D7DEE8] bg-lightgray/50 p-3">
+                <div key={log.log_id} className="rounded-md border border-[#D7DEE8] bg-lightgray/60 p-3 shadow-sm">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <strong className="text-sm text-navy">{toTitle(log.entity)} - {log.entity_id}</strong>
                     <Tag tone={statusTone(log.action) as never}>{log.action}</Tag>
@@ -163,7 +163,7 @@ export function DashboardOverviewView({
       <Panel>
         <SectionTitle
           title={translate(language, "candidatePipeline")}
-          action={<Link className="text-sm font-bold text-primary" href="/pipeline">{translate(language, "fullPipeline")}</Link>}
+          action={<Link className="text-sm font-bold text-primary hover:text-primary" href="/pipeline">{translate(language, "fullPipeline")}</Link>}
         />
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           {pipelinePreview.length === 0 ? (
@@ -175,7 +175,7 @@ export function DashboardOverviewView({
               <button
                 type="button"
                 key={candidate.candidate_id}
-                className="rounded-md border border-[#D7DEE8] bg-white p-3 text-left transition hover:-translate-y-0.5 hover:shadow-panel"
+                className="rounded-md border border-[#D7DEE8] bg-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-panel"
                 onClick={() => onOpenCandidate(candidate.candidate_id)}
               >
                 <div className="mb-2 flex items-center justify-between gap-2">
@@ -247,13 +247,13 @@ function VacancyWaterfallChart({ language, rows }: { language: Language; rows: W
             fallbackLabel={chart.totalBreakdown[0]?.label ?? "No remaining vacancy"}
           />
         ) : null}
-        <line x1={leftPad} x2={plotRight} y1={zeroY} y2={zeroY} stroke="#475569" strokeWidth={1} />
-        <line x1={leftPad} x2={leftPad} y1={topPad} y2={zeroY} stroke="#475569" strokeWidth={2} />
+        <line x1={leftPad} x2={plotRight} y1={zeroY} y2={zeroY} stroke="#526173" strokeWidth={1} />
+        <line x1={leftPad} x2={leftPad} y1={topPad} y2={zeroY} stroke="#526173" strokeWidth={2} />
         {chart.yTicks.filter((tick) => tick > 0).map((tick) => {
           const y = yScale(tick);
           return (
             <g key={tick}>
-              <line x1={leftPad - 8} x2={leftPad} y1={y} y2={y} stroke="#475569" strokeWidth={1.5} />
+              <line x1={leftPad - 8} x2={leftPad} y1={y} y2={y} stroke="#526173" strokeWidth={1.5} />
               <text x={leftPad - 18} y={y + 8} textAnchor="end" className="fill-slate text-[22px] font-light">{tick}</text>
             </g>
           );
@@ -269,7 +269,7 @@ function VacancyWaterfallChart({ language, rows }: { language: Language; rows: W
               x2={x2}
               y1={y}
               y2={y}
-              stroke="#64748B"
+              stroke="#96A3B4"
               strokeWidth={1.5}
             />
           );
@@ -336,7 +336,7 @@ function RightSegmentBrackets({
             key={`${item.key}-bracket`}
             d={`M ${x} ${top} L ${x + 16} ${mid} L ${x} ${bottom}`}
             fill="none"
-            stroke="#475569"
+            stroke="#526173"
             strokeWidth={2.5}
             strokeLinejoin="round"
           />

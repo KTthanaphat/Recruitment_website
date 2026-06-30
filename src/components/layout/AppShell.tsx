@@ -85,7 +85,7 @@ export function AppShell({
       <aside className="bg-navy px-4 py-4 text-white lg:sticky lg:top-0 lg:h-screen lg:py-5">
         <div className="mb-4 px-2 lg:mb-7">
           <p className="mb-1 text-xs font-extrabold uppercase tracking-normal text-cool">Internal Recruitment</p>
-          <h1 className="text-2xl font-extrabold tracking-normal">Recruitment</h1>
+          <h1 className="text-2xl font-extrabold tracking-normal text-white">Recruitment</h1>
         </div>
 
         <nav aria-label="Main navigation" className="grid grid-flow-col gap-1.5 overflow-x-auto pb-1 lg:grid-flow-row lg:overflow-visible lg:pb-0">

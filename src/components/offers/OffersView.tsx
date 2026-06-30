@@ -30,14 +30,13 @@ export function OffersView({
         <>
         <div className="grid gap-3 md:hidden">
           {rows.map((row) => (
-            <article key={row.offer_id} className="rounded-md border border-[#D7DEE8] bg-white p-3">
+            <article key={row.offer_id} className="rounded-md border border-[#D7DEE8] bg-white p-3 shadow-sm">
               <div className="mb-2 flex items-center justify-between gap-2">
                 <strong className="text-navy">{row.candidate_name ?? row.candidate_id}</strong>
                 {row.accepted_date ? <Tag tone="success">{formatDate(row.accepted_date)}</Tag> : <Tag tone="muted">Pending</Tag>}
               </div>
               <p className="text-sm font-bold text-primary">{row.doc_id}</p>
               <p className="text-sm font-bold text-slate">{row.position ?? "-"} - start {formatDate(row.first_working_date)}</p>
-              <p className="text-sm font-bold text-slate">{row.offered_type ?? "-"} - replaces {row.replaced ?? "-"}</p>
             </article>
           ))}
         </div>
@@ -50,8 +49,6 @@ export function OffersView({
                 <th className="px-3 py-3">Position</th>
                 <th className="px-3 py-3">Accepted</th>
                 <th className="px-3 py-3">First Working</th>
-                <th className="px-3 py-3">Type</th>
-                <th className="px-3 py-3">Replaced</th>
               </tr>
             </thead>
             <tbody>
@@ -62,8 +59,6 @@ export function OffersView({
                   <td className="px-3 py-3 text-slate">{row.position ?? "-"}</td>
                   <td className="px-3 py-3">{row.accepted_date ? <Tag tone="success">{formatDate(row.accepted_date)}</Tag> : <Tag tone="muted">Pending</Tag>}</td>
                   <td className="px-3 py-3 text-slate">{formatDate(row.first_working_date)}</td>
-                  <td className="px-3 py-3 text-slate">{row.offered_type ?? "-"}</td>
-                  <td className="px-3 py-3 text-slate">{row.replaced ?? "-"}</td>
                 </tr>
               ))}
             </tbody>

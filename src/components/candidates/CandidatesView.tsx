@@ -1,4 +1,4 @@
-import { Plus, Workflow } from "lucide-react";
+import { Plus, Search, Workflow } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Panel, SectionTitle } from "@/components/ui/Panel";
@@ -42,7 +42,7 @@ export function CandidatesView({
         <>
         <div className="grid gap-3 md:hidden">
           {rows.map((row) => (
-            <button key={row.candidate_id} type="button" className="rounded-md border border-[#D7DEE8] bg-white p-3 text-left" onClick={() => onOpen(row.candidate_id)}>
+            <button key={row.candidate_id} type="button" className="rounded-md border border-[#D7DEE8] bg-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-panel" onClick={() => onOpen(row.candidate_id)}>
               <div className="mb-2 flex items-center justify-between gap-2">
                 <strong className="text-navy">{row.name}</strong>
                 <Tag tone={statusTone(resultText(row.latest_result).toLowerCase()) as never}>{resultText(row.latest_result)}</Tag>
@@ -77,7 +77,17 @@ export function CandidatesView({
                   <td className="px-3 py-3 text-slate">{row.person_in_charge ?? "-"}</td>
                   <td className="px-3 py-3"><Tag tone={row.latest_process === "No activity" ? "muted" : "teal"}>{processLabel(row.latest_process)}</Tag></td>
                   <td className="px-3 py-3"><Tag tone={statusTone(resultText(row.latest_result).toLowerCase()) as never}>{resultText(row.latest_result)}</Tag></td>
-                  <td className="px-3 py-3"><Button type="button" size="sm" variant="secondary" onClick={() => onOpen(row.candidate_id)}>{translate(language, "view")}</Button></td>
+                  <td className="px-3 py-3">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      icon={<Search size={16} />}
+                      aria-label={`View candidate ${row.candidate_id}`}
+                      title={`View candidate ${row.candidate_id}`}
+                      onClick={() => onOpen(row.candidate_id)}
+                    />
+                  </td>
                 </tr>
               ))}
             </tbody>

@@ -37,7 +37,7 @@ export function SetupView({
             <EmptyState message="No position groups yet." />
           ) : (
             data.position_groups.map((group) => (
-              <div key={group.group_id} className="rounded-md border border-[#D7DEE8] p-3">
+              <div key={group.group_id} className="rounded-md border border-[#D7DEE8] bg-white p-3 shadow-sm">
                 <div className="flex items-center justify-between gap-2">
                   <strong className="text-navy">{group.group_id}</strong>
                   <Tag tone="teal">{group.group_position}</Tag>
@@ -63,7 +63,7 @@ export function SetupView({
             <EmptyState message="No requisition-group matches yet." />
           ) : (
             data.document_groups.map((match) => (
-              <div key={match.doc_group_id} className="rounded-md border border-[#D7DEE8] p-3">
+              <div key={match.doc_group_id} className="rounded-md border border-[#D7DEE8] bg-white p-3 shadow-sm">
                 <div className="flex items-center justify-between gap-2">
                   <strong className="text-navy">{match.doc_group_id}</strong>
                   <Tag tone="primary">{match.doc_id}</Tag>

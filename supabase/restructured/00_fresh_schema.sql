@@ -40,6 +40,7 @@ create table if not exists public.requisitions (
   person_in_charge text,
   line_manager text,
   request_type text not null default 'New' check (request_type in ('New', 'Replacement')),
+  replacement_names text,
   status text not null default 'ongoing' check (status in ('ongoing', 'filled', 'cancel')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -95,6 +96,7 @@ create table if not exists public.candidates (
   channel text,
   ref_name text,
   first_contact_date date,
+  candidate_folder_url text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -129,8 +131,6 @@ create table if not exists public.offers (
   doc_id text not null references public.requisitions(doc_id) on delete cascade,
   accepted_date date,
   first_working_date date,
-  offered_type text,
-  replaced text,
   remark text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
@@ -800,12 +800,15 @@ declare
   v_site text := nullif(payload ->> 'site', '');
   v_person_in_charge text := nullif(payload ->> 'person_in_charge', '');
   v_request_type text := coalesce(nullif(payload ->> 'request_type', ''), 'New');
+  v_replacement_names text := nullif(payload ->> 'replacement_names', '');
 begin
   perform public.assert_recruitment_writer();
   if v_doc_id is null then raise exception 'Doc ID is required.'; end if;
   if v_mode not in ('new', 'change') then raise exception 'mode must be new or change'; end if;
   if v_status not in ('ongoing', 'cancel') then raise exception 'Requisition status can only be ongoing or cancel. Filled is automatic.'; end if;
   if v_request_type not in ('New', 'Replacement') then raise exception 'Request type must be New or Replacement.'; end if;
+  if v_request_type = 'Replacement' and v_replacement_names is null then raise exception 'Replacement names are required for replacement requisitions.'; end if;
+  if v_request_type = 'New' then v_replacement_names := null; end if;
 
   if v_role = 'site_recruiter' then
     v_site := public.current_profile_site();
@@ -824,7 +827,7 @@ begin
 
   insert into public.requisitions (
     doc_id, pr_approved_date, site, position, department, section, level,
-    head_count, person_in_charge, line_manager, request_type, status
+    head_count, person_in_charge, line_manager, request_type, replacement_names, status
   )
   values (
     v_doc_id,
@@ -838,6 +841,7 @@ begin
     v_person_in_charge,
     nullif(payload ->> 'line_manager', ''),
     v_request_type,
+    v_replacement_names,
     v_status
   )
   on conflict (doc_id) do update set
@@ -851,6 +855,7 @@ begin
     person_in_charge = excluded.person_in_charge,
     line_manager = excluded.line_manager,
     request_type = excluded.request_type,
+    replacement_names = excluded.replacement_names,
     status = excluded.status;
 
   perform set_config('app.action', 'auto-status', true);
@@ -1072,7 +1077,7 @@ begin
   if v_mode = 'change' and not public.can_manage_candidate(v_candidate_id) then raise exception 'You can edit candidates only for requisitions where you are person in charge.'; end if;
 
   perform set_config('app.action', 'candidate:' || v_mode, true);
-  insert into public.candidates (candidate_id, name, phone_no, doc_group_id, channel, ref_name, first_contact_date)
+  insert into public.candidates (candidate_id, name, phone_no, doc_group_id, channel, ref_name, first_contact_date, candidate_folder_url)
   values (
     v_candidate_id,
     nullif(payload ->> 'name', ''),
@@ -1080,7 +1085,8 @@ begin
     v_doc_group_id,
     nullif(payload ->> 'channel', ''),
     nullif(payload ->> 'ref_name', ''),
-    nullif(payload ->> 'first_contact_date', '')::date
+    nullif(payload ->> 'first_contact_date', '')::date,
+    nullif(payload ->> 'candidate_folder_url', '')
   )
   on conflict (candidate_id) do update set
     name = excluded.name,
@@ -1088,7 +1094,8 @@ begin
     doc_group_id = excluded.doc_group_id,
     channel = excluded.channel,
     ref_name = excluded.ref_name,
-    first_contact_date = excluded.first_contact_date;
+    first_contact_date = excluded.first_contact_date,
+    candidate_folder_url = excluded.candidate_folder_url;
 
   if v_mode = 'new' then
     v_initial_log_date := coalesce(nullif(payload ->> 'first_contact_date', '')::date, current_date);
@@ -1292,21 +1299,17 @@ begin
   if v_mode = 'change' and not v_exists then raise exception 'This offer does not exist. Switch to New mode to create it.'; end if;
 
   perform set_config('app.action', 'offer:' || v_mode, true);
-  insert into public.offers (candidate_id, doc_id, accepted_date, first_working_date, offered_type, replaced, remark)
+  insert into public.offers (candidate_id, doc_id, accepted_date, first_working_date, remark)
   values (
     v_candidate_id,
     v_doc_id,
     nullif(payload ->> 'accepted_date', '')::date,
     nullif(payload ->> 'first_working_date', '')::date,
-    nullif(payload ->> 'offered_type', ''),
-    nullif(payload ->> 'replaced', ''),
     nullif(payload ->> 'remark', '')
   )
   on conflict (candidate_id, doc_id) do update set
     accepted_date = excluded.accepted_date,
     first_working_date = excluded.first_working_date,
-    offered_type = excluded.offered_type,
-    replaced = excluded.replaced,
     remark = excluded.remark
   returning offer_id into v_offer_id;
 

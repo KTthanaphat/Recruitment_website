@@ -20,6 +20,7 @@ import type {
 
 const siteOrder = ["HQ", "KT1", "KT2"];
 const detailStages = ACTIVE_PIPELINE_STAGES;
+const requisitionDetailHeaders = ["Site", "Department", "Position", "Job Level", "Vacancy", "Requisition Type", "PR Approved Date", "Person in Charge", "Applicants", ...detailStages.map(stageLabel), "Filled Status", "Filled Date"];
 
 type PrintTarget = "chart" | "requisition-detail";
 
@@ -109,9 +110,17 @@ export function VacancyWaterfallView({
     }, 12000);
   }
 
+  async function exportRequisitionDetailXlsx() {
+    const XLSX = await import("xlsx");
+    const worksheet = XLSX.utils.json_to_sheet(requisitionRows.map(requisitionDetailExportRow), { header: requisitionDetailHeaders });
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Opened Requisitions");
+    XLSX.writeFile(workbook, `opened-requisitions-${startDate}-to-${endDate}.xlsx`);
+  }
+
   return (
     <div className="grid gap-4">
-      <section className="min-w-0 bg-white py-6 font-light">
+      <section className="min-w-0 rounded-lg border border-[#D7DEE8] bg-white py-6 font-light shadow-panel">
         <div className="mb-6 grid gap-5 px-4 sm:px-6 lg:grid-cols-[1fr_auto] lg:items-start lg:px-8">
           <div>
             <h2 className="text-2xl font-semibold tracking-normal text-navy sm:text-[28px]">{translate(language, "vacancyWaterfall")}</h2>
@@ -120,7 +129,7 @@ export function VacancyWaterfallView({
           <div className="grid gap-3 sm:flex sm:items-start sm:justify-end">
             <Field label={translate(language, "startDate")} className="text-xs font-light">
               <TextInput
-                className="min-h-9 w-full rounded-md border border-[#D7DEE8] bg-white px-2.5 py-1.5 text-sm font-light text-navy shadow-none focus:border-electric sm:w-36"
+                className="min-h-9 w-full rounded-md border border-[#D7DEE8] bg-white px-2.5 py-1.5 text-sm font-light text-navy shadow-sm focus:border-electric sm:w-36"
                 type="date"
                 value={startDate}
                 onChange={(event) => setStartDate(event.target.value)}
@@ -128,14 +137,14 @@ export function VacancyWaterfallView({
             </Field>
             <Field label={translate(language, "endDate")} className="text-xs font-light">
               <TextInput
-                className="min-h-9 w-full rounded-md border border-[#D7DEE8] bg-white px-2.5 py-1.5 text-sm font-light text-navy shadow-none focus:border-electric sm:w-36"
+                className="min-h-9 w-full rounded-md border border-[#D7DEE8] bg-white px-2.5 py-1.5 text-sm font-light text-navy shadow-sm focus:border-electric sm:w-36"
                 type="date"
                 value={endDate}
                 onChange={(event) => setEndDate(event.target.value)}
               />
             </Field>
             <div className="flex flex-wrap items-end gap-2 pt-5 print:hidden">
-              <Button type="button" size="sm" variant="secondary" icon={<Download size={16} />} disabled={exportPreparing} onClick={() => exportPdf("chart")}>Export Chart PDF</Button>
+              <Button type="button" size="sm" variant="secondary" icon={<Download size={16} />} disabled={exportPreparing} onClick={() => exportPdf("chart")}>Export PDF</Button>
             </div>
           </div>
         </div>
@@ -165,8 +174,9 @@ export function VacancyWaterfallView({
             </span>
             <ChevronDown className={`shrink-0 transition ${detailsOpen ? "rotate-180" : ""}`} size={20} />
           </button>
-          <div className="print:hidden">
-            <Button type="button" size="sm" variant="secondary" icon={<Download size={16} />} disabled={exportPreparing} onClick={() => exportPdf("requisition-detail")}>Export Requisition Detail PDF</Button>
+          <div className="flex flex-wrap gap-2 print:hidden">
+            <Button type="button" size="sm" variant="secondary" icon={<Download size={16} />} disabled={exportPreparing} onClick={exportRequisitionDetailXlsx}>Export XLSX</Button>
+            <Button type="button" size="sm" variant="secondary" icon={<Download size={16} />} disabled={exportPreparing} onClick={() => exportPdf("requisition-detail")}>Export PDF</Button>
           </div>
         </div>
         {detailsOpen ? (
@@ -183,7 +193,7 @@ export function VacancyWaterfallView({
 
       {exportPreparing ? (
         <div className="fixed inset-0 z-[70] grid place-items-center bg-navy/45 p-6 print:hidden">
-          <div className="rounded-lg bg-white px-6 py-5 text-center shadow-2xl">
+          <div className="rounded-lg border border-[#D7DEE8] bg-white px-6 py-5 text-center shadow-2xl">
             <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-4 border-[#D7DEE8] border-t-primary" />
             <p className="font-semibold text-navy">{translate(language, "preparingPdf")}</p>
           </div>
@@ -255,13 +265,13 @@ function VacancyWaterfallChart({ language, rows }: { language: Language; rows: W
             }))}
           />
         ) : null}
-        <line x1={leftPad} x2={plotRight} y1={zeroY} y2={zeroY} stroke="#475569" strokeWidth={1} />
-        <line x1={leftPad} x2={leftPad} y1={topPad} y2={zeroY} stroke="#475569" strokeWidth={2} />
+        <line x1={leftPad} x2={plotRight} y1={zeroY} y2={zeroY} stroke="#526173" strokeWidth={1} />
+        <line x1={leftPad} x2={leftPad} y1={topPad} y2={zeroY} stroke="#526173" strokeWidth={2} />
         {chart.yTicks.filter((tick) => tick > 0).map((tick) => {
           const y = yScale(tick);
           return (
             <g key={tick}>
-              <line x1={leftPad - 8} x2={leftPad} y1={y} y2={y} stroke="#475569" strokeWidth={1.5} />
+              <line x1={leftPad - 8} x2={leftPad} y1={y} y2={y} stroke="#526173" strokeWidth={1.5} />
               <text x={leftPad - 18} y={y + 8} textAnchor="end" className="fill-slate text-[22px] font-light">{tick}</text>
             </g>
           );
@@ -270,7 +280,7 @@ function VacancyWaterfallChart({ language, rows }: { language: Language; rows: W
           const x1 = categoryX(connector.from, step, leftPad) + barWidth / 2;
           const x2 = categoryX(connector.to, step, leftPad) - barWidth / 2;
           const y = yScale(connector.value);
-          return <line key={`${connector.from}-${connector.to}`} x1={x1} x2={x2} y1={y} y2={y} stroke="#64748B" strokeWidth={1.5} />;
+          return <line key={`${connector.from}-${connector.to}`} x1={x1} x2={x2} y1={y} y2={y} stroke="#96A3B4" strokeWidth={1.5} />;
         })}
         {chart.bars.map((bar) => {
           const x = categoryX(bar.categoryIndex, step, leftPad) - barWidth / 2;
@@ -350,7 +360,7 @@ function RightSegmentBrackets({
               <path
                 d={d}
                 fill="none"
-                stroke="#475569"
+                stroke="#526173"
                 strokeWidth={1.6}
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -381,7 +391,7 @@ function RequisitionDetailTable({ rows, printMode = false }: { rows: Requisition
       <table className={`w-full border-collapse text-left text-xs ${printMode ? "print-detail-table" : ""}`}>
         <thead>
           <tr className="bg-lightgray text-navy">
-            {["Site", "Department", "Position", "Job Level", "Vacancy", "Requisition Type", "PR Approved Date", "Person in Charge", "Applicants", ...detailStages.map(stageLabel), "Filled Status", "Filled Date"].map((header) => (
+            {requisitionDetailHeaders.map((header) => (
               <th key={header} className="border border-[#D7DEE8] px-2 py-2 font-semibold">{header}</th>
             ))}
           </tr>
@@ -408,6 +418,25 @@ function RequisitionDetailTable({ rows, printMode = false }: { rows: Requisition
         </tbody>
       </table>
     </div>
+  );
+}
+
+function requisitionDetailExportRow(row: RequisitionDetailRow) {
+  return Object.fromEntries(
+    requisitionDetailHeaders.map((header) => {
+      if (header === "Site") return [header, row.site];
+      if (header === "Department") return [header, row.department];
+      if (header === "Position") return [header, row.position];
+      if (header === "Job Level") return [header, row.level];
+      if (header === "Vacancy") return [header, row.vacancy];
+      if (header === "Requisition Type") return [header, row.request_type];
+      if (header === "PR Approved Date") return [header, formatDate(row.pr_approved_date)];
+      if (header === "Person in Charge") return [header, row.person_in_charge];
+      if (header === "Applicants") return [header, row.applicant_count];
+      if (header === "Filled Status") return [header, row.filled_status];
+      if (header === "Filled Date") return [header, row.filled_date ? formatDate(row.filled_date) : "-"];
+      return [header, row.stage_counts[header as ProcessStage] ?? 0];
+    })
   );
 }
 

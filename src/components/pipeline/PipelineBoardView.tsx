@@ -56,7 +56,7 @@ export function PipelineBoardView({
             return (
               <section
                 key={stage}
-                className={`min-h-72 rounded-lg border border-[#D7DEE8] bg-lightgray/65 p-2.5 transition ${
+                className={`min-h-72 rounded-lg border border-[#D7DEE8] bg-lightgray/75 p-2.5 transition ${
                   isBlocked ? "border-scarlet bg-[#FFF1F0]" : ""
                 }`}
                 onDragOver={(event) => {
@@ -98,14 +98,15 @@ export function PipelineBoardView({
                           setDragged(null);
                           setBlockedStage(null);
                         }}
-                        className="cursor-pointer rounded-md border border-[#D7DEE8] bg-white p-2.5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-panel"
+                        className="cursor-pointer rounded-md border border-[#D7DEE8] bg-white p-2.5 shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-panel"
                         onClick={() => onOpen(candidate.candidate_id)}
                       >
                         <div className="mb-1.5 flex items-center justify-between gap-2">
                           <strong className="text-sm leading-tight text-navy">{candidate.name}</strong>
                           <Tag tone={statusTone(resultText(candidate.latest_result).toLowerCase()) as never}>{resultText(candidate.latest_result)}</Tag>
                         </div>
-                        <p className="text-xs font-bold text-slate">{candidate.candidate_id} - {candidate.group_position ?? "-"}</p>
+                        <p className="text-xs font-bold text-slate">{candidate.candidate_id} - {candidate.group_id ?? candidate.doc_group_id}</p>
+                        <p className="text-xs font-bold text-slate">{candidate.group_position ?? "-"}</p>
                         <p className="text-xs font-bold text-slate">{candidate.site ?? "-"} - {candidate.person_in_charge ?? "-"}</p>
                         <p className="mt-1.5 text-xs font-bold text-cool">Updated {formatDate(candidate.updated_at)}</p>
                       </article>
@@ -126,7 +127,7 @@ export function PipelineBoardView({
           ) : (
             <div className="grid gap-3">
               {failedGroups.map((group) => (
-                <div key={group.stage} className="rounded-lg border border-[#D7DEE8] bg-lightgray/65 p-3">
+                <div key={group.stage} className="rounded-lg border border-[#D7DEE8] bg-lightgray/75 p-3">
                   <div className="mb-2 flex items-center justify-between gap-2">
                     <strong className="text-sm text-navy">{processLabel(group.stage)}</strong>
                     <Tag tone="danger">{group.rows.length}</Tag>
@@ -136,11 +137,12 @@ export function PipelineBoardView({
                       <button
                         key={candidate.candidate_id}
                         type="button"
-                        className="rounded-md bg-white p-2 text-left text-sm font-bold text-slate transition hover:bg-[#EEF4FF]"
+                        className="rounded-md border border-[#D7DEE8] bg-white p-2 text-left text-sm font-bold text-slate shadow-sm transition hover:border-primary/40 hover:bg-[#EEF4FF]"
                         onClick={() => onOpen(candidate.candidate_id)}
                       >
                         <span className="block text-navy">{candidate.name}</span>
-                        <span className="block text-xs">{candidate.candidate_id} - {candidate.site ?? "-"} - {formatDate(candidate.latest_log_date)}</span>
+                        <span className="block text-xs">{candidate.candidate_id} - {candidate.group_id ?? candidate.doc_group_id} - {candidate.person_in_charge ?? "-"}</span>
+                        <span className="block text-xs">{candidate.site ?? "-"} - {formatDate(candidate.latest_log_date)}</span>
                       </button>
                     ))}
                   </div>
@@ -160,11 +162,12 @@ export function PipelineBoardView({
                 <button
                   key={candidate.candidate_id}
                   type="button"
-                  className="rounded-md border border-[#D7DEE8] bg-white p-3 text-left text-sm font-bold text-slate transition hover:bg-[#EEF4FF]"
+                  className="rounded-md border border-[#D7DEE8] bg-white p-3 text-left text-sm font-bold text-slate shadow-sm transition hover:border-primary/40 hover:bg-[#EEF4FF]"
                   onClick={() => onOpen(candidate.candidate_id)}
                 >
                   <span className="block text-navy">{candidate.name}</span>
-                  <span className="block text-xs">{candidate.candidate_id} - {candidate.site ?? "-"} - {formatDate(candidate.latest_log_date)}</span>
+                  <span className="block text-xs">{candidate.candidate_id} - {candidate.group_id ?? candidate.doc_group_id} - {candidate.person_in_charge ?? "-"}</span>
+                  <span className="block text-xs">{candidate.site ?? "-"} - {formatDate(candidate.latest_log_date)}</span>
                 </button>
               ))}
             </div>

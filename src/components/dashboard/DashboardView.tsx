@@ -48,7 +48,7 @@ export function DashboardView({
         <Panel>
           <SectionTitle
             title={translate(language, "needsAction")}
-            action={<Link className="text-sm font-bold text-primary" href="/requisitions">{translate(language, "openList")}</Link>}
+            action={<Link className="text-sm font-bold text-primary hover:text-primary" href="/requisitions">{translate(language, "openList")}</Link>}
           />
           <div className="grid gap-2">
             {needsAction.length === 0 ? (
@@ -58,7 +58,7 @@ export function DashboardView({
                 <button
                   key={row.doc_id}
                   type="button"
-                  className="grid gap-1 rounded-md border border-[#D7DEE8] bg-white p-3 text-left transition hover:bg-[#EEF4FF]"
+                  className="grid gap-1 rounded-md border border-[#D7DEE8] bg-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40 hover:bg-[#EEF4FF] hover:shadow-panel"
                   onClick={() => onOpenRequisition(row.doc_id)}
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -75,14 +75,14 @@ export function DashboardView({
         <Panel>
           <SectionTitle
             title={translate(language, "recentActivity")}
-            action={<Link className="text-sm font-bold text-primary" href="/audit">{translate(language, "audit")}</Link>}
+            action={<Link className="text-sm font-bold text-primary hover:text-primary" href="/audit">{translate(language, "audit")}</Link>}
           />
           <div className="grid gap-2">
             {changeLogs.length === 0 ? (
               <EmptyState message="No recent activity." />
             ) : (
               changeLogs.slice(0, 6).map((log) => (
-                <div key={log.log_id} className="rounded-md border border-[#D7DEE8] bg-lightgray/50 p-3">
+                <div key={log.log_id} className="rounded-md border border-[#D7DEE8] bg-lightgray/60 p-3 shadow-sm">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <strong className="text-sm text-navy">{toTitle(log.entity)} · {log.entity_id}</strong>
                     <Tag tone={statusTone(log.action) as never}>{log.action}</Tag>
@@ -98,7 +98,7 @@ export function DashboardView({
       <Panel>
         <SectionTitle
           title={translate(language, "candidatePipeline")}
-          action={<Link className="text-sm font-bold text-primary" href="/pipeline">{translate(language, "fullPipeline")}</Link>}
+          action={<Link className="text-sm font-bold text-primary hover:text-primary" href="/pipeline">{translate(language, "fullPipeline")}</Link>}
         />
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           {pipelinePreview.length === 0 ? (
@@ -110,7 +110,7 @@ export function DashboardView({
               <button
                 type="button"
                 key={candidate.candidate_id}
-                className="rounded-md border border-[#D7DEE8] bg-white p-3 text-left transition hover:-translate-y-0.5 hover:shadow-panel"
+                className="rounded-md border border-[#D7DEE8] bg-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-panel"
                 onClick={() => onOpenCandidate(candidate.candidate_id)}
               >
                 <div className="mb-2 flex items-center justify-between gap-2">

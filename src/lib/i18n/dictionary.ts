@@ -101,7 +101,14 @@ const en: Dictionary = {
   guideCandidateMessage: "The requisition is matched to a sourcing group. Add a candidate now if you already have one.",
   noLater: "No, later",
   yesCreateCandidate: "Yes, create candidate",
-  offerFinalizationNeeded: "Offer finalization needed"
+  offerFinalizationNeeded: "Offer finalization needed",
+  welcomeBack: "Welcome back",
+  welcomeBackMessage: "Welcome back, {name}. Here is your current responsible recruitment summary.",
+  welcomeOpenRequisitions: "Open requisitions",
+  welcomeOpenVacancy: "Open vacancy",
+  welcomeActiveCandidates: "Active candidates",
+  welcomeOfferFinalization: "Offer finalization needed",
+  viewPipeline: "View Pipeline"
 };
 
 const thLegacy: Dictionary = {
@@ -250,7 +257,14 @@ const th: Dictionary = {
   guideCandidateMessage: "คำขอนี้ถูกจับคู่กับกลุ่มตำแหน่งแล้ว หากมีผู้สมัครแล้วให้เพิ่มผู้สมัครได้ทันที",
   noLater: "ไม่ใช่ ภายหลัง",
   yesCreateCandidate: "ใช่ เพิ่มผู้สมัคร",
-  offerFinalizationNeeded: "ต้องดำเนินการข้อเสนอจ้าง"
+  offerFinalizationNeeded: "ต้องดำเนินการข้อเสนอจ้าง",
+  welcomeBack: "ยินดีต้อนรับกลับ",
+  welcomeBackMessage: "ยินดีต้อนรับกลับ {name} นี่คือสรุปงานสรรหาที่คุณรับผิดชอบอยู่",
+  welcomeOpenRequisitions: "คำขอที่เปิดอยู่",
+  welcomeOpenVacancy: "อัตราว่างที่เปิดอยู่",
+  welcomeActiveCandidates: "ผู้สมัครที่อยู่ระหว่างดำเนินการ",
+  welcomeOfferFinalization: "ต้องดำเนินการข้อเสนอจ้าง",
+  viewPipeline: "ดู Pipeline"
 };
 
 export const dictionaries = { en, th };

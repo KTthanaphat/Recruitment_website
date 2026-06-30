@@ -24,9 +24,11 @@ import {
   enrichCandidates,
   enrichOffers,
   enrichRequisitions,
+  filterChangeLogsByText,
   filterByText,
   latestLogsForCandidate,
   loadDashboardData,
+  sourcingChannelsForDocGroup,
   staleOpenSourcingGroups,
   uniqueValues
 } from "@/lib/data";
@@ -37,8 +39,11 @@ import { asNumber, requireFields } from "@/lib/validation/forms";
 import type {
   DashboardData,
   EnrichedCandidate,
+  EnrichedRequisition,
   Language,
   ProcessStage,
+  RecruitmentLog,
+  RequisitionRequestType,
   RequisitionStatus,
   RpcResult,
   ViewId
@@ -97,6 +102,13 @@ type GuideContext = {
   candidate_id?: string;
 };
 
+type WelcomeSummary = {
+  openRequisitions: number;
+  openVacancy: number;
+  activeCandidates: number;
+  offerFinalizationNeeded: number;
+};
+
 const rpcByModal: Record<Exclude<ModalName, null | "user">, string> = {
   requisition: "app_upsert_requisition",
   status: "app_insert_requisition_log",
@@ -125,6 +137,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const [guideStep, setGuideStep] = useState<GuideStep>(null);
   const [guideContext, setGuideContext] = useState<GuideContext>({});
   const [detail, setDetail] = useState<{ type: "requisition" | "candidate"; id: string } | null>(null);
+  const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const loadData = useCallback(async () => {
@@ -179,13 +192,25 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const enrichedCandidates = useMemo(() => enrichCandidates(data), [data]);
   const enrichedOffers = useMemo(() => enrichOffers(data), [data]);
   const staleSourcingGroups = useMemo(() => staleOpenSourcingGroups(data), [data]);
+  const welcomeSummary = useMemo(
+    () => buildWelcomeSummary(enrichedRequisitions, enrichedCandidates, data.offers, data.profile),
+    [data.offers, data.profile, enrichedCandidates, enrichedRequisitions]
+  );
 
   const filteredRequisitions = useMemo(() => filterByText(enrichedRequisitions, filters), [enrichedRequisitions, filters]);
   const filteredCandidates = useMemo(() => filterByText(enrichedCandidates, filters), [enrichedCandidates, filters]);
   const filteredOffers = useMemo(() => filterByText(enrichedOffers, filters), [enrichedOffers, filters]);
+  const filteredChangeLogs = useMemo(() => filterChangeLogsByText(data, filters), [data, filters]);
 
   const siteOptions = SITE_OPTIONS;
   const ownerOptions = recruiterNicknameOptions(data.profiles);
+
+  useEffect(() => {
+    if (initialView !== "home" || loading || !data.profile) return;
+    const key = welcomeStorageKey(data.profile.id ?? data.profile.email ?? "unknown");
+    if (sessionStorage.getItem(key)) return;
+    setWelcomeOpen(true);
+  }, [data.profile, initialView, loading]);
 
   async function signOut() {
     if (supabase) await supabase.auth.signOut();
@@ -222,7 +247,24 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     setActiveModal("candidate");
   }
 
+  function closeWelcomeSummary() {
+    const key = welcomeStorageKey(data.profile?.id ?? data.profile?.email ?? "unknown");
+    sessionStorage.setItem(key, "dismissed");
+    setWelcomeOpen(false);
+  }
+
+  function openWelcomePipeline() {
+    closeWelcomeSummary();
+    router.push("/pipeline");
+  }
+
   function openProcessForMove(candidate: EnrichedCandidate, nextStage: ProcessStage) {
+    const logs = latestLogsForCandidate(data, candidate.candidate_id);
+    const blockedReason = processUpdateBlockReason(logs);
+    if (blockedReason) {
+      setStatus(blockedReason);
+      return;
+    }
     const currentIndex = ACTIVE_PIPELINE_STAGES.indexOf(candidate.latest_process as ProcessStage);
     const targetIndex = ACTIVE_PIPELINE_STAGES.indexOf(nextStage);
     if (currentIndex === -1 || targetIndex <= currentIndex) return;
@@ -237,9 +279,20 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     setActiveModal("pipeline_pass");
   }
 
+  function openProcessFromDetail(candidateId: string) {
+    const latest = latestLogsForCandidate(data, candidateId)[0];
+    setProcessDefaults({
+      candidate_id: candidateId,
+      recruitment_process: latest?.recruitment_process,
+      source: "manual"
+    });
+    setActiveModal("process");
+  }
+
   function prepareAction(modal: Exclude<ModalName, null>, form: HTMLFormElement) {
     const formData = new FormData(form);
     const payload = buildPayload(modal, formData);
+    if (modal === "process") validateProcessUpdatePayload(data, payload);
     const summary = buildSummary(modal, payload);
 
     setPendingAction({
@@ -356,7 +409,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     return false;
   }
 
-  const detailBody = useMemo(() => buildDetailBody(detail, data), [detail, data]);
+  const detailBody = useMemo(() => buildDetailBody(detail, data, openProcessFromDetail), [detail, data]);
 
   if (!hasSupabaseConfig) {
     return (
@@ -399,7 +452,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       <p className={`mb-4 min-h-6 text-sm font-bold ${error ? "text-orange" : "text-slate"}`}>{loading ? "Loading recruitment records..." : error ?? status}</p>
 
       {initialView === "home" ? (
-        <HomeView language={language} profile={data.profile} requisitions={filteredRequisitions} candidates={filteredCandidates} offers={data.offers} staleSourcingGroups={staleSourcingGroups} changeLogs={data.change_logs} onOpenRequisition={(id) => setDetail({ type: "requisition", id })} onOpenCandidate={(id) => setDetail({ type: "candidate", id })} />
+        <HomeView language={language} profile={data.profile} requisitions={filteredRequisitions} candidates={filteredCandidates} offers={data.offers} staleSourcingGroups={staleSourcingGroups} changeLogs={filteredChangeLogs} onOpenRequisition={(id) => setDetail({ type: "requisition", id })} onOpenCandidate={(id) => setDetail({ type: "candidate", id })} />
       ) : null}
 
       {initialView === "dashboard" ? (
@@ -460,6 +513,15 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
         onLater={clearGuide}
       />
 
+      <WelcomeBackPrompt
+        language={language}
+        open={welcomeOpen}
+        profile={data.profile}
+        summary={welcomeSummary}
+        onClose={closeWelcomeSummary}
+        onPipeline={openWelcomePipeline}
+      />
+
       <ConfirmModal
         action={pendingAction}
         busy={busy}
@@ -494,9 +556,13 @@ function buildPayload(modal: Exclude<ModalName, null>, formData: FormData) {
       person_in_charge: emptyToNull(formData.get("person_in_charge")),
       line_manager: emptyToNull(formData.get("line_manager")),
       request_type: String(formData.get("request_type") ?? "New"),
+      replacement_names: replacementNamesPayload(formData),
       status: String(formData.get("status") ?? "ongoing") as RequisitionStatus
     };
     requireFields(payload, ["doc_id", "site", "position", "department", "head_count"]);
+    if (payload.request_type === "Replacement" && !payload.replacement_names) {
+      throw new Error("At least one replacement name is required for replacement requisitions.");
+    }
     return payload;
   }
 
@@ -520,7 +586,8 @@ function buildPayload(modal: Exclude<ModalName, null>, formData: FormData) {
       doc_group_id: emptyToNull(formData.get("doc_group_id")),
       channel: emptyToNull(formData.get("channel")),
       ref_name: emptyToNull(formData.get("ref_name")),
-      first_contact_date: emptyToNull(formData.get("first_contact_date"))
+      first_contact_date: emptyToNull(formData.get("first_contact_date")),
+      candidate_folder_url: emptyToNull(formData.get("candidate_folder_url"))
     };
     requireFields(payload, ["name", "doc_group_id"]);
     return payload;
@@ -570,8 +637,6 @@ function buildPayload(modal: Exclude<ModalName, null>, formData: FormData) {
       doc_id: emptyToNull(formData.get("doc_id")),
       accepted_date: emptyToNull(formData.get("accepted_date")),
       first_working_date: emptyToNull(formData.get("first_working_date")),
-      offered_type: emptyToNull(formData.get("offered_type")),
-      replaced: emptyToNull(formData.get("replaced")),
       remark: emptyToNull(formData.get("remark"))
     };
     requireFields(payload, ["candidate_id", "doc_id"]);
@@ -627,6 +692,52 @@ function buildPayload(modal: Exclude<ModalName, null>, formData: FormData) {
   return payload;
 }
 
+function replacementNamesPayload(formData: FormData) {
+  if (String(formData.get("request_type") ?? "New") !== "Replacement") return null;
+  const names = formData
+    .getAll("replacement_names")
+    .map((value) => String(value).trim())
+    .filter(Boolean);
+  return names.length > 0 ? names.join("\n") : null;
+}
+
+function validateProcessUpdatePayload(data: DashboardData, payload: Record<string, unknown>) {
+  const candidateId = valueAsString(payload.candidate_id);
+  const selectedStage = valueAsString(payload.recruitment_process) as ProcessStage;
+  const logs = latestLogsForCandidate(data, candidateId);
+  const blockedReason = processUpdateBlockReason(logs);
+  if (blockedReason) throw new Error(blockedReason);
+
+  const allowedStages = availableProcessUpdateStages(logs);
+  if (!allowedStages.includes(selectedStage)) {
+    throw new Error("Cannot update to a previous pipeline stage.");
+  }
+}
+
+function processUpdateBlockReason(logs: RecruitmentLog[]) {
+  if (candidateHasHistoricalFail(logs)) return "Pipeline update unavailable because this candidate has a failed stage.";
+  if (candidatePassedAllPipelineStages(logs)) return "Pipeline update unavailable because this candidate completed all stages.";
+  return "";
+}
+
+function availableProcessUpdateStages(logs: RecruitmentLog[]) {
+  const blockedReason = processUpdateBlockReason(logs);
+  if (blockedReason) return [];
+  const latest = logs[0];
+  const latestIndex = PROCESS_UPDATE_STAGES.indexOf(latest?.recruitment_process as ProcessStage);
+  return PROCESS_UPDATE_STAGES.filter((stage) => latestIndex === -1 || PROCESS_UPDATE_STAGES.indexOf(stage) >= latestIndex);
+}
+
+function candidateHasHistoricalFail(logs: RecruitmentLog[]) {
+  return logs.some((log) => log.result === 0);
+}
+
+function candidatePassedAllPipelineStages(logs: RecruitmentLog[]) {
+  return ACTIVE_PIPELINE_STAGES.every((stage) =>
+    logs.some((log) => log.recruitment_process === stage && log.result === 1)
+  );
+}
+
 function buildSummary(modal: Exclude<ModalName, null>, payload: Record<string, unknown>) {
   const key = String(payload.doc_id ?? payload.candidate_id ?? payload.group_id ?? payload.target_stage ?? payload.email ?? payload.user_id ?? "record");
   return `${modal} · ${key}`;
@@ -667,6 +778,9 @@ function RecordModal({
 
   if (!modal) return null;
   const selectedRecords = selectedModalRecords(data, selectedId);
+  const processSubmitBlocked = modal === "process"
+    && Boolean(selectedRecords.candidate)
+    && Boolean(processUpdateBlockReason(latestLogsForCandidate(data, selectedRecords.candidate!.candidate_id)));
 
   function handleModeChange(nextMode: "new" | "change") {
     setMode(nextMode);
@@ -698,7 +812,7 @@ function RecordModal({
         {modal === "user" ? <UserPrefillFields canManageUsers={canManageUsers} data={data} mode={mode} selectedId={selectedId} selected={selectedRecords.profile} onSelect={setSelectedId} /> : null}
         <div className="flex justify-end gap-2 border-t border-[#D7DEE8] pt-4">
           <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button type="submit">Review Save</Button>
+          <Button type="submit" disabled={processSubmitBlocked}>Review Save</Button>
         </div>
       </form>
     </Modal>
@@ -723,7 +837,7 @@ function ModeRow({
   onModeChange: (mode: "new" | "change") => void;
 }) {
   return (
-    <div className="flex flex-wrap gap-3 rounded-md bg-lightgray p-3 text-sm font-bold text-navy">
+    <div className="flex flex-wrap gap-3 rounded-md border border-[#D7DEE8] bg-lightgray p-3 text-sm font-bold text-navy">
       <label className="flex items-center gap-2"><input type="radio" name="mode" value="new" checked={mode === "new"} onChange={() => onModeChange("new")} /> New</label>
       <label className="flex items-center gap-2"><input type="radio" name="mode" value="change" checked={mode === "change"} onChange={() => onModeChange("change")} /> Change</label>
     </div>
@@ -751,6 +865,13 @@ function RequisitionFields({
   const personOptions = recruiterNicknameOptions(data.profiles);
   const siteValue = isSiteRecruiter ? assignedSite : selected?.site;
   const ownerValue = isSiteRecruiter ? nickname : selected?.person_in_charge;
+  const [requestType, setRequestType] = useState<RequisitionRequestType>(selected?.request_type ?? "New");
+  const [replacementNames, setReplacementNames] = useState(splitReplacementNames(selected?.replacement_names));
+
+  useEffect(() => {
+    setRequestType(selected?.request_type ?? "New");
+    setReplacementNames(splitReplacementNames(selected?.replacement_names));
+  }, [selected?.doc_id, selected?.replacement_names, selected?.request_type]);
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
@@ -766,7 +887,7 @@ function RequisitionFields({
       </Field>
       <Field label="PR Approved Date"><TextInput name="pr_approved_date" type="date" defaultValue={selected?.pr_approved_date ?? ""} /></Field>
       <Field label="Request Type">
-        <SelectInput name="request_type" defaultValue={selected?.request_type ?? "New"}>
+        <SelectInput name="request_type" value={requestType} onChange={(event) => setRequestType(event.target.value as RequisitionRequestType)}>
           <option value="New">New Position</option>
           <option value="Replacement">Replacement Position</option>
         </SelectInput>
@@ -778,10 +899,15 @@ function RequisitionFields({
           {SITE_OPTIONS.map((site) => <option key={site} value={site}>{site}</option>)}
         </SelectInput>
       </Field>
-      <Field label="Position"><TextInput name="position" list="position-options" required defaultValue={selected?.position ?? ""} /></Field>
       <Field label="Department"><TextInput name="department" list="department-options" required defaultValue={selected?.department ?? ""} /></Field>
       <Field label="Section"><TextInput name="section" list="section-options" defaultValue={selected?.section ?? ""} /></Field>
-      <Field label="Level"><TextInput name="level" list="level-options" defaultValue={selected?.level ?? ""} /></Field>
+      <Field label="Position"><TextInput name="position" list="position-options" required defaultValue={selected?.position ?? ""} /></Field>
+      <Field label="Level (L)">
+        <SelectInput name="level" defaultValue={selected?.level ?? ""}>
+          <option value="">Select level</option>
+          {Array.from({ length: 15 }, (_, level) => <option key={level} value={String(level)}>{level}</option>)}
+        </SelectInput>
+      </Field>
       <Field label="Head Count"><TextInput name="head_count" type="number" min={1} defaultValue={selected?.head_count ?? 1} required /></Field>
       <Field label="Person in Charge">
         {isSiteRecruiter ? <input type="hidden" name="person_in_charge" value={nickname} /> : null}
@@ -794,6 +920,26 @@ function RequisitionFields({
       <Field label="Status">
         <SelectInput name="status" defaultValue={selected?.status === "filled" ? "ongoing" : selected?.status ?? "ongoing"}>{WRITABLE_REQUISITION_STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}</SelectInput>
       </Field>
+      {requestType === "Replacement" ? (
+        <div className="grid gap-2 md:col-span-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-sm font-bold text-navy">Replacement Names</span>
+            <Button type="button" size="sm" variant="secondary" onClick={() => setReplacementNames((names) => [...names, ""])}>Add replacement</Button>
+          </div>
+          <div className="grid gap-2">
+            {replacementNames.map((name, index) => (
+              <TextInput
+                key={index}
+                name="replacement_names"
+                required={index === 0}
+                placeholder={`Replacement name ${index + 1}`}
+                value={name}
+                onChange={(event) => setReplacementNames((names) => names.map((item, itemIndex) => itemIndex === index ? event.target.value : item))}
+              />
+            ))}
+          </div>
+        </div>
+      ) : null}
       <DataLists data={data} />
     </div>
   );
@@ -820,6 +966,14 @@ function StatusFields({
   );
 }
 
+function splitReplacementNames(value: string | null | undefined) {
+  const names = (value ?? "")
+    .split(/\r?\n/)
+    .map((name) => name.trim())
+    .filter(Boolean);
+  return names.length > 0 ? names : [""];
+}
+
 function CandidateFields({ data }: { data: DashboardData }) {
   return (
     <div className="grid gap-4 md:grid-cols-2">
@@ -830,18 +984,33 @@ function CandidateFields({ data }: { data: DashboardData }) {
       <Field label="Channel"><TextInput name="channel" list="channel-options" /></Field>
       <Field label="Reference Name"><TextInput name="ref_name" list="ref-options" /></Field>
       <Field label="First Contact Date"><TextInput name="first_contact_date" type="date" /></Field>
+      <Field label="Candidate Folder Link" className="md:col-span-2"><TextInput name="candidate_folder_url" type="url" /></Field>
       <DataLists data={data} />
     </div>
   );
 }
 
 function ProcessFields({ data, defaults }: { data: DashboardData; defaults: ProcessDefaults }) {
+  const candidate = data.candidates.find((row) => row.candidate_id === defaults.candidate_id);
+  const logs = candidate ? latestLogsForCandidate(data, candidate.candidate_id) : [];
+  const latest = logs[0];
+  const blockedReason = processUpdateBlockReason(logs);
+  const availableStages = availableProcessUpdateStages(logs);
+  const defaultStage = defaults.recruitment_process ?? latest?.recruitment_process;
+  const processValue = availableStages.includes(defaultStage as ProcessStage) ? defaultStage : availableStages[0] ?? "";
+
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <input type="hidden" name="source" value={defaults.source ?? "manual"} />
       <Field label="Candidate"><SelectInput name="candidate_id" required defaultValue={defaults.candidate_id}>{data.candidates.map((row) => <option key={row.candidate_id} value={row.candidate_id}>{row.candidate_id} · {row.name}</option>)}</SelectInput></Field>
       <Field label="Date"><TextInput name="log_date" type="date" defaultValue={today()} required /></Field>
-      <Field label="Process"><SelectInput name="recruitment_process" required defaultValue={defaults.recruitment_process}>{PROCESS_UPDATE_STAGES.map((stage) => <option key={stage} value={stage}>{processLabel(stage)}</option>)}</SelectInput></Field>
+      {blockedReason ? <p className="rounded-md bg-lightgray p-3 text-sm font-bold text-orange md:col-span-2">{blockedReason}</p> : null}
+      <Field label="Process">
+        <SelectInput name="recruitment_process" required defaultValue={processValue} disabled={availableStages.length === 0}>
+          {availableStages.length === 0 ? <option value="">No process update available</option> : null}
+          {availableStages.map((stage) => <option key={stage} value={stage}>{processLabel(stage)}</option>)}
+        </SelectInput>
+      </Field>
       <Field label="Round"><TextInput name="round" type="number" min={1} defaultValue={1} required /></Field>
       <Field label="Interviewer"><TextInput name="interviewer" list="interviewer-options" /></Field>
       <Field label="Result"><SelectInput name="result"><option value="">Pending</option><option value="1">Pass</option><option value="0">Fail</option></SelectInput></Field>
@@ -868,6 +1037,20 @@ function CandidatePrefillFields({
 }) {
   const docGroupValue = mode === "new" ? defaults.doc_group_id ?? "" : selected?.doc_group_id ?? "";
   const firstContactDate = mode === "new" ? defaults.first_contact_date ?? "" : selected?.first_contact_date ?? "";
+  const [selectedDocGroupId, setSelectedDocGroupId] = useState(docGroupValue);
+  const [selectedChannel, setSelectedChannel] = useState(selected?.channel ?? "");
+  const availableChannels = useMemo(() => sourcingChannelsForDocGroup(data, selectedDocGroupId), [data, selectedDocGroupId]);
+
+  useEffect(() => {
+    setSelectedDocGroupId(docGroupValue);
+    setSelectedChannel(selected?.channel ?? "");
+  }, [docGroupValue, selected?.channel]);
+
+  useEffect(() => {
+    if (selectedChannel && !availableChannels.some((channel) => channel.label === selectedChannel)) {
+      setSelectedChannel("");
+    }
+  }, [availableChannels, selectedChannel]);
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
@@ -884,14 +1067,20 @@ function CandidatePrefillFields({
       <Field label="Name"><TextInput name="name" required defaultValue={selected?.name ?? ""} /></Field>
       <Field label="Phone No."><TextInput name="phone_no" defaultValue={selected?.phone_no ?? ""} /></Field>
       <Field label="Group ID">
-        <SelectInput name="doc_group_id" required defaultValue={docGroupValue}>
+        <SelectInput name="doc_group_id" required value={selectedDocGroupId} onChange={(event) => setSelectedDocGroupId(event.target.value)}>
           <option value="">Select group</option>
           {data.document_groups.map((row) => <option key={row.doc_group_id} value={row.doc_group_id}>{row.doc_group_id} - {row.group_position}</option>)}
         </SelectInput>
       </Field>
-      <Field label="Channel"><TextInput name="channel" list="channel-options" defaultValue={selected?.channel ?? ""} /></Field>
+      <Field label="Channel">
+        <SelectInput name="channel" value={selectedChannel} onChange={(event) => setSelectedChannel(event.target.value)} disabled={!selectedDocGroupId || availableChannels.length === 0}>
+          <option value="">{availableChannels.length === 0 ? "No sourcing channels marked for this group" : "Select channel"}</option>
+          {availableChannels.map((channel) => <option key={channel.enabled} value={channel.label}>{channel.label}</option>)}
+        </SelectInput>
+      </Field>
       <Field label="Reference Name"><TextInput name="ref_name" list="ref-options" defaultValue={selected?.ref_name ?? ""} /></Field>
       <Field label="First Contact Date"><TextInput name="first_contact_date" type="date" defaultValue={firstContactDate} /></Field>
+      <Field label="Candidate Folder Link" className="md:col-span-2"><TextInput name="candidate_folder_url" type="url" defaultValue={selected?.candidate_folder_url ?? ""} /></Field>
       <DataLists data={data} />
     </div>
   );
@@ -911,7 +1100,12 @@ function ProcessPrefillFields({
   onSelect: (value: string) => void;
 }) {
   const candidateId = selectedId || defaults.candidate_id || "";
-  const latest = selected ? latestLogsForCandidate(data, selected.candidate_id)[0] : null;
+  const logs = selected ? latestLogsForCandidate(data, selected.candidate_id) : [];
+  const latest = logs[0] ?? null;
+  const blockedReason = processUpdateBlockReason(logs);
+  const availableStages = availableProcessUpdateStages(logs);
+  const defaultStage = defaults.recruitment_process ?? latest?.recruitment_process;
+  const processValue = availableStages.includes(defaultStage as ProcessStage) ? defaultStage : availableStages[0] ?? "";
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
@@ -923,7 +1117,13 @@ function ProcessPrefillFields({
         </SelectInput>
       </Field>
       <Field label="Date"><TextInput name="log_date" type="date" defaultValue={today()} required /></Field>
-      <Field label="Process"><SelectInput name="recruitment_process" required defaultValue={defaults.recruitment_process ?? latest?.recruitment_process}>{PROCESS_UPDATE_STAGES.map((stage) => <option key={stage} value={stage}>{processLabel(stage)}</option>)}</SelectInput></Field>
+      {blockedReason ? <p className="rounded-md bg-lightgray p-3 text-sm font-bold text-orange md:col-span-2">{blockedReason}</p> : null}
+      <Field label="Process">
+        <SelectInput name="recruitment_process" required defaultValue={processValue} disabled={availableStages.length === 0}>
+          {availableStages.length === 0 ? <option value="">No process update available</option> : null}
+          {availableStages.map((stage) => <option key={stage} value={stage}>{processLabel(stage)}</option>)}
+        </SelectInput>
+      </Field>
       <Field label="Round"><TextInput name="round" type="number" min={1} defaultValue={latest?.round ?? 1} required /></Field>
       <Field label="Interviewer"><TextInput name="interviewer" list="interviewer-options" defaultValue={latest?.interviewer ?? ""} /></Field>
       <Field label="Result"><SelectInput name="result"><option value="">Pending</option><option value="1">Pass</option><option value="0">Fail</option></SelectInput></Field>
@@ -941,11 +1141,11 @@ function PipelinePassFields({ data, defaults }: { data: DashboardData; defaults:
       <input type="hidden" name="candidate_id" value={defaults.candidate_id ?? ""} />
       <input type="hidden" name="target_stage" value={defaults.target_stage ?? ""} />
       <input type="hidden" name="stage_count" value={stages.length} />
-      <div className="rounded-md bg-lightgray p-3 text-sm font-bold text-slate">
+      <div className="rounded-md border border-[#D7DEE8] bg-lightgray p-3 text-sm font-bold text-slate">
         Confirm each passed stage. After save, {processLabel(defaults.target_stage as ProcessStage)} will be created as Pending automatically.
       </div>
       {stages.map((stage, index) => (
-        <div key={stage} className="grid gap-4 rounded-md border border-[#D7DEE8] p-3 md:grid-cols-2">
+        <div key={stage} className="grid gap-4 rounded-md border border-[#D7DEE8] bg-white p-3 md:grid-cols-2">
           <input type="hidden" name={`stage_${index}`} value={stage} />
           <div className="md:col-span-2">
             <Tag tone="teal">{processLabel(stage)}</Tag>
@@ -968,8 +1168,6 @@ function OfferFields({ data }: { data: DashboardData }) {
       <Field label="Doc ID"><SelectInput name="doc_id" required>{data.requisitions.map((row) => <option key={row.doc_id}>{row.doc_id}</option>)}</SelectInput></Field>
       <Field label="Accepted Date"><TextInput name="accepted_date" type="date" /></Field>
       <Field label="First Working Date"><TextInput name="first_working_date" type="date" /></Field>
-      <Field label="Offer Type"><TextInput name="offered_type" list="offer-type-options" /></Field>
-      <Field label="Replaced"><TextInput name="replaced" list="replaced-options" /></Field>
       <Field label="Remark" className="md:col-span-2"><TextArea name="remark" rows={3} /></Field>
       <DataLists data={data} />
     </div>
@@ -981,7 +1179,7 @@ function GroupFields({ data }: { data: DashboardData }) {
     <div className="grid gap-4">
       <Field label="Group ID"><SelectInput name="group_id"><option value="">Auto in New mode</option>{data.position_groups.map((row) => <option key={row.group_id}>{row.group_id}</option>)}</SelectInput></Field>
       <Field label="Group Position"><TextInput name="group_position" list="group-position-options" required /></Field>
-      <div className="grid gap-2 rounded-md bg-lightgray p-3 text-sm font-bold text-navy md:grid-cols-4">
+      <div className="grid gap-2 rounded-md border border-[#D7DEE8] bg-lightgray p-3 text-sm font-bold text-navy md:grid-cols-4">
         {SOURCING_CHANNELS.map((channel) => (
           <label key={channel.enabled} className="flex items-center gap-2">
             <input name={channel.enabled} type="checkbox" /> {channel.label}
@@ -1075,6 +1273,23 @@ function OfferPrefillFields({
   const candidateOptions = selectedCandidate && !eligibleCandidates.some((candidate) => candidate.candidate_id === selectedCandidate.candidate_id)
     ? [...eligibleCandidates, selectedCandidate]
     : eligibleCandidates;
+  const [selectedCandidateId, setSelectedCandidateId] = useState(selected?.candidate_id ?? "");
+  const [selectedDocId, setSelectedDocId] = useState(selected?.doc_id ?? "");
+  const docOptions = mode === "change" && selected?.doc_id
+    ? data.requisitions.filter((row) => row.doc_id === selected.doc_id)
+    : availableOfferDocOptions(data, selectedCandidateId, selectedDocId);
+
+  useEffect(() => {
+    setSelectedCandidateId(selected?.candidate_id ?? "");
+    setSelectedDocId(selected?.doc_id ?? "");
+  }, [selected?.candidate_id, selected?.doc_id]);
+
+  useEffect(() => {
+    if (mode === "change") return;
+    if (selectedDocId && !docOptions.some((row) => row.doc_id === selectedDocId)) {
+      setSelectedDocId("");
+    }
+  }, [docOptions, mode, selectedDocId]);
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
@@ -1091,26 +1306,46 @@ function OfferPrefillFields({
       ) : null}
       {mode === "change" ? <input type="hidden" name="candidate_id" value={selected?.candidate_id ?? ""} /> : null}
       <Field label="Candidate">
-        <SelectInput name={mode === "change" ? undefined : "candidate_id"} required defaultValue={selected?.candidate_id ?? ""} disabled={mode === "change"}>
+        <SelectInput name={mode === "change" ? undefined : "candidate_id"} required value={selectedCandidateId} disabled={mode === "change"} onChange={(event) => {
+          setSelectedCandidateId(event.target.value);
+          setSelectedDocId("");
+        }}>
           <option value="">Select Offer Pass candidate</option>
           {candidateOptions.map((row) => <option key={row.candidate_id} value={row.candidate_id}>{row.candidate_id} - {row.name}</option>)}
         </SelectInput>
       </Field>
       {mode === "change" ? <input type="hidden" name="doc_id" value={selected?.doc_id ?? ""} /> : null}
       <Field label="Doc ID">
-        <SelectInput name={mode === "change" ? undefined : "doc_id"} required defaultValue={selected?.doc_id ?? ""} disabled={mode === "change"}>
-          <option value="">Select requisition</option>
-          {data.requisitions.map((row) => <option key={row.doc_id} value={row.doc_id}>{row.doc_id}</option>)}
+        <SelectInput name={mode === "change" ? undefined : "doc_id"} required value={selectedDocId} disabled={mode === "change" || !selectedCandidateId} onChange={(event) => setSelectedDocId(event.target.value)}>
+          <option value="">{selectedCandidateId ? "Select requisition" : "Select candidate first"}</option>
+          {docOptions.map((row) => <option key={row.doc_id} value={row.doc_id}>{row.doc_id} - {row.position}</option>)}
         </SelectInput>
       </Field>
       <Field label="Accepted Date"><TextInput name="accepted_date" type="date" defaultValue={selected?.accepted_date ?? ""} /></Field>
       <Field label="First Working Date"><TextInput name="first_working_date" type="date" defaultValue={selected?.first_working_date ?? ""} /></Field>
-      <Field label="Offer Type"><TextInput name="offered_type" list="offer-type-options" defaultValue={selected?.offered_type ?? ""} /></Field>
-      <Field label="Replaced"><TextInput name="replaced" list="replaced-options" defaultValue={selected?.replaced ?? ""} /></Field>
       <Field label="Remark" className="md:col-span-2"><TextArea name="remark" rows={3} defaultValue={selected?.remark ?? ""} /></Field>
       <DataLists data={data} />
     </div>
   );
+}
+
+function availableOfferDocOptions(data: DashboardData, candidateId: string, currentDocId = "") {
+  if (!candidateId) return [];
+  const candidate = data.candidates.find((row) => row.candidate_id === candidateId);
+  if (!candidate) return [];
+  const candidateMatch = data.document_groups.find((row) => row.doc_group_id === candidate.doc_group_id);
+  if (!candidateMatch) return [];
+  const matchedDocIds = new Set(
+    data.document_groups
+      .filter((row) => candidateMatch.group_id ? row.group_id === candidateMatch.group_id : row.doc_group_id === candidateMatch.doc_group_id)
+      .map((row) => row.doc_id)
+  );
+  const existingOfferDocIds = new Set(data.offers.filter((offer) => offer.candidate_id === candidateId).map((offer) => offer.doc_id));
+  return enrichRequisitions(data)
+    .filter((row) => matchedDocIds.has(row.doc_id))
+    .filter((row) => row.status !== "filled" && row.status !== "cancel" && row.open_headcount > 0)
+    .filter((row) => row.doc_id === currentDocId || !existingOfferDocIds.has(row.doc_id))
+    .sort((a, b) => a.doc_id.localeCompare(b.doc_id));
 }
 
 function GroupPrefillFields({
@@ -1143,7 +1378,7 @@ function GroupPrefillFields({
         )}
       </Field>
       <Field label="Group Position"><TextInput name="group_position" list="group-position-options" required defaultValue={groupPositionValue} /></Field>
-      <div className="grid gap-2 rounded-md bg-lightgray p-3 text-sm font-bold text-navy md:grid-cols-4">
+      <div className="grid gap-2 rounded-md border border-[#D7DEE8] bg-lightgray p-3 text-sm font-bold text-navy md:grid-cols-4">
         {SOURCING_CHANNELS.map((channel) => (
           <label key={channel.enabled} className="flex items-center gap-2">
             <input name={channel.enabled} type="checkbox" defaultChecked={selected?.[channel.enabled] ?? false} /> {channel.label}
@@ -1213,10 +1448,94 @@ function DataLists({ data }: { data: DashboardData }) {
       <datalist id="channel-options">{uniqueValues(data.candidates.map((row) => row.channel)).map((value) => <option key={value} value={value} />)}</datalist>
       <datalist id="ref-options">{uniqueValues(data.candidates.map((row) => row.ref_name)).map((value) => <option key={value} value={value} />)}</datalist>
       <datalist id="interviewer-options">{uniqueValues(data.recruitment_logs.map((row) => row.interviewer)).map((value) => <option key={value} value={value} />)}</datalist>
-      <datalist id="offer-type-options">{uniqueValues(data.offers.map((row) => row.offered_type)).map((value) => <option key={value} value={value} />)}</datalist>
-      <datalist id="replaced-options">{uniqueValues(data.offers.map((row) => row.replaced)).map((value) => <option key={value} value={value} />)}</datalist>
     </>
   );
+}
+
+function WelcomeBackPrompt({
+  language,
+  open,
+  profile,
+  summary,
+  onClose,
+  onPipeline
+}: {
+  language: Language;
+  open: boolean;
+  profile: DashboardData["profile"];
+  summary: WelcomeSummary;
+  onClose: () => void;
+  onPipeline: () => void;
+}) {
+  const name = profile?.nickname ?? profile?.full_name ?? profile?.email ?? translate(language, "system");
+
+  return (
+    <Modal open={open} title={translate(language, "welcomeBack")} onClose={onClose} width="max-w-xl">
+      <div className="grid gap-4">
+        <p className="text-sm font-bold text-slate">{translate(language, "welcomeBackMessage").replace("{name}", name)}</p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <WelcomeSummaryItem label={translate(language, "welcomeOpenRequisitions")} value={summary.openRequisitions} />
+          <WelcomeSummaryItem label={translate(language, "welcomeOpenVacancy")} value={summary.openVacancy} />
+          <WelcomeSummaryItem label={translate(language, "welcomeActiveCandidates")} value={summary.activeCandidates} />
+          <WelcomeSummaryItem label={translate(language, "welcomeOfferFinalization")} value={summary.offerFinalizationNeeded} />
+        </div>
+        <div className="flex flex-wrap justify-end gap-2 border-t border-[#D7DEE8] pt-4">
+          <Button type="button" variant="secondary" onClick={onClose}>{translate(language, "close")}</Button>
+          <Button type="button" onClick={onPipeline}>{translate(language, "viewPipeline")}</Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function WelcomeSummaryItem({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-md border border-[#D7DEE8] bg-lightgray p-3">
+      <p className="text-xs font-extrabold uppercase tracking-normal text-slate">{label}</p>
+      <p className="mt-1 text-2xl font-extrabold text-navy">{value.toLocaleString()}</p>
+    </div>
+  );
+}
+
+function buildWelcomeSummary(
+  requisitions: EnrichedRequisition[],
+  candidates: EnrichedCandidate[],
+  offers: DashboardData["offers"],
+  profile: DashboardData["profile"]
+): WelcomeSummary {
+  const responsibleRequisitions = responsibleRows(requisitions, profile);
+  const responsibleCandidates = responsibleRows(candidates, profile);
+  const offerCandidateIds = new Set(offers.map((offer) => offer.candidate_id));
+  const actionableRequisitions = responsibleRequisitions.filter((row) => row.status !== "filled" && row.status !== "cancel" && row.open_headcount > 0);
+  const activeCandidates = responsibleCandidates.filter(
+    (row) => row.latest_process !== "No activity"
+      && ACTIVE_PIPELINE_STAGES.includes(row.latest_process)
+      && row.latest_result !== 0
+      && !offerCandidateIds.has(row.candidate_id)
+  );
+  const offerFinalizationNeeded = activeCandidates.filter((row) => row.latest_process === "Offer" && row.latest_result === 1).length;
+
+  return {
+    openRequisitions: actionableRequisitions.length,
+    openVacancy: actionableRequisitions.reduce((sum, row) => sum + row.open_headcount, 0),
+    activeCandidates: activeCandidates.length,
+    offerFinalizationNeeded
+  };
+}
+
+function responsibleRows<T extends { site?: string | null; person_in_charge?: string | null }>(rows: T[], profile: DashboardData["profile"]) {
+  if (!profile || profile.role === "system_admin" || profile.role === "admin_recruiter") return rows;
+  const ownerNames = [profile.nickname, profile.full_name].filter(Boolean).map((value) => value!.toLowerCase());
+  const site = profile.site?.toLowerCase();
+  return rows.filter((row) => {
+    const rowOwner = (row.person_in_charge ?? "").toLowerCase();
+    const rowSite = (row.site ?? "").toLowerCase();
+    return ownerNames.some((owner) => rowOwner.includes(owner)) || Boolean(site && rowSite.includes(site));
+  });
+}
+
+function welcomeStorageKey(profileKey: string) {
+  return `recruitment_welcome_dismissed:${profileKey}`;
 }
 
 function GuidePrompt({
@@ -1240,7 +1559,7 @@ function GuidePrompt({
     return (
       <Modal open title={translate(language, "guideNextStepSourceCandidates")} onClose={onLater} width="max-w-lg">
         <div className="grid gap-4">
-          <div className="rounded-md bg-lightgray p-3 text-sm font-bold text-slate">
+          <div className="rounded-md border border-[#D7DEE8] bg-lightgray p-3 text-sm font-bold text-slate">
             <p className="text-navy">{context.doc_id} - {context.position}</p>
             <p className="mt-1">{translate(language, "guideSourceCandidatesMessage")}</p>
           </div>
@@ -1256,7 +1575,7 @@ function GuidePrompt({
   return (
     <Modal open title={translate(language, "guideHaveCandidateQuestion")} onClose={onLater} width="max-w-lg">
       <div className="grid gap-4">
-        <div className="rounded-md bg-lightgray p-3 text-sm font-bold text-slate">
+        <div className="rounded-md border border-[#D7DEE8] bg-lightgray p-3 text-sm font-bold text-slate">
           <p className="text-navy">{context.doc_id} - {context.group_position ?? context.position}</p>
           <p className="mt-1">{translate(language, "guideCandidateMessage")}</p>
         </div>
@@ -1284,7 +1603,7 @@ function ConfirmModal({
     <Modal open={Boolean(action)} title={action?.title ?? "Confirm Save"} onClose={onClose} width="max-w-lg">
       <div className="grid gap-4">
         <p className="text-sm font-bold text-slate">{action?.summary}</p>
-        <pre className="max-h-72 overflow-auto rounded-md bg-lightgray p-3 text-xs text-navy">{JSON.stringify(action?.payload ?? {}, null, 2)}</pre>
+        <pre className="max-h-72 overflow-auto rounded-md border border-[#D7DEE8] bg-lightgray p-3 text-xs text-navy">{JSON.stringify(action?.payload ?? {}, null, 2)}</pre>
         <div className="flex justify-end gap-2">
           <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
           <Button type="button" disabled={busy} onClick={onConfirm}>Confirm</Button>
@@ -1294,7 +1613,7 @@ function ConfirmModal({
   );
 }
 
-function buildDetailBody(detail: { type: "requisition" | "candidate"; id: string } | null, data: DashboardData) {
+function buildDetailBody(detail: { type: "requisition" | "candidate"; id: string } | null, data: DashboardData, onUpdateCandidate: (candidateId: string) => void) {
   if (!detail) return { title: "Detail", body: null };
 
   if (detail.type === "requisition") {
@@ -1314,6 +1633,7 @@ function buildDetailBody(detail: { type: "requisition" | "candidate"; id: string
             ["Department", requisition.department],
             ["Section", requisition.section ?? "-"],
             ["Request Type", requisition.request_type],
+            ["Replacement Names", requisition.request_type === "Replacement" ? replacementNamesDisplay(requisition.replacement_names) : "-"],
             ["Owner", requisition.person_in_charge ?? "-"],
             ["Line Manager", requisition.line_manager ?? "-"],
             ["Headcount", String(requisition.head_count)],
@@ -1331,26 +1651,50 @@ function buildDetailBody(detail: { type: "requisition" | "candidate"; id: string
   if (!candidate) return { title: "Candidate", body: <p className="text-sm font-bold text-slate">Record not found.</p> };
   const logs = latestLogsForCandidate(data, candidate.candidate_id);
   const offers = data.offers.filter((row) => row.candidate_id === candidate.candidate_id);
+  const updateBlockedReason = processUpdateBlockReason(logs);
 
   return {
     title: `${candidate.candidate_id} · ${candidate.name}`,
     body: (
       <div className="grid gap-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-extrabold uppercase tracking-normal text-slate">Pipeline Action</p>
+            {updateBlockedReason ? <p className="mt-1 text-sm font-bold text-orange">{updateBlockedReason}</p> : null}
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            disabled={Boolean(updateBlockedReason)}
+            onClick={() => onUpdateCandidate(candidate.candidate_id)}
+          >
+            Update
+          </Button>
+        </div>
         <DetailGrid rows={[
           ["Phone", candidate.phone_no ?? "-"],
-          ["Doc ID", candidate.doc_id ?? "-"],
-          ["Group", candidate.group_position ?? "-"],
+          ["Group ID", candidate.group_id ?? candidate.doc_group_id],
+          ["Doc IDs", candidate.doc_id ?? "-"],
+          ["Group Position", candidate.group_position ?? "-"],
           ["Site", candidate.site ?? "-"],
           ["Owner", candidate.person_in_charge ?? "-"],
           ["Channel", candidate.channel ?? "-"],
           ["Reference", candidate.ref_name ?? "-"],
+          ["Folder", candidate.candidate_folder_url ? "Open candidate folder" : "-"],
           ["Latest Result", resultText(candidate.latest_result)]
         ]} />
+        {candidate.candidate_folder_url ? (
+          <a className="text-sm font-extrabold text-primary underline" href={candidate.candidate_folder_url} target="_blank" rel="noreferrer">Open candidate folder</a>
+        ) : null}
+        <CandidateJourney logs={logs} />
         <div>
-          <h4 className="mb-2 font-extrabold text-navy">Timeline</h4>
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <h4 className="font-extrabold text-navy">Timeline</h4>
+          </div>
           <div className="grid gap-2">
             {logs.length === 0 ? <p className="text-sm font-bold text-slate">No process logs yet.</p> : logs.map((log) => (
-              <div key={log.log_id} className="rounded-md border border-[#D7DEE8] p-3">
+              <div key={log.log_id} className="rounded-md border border-[#D7DEE8] bg-white p-3 shadow-sm">
                 <div className="flex items-center justify-between gap-2">
                   <strong className="text-navy">{processLabel(log.recruitment_process)}</strong>
                   <Tag tone={statusTone(resultText(log.result).toLowerCase())}>{resultText(log.result)}</Tag>
@@ -1367,9 +1711,81 @@ function buildDetailBody(detail: { type: "requisition" | "candidate"; id: string
   };
 }
 
+function replacementNamesDisplay(value: string | null | undefined) {
+  const names = splitReplacementNames(value).filter(Boolean);
+  return names.length > 0 ? names.join(", ") : "-";
+}
+
+function CandidateJourney({ logs }: { logs: RecruitmentLog[] }) {
+  const currentPendingStage = logs.find((log) => log.result === null)?.recruitment_process;
+
+  return (
+    <div className="rounded-lg bg-white px-4 py-4">
+      <h4 className="mb-4 font-extrabold text-navy">Candidate Pipeline Journey</h4>
+
+      <div className="relative grid gap-4 md:grid-cols-6 md:gap-2 md:justify-items-center">
+        {/* Desktop horizontal connector */}
+        <span className="absolute left-[8.5%] right-[8.5%] top-3 hidden h-0.5 bg-[#E5E5FB] md:block" />
+
+        {ACTIVE_PIPELINE_STAGES.map((stage, index) => {
+          const state = journeyStageState(logs, stage, currentPendingStage);
+
+          return (
+            <div
+              key={stage}
+              className="relative z-10 grid grid-cols-[1.5rem_minmax(0,1fr)] items-start gap-3 md:flex md:w-full md:flex-col md:items-center md:text-center"
+            >
+              {/* Mobile vertical connector */}
+              {index < ACTIVE_PIPELINE_STAGES.length - 1 ? (
+                <span className="absolute left-3 top-6 h-[calc(100%+1rem)] w-0.5 bg-[#E5E5FB] md:hidden" />
+              ) : null}
+
+              {/* Dot */}
+              <span className={`relative z-10 block size-6 shrink-0 rounded-full ring-4 md:mx-auto ${journeyDotClass(state)}`} />
+
+              {/* Label block */}
+              <div className="min-w-0 md:mt-3 md:flex md:min-h-[72px] md:flex-col md:items-center md:justify-start">
+                <p className="text-xs font-extrabold leading-tight text-navy">
+                  {processLabel(stage)}
+                </p>
+                <p className="mt-1 text-xs font-medium text-slate">
+                  {journeyStateLabel(state)}
+                </p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function journeyStageState(logs: RecruitmentLog[], stage: ProcessStage, currentPendingStage?: ProcessStage) {
+  const stageLogs = logs.filter((log) => log.recruitment_process === stage).sort((a, b) => b.log_id - a.log_id);
+  const latest = stageLogs[0];
+  if (!latest) return "unreached";
+  if (latest.result === 0) return "failed";
+  if (latest.result === 1) return "passed";
+  return currentPendingStage === stage ? "pending" : "unreached";
+}
+
+function journeyDotClass(state: string) {
+  if (state === "passed") return "bg-[#0A3CDC] ring-[#E5E5FB]";
+  if (state === "failed") return "bg-[#E54848] ring-[#FFE1E1]";
+  if (state === "pending") return "bg-[#F6C445] ring-[#FFF4CC]";
+  return "bg-[#E5E5FB] ring-[#EEF7FF]";
+}
+
+function journeyStateLabel(state: string) {
+  if (state === "passed") return "Passed";
+  if (state === "failed") return "Failed";
+  if (state === "pending") return "Pending";
+  return "Not reached";
+}
+
 function DetailGrid({ rows }: { rows: Array<[string, string]> }) {
   return (
-    <dl className="grid gap-3 rounded-lg bg-lightgray p-4 sm:grid-cols-2">
+    <dl className="grid gap-3 rounded-lg border border-[#D7DEE8] bg-lightgray p-4 sm:grid-cols-2">
       {rows.map(([label, value]) => (
         <div key={label}>
           <dt className="text-xs font-extrabold uppercase tracking-normal text-slate">{label}</dt>
@@ -1388,7 +1804,7 @@ function DetailList({ title, rows }: { title: string; rows: string[] }) {
         {rows.length === 0 ? (
           <p className="text-sm font-bold text-slate">No records.</p>
         ) : (
-          rows.map((row) => <div key={row} className="rounded-md border border-[#D7DEE8] p-3 text-sm font-bold text-slate">{row}</div>)
+          rows.map((row) => <div key={row} className="rounded-md border border-[#D7DEE8] bg-white p-3 text-sm font-bold text-slate shadow-sm">{row}</div>)
         )}
       </div>
     </div>

@@ -43,7 +43,7 @@ export function PipelineView({
           return (
             <section
               key={stage}
-              className={`min-h-80 min-w-64 rounded-lg border border-[#D7DEE8] bg-lightgray/65 p-3 transition ${
+              className={`min-h-80 min-w-64 rounded-lg border border-[#D7DEE8] bg-lightgray/75 p-3 transition ${
                 isBlocked ? "border-scarlet bg-[#FFF1F0]" : ""
               }`}
               onDragOver={(event) => {
@@ -85,7 +85,7 @@ export function PipelineView({
                         setDragged(null);
                         setBlockedStage(null);
                       }}
-                      className="cursor-pointer rounded-lg border border-[#D7DEE8] bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-panel"
+                      className="cursor-pointer rounded-lg border border-[#D7DEE8] bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-panel"
                       onClick={() => onOpen(candidate.candidate_id)}
                     >
                       <div className="mb-2 flex items-center justify-between gap-2">

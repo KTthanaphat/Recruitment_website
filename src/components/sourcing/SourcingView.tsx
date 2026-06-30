@@ -86,7 +86,7 @@ export function SourcingView({
             {groups.map((group) => {
               const markedChannels = SOURCING_CHANNELS.filter((channel) => group[channel.enabled]);
               return (
-              <form key={group.group_id} className="rounded-lg border border-[#D7DEE8] bg-white p-4" onSubmit={(event) => saveGroup(event, group)}>
+              <form key={group.group_id} className="rounded-lg border border-[#D7DEE8] bg-white p-4 shadow-panel" onSubmit={(event) => saveGroup(event, group)}>
                 <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -109,11 +109,11 @@ export function SourcingView({
                 </div>
 
                 {markedChannels.length === 0 ? (
-                  <p className="rounded-md bg-lightgray p-3 text-sm font-bold text-slate">{translate(language, "noMarkedSourcingChannels")}</p>
+                  <p className="rounded-md border border-[#D7DEE8] bg-lightgray p-3 text-sm font-bold text-slate">{translate(language, "noMarkedSourcingChannels")}</p>
                 ) : (
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                   {markedChannels.map((channel) => (
-                    <div key={channel.count} className="rounded-md bg-lightgray p-3">
+                    <div key={channel.count} className="rounded-md border border-[#D7DEE8] bg-lightgray p-3">
                       <label className="mb-3 flex items-center gap-2 text-sm font-extrabold text-navy">
                         <input
                           name={channel.enabled}

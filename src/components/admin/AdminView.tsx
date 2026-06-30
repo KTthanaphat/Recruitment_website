@@ -37,7 +37,7 @@ export function AdminView({
       ) : (
         <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
           {data.profiles.map((account) => (
-            <div key={account.id} className="rounded-md border border-[#D7DEE8] p-3">
+            <div key={account.id} className="rounded-md border border-[#D7DEE8] bg-white p-3 shadow-sm">
               <div className="flex items-center justify-between gap-2">
                 <strong className="text-navy">{account.nickname ?? account.full_name ?? account.email ?? "User"}</strong>
                 <Tag tone={statusTone(account.role)}>{ROLE_LABELS[account.role]}</Tag>
