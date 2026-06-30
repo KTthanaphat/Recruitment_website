@@ -61,6 +61,10 @@ create table if not exists public.position_groups (
   channel_jobthai boolean not null default false,
   channel_jobtopgun boolean not null default false,
   channel_jobdb boolean not null default false,
+  channel_linkedin boolean not null default false,
+  channel_walkin boolean not null default false,
+  channel_referral boolean not null default false,
+  channel_others boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -74,6 +78,10 @@ create table if not exists public.document_groups (
   channel_jobthai boolean not null default false,
   channel_jobtopgun boolean not null default false,
   channel_jobdb boolean not null default false,
+  channel_linkedin boolean not null default false,
+  channel_walkin boolean not null default false,
+  channel_referral boolean not null default false,
+  channel_others boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (doc_id, group_id)
@@ -136,10 +144,18 @@ create table if not exists public.sourcing_weekly_updates (
   channel_jobthai boolean not null default false,
   channel_jobtopgun boolean not null default false,
   channel_jobdb boolean not null default false,
+  channel_linkedin boolean not null default false,
+  channel_walkin boolean not null default false,
+  channel_referral boolean not null default false,
+  channel_others boolean not null default false,
   applicants_fb integer not null default 0 check (applicants_fb >= 0),
   applicants_jobthai integer not null default 0 check (applicants_jobthai >= 0),
   applicants_jobtopgun integer not null default 0 check (applicants_jobtopgun >= 0),
   applicants_jobdb integer not null default 0 check (applicants_jobdb >= 0),
+  applicants_linkedin integer not null default 0 check (applicants_linkedin >= 0),
+  applicants_walkin integer not null default 0 check (applicants_walkin >= 0),
+  applicants_referral integer not null default 0 check (applicants_referral >= 0),
+  applicants_others integer not null default 0 check (applicants_others >= 0),
   updated_by uuid references auth.users(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
@@ -879,7 +895,7 @@ declare
   v_group_id text := nullif(payload ->> 'group_id', '');
   v_exists boolean;
 begin
-  perform public.assert_system_admin();
+  perform public.assert_recruitment_writer();
   if v_mode = 'new' then
     v_group_id := public.next_app_id('position_groups', 'GRP');
   elsif v_group_id is null then
@@ -891,21 +907,33 @@ begin
   if v_mode = 'change' and not v_exists then raise exception 'Group ID does not exist. Switch to New mode to create it.'; end if;
 
   perform set_config('app.action', 'position_group:' || v_mode, true);
-  insert into public.position_groups (group_id, group_position, channel_fb, channel_jobthai, channel_jobtopgun, channel_jobdb)
+  insert into public.position_groups (
+    group_id, group_position,
+    channel_fb, channel_jobthai, channel_jobtopgun, channel_jobdb,
+    channel_linkedin, channel_walkin, channel_referral, channel_others
+  )
   values (
     v_group_id,
     nullif(payload ->> 'group_position', ''),
     coalesce((payload ->> 'channel_fb')::boolean, false),
     coalesce((payload ->> 'channel_jobthai')::boolean, false),
     coalesce((payload ->> 'channel_jobtopgun')::boolean, false),
-    coalesce((payload ->> 'channel_jobdb')::boolean, false)
+    coalesce((payload ->> 'channel_jobdb')::boolean, false),
+    coalesce((payload ->> 'channel_linkedin')::boolean, false),
+    coalesce((payload ->> 'channel_walkin')::boolean, false),
+    coalesce((payload ->> 'channel_referral')::boolean, false),
+    coalesce((payload ->> 'channel_others')::boolean, false)
   )
   on conflict (group_id) do update set
     group_position = excluded.group_position,
     channel_fb = excluded.channel_fb,
     channel_jobthai = excluded.channel_jobthai,
     channel_jobtopgun = excluded.channel_jobtopgun,
-    channel_jobdb = excluded.channel_jobdb;
+    channel_jobdb = excluded.channel_jobdb,
+    channel_linkedin = excluded.channel_linkedin,
+    channel_walkin = excluded.channel_walkin,
+    channel_referral = excluded.channel_referral,
+    channel_others = excluded.channel_others;
 
   return jsonb_build_object('ok', true, 'id', v_group_id);
 end;
@@ -923,21 +951,24 @@ declare
   v_doc_group_id text;
   v_group public.position_groups%rowtype;
 begin
-  perform public.assert_system_admin();
+  perform public.assert_recruitment_writer();
   select * into v_group from public.position_groups where group_id = v_group_id;
   if not found then raise exception 'Group ID does not exist.'; end if;
-  if exists(select 1 from public.document_groups where doc_id = v_doc_id and group_id = v_group_id) then
-    raise exception 'This requisition is already matched to that group.';
+  if exists(select 1 from public.document_groups where doc_id = v_doc_id) then
+    raise exception 'This requisition is already matched.';
   end if;
 
   v_doc_group_id := public.next_app_id('document_groups', 'DGRP');
   perform set_config('app.action', 'document_group:new', true);
   insert into public.document_groups (
-    doc_group_id, doc_id, group_id, group_position, channel_fb, channel_jobthai, channel_jobtopgun, channel_jobdb
+    doc_group_id, doc_id, group_id, group_position,
+    channel_fb, channel_jobthai, channel_jobtopgun, channel_jobdb,
+    channel_linkedin, channel_walkin, channel_referral, channel_others
   )
   values (
     v_doc_group_id, v_doc_id, v_group_id, v_group.group_position,
-    v_group.channel_fb, v_group.channel_jobthai, v_group.channel_jobtopgun, v_group.channel_jobdb
+    v_group.channel_fb, v_group.channel_jobthai, v_group.channel_jobtopgun, v_group.channel_jobdb,
+    v_group.channel_linkedin, v_group.channel_walkin, v_group.channel_referral, v_group.channel_others
   );
 
   return jsonb_build_object('ok', true, 'id', v_doc_group_id);
@@ -962,8 +993,12 @@ begin
 
   perform set_config('app.action', 'sourcing_update:upsert', true);
   insert into public.sourcing_weekly_updates (
-    group_id, week_start, channel_fb, channel_jobthai, channel_jobtopgun, channel_jobdb,
-    applicants_fb, applicants_jobthai, applicants_jobtopgun, applicants_jobdb, updated_by
+    group_id, week_start,
+    channel_fb, channel_jobthai, channel_jobtopgun, channel_jobdb,
+    channel_linkedin, channel_walkin, channel_referral, channel_others,
+    applicants_fb, applicants_jobthai, applicants_jobtopgun, applicants_jobdb,
+    applicants_linkedin, applicants_walkin, applicants_referral, applicants_others,
+    updated_by
   )
   values (
     v_group_id,
@@ -972,10 +1007,18 @@ begin
     coalesce((payload ->> 'channel_jobthai')::boolean, false),
     coalesce((payload ->> 'channel_jobtopgun')::boolean, false),
     coalesce((payload ->> 'channel_jobdb')::boolean, false),
+    coalesce((payload ->> 'channel_linkedin')::boolean, false),
+    coalesce((payload ->> 'channel_walkin')::boolean, false),
+    coalesce((payload ->> 'channel_referral')::boolean, false),
+    coalesce((payload ->> 'channel_others')::boolean, false),
     coalesce(nullif(payload ->> 'applicants_fb', '')::integer, 0),
     coalesce(nullif(payload ->> 'applicants_jobthai', '')::integer, 0),
     coalesce(nullif(payload ->> 'applicants_jobtopgun', '')::integer, 0),
     coalesce(nullif(payload ->> 'applicants_jobdb', '')::integer, 0),
+    coalesce(nullif(payload ->> 'applicants_linkedin', '')::integer, 0),
+    coalesce(nullif(payload ->> 'applicants_walkin', '')::integer, 0),
+    coalesce(nullif(payload ->> 'applicants_referral', '')::integer, 0),
+    coalesce(nullif(payload ->> 'applicants_others', '')::integer, 0),
     auth.uid()
   )
   on conflict (group_id, week_start) do update set
@@ -983,10 +1026,18 @@ begin
     channel_jobthai = excluded.channel_jobthai,
     channel_jobtopgun = excluded.channel_jobtopgun,
     channel_jobdb = excluded.channel_jobdb,
+    channel_linkedin = excluded.channel_linkedin,
+    channel_walkin = excluded.channel_walkin,
+    channel_referral = excluded.channel_referral,
+    channel_others = excluded.channel_others,
     applicants_fb = excluded.applicants_fb,
     applicants_jobthai = excluded.applicants_jobthai,
     applicants_jobtopgun = excluded.applicants_jobtopgun,
     applicants_jobdb = excluded.applicants_jobdb,
+    applicants_linkedin = excluded.applicants_linkedin,
+    applicants_walkin = excluded.applicants_walkin,
+    applicants_referral = excluded.applicants_referral,
+    applicants_others = excluded.applicants_others,
     updated_by = excluded.updated_by;
 
   return jsonb_build_object('ok', true, 'id', v_group_id);

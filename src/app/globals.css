@@ -50,3 +50,114 @@ dialog::backdrop {
 .table-scroll table {
   min-width: 980px;
 }
+
+.print-report-only {
+  display: none;
+}
+
+.print-report-header {
+  display: none;
+}
+
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 10mm;
+  }
+
+  body {
+    background: #ffffff;
+  }
+
+  body[data-print-target] > * {
+    visibility: hidden;
+  }
+
+  body[data-print-target] [data-print-section] {
+    display: none;
+  }
+
+  body[data-print-target="chart"] [data-print-section="chart"],
+  body[data-print-target="requisition-detail"] [data-print-section="requisition-detail"] {
+    display: block;
+    visibility: visible;
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    overflow: visible;
+    background: #ffffff;
+    color: #0b132b;
+  }
+
+  body[data-print-target="chart"] [data-print-section="chart"] *,
+  body[data-print-target="requisition-detail"] [data-print-section="requisition-detail"] * {
+    visibility: visible;
+  }
+
+  body[data-print-target="chart"] [data-print-section="chart"],
+  body[data-print-target="chart"] [data-print-section="chart"] * {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .print-report-header {
+    display: block;
+  }
+
+  .print-report-only {
+    display: none;
+  }
+
+  body[data-print-target="requisition-detail"] .print-report-only {
+    display: block;
+  }
+
+  .print-chart-report {
+    height: 100%;
+    padding: 0;
+  }
+
+  .print-chart-report .screen-chart-title {
+    display: none;
+  }
+
+  .print-chart-report .chart-report-body {
+    display: grid;
+    gap: 3mm;
+  }
+
+  .print-chart-report .chart-legend {
+    display: flex !important;
+    flex-wrap: wrap;
+    break-inside: avoid;
+    gap: 2mm 6mm;
+    margin-top: 0;
+    padding-bottom: 2mm;
+  }
+
+  .print-chart-report .chart-legend-swatch {
+    display: inline-block !important;
+    width: 12px !important;
+    height: 12px !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .print-chart-report .vacancy-waterfall-svg {
+    width: 100% !important;
+    max-height: 150mm;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .print-detail-table {
+    min-width: 0 !important;
+    font-size: 7px;
+  }
+
+  .print-detail-table th,
+  .print-detail-table td {
+    border-color: #94a3b8 !important;
+    padding: 4px !important;
+  }
+}

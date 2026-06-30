@@ -5,16 +5,10 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, TextInput } from "@/components/ui/Field";
 import { Panel, SectionTitle } from "@/components/ui/Panel";
 import { Tag } from "@/components/ui/Tag";
+import { SOURCING_CHANNELS } from "@/lib/constants";
 import { enrichSourcingGroups } from "@/lib/data";
 import { translate } from "@/lib/i18n/dictionary";
 import type { DashboardData, EnrichedSourcingGroup, Language, Profile } from "@/types/recruitment";
-
-const channelFields = [
-  { enabled: "channel_fb", count: "applicants_fb", label: "Facebook" },
-  { enabled: "channel_jobthai", count: "applicants_jobthai", label: "JobThai" },
-  { enabled: "channel_jobtopgun", count: "applicants_jobtopgun", label: "JobTopGun" },
-  { enabled: "channel_jobdb", count: "applicants_jobdb", label: "JobDB" }
-] as const;
 
 export function SourcingView({
   language,
@@ -47,14 +41,13 @@ export function SourcingView({
     const payload = {
       group_id: group.group_id,
       week_start: weekStart,
-      channel_fb: formData.has("channel_fb"),
-      channel_jobthai: formData.has("channel_jobthai"),
-      channel_jobtopgun: formData.has("channel_jobtopgun"),
-      channel_jobdb: formData.has("channel_jobdb"),
-      applicants_fb: numericValue(formData.get("applicants_fb")),
-      applicants_jobthai: numericValue(formData.get("applicants_jobthai")),
-      applicants_jobtopgun: numericValue(formData.get("applicants_jobtopgun")),
-      applicants_jobdb: numericValue(formData.get("applicants_jobdb"))
+      ...Object.fromEntries(SOURCING_CHANNELS.flatMap((channel) => {
+        const isMarked = Boolean(group[channel.enabled]);
+        return [
+          [channel.enabled, isMarked && formData.has(channel.enabled)],
+          [channel.count, isMarked ? numericValue(formData.get(channel.count)) : 0]
+        ];
+      }))
     };
     onSaveSourcing(payload, `sourcing update - ${group.group_id}`);
   }
@@ -90,7 +83,9 @@ export function SourcingView({
           <EmptyState message="No unfilled sourcing groups match your responsibility." />
         ) : (
           <div className="grid gap-3">
-            {groups.map((group) => (
+            {groups.map((group) => {
+              const markedChannels = SOURCING_CHANNELS.filter((channel) => group[channel.enabled]);
+              return (
               <form key={group.group_id} className="rounded-lg border border-[#D7DEE8] bg-white p-4" onSubmit={(event) => saveGroup(event, group)}>
                 <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div>
@@ -113,8 +108,11 @@ export function SourcingView({
                   )}
                 </div>
 
+                {markedChannels.length === 0 ? (
+                  <p className="rounded-md bg-lightgray p-3 text-sm font-bold text-slate">{translate(language, "noMarkedSourcingChannels")}</p>
+                ) : (
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                  {channelFields.map((channel) => (
+                  {markedChannels.map((channel) => (
                     <div key={channel.count} className="rounded-md bg-lightgray p-3">
                       <label className="mb-3 flex items-center gap-2 text-sm font-extrabold text-navy">
                         <input
@@ -137,8 +135,10 @@ export function SourcingView({
                     </div>
                   ))}
                 </div>
+                )}
               </form>
-            ))}
+              );
+            })}
           </div>
         )}
       </Panel>

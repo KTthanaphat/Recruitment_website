@@ -3,6 +3,7 @@ import type { Language, ViewId } from "@/types/recruitment";
 type Dictionary = Record<string, string>;
 
 const en: Dictionary = {
+  home: "Home",
   dashboard: "Dashboard",
   requisitions: "Requisitions",
   candidates: "Candidates",
@@ -75,6 +76,10 @@ const en: Dictionary = {
   newGroup: "New Group",
   addMatch: "Add Match",
   weeklySourcingUpdates: "Weekly Sourcing Updates",
+  noStaleSourcingUpdates: "No sourcing groups need a weekly update.",
+  notUpdatedYet: "Not updated yet",
+  lastSaved: "Last saved",
+  noMarkedSourcingChannels: "No sourcing channels marked for this group.",
   sourcingSetup: "Sourcing Setup",
   failedCandidatesLast7Days: "Failed Candidates - Last 7 Days",
   passedOfferLast7Days: "Passed Offer - Last 7 Days",
@@ -87,10 +92,20 @@ const en: Dictionary = {
   position: "Position",
   requestType: "Request Type",
   createdAt: "Created At",
-  updatedAt: "Updated At"
+  updatedAt: "Updated At",
+  preparingPdf: "Preparing PDF...",
+  guideNextStepSourceCandidates: "Next step: Source candidates",
+  guideSourceCandidatesMessage: "Create a sourcing group, then match it to this requisition so candidates can enter the pipeline.",
+  later: "Later",
+  guideHaveCandidateQuestion: "Do you already have a candidate?",
+  guideCandidateMessage: "The requisition is matched to a sourcing group. Add a candidate now if you already have one.",
+  noLater: "No, later",
+  yesCreateCandidate: "Yes, create candidate",
+  offerFinalizationNeeded: "Offer finalization needed"
 };
 
 const thLegacy: Dictionary = {
+  home: "Home",
   dashboard: "แดชบอร์ด",
   requisitions: "คำขออัตรากำลัง",
   candidates: "ผู้สมัคร",
@@ -137,6 +152,7 @@ const thLegacy: Dictionary = {
 void thLegacy;
 
 const th: Dictionary = {
+  home: "Home",
   dashboard: "แดชบอร์ด",
   requisitions: "คำขออัตรากำลัง",
   candidates: "ผู้สมัคร",
@@ -209,6 +225,10 @@ const th: Dictionary = {
   newGroup: "สร้างกลุ่มใหม่",
   addMatch: "เพิ่มการจับคู่",
   weeklySourcingUpdates: "อัปเดตช่องทางรายสัปดาห์",
+  noStaleSourcingUpdates: "ไม่มีกลุ่มที่ต้องอัปเดตรายสัปดาห์",
+  notUpdatedYet: "ยังไม่เคยอัปเดต",
+  lastSaved: "บันทึกล่าสุด",
+  noMarkedSourcingChannels: "กลุ่มนี้ยังไม่ได้เลือกช่องทางการสรรหา",
   sourcingSetup: "ตั้งค่าแหล่งผู้สมัคร",
   failedCandidatesLast7Days: "ผู้สมัครไม่ผ่าน - 7 วันที่ผ่านมา",
   passedOfferLast7Days: "ผ่านขั้นเสนอจ้าง - 7 วันที่ผ่านมา",
@@ -221,7 +241,16 @@ const th: Dictionary = {
   position: "ตำแหน่ง",
   requestType: "ประเภทคำขอ",
   createdAt: "วันที่สร้าง",
-  updatedAt: "วันที่อัปเดต"
+  updatedAt: "วันที่อัปเดต",
+  preparingPdf: "กำลังเตรียม PDF...",
+  guideNextStepSourceCandidates: "ขั้นตอนถัดไป: หาแหล่งผู้สมัคร",
+  guideSourceCandidatesMessage: "สร้างกลุ่มตำแหน่ง แล้วจับคู่กับคำขอนี้ เพื่อให้ผู้สมัครเข้าสู่ขั้นตอนการคัดเลือกได้",
+  later: "ภายหลัง",
+  guideHaveCandidateQuestion: "มีผู้สมัครแล้วหรือไม่?",
+  guideCandidateMessage: "คำขอนี้ถูกจับคู่กับกลุ่มตำแหน่งแล้ว หากมีผู้สมัครแล้วให้เพิ่มผู้สมัครได้ทันที",
+  noLater: "ไม่ใช่ ภายหลัง",
+  yesCreateCandidate: "ใช่ เพิ่มผู้สมัคร",
+  offerFinalizationNeeded: "ต้องดำเนินการข้อเสนอจ้าง"
 };
 
 export const dictionaries = { en, th };

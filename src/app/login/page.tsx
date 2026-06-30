@@ -24,17 +24,33 @@ export default function LoginPage() {
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!supabase) return;
-    setBusy(true);
-    setStatus("Signing in...");
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    setBusy(false);
-
-    if (error) {
-      setStatus(error.message);
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail.includes("@")) {
+      setStatus("Please sign in with your email address, not your nickname.");
       return;
     }
 
-    router.replace("/dashboard");
+    setBusy(true);
+    setStatus("Signing in...");
+    try {
+      const signInResult = await Promise.race([
+        supabase.auth.signInWithPassword({ email: trimmedEmail, password }),
+        new Promise<never>((_, reject) =>
+          window.setTimeout(() => reject(new Error("Login request timed out. Please check your network and Supabase project.")), 15000)
+        )
+      ]);
+
+      if (signInResult.error) {
+        setStatus(signInResult.error.message);
+        return;
+      }
+
+      router.replace("/dashboard");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Unable to sign in. Please try again.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -49,7 +65,8 @@ export default function LoginPage() {
         <form className="grid gap-4" onSubmit={onSubmit}>
           <Field label="Email">
             <TextInput
-              type="email"
+              type="text"
+              inputMode="email"
               value={email}
               autoComplete="email"
               required

@@ -78,21 +78,21 @@ export function DashboardOverviewView({
         <StatCard label={translate(language, "openHeadcount")} value={openHeadcount} icon={<Workflow size={22} />} />
       </div>
 
-      <section className="min-w-0 bg-white px-4 py-6 sm:px-6 lg:px-8">
-        <div className="mb-9 grid gap-5 lg:grid-cols-[1fr_auto] lg:items-start">
-          <h2 className="text-2xl font-extrabold tracking-normal text-navy sm:text-[28px]">{translate(language, "vacancyWaterfall")}</h2>
+      <section className="min-w-0 bg-white py-6 font-light">
+        <div className="mb-9 grid gap-5 px-4 sm:px-6 lg:grid-cols-[1fr_auto] lg:items-start lg:px-8">
+          <h2 className="text-2xl font-semibold tracking-normal text-navy sm:text-[28px]">{translate(language, "vacancyWaterfall")}</h2>
           <div className="grid gap-3 sm:flex sm:items-start sm:justify-end">
-            <Field label={translate(language, "startDate")} className="text-xs font-extrabold">
+            <Field label={translate(language, "startDate")} className="text-xs font-light">
               <TextInput
-                className="min-h-9 w-full rounded-md border border-[#D7DEE8] bg-white px-2.5 py-1.5 text-sm font-normal text-navy shadow-none focus:border-electric sm:w-36"
+                className="min-h-9 w-full rounded-md border border-[#D7DEE8] bg-white px-2.5 py-1.5 text-sm font-light text-navy shadow-none focus:border-electric sm:w-36"
                 type="date"
                 value={startDate}
                 onChange={(event) => setStartDate(event.target.value)}
               />
             </Field>
-            <Field label={translate(language, "endDate")} className="text-xs font-extrabold">
+            <Field label={translate(language, "endDate")} className="text-xs font-light">
               <TextInput
-                className="min-h-9 w-full rounded-md border border-[#D7DEE8] bg-white px-2.5 py-1.5 text-sm font-normal text-navy shadow-none focus:border-electric sm:w-36"
+                className="min-h-9 w-full rounded-md border border-[#D7DEE8] bg-white px-2.5 py-1.5 text-sm font-light text-navy shadow-none focus:border-electric sm:w-36"
                 type="date"
                 value={endDate}
                 onChange={(event) => setEndDate(event.target.value)}
@@ -101,7 +101,9 @@ export function DashboardOverviewView({
           </div>
         </div>
         {waterfallRows.length === 0 ? (
-          <EmptyState message={translate(language, "noWaterfallData")} />
+          <div className="px-4 sm:px-6 lg:px-8">
+            <EmptyState message={translate(language, "noWaterfallData")} />
+          </div>
         ) : (
           <VacancyWaterfallChart language={language} rows={waterfallRows} />
         )}
@@ -200,38 +202,51 @@ type WaterfallRow = {
 
 function VacancyWaterfallChart({ language, rows }: { language: Language; rows: WaterfallRow[] }) {
   const chart = buildWaterfall(rows);
-  const plotSize = 560;
+  const plotWidth = 720;
+  const plotHeight = 480;
   const width = 1120;
-  const topPad = 112;
-  const bottomPad = 64;
-  const height = topPad + plotSize + bottomPad;
+  const topPad = 72;
+  const bottomPad = 58;
+  const height = topPad + plotHeight + bottomPad;
   const leftPad = 70;
-  const plotRight = leftPad + plotSize;
-  const plotHeight = plotSize;
+  const plotRight = leftPad + plotWidth;
   const yMin = 0;
   const yMax = chart.yMax;
   const yScale = (value: number) => topPad + ((yMax - Math.max(value, 0)) / Math.max(yMax - yMin, 1)) * plotHeight;
-  const step = plotSize / Math.max(chart.categories.length, 1);
+  const step = plotWidth / Math.max(chart.categories.length, 1);
   const barWidth = Math.min(96, Math.max(52, step * 0.5));
   const zeroY = yScale(0);
+  const totalBar = chart.bars.find((bar) => bar.categoryType === "total");
+  const totalBarRight = totalBar ? categoryX(totalBar.categoryIndex, step, leftPad) + barWidth / 2 : plotRight;
 
   return (
-    <div className="overflow-x-auto pb-2">
-      <div className="min-w-[1120px]">
-        <h3 className="text-2xl font-extrabold leading-tight tracking-normal text-navy sm:text-[26px]">
+    <div className="w-full pb-2">
+      <div className="w-full px-4 sm:px-6 lg:px-8">
+        <h3 className="text-2xl font-light leading-tight tracking-normal text-navy sm:text-[26px]">
           {translate(language, "weeklyRecruitmentPerformance")}
         </h3>
         <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2">
           {chart.legend.map((item) => (
-            <div key={item.label} className="flex items-center gap-2 text-sm font-extrabold text-slate">
+            <div key={item.label} className="flex items-center gap-2 text-sm font-light text-slate">
               <span className="h-3 w-3 shrink-0" style={{ backgroundColor: item.color }} />
               <span>{formatLegendLabel(language, item.label)}</span>
             </div>
           ))}
         </div>
       </div>
-      <svg viewBox={`0 0 ${width} ${height}`} className="min-w-[1120px]">
-        <TopBreakdownBracket x={plotRight + 240} y={16} items={chart.totalBreakdown} />
+      <svg viewBox={`0 0 ${width} ${height}`} className="block aspect-[3/2] h-auto w-full max-w-full">
+        {totalBar ? (
+          <RightSegmentBrackets
+            x={totalBarRight + 24}
+            segments={totalBar.segments.map((segment) => ({
+              key: segment.key,
+              label: segment.label,
+              yTop: yScale(segment.top),
+              yBottom: yScale(segment.bottom)
+            }))}
+            fallbackLabel={chart.totalBreakdown[0]?.label ?? "No remaining vacancy"}
+          />
+        ) : null}
         <line x1={leftPad} x2={plotRight} y1={zeroY} y2={zeroY} stroke="#475569" strokeWidth={1} />
         <line x1={leftPad} x2={leftPad} y1={topPad} y2={zeroY} stroke="#475569" strokeWidth={2} />
         {chart.yTicks.filter((tick) => tick > 0).map((tick) => {
@@ -239,7 +254,7 @@ function VacancyWaterfallChart({ language, rows }: { language: Language; rows: W
           return (
             <g key={tick}>
               <line x1={leftPad - 8} x2={leftPad} y1={y} y2={y} stroke="#475569" strokeWidth={1.5} />
-              <text x={leftPad - 18} y={y + 8} textAnchor="end" className="fill-slate text-[22px] font-extrabold">{tick}</text>
+              <text x={leftPad - 18} y={y + 8} textAnchor="end" className="fill-slate text-[22px] font-light">{tick}</text>
             </g>
           );
         })}
@@ -280,14 +295,14 @@ function VacancyWaterfallChart({ language, rows }: { language: Language; rows: W
                   />
                 );
               })}
-              <text x={x + barWidth / 2} y={yScale(bar.labelAnchor) - 14} textAnchor="middle" className="fill-navy text-[24px] font-extrabold">
+              <text x={x + barWidth / 2} y={yScale(bar.labelAnchor) - 14} textAnchor="middle" className="fill-navy text-[24px] font-light">
                 {bar.label}
               </text>
             </g>
           );
         })}
         {chart.categories.map((category, index) => (
-          <text key={category} x={categoryX(index, step, leftPad)} y={height - 22} textAnchor="middle" className="fill-slate text-[13px] font-extrabold">
+          <text key={category} x={categoryX(index, step, leftPad)} y={height - 22} textAnchor="middle" className="fill-slate text-[13px] font-semibold">
             {formatCategoryLabel(language, category)}
           </text>
         ))}
@@ -296,30 +311,48 @@ function VacancyWaterfallChart({ language, rows }: { language: Language; rows: W
   );
 }
 
-function TopBreakdownBracket({ x, y, items }: { x: number; y: number; items: { label: string }[] }) {
-  const bracketWidth = 230;
-  const twoColumns = items.length > 3;
+function RightSegmentBrackets({
+  x,
+  segments,
+  fallbackLabel
+}: {
+  x: number;
+  segments: { key: string; label: string; yTop: number; yBottom: number }[];
+  fallbackLabel: string;
+}) {
+  const visibleSegments = segments.filter((segment) => segment.label);
+  const items = visibleSegments.length > 0
+    ? visibleSegments
+    : [{ key: "no-remaining-vacancy", label: fallbackLabel, yTop: 320, yBottom: 372 }];
 
   return (
-    <g transform={`translate(${x}, ${y})`}>
-      <path
-        d={`M 0 0 C 22 0 22 24 44 24 L ${bracketWidth - 44} 24 C ${bracketWidth - 22} 24 ${bracketWidth - 22} 0 ${bracketWidth} 0`}
-        fill="none"
-        stroke="#475569"
-        strokeWidth={2.5}
-      />
-      {items.map((item, index) => {
-        const column = twoColumns ? index % 2 : 0;
-        const row = twoColumns ? Math.floor(index / 2) : index;
-        const labelX = twoColumns ? column * 118 : bracketWidth / 2;
-        const labelY = 64 + row * 30;
+    <g>
+      {items.map((item) => {
+        const top = Math.min(item.yTop, item.yBottom);
+        const bottom = Math.max(item.yTop, item.yBottom);
+        const mid = (top + bottom) / 2;
+        return (
+          <path
+            key={`${item.key}-bracket`}
+            d={`M ${x} ${top} L ${x + 16} ${mid} L ${x} ${bottom}`}
+            fill="none"
+            stroke="#475569"
+            strokeWidth={2.5}
+            strokeLinejoin="round"
+          />
+        );
+      })}
+      {items.map((item) => {
+        const top = Math.min(item.yTop, item.yBottom);
+        const bottom = Math.max(item.yTop, item.yBottom);
+        const mid = (top + bottom) / 2;
         return (
           <text
-            key={item.label}
-            x={labelX}
-            y={labelY}
-            textAnchor={twoColumns ? "start" : "middle"}
-            className="fill-slate text-[22px] font-extrabold"
+            key={`${item.key}-${item.label}`}
+            x={x + 34}
+            y={mid + 8}
+            textAnchor="start"
+            className="fill-slate text-[22px] font-light"
           >
             {item.label}
           </text>
@@ -367,6 +400,7 @@ function buildWaterfall(rows: WaterfallRow[]) {
       top = Math.max(top, segmentTop);
       segments.push({
         key: `${category}-${row.site}-${row.request_type}`,
+        label: formatBreakdownLabel(row),
         bottom: segmentBottom,
         top: segmentTop,
         color: snapshotColor(row.site, row.request_type)
@@ -510,8 +544,12 @@ function totalBreakdown(rows: WaterfallRow[]) {
   if (visibleTotals.length === 0) return [{ label: "No remaining vacancy" }];
 
   return visibleTotals.map((row) => ({
-    label: `${row.site}-${row.request_type === "Replacement" ? "REP" : "NEW"}: ${row.vacancy_count.toLocaleString()}`
+    label: formatBreakdownLabel(row)
   }));
+}
+
+function formatBreakdownLabel(row: WaterfallRow) {
+  return `${row.site}-${row.request_type === "Replacement" ? "REP" : "NEW"}: ${row.vacancy_count.toLocaleString()}`;
 }
 
 function stackItems(rows: WaterfallRow[]) {

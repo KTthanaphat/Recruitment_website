@@ -63,6 +63,10 @@ export type PositionGroup = {
   channel_jobthai: boolean;
   channel_jobtopgun: boolean;
   channel_jobdb: boolean;
+  channel_linkedin: boolean;
+  channel_walkin: boolean;
+  channel_referral: boolean;
+  channel_others: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -76,6 +80,10 @@ export type DocumentGroup = {
   channel_jobthai: boolean;
   channel_jobtopgun: boolean;
   channel_jobdb: boolean;
+  channel_linkedin: boolean;
+  channel_walkin: boolean;
+  channel_referral: boolean;
+  channel_others: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -124,10 +132,18 @@ export type SourcingWeeklyUpdate = {
   channel_jobthai: boolean;
   channel_jobtopgun: boolean;
   channel_jobdb: boolean;
+  channel_linkedin: boolean;
+  channel_walkin: boolean;
+  channel_referral: boolean;
+  channel_others: boolean;
   applicants_fb: number;
   applicants_jobthai: number;
   applicants_jobtopgun: number;
   applicants_jobdb: number;
+  applicants_linkedin: number;
+  applicants_walkin: number;
+  applicants_referral: number;
+  applicants_others: number;
   updated_by: string | null;
   created_at: string;
   updated_at: string;
@@ -213,10 +229,15 @@ export type EnrichedSourcingGroup = {
   channel_jobthai: boolean;
   channel_jobtopgun: boolean;
   channel_jobdb: boolean;
+  channel_linkedin: boolean;
+  channel_walkin: boolean;
+  channel_referral: boolean;
+  channel_others: boolean;
   latest_update: SourcingWeeklyUpdate | null;
 };
 
 export type ViewId =
+  | "home"
   | "dashboard"
   | "requisitions"
   | "candidates"

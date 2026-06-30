@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Panel, SectionTitle } from "@/components/ui/Panel";
 import { Tag } from "@/components/ui/Tag";
-import { ROLE_LABELS } from "@/lib/constants";
+import { ROLE_LABELS, SOURCING_CHANNELS } from "@/lib/constants";
 import { statusTone } from "@/lib/format";
 import { translate } from "@/lib/i18n/dictionary";
 import type { DashboardData, Language } from "@/types/recruitment";
@@ -43,7 +43,7 @@ export function SetupView({
                   <Tag tone="teal">{group.group_position}</Tag>
                 </div>
                 <p className="mt-2 text-sm font-bold text-slate">
-                  {[group.channel_fb && "Facebook", group.channel_jobthai && "JobThai", group.channel_jobtopgun && "JobTopGun", group.channel_jobdb && "JobDB"]
+                  {SOURCING_CHANNELS.map((channel) => group[channel.enabled] && channel.label)
                     .filter(Boolean)
                     .join(" · ") || "No sourcing channels"}
                 </p>

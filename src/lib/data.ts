@@ -1,4 +1,4 @@
-import { PROCESS_STAGES } from "@/lib/constants";
+import { PROCESS_STAGES, SOURCING_CHANNELS } from "@/lib/constants";
 import type {
   Candidate,
   ChangeLog,
@@ -183,15 +183,10 @@ export function pipelineBoard(candidates: EnrichedCandidate[]) {
 export function enrichSourcingGroups(data: DashboardData, weekStart: string): EnrichedSourcingGroup[] {
   const requisitions = enrichRequisitions(data);
   const candidates = enrichCandidates(data);
-  const groupsById = new Map<string, DocumentGroup[]>();
-
-  for (const match of data.document_groups) {
-    if (!match.group_id) continue;
-    groupsById.set(match.group_id, [...(groupsById.get(match.group_id) ?? []), match]);
-  }
+  const groupsById = documentGroupsByPositionGroup(data.document_groups);
 
   return Array.from(groupsById.entries())
-    .map(([groupId, matches]) => {
+    .map(([groupId, matches]): EnrichedSourcingGroup | null => {
       const matchedRequisitions = matches
         .map((match) => requisitions.find((row) => row.doc_id === match.doc_id))
         .filter((row): row is EnrichedRequisition => Boolean(row))
@@ -207,6 +202,7 @@ export function enrichSourcingGroups(data: DashboardData, weekStart: string): En
       const latestUpdate = data.sourcing_weekly_updates.find(
         (update) => update.group_id === groupId && update.week_start === weekStart
       ) ?? null;
+      const channelFlags = sourcingChannelFlags(positionGroup, matches);
 
       return {
         group_id: groupId,
@@ -216,15 +212,88 @@ export function enrichSourcingGroups(data: DashboardData, weekStart: string): En
         doc_ids: uniqueValues(matchedRequisitions.map((row) => row.doc_id)),
         open_headcount: matchedRequisitions.reduce((sum, row) => sum + row.open_headcount, 0),
         candidate_count: groupCandidateCount,
-        channel_fb: latestUpdate?.channel_fb ?? positionGroup?.channel_fb ?? false,
-        channel_jobthai: latestUpdate?.channel_jobthai ?? positionGroup?.channel_jobthai ?? false,
-        channel_jobtopgun: latestUpdate?.channel_jobtopgun ?? positionGroup?.channel_jobtopgun ?? false,
-        channel_jobdb: latestUpdate?.channel_jobdb ?? positionGroup?.channel_jobdb ?? false,
+        ...channelFlags,
         latest_update: latestUpdate
       };
     })
     .filter((group): group is EnrichedSourcingGroup => Boolean(group))
     .sort((a, b) => a.group_position.localeCompare(b.group_position) || a.group_id.localeCompare(b.group_id));
+}
+
+export function staleOpenSourcingGroups(data: DashboardData, staleDays = 6): EnrichedSourcingGroup[] {
+  const requisitions = enrichRequisitions(data);
+  const candidates = enrichCandidates(data);
+  const groupsById = documentGroupsByPositionGroup(data.document_groups);
+  const staleBefore = startOfToday();
+  staleBefore.setDate(staleBefore.getDate() - staleDays);
+
+  return Array.from(groupsById.entries())
+    .map(([groupId, matches]): EnrichedSourcingGroup | null => {
+      const matchedRequisitions = matches
+        .map((match) => requisitions.find((row) => row.doc_id === match.doc_id))
+        .filter((row): row is EnrichedRequisition => Boolean(row))
+        .filter((row) => row.status === "ongoing" && row.open_headcount > 0);
+
+      if (matchedRequisitions.length === 0) return null;
+
+      const positionGroup = data.position_groups.find((group) => group.group_id === groupId);
+      const latestUpdate = latestSourcingUpdate(data.sourcing_weekly_updates, groupId);
+      const latestUpdatedAt = latestUpdate ? new Date(latestUpdate.updated_at) : null;
+      if (latestUpdatedAt && latestUpdatedAt > staleBefore) return null;
+
+      const groupCandidateCount = candidates.filter((candidate) => {
+        const match = data.document_groups.find((row) => row.doc_group_id === candidate.doc_group_id);
+        return match?.group_id === groupId;
+      }).length;
+
+      return {
+        group_id: groupId,
+        group_position: positionGroup?.group_position ?? matches[0]?.group_position ?? groupId,
+        sites: uniqueValues(matchedRequisitions.map((row) => row.site)),
+        owners: uniqueValues(matchedRequisitions.map((row) => row.person_in_charge)),
+        doc_ids: uniqueValues(matchedRequisitions.map((row) => row.doc_id)),
+        open_headcount: matchedRequisitions.reduce((sum, row) => sum + row.open_headcount, 0),
+        candidate_count: groupCandidateCount,
+        ...sourcingChannelFlags(positionGroup, matches),
+        latest_update: latestUpdate
+      };
+    })
+    .filter((group): group is EnrichedSourcingGroup => Boolean(group))
+    .sort((a, b) => {
+      const dateA = a.latest_update?.updated_at ?? "";
+      const dateB = b.latest_update?.updated_at ?? "";
+      return dateA.localeCompare(dateB) || a.group_position.localeCompare(b.group_position) || a.group_id.localeCompare(b.group_id);
+    });
+}
+
+function documentGroupsByPositionGroup(documentGroups: DocumentGroup[]) {
+  const groupsById = new Map<string, DocumentGroup[]>();
+  for (const match of documentGroups) {
+    if (!match.group_id) continue;
+    groupsById.set(match.group_id, [...(groupsById.get(match.group_id) ?? []), match]);
+  }
+  return groupsById;
+}
+
+function sourcingChannelFlags(positionGroup: PositionGroup | undefined, matches: DocumentGroup[]) {
+  return Object.fromEntries(
+    SOURCING_CHANNELS.map((channel) => [
+      channel.enabled,
+      Boolean(positionGroup?.[channel.enabled] ?? matches.some((match) => match[channel.enabled]))
+    ])
+  ) as Pick<EnrichedSourcingGroup, (typeof SOURCING_CHANNELS)[number]["enabled"]>;
+}
+
+function latestSourcingUpdate(updates: SourcingWeeklyUpdate[], groupId: string): SourcingWeeklyUpdate | null {
+  return updates
+    .filter((update) => update.group_id === groupId)
+    .sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0] ?? null;
+}
+
+function startOfToday() {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return today;
 }
 
 export function uniqueValues(values: Array<string | null | undefined>) {

@@ -5,7 +5,8 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { AdminView } from "@/components/admin/AdminView";
 import { AuditView } from "@/components/audit/AuditView";
 import { CandidatesView } from "@/components/candidates/CandidatesView";
-import { DashboardOverviewView } from "@/components/dashboard/DashboardOverviewView";
+import { HomeView } from "@/components/dashboard/HomeView";
+import { VacancyWaterfallView } from "@/components/dashboard/VacancyWaterfallView";
 import { AppShell } from "@/components/layout/AppShell";
 import { OffersView } from "@/components/offers/OffersView";
 import { PipelineBoardView } from "@/components/pipeline/PipelineBoardView";
@@ -17,7 +18,7 @@ import { Field, SelectInput, TextArea, TextInput } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { Panel } from "@/components/ui/Panel";
 import { Tag } from "@/components/ui/Tag";
-import { ACTIVE_PIPELINE_STAGES, canManageSetup as canManageSetupRole, canManageUsers as canManageUsersRole, canWrite as canWriteRole, PROCESS_UPDATE_STAGES, processLabel, recruiterNicknameOptions, ROLE_LABELS, ROLES, SITE_OPTIONS, WRITABLE_REQUISITION_STATUSES } from "@/lib/constants";
+import { ACTIVE_PIPELINE_STAGES, canManageSetup as canManageSetupRole, canManageUsers as canManageUsersRole, canWrite as canWriteRole, PROCESS_UPDATE_STAGES, processLabel, recruiterNicknameOptions, ROLE_LABELS, ROLES, SITE_OPTIONS, SOURCING_CHANNELS, WRITABLE_REQUISITION_STATUSES } from "@/lib/constants";
 import {
   emptyDashboardData,
   enrichCandidates,
@@ -26,6 +27,7 @@ import {
   filterByText,
   latestLogsForCandidate,
   loadDashboardData,
+  staleOpenSourcingGroups,
   uniqueValues
 } from "@/lib/data";
 import { boolFromForm, emptyToNull, formatDate, resultText, statusTone } from "@/lib/format";
@@ -60,6 +62,7 @@ type PendingAction = {
   summary: string;
   endpoint: string;
   payload: Record<string, unknown>;
+  modal?: Exclude<ModalName, null>;
   route?: "rpc" | "api";
 };
 
@@ -70,6 +73,28 @@ type ProcessDefaults = {
   source?: string;
   remark?: string;
   passed_stages?: ProcessStage[];
+};
+
+type ModalDefaults = {
+  group_position?: string;
+  doc_id?: string;
+  group_id?: string;
+  doc_group_id?: string;
+  first_contact_date?: string;
+};
+
+type GuideStep = "source_candidates" | "create_group" | "add_match" | "ask_candidate" | "create_candidate" | null;
+
+type GuideContext = {
+  doc_id?: string;
+  position?: string;
+  department?: string;
+  site?: string;
+  person_in_charge?: string;
+  group_id?: string;
+  group_position?: string;
+  doc_group_id?: string;
+  candidate_id?: string;
 };
 
 const rpcByModal: Record<Exclude<ModalName, null | "user">, string> = {
@@ -96,6 +121,9 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const [activeModal, setActiveModal] = useState<ModalName>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [processDefaults, setProcessDefaults] = useState<ProcessDefaults>({});
+  const [modalDefaults, setModalDefaults] = useState<ModalDefaults>({});
+  const [guideStep, setGuideStep] = useState<GuideStep>(null);
+  const [guideContext, setGuideContext] = useState<GuideContext>({});
   const [detail, setDetail] = useState<{ type: "requisition" | "candidate"; id: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -150,6 +178,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const enrichedRequisitions = useMemo(() => enrichRequisitions(data), [data]);
   const enrichedCandidates = useMemo(() => enrichCandidates(data), [data]);
   const enrichedOffers = useMemo(() => enrichOffers(data), [data]);
+  const staleSourcingGroups = useMemo(() => staleOpenSourcingGroups(data), [data]);
 
   const filteredRequisitions = useMemo(() => filterByText(enrichedRequisitions, filters), [enrichedRequisitions, filters]);
   const filteredCandidates = useMemo(() => filterByText(enrichedCandidates, filters), [enrichedCandidates, filters]);
@@ -161,6 +190,36 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   async function signOut() {
     if (supabase) await supabase.auth.signOut();
     router.replace("/login");
+  }
+
+  function clearGuide() {
+    setGuideStep(null);
+    setGuideContext({});
+    setModalDefaults({});
+  }
+
+  function closeRecordModal() {
+    if (guideStep === "create_group" || guideStep === "add_match" || guideStep === "create_candidate") {
+      clearGuide();
+    }
+    setActiveModal(null);
+    setProcessDefaults({});
+    setModalDefaults({});
+  }
+
+  function openGuidedGroup() {
+    setGuideStep("create_group");
+    setModalDefaults({ group_position: guideContext.position ?? "" });
+    setActiveModal("group");
+  }
+
+  function openGuidedCandidate() {
+    setGuideStep("create_candidate");
+    setModalDefaults({
+      doc_group_id: guideContext.doc_group_id ?? "",
+      first_contact_date: today()
+    });
+    setActiveModal("candidate");
   }
 
   function openProcessForMove(candidate: EnrichedCandidate, nextStage: ProcessStage) {
@@ -188,6 +247,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       summary,
       endpoint: modal === "user" ? "/api/admin/users" : rpcByModal[modal],
       payload,
+      modal,
       route: modal === "user" ? "api" : "rpc"
     });
   }
@@ -205,9 +265,11 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   async function confirmPendingAction() {
     if (!pendingAction || !supabase) return;
 
+    const savedAction = pendingAction;
     setBusy(true);
     setStatus("Saving...");
     try {
+      let result: RpcResult = { ok: true };
       if (pendingAction.route === "api") {
         const session = await supabase.auth.getSession();
         const response = await fetch(pendingAction.endpoint, {
@@ -218,23 +280,80 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
           },
           body: JSON.stringify(pendingAction.payload)
         });
-        const result = (await response.json()) as RpcResult;
+        result = (await response.json()) as RpcResult;
         if (!response.ok || result.error) throw new Error(result.error ?? "User creation failed.");
       } else {
-        const { error: rpcError } = await supabase.rpc(pendingAction.endpoint, { payload: pendingAction.payload });
+        const { data: rpcResult, error: rpcError } = await supabase.rpc(pendingAction.endpoint, { payload: pendingAction.payload });
         if (rpcError) throw new Error(rpcError.message);
+        result = (rpcResult ?? { ok: true }) as RpcResult;
       }
 
       setPendingAction(null);
       setActiveModal(null);
       setProcessDefaults({});
-      setStatus("Saved successfully.");
+      setModalDefaults({});
       await loadData();
+      const guideContinued = continueGuideAfterSave(savedAction, result);
+      if (!guideContinued) setStatus("Saved successfully.");
     } catch (saveError) {
       setStatus(saveError instanceof Error ? saveError.message : "Save failed.");
     } finally {
       setBusy(false);
     }
+  }
+
+  function continueGuideAfterSave(action: PendingAction, result: RpcResult) {
+    const modal = action.modal;
+    const payload = action.payload;
+    const resultId = typeof result.id === "string" ? result.id : undefined;
+
+    if (modal === "requisition" && payload.mode === "new") {
+      setGuideContext({
+        doc_id: resultId ?? valueAsString(payload.doc_id),
+        position: valueAsString(payload.position),
+        department: valueAsString(payload.department),
+        site: valueAsString(payload.site),
+        person_in_charge: valueAsString(payload.person_in_charge)
+      });
+      setGuideStep("source_candidates");
+      setStatus("Requisition saved. Continue with sourcing setup.");
+      return true;
+    }
+
+    if (modal === "group" && guideStep === "create_group") {
+      const nextContext = {
+        ...guideContext,
+        group_id: resultId ?? valueAsString(payload.group_id),
+        group_position: valueAsString(payload.group_position) || guideContext.position
+      };
+      setGuideContext(nextContext);
+      setGuideStep("add_match");
+      setModalDefaults({
+        doc_id: nextContext.doc_id ?? "",
+        group_id: nextContext.group_id ?? ""
+      });
+      setActiveModal("match");
+      setStatus("Group saved. Match it to the requisition.");
+      return true;
+    }
+
+    if (modal === "match" && guideStep === "add_match") {
+      setGuideContext((current) => ({
+        ...current,
+        doc_group_id: resultId ?? valueAsString(payload.doc_group_id)
+      }));
+      setGuideStep("ask_candidate");
+      setStatus("Match saved. Add a candidate if you already have one.");
+      return true;
+    }
+
+    if (modal === "candidate" && guideStep === "create_candidate") {
+      clearGuide();
+      setStatus("Candidate created and linked to the requisition group.");
+      return true;
+    }
+
+    return false;
   }
 
   const detailBody = useMemo(() => buildDetailBody(detail, data), [detail, data]);
@@ -279,8 +398,12 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
 
       <p className={`mb-4 min-h-6 text-sm font-bold ${error ? "text-orange" : "text-slate"}`}>{loading ? "Loading recruitment records..." : error ?? status}</p>
 
+      {initialView === "home" ? (
+        <HomeView language={language} profile={data.profile} requisitions={filteredRequisitions} candidates={filteredCandidates} offers={data.offers} staleSourcingGroups={staleSourcingGroups} changeLogs={data.change_logs} onOpenRequisition={(id) => setDetail({ type: "requisition", id })} onOpenCandidate={(id) => setDetail({ type: "candidate", id })} />
+      ) : null}
+
       {initialView === "dashboard" ? (
-        <DashboardOverviewView language={language} profile={data.profile} requisitions={filteredRequisitions} candidates={filteredCandidates} offers={filteredOffers} changeLogs={data.change_logs} onOpenRequisition={(id) => setDetail({ type: "requisition", id })} onOpenCandidate={(id) => setDetail({ type: "candidate", id })} />
+        <VacancyWaterfallView language={language} data={data} requisitions={filteredRequisitions} offers={filteredOffers} />
       ) : null}
 
       {initialView === "requisitions" ? (
@@ -322,12 +445,19 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
         profile={data.profile}
         canManageUsers={canManageUsers}
         processDefaults={processDefaults}
-        onClose={() => {
-          setActiveModal(null);
-          setProcessDefaults({});
-        }}
+        modalDefaults={modalDefaults}
+        onClose={closeRecordModal}
         onSubmit={prepareAction}
         onValidationError={setStatus}
+      />
+
+      <GuidePrompt
+        language={language}
+        step={guideStep}
+        context={guideContext}
+        onCreateGroup={openGuidedGroup}
+        onCreateCandidate={openGuidedCandidate}
+        onLater={clearGuide}
       />
 
       <ConfirmModal
@@ -449,14 +579,14 @@ function buildPayload(modal: Exclude<ModalName, null>, formData: FormData) {
   }
 
   if (modal === "group") {
+    const channelPayload = Object.fromEntries(
+      SOURCING_CHANNELS.map((channel) => [channel.enabled, boolFromForm(formData.get(channel.enabled))])
+    );
     const payload = {
       mode: String(formData.get("mode") ?? "new"),
       group_id: emptyToNull(formData.get("group_id")),
       group_position: emptyToNull(formData.get("group_position")),
-      channel_fb: boolFromForm(formData.get("channel_fb")),
-      channel_jobthai: boolFromForm(formData.get("channel_jobthai")),
-      channel_jobtopgun: boolFromForm(formData.get("channel_jobtopgun")),
-      channel_jobdb: boolFromForm(formData.get("channel_jobdb"))
+      ...channelPayload
     };
     requireFields(payload, ["group_position"]);
     return payload;
@@ -502,12 +632,17 @@ function buildSummary(modal: Exclude<ModalName, null>, payload: Record<string, u
   return `${modal} · ${key}`;
 }
 
+function valueAsString(value: unknown) {
+  return typeof value === "string" ? value : "";
+}
+
 function RecordModal({
   modal,
   data,
   profile,
   canManageUsers,
   processDefaults,
+  modalDefaults,
   onClose,
   onSubmit,
   onValidationError
@@ -517,6 +652,7 @@ function RecordModal({
   profile: DashboardData["profile"];
   canManageUsers: boolean;
   processDefaults: ProcessDefaults;
+  modalDefaults: ModalDefaults;
   onClose: () => void;
   onSubmit: (modal: Exclude<ModalName, null>, form: HTMLFormElement) => void;
   onValidationError: (message: string) => void;
@@ -552,12 +688,12 @@ function RecordModal({
         {["requisition", "candidate", "offer", "group", "user"].includes(modal) ? <ModeRow mode={mode} onModeChange={handleModeChange} /> : null}
         {modal === "requisition" ? <RequisitionFields data={data} profile={profile} mode={mode} selectedId={selectedId} selected={selectedRecords.requisition} onSelect={setSelectedId} /> : null}
         {modal === "status" ? <StatusFields data={data} selectedId={selectedId} selected={selectedRecords.requisition} onSelect={setSelectedId} /> : null}
-        {modal === "candidate" ? <CandidatePrefillFields data={data} mode={mode} selectedId={selectedId} selected={selectedRecords.candidate} onSelect={setSelectedId} /> : null}
+        {modal === "candidate" ? <CandidatePrefillFields data={data} mode={mode} selectedId={selectedId} selected={selectedRecords.candidate} defaults={modalDefaults} onSelect={setSelectedId} /> : null}
         {modal === "process" ? <ProcessPrefillFields data={data} defaults={processDefaults} selectedId={selectedId} selected={selectedRecords.candidate} onSelect={setSelectedId} /> : null}
         {modal === "pipeline_pass" ? <PipelinePassFields data={data} defaults={processDefaults} /> : null}
         {modal === "offer" ? <OfferPrefillFields data={data} mode={mode} selectedId={selectedId} selected={selectedRecords.offer} onSelect={setSelectedId} /> : null}
-        {modal === "group" ? <GroupPrefillFields data={data} mode={mode} selectedId={selectedId} selected={selectedRecords.group} onSelect={setSelectedId} /> : null}
-        {modal === "match" ? <MatchFields data={data} /> : null}
+        {modal === "group" ? <GroupPrefillFields data={data} mode={mode} selectedId={selectedId} selected={selectedRecords.group} defaults={modalDefaults} onSelect={setSelectedId} /> : null}
+        {modal === "match" ? <MatchFields data={data} defaults={modalDefaults} /> : null}
         {modal === "snapshot" ? <SnapshotFields data={data} /> : null}
         {modal === "user" ? <UserPrefillFields canManageUsers={canManageUsers} data={data} mode={mode} selectedId={selectedId} selected={selectedRecords.profile} onSelect={setSelectedId} /> : null}
         <div className="flex justify-end gap-2 border-t border-[#D7DEE8] pt-4">
@@ -720,14 +856,19 @@ function CandidatePrefillFields({
   mode,
   selectedId,
   selected,
+  defaults,
   onSelect
 }: {
   data: DashboardData;
   mode: "new" | "change";
   selectedId: string;
   selected: DashboardData["candidates"][number] | null;
+  defaults: ModalDefaults;
   onSelect: (value: string) => void;
 }) {
+  const docGroupValue = mode === "new" ? defaults.doc_group_id ?? "" : selected?.doc_group_id ?? "";
+  const firstContactDate = mode === "new" ? defaults.first_contact_date ?? "" : selected?.first_contact_date ?? "";
+
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <Field label="Candidate ID">
@@ -743,14 +884,14 @@ function CandidatePrefillFields({
       <Field label="Name"><TextInput name="name" required defaultValue={selected?.name ?? ""} /></Field>
       <Field label="Phone No."><TextInput name="phone_no" defaultValue={selected?.phone_no ?? ""} /></Field>
       <Field label="Group ID">
-        <SelectInput name="doc_group_id" required defaultValue={selected?.doc_group_id ?? ""}>
+        <SelectInput name="doc_group_id" required defaultValue={docGroupValue}>
           <option value="">Select group</option>
           {data.document_groups.map((row) => <option key={row.doc_group_id} value={row.doc_group_id}>{row.doc_group_id} - {row.group_position}</option>)}
         </SelectInput>
       </Field>
       <Field label="Channel"><TextInput name="channel" list="channel-options" defaultValue={selected?.channel ?? ""} /></Field>
       <Field label="Reference Name"><TextInput name="ref_name" list="ref-options" defaultValue={selected?.ref_name ?? ""} /></Field>
-      <Field label="First Contact Date"><TextInput name="first_contact_date" type="date" defaultValue={selected?.first_contact_date ?? ""} /></Field>
+      <Field label="First Contact Date"><TextInput name="first_contact_date" type="date" defaultValue={firstContactDate} /></Field>
       <DataLists data={data} />
     </div>
   );
@@ -841,21 +982,25 @@ function GroupFields({ data }: { data: DashboardData }) {
       <Field label="Group ID"><SelectInput name="group_id"><option value="">Auto in New mode</option>{data.position_groups.map((row) => <option key={row.group_id}>{row.group_id}</option>)}</SelectInput></Field>
       <Field label="Group Position"><TextInput name="group_position" list="group-position-options" required /></Field>
       <div className="grid gap-2 rounded-md bg-lightgray p-3 text-sm font-bold text-navy md:grid-cols-4">
-        <label className="flex items-center gap-2"><input name="channel_fb" type="checkbox" /> Facebook</label>
-        <label className="flex items-center gap-2"><input name="channel_jobthai" type="checkbox" /> JobThai</label>
-        <label className="flex items-center gap-2"><input name="channel_jobtopgun" type="checkbox" /> JobTopGun</label>
-        <label className="flex items-center gap-2"><input name="channel_jobdb" type="checkbox" /> JobDB</label>
+        {SOURCING_CHANNELS.map((channel) => (
+          <label key={channel.enabled} className="flex items-center gap-2">
+            <input name={channel.enabled} type="checkbox" /> {channel.label}
+          </label>
+        ))}
       </div>
       <DataLists data={data} />
     </div>
   );
 }
 
-function MatchFields({ data }: { data: DashboardData }) {
+function MatchFields({ data, defaults }: { data: DashboardData; defaults: ModalDefaults }) {
+  const matchedDocIds = new Set(data.document_groups.map((group) => group.doc_id));
+  const docOptions = data.requisitions.filter((row) => !matchedDocIds.has(row.doc_id) || row.doc_id === defaults.doc_id);
+
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      <Field label="Doc ID"><SelectInput name="doc_id" required>{data.requisitions.map((row) => <option key={row.doc_id} value={row.doc_id}>{row.doc_id}</option>)}</SelectInput></Field>
-      <Field label="Group ID"><SelectInput name="group_id" required>{data.position_groups.map((row) => <option key={row.group_id} value={row.group_id}>{row.group_id} · {row.group_position}</option>)}</SelectInput></Field>
+      <Field label="Doc ID"><SelectInput name="doc_id" required defaultValue={defaults.doc_id ?? ""}>{docOptions.map((row) => <option key={row.doc_id} value={row.doc_id}>{row.doc_id} · {row.position}</option>)}</SelectInput></Field>
+      <Field label="Group ID"><SelectInput name="group_id" required defaultValue={defaults.group_id ?? ""}>{data.position_groups.map((row) => <option key={row.group_id} value={row.group_id}>{row.group_id} · {row.group_position}</option>)}</SelectInput></Field>
     </div>
   );
 }
@@ -924,7 +1069,8 @@ function OfferPrefillFields({
   selected: DashboardData["offers"][number] | null;
   onSelect: (value: string) => void;
 }) {
-  const eligibleCandidates = data.candidates.filter((candidate) => hasLatestOfferPass(data, candidate.candidate_id));
+  const offeredCandidateIds = new Set(data.offers.map((offer) => offer.candidate_id));
+  const eligibleCandidates = data.candidates.filter((candidate) => hasLatestOfferPass(data, candidate.candidate_id) && !offeredCandidateIds.has(candidate.candidate_id));
   const selectedCandidate = selected ? data.candidates.find((candidate) => candidate.candidate_id === selected.candidate_id) : null;
   const candidateOptions = selectedCandidate && !eligibleCandidates.some((candidate) => candidate.candidate_id === selectedCandidate.candidate_id)
     ? [...eligibleCandidates, selectedCandidate]
@@ -972,14 +1118,18 @@ function GroupPrefillFields({
   mode,
   selectedId,
   selected,
+  defaults,
   onSelect
 }: {
   data: DashboardData;
   mode: "new" | "change";
   selectedId: string;
   selected: DashboardData["position_groups"][number] | null;
+  defaults: ModalDefaults;
   onSelect: (value: string) => void;
 }) {
+  const groupPositionValue = mode === "new" ? defaults.group_position ?? "" : selected?.group_position ?? "";
+
   return (
     <div className="grid gap-4">
       <Field label="Group ID">
@@ -992,12 +1142,13 @@ function GroupPrefillFields({
           <SelectInput name="group_id"><option value="">Auto in New mode</option>{data.position_groups.map((row) => <option key={row.group_id}>{row.group_id}</option>)}</SelectInput>
         )}
       </Field>
-      <Field label="Group Position"><TextInput name="group_position" list="group-position-options" required defaultValue={selected?.group_position ?? ""} /></Field>
+      <Field label="Group Position"><TextInput name="group_position" list="group-position-options" required defaultValue={groupPositionValue} /></Field>
       <div className="grid gap-2 rounded-md bg-lightgray p-3 text-sm font-bold text-navy md:grid-cols-4">
-        <label className="flex items-center gap-2"><input name="channel_fb" type="checkbox" defaultChecked={selected?.channel_fb ?? false} /> Facebook</label>
-        <label className="flex items-center gap-2"><input name="channel_jobthai" type="checkbox" defaultChecked={selected?.channel_jobthai ?? false} /> JobThai</label>
-        <label className="flex items-center gap-2"><input name="channel_jobtopgun" type="checkbox" defaultChecked={selected?.channel_jobtopgun ?? false} /> JobTopGun</label>
-        <label className="flex items-center gap-2"><input name="channel_jobdb" type="checkbox" defaultChecked={selected?.channel_jobdb ?? false} /> JobDB</label>
+        {SOURCING_CHANNELS.map((channel) => (
+          <label key={channel.enabled} className="flex items-center gap-2">
+            <input name={channel.enabled} type="checkbox" defaultChecked={selected?.[channel.enabled] ?? false} /> {channel.label}
+          </label>
+        ))}
       </div>
       <DataLists data={data} />
     </div>
@@ -1065,6 +1216,56 @@ function DataLists({ data }: { data: DashboardData }) {
       <datalist id="offer-type-options">{uniqueValues(data.offers.map((row) => row.offered_type)).map((value) => <option key={value} value={value} />)}</datalist>
       <datalist id="replaced-options">{uniqueValues(data.offers.map((row) => row.replaced)).map((value) => <option key={value} value={value} />)}</datalist>
     </>
+  );
+}
+
+function GuidePrompt({
+  language,
+  step,
+  context,
+  onCreateGroup,
+  onCreateCandidate,
+  onLater
+}: {
+  language: Language;
+  step: GuideStep;
+  context: GuideContext;
+  onCreateGroup: () => void;
+  onCreateCandidate: () => void;
+  onLater: () => void;
+}) {
+  if (step !== "source_candidates" && step !== "ask_candidate") return null;
+
+  if (step === "source_candidates") {
+    return (
+      <Modal open title={translate(language, "guideNextStepSourceCandidates")} onClose={onLater} width="max-w-lg">
+        <div className="grid gap-4">
+          <div className="rounded-md bg-lightgray p-3 text-sm font-bold text-slate">
+            <p className="text-navy">{context.doc_id} - {context.position}</p>
+            <p className="mt-1">{translate(language, "guideSourceCandidatesMessage")}</p>
+          </div>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={onLater}>{translate(language, "later")}</Button>
+            <Button type="button" className="ring-4 ring-primary/20" onClick={onCreateGroup}>{translate(language, "newGroup")}</Button>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
+
+  return (
+    <Modal open title={translate(language, "guideHaveCandidateQuestion")} onClose={onLater} width="max-w-lg">
+      <div className="grid gap-4">
+        <div className="rounded-md bg-lightgray p-3 text-sm font-bold text-slate">
+          <p className="text-navy">{context.doc_id} - {context.group_position ?? context.position}</p>
+          <p className="mt-1">{translate(language, "guideCandidateMessage")}</p>
+        </div>
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={onLater}>{translate(language, "noLater")}</Button>
+          <Button type="button" onClick={onCreateCandidate}>{translate(language, "yesCreateCandidate")}</Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

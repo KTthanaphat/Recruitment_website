@@ -11,6 +11,7 @@ import {
   RefreshCw,
   ShieldCheck,
   Settings,
+  Home,
   UserRound,
   UsersRound
 } from "lucide-react";
@@ -23,6 +24,7 @@ import { translate, viewLabel } from "@/lib/i18n/dictionary";
 import type { Language, Profile, ViewId } from "@/types/recruitment";
 
 const icons: Record<ViewId, ReactNode> = {
+  home: <Home size={18} />,
   dashboard: <LayoutDashboard size={18} />,
   requisitions: <ClipboardList size={18} />,
   candidates: <UsersRound size={18} />,
@@ -34,6 +36,7 @@ const icons: Record<ViewId, ReactNode> = {
 };
 
 const paths: Record<ViewId, string> = {
+  home: "/home",
   dashboard: "/dashboard",
   requisitions: "/requisitions",
   candidates: "/candidates",
@@ -45,7 +48,8 @@ const paths: Record<ViewId, string> = {
 };
 
 const kicker: Record<ViewId, string> = {
-  dashboard: "Work Queue",
+  home: "Work Queue",
+  dashboard: "Vacancy Analytics",
   requisitions: "Hiring Demand",
   candidates: "Talent Records",
   pipeline: "Process Board",

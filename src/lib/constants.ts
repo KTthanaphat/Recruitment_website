@@ -1,6 +1,7 @@
 import type { ProcessStage, Profile, RequisitionStatus, Role, ViewId } from "@/types/recruitment";
 
 export const VIEWS: ViewId[] = [
+  "home",
   "dashboard",
   "requisitions",
   "candidates",
@@ -12,6 +13,17 @@ export const VIEWS: ViewId[] = [
 ];
 
 export const SITE_OPTIONS = ["HQ", "KT1", "KT2"] as const;
+
+export const SOURCING_CHANNELS = [
+  { enabled: "channel_fb", count: "applicants_fb", label: "Facebook" },
+  { enabled: "channel_jobthai", count: "applicants_jobthai", label: "JobThai" },
+  { enabled: "channel_jobtopgun", count: "applicants_jobtopgun", label: "JobTopGun" },
+  { enabled: "channel_jobdb", count: "applicants_jobdb", label: "JobDB" },
+  { enabled: "channel_linkedin", count: "applicants_linkedin", label: "LinkedIn" },
+  { enabled: "channel_walkin", count: "applicants_walkin", label: "Walk-in" },
+  { enabled: "channel_referral", count: "applicants_referral", label: "Referral" },
+  { enabled: "channel_others", count: "applicants_others", label: "Others" }
+] as const;
 
 export const PERSON_IN_CHARGE_ROLES: Role[] = ["admin_recruiter", "site_recruiter"];
 
@@ -80,7 +92,7 @@ export function canWrite(role?: Role | null) {
 }
 
 export function canManageSetup(role?: Role | null) {
-  return role === "system_admin";
+  return canWrite(role);
 }
 
 export function canManageUsers(role?: Role | null) {
