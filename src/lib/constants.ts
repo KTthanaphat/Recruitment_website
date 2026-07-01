@@ -4,10 +4,10 @@ export const VIEWS: ViewId[] = [
   "home",
   "dashboard",
   "requisitions",
+  "sourcing",
   "candidates",
   "pipeline",
   "offers",
-  "sourcing",
   "admin",
   "audit"
 ];

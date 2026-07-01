@@ -1,6 +1,8 @@
 import { Plus, RotateCw, Search } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { PAGE_SIZE_OPTIONS, Pagination, paginateRows } from "@/components/ui/Pagination";
 import { Panel, SectionTitle } from "@/components/ui/Panel";
 import { Tag } from "@/components/ui/Tag";
 import { formatDate, statusTone } from "@/lib/format";
@@ -22,6 +24,15 @@ export function RequisitionsView({
   onStatus: () => void;
   onOpen: (docId: string) => void;
 }) {
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(PAGE_SIZE_OPTIONS[0]);
+  const paginated = paginateRows(rows, page, pageSize);
+  const visibleRows = paginated.rows;
+
+  useEffect(() => {
+    setPage(1);
+  }, [rows.length, pageSize]);
+
   return (
     <Panel>
       <SectionTitle
@@ -40,7 +51,7 @@ export function RequisitionsView({
       ) : (
         <>
         <div className="grid gap-3 md:hidden">
-          {rows.map((row) => (
+          {visibleRows.map((row) => (
             <button key={row.doc_id} type="button" className="rounded-md border border-[#D7DEE8] bg-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-panel" onClick={() => onOpen(row.doc_id)}>
               <div className="mb-2 flex items-center justify-between gap-2">
                 <strong className="text-primary">{row.doc_id}</strong>
@@ -57,22 +68,22 @@ export function RequisitionsView({
           <table className="w-full border-collapse text-left text-sm">
             <thead className="bg-lightgray text-xs uppercase text-slate">
               <tr>
-                <th className="px-3 py-3">Doc ID</th>
-                <th className="px-3 py-3">Position</th>
-                <th className="px-3 py-3">Department</th>
-                <th className="px-3 py-3">Type</th>
-                <th className="px-3 py-3">Section</th>
-                <th className="px-3 py-3">{translate(language, "owner")}</th>
-                <th className="px-3 py-3">{translate(language, "status")}</th>
-                <th className="px-3 py-3">HC</th>
-                <th className="px-3 py-3">{translate(language, "accepted")}</th>
-                <th className="px-3 py-3">Candidates</th>
-                <th className="px-3 py-3">Updated</th>
-                <th className="px-3 py-3"></th>
+                <th scope="col" className="px-3 py-3">Doc ID</th>
+                <th scope="col" className="px-3 py-3">Position</th>
+                <th scope="col" className="px-3 py-3">Department</th>
+                <th scope="col" className="px-3 py-3">Type</th>
+                <th scope="col" className="px-3 py-3">Section</th>
+                <th scope="col" className="px-3 py-3">{translate(language, "owner")}</th>
+                <th scope="col" className="px-3 py-3">{translate(language, "status")}</th>
+                <th scope="col" className="px-3 py-3">HC</th>
+                <th scope="col" className="px-3 py-3">{translate(language, "accepted")}</th>
+                <th scope="col" className="px-3 py-3">Candidates</th>
+                <th scope="col" className="px-3 py-3">Updated</th>
+                <th scope="col" className="px-3 py-3"></th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
+              {visibleRows.map((row) => (
                 <tr key={row.doc_id} className="border-b border-[#D7DEE8] last:border-0">
                   <td className="px-3 py-3 font-extrabold text-primary">{row.doc_id}</td>
                   <td className="px-3 py-3 font-bold text-navy">{row.position}</td>
@@ -101,6 +112,7 @@ export function RequisitionsView({
             </tbody>
           </table>
         </div>
+        <Pagination language={language} page={paginated.page} pageSize={pageSize} totalRows={rows.length} onPageChange={setPage} onPageSizeChange={setPageSize} />
         </>
       )}
     </Panel>

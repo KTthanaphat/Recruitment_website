@@ -1,13 +1,14 @@
 "use client";
 
-import { BriefcaseBusiness, HandCoins, UsersRound, Workflow } from "lucide-react";
+import { CalendarClock, CheckCircle2, FileText, UsersRound } from "lucide-react";
 import Link from "next/link";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Panel, SectionTitle } from "@/components/ui/Panel";
+import { StageRail } from "@/components/ui/StageRail";
 import { StatCard } from "@/components/ui/StatCard";
 import { Tag } from "@/components/ui/Tag";
 import { ACTIVE_PIPELINE_STAGES, processLabel } from "@/lib/constants";
-import { formatDateTime, statusTone, toTitle } from "@/lib/format";
+import { formatDateTime, formatNumber, statusTone, toTitle } from "@/lib/format";
 import { translate } from "@/lib/i18n/dictionary";
 import type { ChangeLog, EnrichedCandidate, EnrichedRequisition, EnrichedSourcingGroup, Language, Offer, Profile } from "@/types/recruitment";
 
@@ -19,6 +20,7 @@ export function HomeView({
   offers,
   staleSourcingGroups,
   changeLogs,
+  canViewRecentActivity,
   onOpenRequisition,
   onOpenCandidate
 }: {
@@ -29,13 +31,16 @@ export function HomeView({
   offers: Offer[];
   staleSourcingGroups: EnrichedSourcingGroup[];
   changeLogs: ChangeLog[];
+  canViewRecentActivity: boolean;
   onOpenRequisition: (docId: string) => void;
   onOpenCandidate: (candidateId: string) => void;
 }) {
   const activeRequisitions = requisitions.filter((row) => row.status === "ongoing");
   const notFilledRequisitions = requisitions.filter((row) => row.status !== "filled" && row.status !== "cancel");
-  const acceptedOffers = requisitions.reduce((sum, row) => sum + row.accepted_count, 0);
-  const openHeadcount = requisitions.reduce((sum, row) => sum + row.open_headcount, 0);
+  const vacancyBaseRequisitions = requisitions.filter((row) => row.status !== "cancel");
+  const filledVacancy = vacancyBaseRequisitions.reduce((sum, row) => sum + row.accepted_count, 0);
+  const totalVacancy = vacancyBaseRequisitions.reduce((sum, row) => sum + row.head_count, 0);
+  const openRequisitions = notFilledRequisitions.filter((row) => row.open_headcount > 0);
   const ownerName = profile?.nickname ?? profile?.full_name ?? "";
   const responsibleUnfilled = activeRequisitions.filter((row) => row.open_headcount > 0 && row.person_in_charge === ownerName);
   const offeredCandidateIds = new Set(offers.map((offer) => offer.candidate_id));
@@ -53,43 +58,14 @@ export function HomeView({
 
   return (
     <div className="grid gap-4">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <StatCard label={translate(language, "activeRequisitions")} value={activeRequisitions.length} icon={<BriefcaseBusiness size={22} />} />
-        <StatCard label={translate(language, "responsibleUnfilled")} value={responsibleUnfilled.length} icon={<BriefcaseBusiness size={22} />} />
-        <StatCard label={translate(language, "ongoingCandidates")} value={ongoingCandidates.length} icon={<UsersRound size={22} />} />
-        <StatCard label={translate(language, "candidateCount")} value={candidates.length} icon={<UsersRound size={22} />} />
-        <StatCard label={translate(language, "acceptedOffers")} value={acceptedOffers} icon={<HandCoins size={22} />} />
-        <StatCard label={translate(language, "openHeadcount")} value={openHeadcount} icon={<Workflow size={22} />} />
+      <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
+        <StatCard label={translate(language, "openRequisition")} value={summaryValue(formatNumber(openRequisitions.length, language), translate(language, "requisitionsUnit"))} icon={<FileText size={22} />} />
+        <StatCard label={translate(language, "filledVacancy")} value={summaryValue(`${formatNumber(filledVacancy, language)}/${formatNumber(totalVacancy, language)}`, translate(language, "vacancyUnit"))} icon={<CheckCircle2 size={22} />} />
+        <StatCard label={translate(language, "ongoingCandidates")} value={summaryValue(formatNumber(ongoingCandidates.length, language), translate(language, "candidatesUnit"))} icon={<UsersRound size={22} />} />
+        <StatCard label={translate(language, "SourcingUpdates")} value={summaryValue(formatNumber(staleSourcingGroups.length, language), translate(language, "groupIdUnit"))} icon={<CalendarClock size={22} />} />
       </div>
 
-      <Panel>
-        <SectionTitle
-          title={translate(language, "needsAction")}
-          action={<Link className="text-sm font-bold text-primary hover:text-primary" href="/requisitions">{translate(language, "openList")}</Link>}
-        />
-        <div className="grid gap-2">
-          {needsAction.length === 0 ? (
-            <EmptyState message={translate(language, "noOpenHeadcount")} />
-          ) : (
-            needsAction.map((row) => (
-              <button
-                key={row.doc_id}
-                type="button"
-                className="grid gap-1 rounded-md border border-[#D7DEE8] bg-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40 hover:bg-[#EEF4FF] hover:shadow-panel"
-                onClick={() => onOpenRequisition(row.doc_id)}
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <strong className="text-navy">{row.doc_id} - {row.position}</strong>
-                  <Tag tone="warning">{row.open_headcount} {translate(language, "open")}</Tag>
-                </div>
-                <p className="text-sm font-bold text-slate">{row.department} - {row.site} - {row.person_in_charge ?? translate(language, "unassigned")}</p>
-              </button>
-            ))
-          )}
-        </div>
-      </Panel>
-
-      <Panel>
+      <Panel variant="section">
         <SectionTitle
           title={translate(language, "candidatePipeline")}
           action={<Link className="text-sm font-bold text-primary hover:text-primary" href="/pipeline">{translate(language, "fullPipeline")}</Link>}
@@ -100,33 +76,16 @@ export function HomeView({
               <EmptyState message={translate(language, "noActiveCandidates")} />
             </div>
           ) : (
-            pipelinePreview.map((candidate) => {
-              const needsOfferFinalization = candidate.latest_process === "Offer" && candidate.latest_result === 1;
-              return (
-              <button
-                type="button"
-                key={candidate.candidate_id}
-                className="rounded-md border border-[#D7DEE8] bg-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-panel"
-                onClick={() => onOpenCandidate(candidate.candidate_id)}
-              >
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <strong className="text-navy">{candidate.name}</strong>
-                  <Tag tone={needsOfferFinalization ? "warning" : "teal"}>
-                    {needsOfferFinalization ? translate(language, "offerFinalizationNeeded") : processLabel(candidate.latest_process)}
-                  </Tag>
-                </div>
-                <p className="text-sm font-bold text-slate">{candidate.candidate_id} - {candidate.group_position ?? "-"}</p>
-                <p className="text-sm font-bold text-slate">{candidate.site ?? "-"} - {candidate.person_in_charge ?? translate(language, "unassigned")}</p>
-              </button>
-              );
-            })
+            pipelinePreview.map((candidate) => (
+              <CandidateActionCard key={candidate.candidate_id} candidate={candidate} language={language} onOpenCandidate={onOpenCandidate} />
+            ))
           )}
         </div>
       </Panel>
 
       <Panel>
         <SectionTitle
-          title={translate(language, "weeklySourcingUpdates")}
+          title={translate(language, "SourcingUpdates")}
           action={<Link className="text-sm font-bold text-primary hover:text-primary" href="/sourcing">{translate(language, "sourcing")}</Link>}
         />
         <div className="grid gap-2">
@@ -136,7 +95,7 @@ export function HomeView({
             staleSourcingGroups.slice(0, 6).map((group) => (
               <Link
                 key={group.group_id}
-                className="grid gap-1 rounded-md border border-[#D7DEE8] bg-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40 hover:bg-[#EEF4FF] hover:shadow-panel"
+                className="grid touch-manipulation gap-1 rounded-md border border-[#D7DEE8] bg-white p-3 text-left shadow-sm transition-colors motion-safe:transition-transform motion-safe:hover:-translate-y-0.5 hover:border-primary/40 hover:bg-[#EEF4FF] hover:shadow-panel"
                 href="/sourcing"
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -157,25 +116,94 @@ export function HomeView({
 
       <Panel>
         <SectionTitle
-          title={translate(language, "recentActivity")}
-          action={<Link className="text-sm font-bold text-primary hover:text-primary" href="/audit">{translate(language, "audit")}</Link>}
+          title={translate(language, "needsAction")}
+          action={<Link className="text-sm font-bold text-primary hover:text-primary" href="/requisitions">{translate(language, "openList")}</Link>}
         />
         <div className="grid gap-2">
-          {changeLogs.length === 0 ? (
-            <EmptyState message={translate(language, "noRecentActivity")} />
+          {needsAction.length === 0 ? (
+            <EmptyState message={translate(language, "noOpenHeadcount")} />
           ) : (
-            changeLogs.slice(0, 6).map((log) => (
-              <div key={log.log_id} className="rounded-md border border-[#D7DEE8] bg-lightgray/60 p-3 shadow-sm">
+            needsAction.map((row) => (
+              <button
+                key={row.doc_id}
+                type="button"
+                className="grid touch-manipulation gap-1 rounded-md border border-[#D7DEE8] bg-white p-3 text-left shadow-sm transition-colors motion-safe:transition-transform motion-safe:hover:-translate-y-0.5 hover:border-primary/40 hover:bg-[#EEF4FF] hover:shadow-panel"
+                onClick={() => onOpenRequisition(row.doc_id)}
+              >
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <strong className="text-sm text-navy">{toTitle(log.entity)} - {log.entity_id}</strong>
-                  <Tag tone={statusTone(log.action) as never}>{log.action}</Tag>
+                  <strong className="text-navy">{row.doc_id} - {row.position}</strong>
+                  <Tag tone="warning">{row.open_headcount} {translate(language, "open")}</Tag>
                 </div>
-                <p className="mt-1 text-sm font-bold text-slate">{log.changed_by_email ?? translate(language, "system")} - {formatDateTime(log.changed_at)}</p>
-              </div>
+                <p className="text-sm font-bold text-slate">{row.department} - {row.site} - {row.person_in_charge ?? translate(language, "unassigned")}</p>
+              </button>
             ))
           )}
         </div>
       </Panel>
+
+      {canViewRecentActivity ? (
+        <Panel variant="subtle">
+          <SectionTitle
+            title={translate(language, "recentActivity")}
+            action={<Link className="text-sm font-bold text-primary hover:text-primary" href="/audit">{translate(language, "audit")}</Link>}
+          />
+          <div className="grid gap-2">
+            {changeLogs.length === 0 ? (
+              <EmptyState message={translate(language, "noRecentActivity")} />
+            ) : (
+              changeLogs.slice(0, 6).map((log) => (
+                <div key={log.log_id} className="rounded-md border border-[#D7DEE8] bg-lightgray/60 p-3 shadow-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <strong className="text-sm text-navy">{toTitle(log.entity)} - {log.entity_id}</strong>
+                    <Tag tone={statusTone(log.action) as never}>{log.action}</Tag>
+                  </div>
+                  <p className="mt-1 text-sm font-bold text-slate">{log.changed_by_email ?? translate(language, "system")} - {formatDateTime(log.changed_at)}</p>
+                </div>
+              ))
+            )}
+          </div>
+        </Panel>
+      ) : null}
     </div>
+  );
+}
+
+function summaryValue(value: string, unit: string) {
+  return (
+    <span className="flex min-w-0 items-baseline gap-1 whitespace-nowrap">
+      <span className="text-2xl font-semibold leading-none text-primary">{value}</span>
+      <span className="text-lg font-light leading-none text-primary">{unit}</span>
+    </span>
+  );
+}
+
+function CandidateActionCard({
+  candidate,
+  language,
+  onOpenCandidate
+}: {
+  candidate: EnrichedCandidate;
+  language: Language;
+  onOpenCandidate: (candidateId: string) => void;
+}) {
+  const needsOfferFinalization = candidate.latest_process === "Offer" && candidate.latest_result === 1;
+  return (
+    <button
+      type="button"
+      className="grid touch-manipulation gap-2 rounded-md border border-[#D7DEE8] bg-white p-3 text-left shadow-sm transition-colors motion-safe:transition-transform motion-safe:hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-panel"
+      onClick={() => onOpenCandidate(candidate.candidate_id)}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <strong className="block truncate text-navy">{candidate.name}</strong>
+          <p className="text-xs font-bold text-slate">{candidate.candidate_id} - {candidate.group_position ?? "-"}</p>
+        </div>
+        <Tag tone={needsOfferFinalization ? "warning" : "teal"}>
+          {needsOfferFinalization ? translate(language, "offerFinalizationNeeded") : processLabel(candidate.latest_process)}
+        </Tag>
+      </div>
+      <StageRail compact currentStage={candidate.latest_process} currentResult={candidate.latest_result} />
+      <p className="text-xs font-bold text-slate">{candidate.site ?? "-"} - {candidate.person_in_charge ?? translate(language, "unassigned")}</p>
+    </button>
   );
 }

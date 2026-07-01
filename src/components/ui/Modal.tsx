@@ -20,8 +20,8 @@ export function Modal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-stretch bg-navy/45 p-0 sm:place-items-center sm:p-4">
-      <div className={`max-h-screen w-full overflow-y-auto bg-white shadow-2xl sm:max-h-[92vh] sm:rounded-lg ${width}`}>
+    <div className="fixed inset-0 z-[60] grid place-items-stretch bg-navy/45 p-0 sm:place-items-center sm:p-4">
+      <div className={`max-h-screen w-full overflow-y-auto overscroll-contain bg-white shadow-2xl sm:max-h-[92vh] sm:rounded-lg ${width}`}>
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[#D7DEE8] bg-white px-5 py-4">
           <h3 className="text-lg font-extrabold text-navy">{title}</h3>
           <Button type="button" variant="ghost" size="sm" onClick={onClose} aria-label="Close" icon={<X size={18} />} />

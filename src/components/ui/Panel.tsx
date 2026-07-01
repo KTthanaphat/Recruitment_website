@@ -1,8 +1,17 @@
 import type { ReactNode } from "react";
 
-export function Panel({ children, className = "" }: { children: ReactNode; className?: string }) {
+type PanelVariant = "default" | "section" | "subtle" | "report";
+
+const panelVariants: Record<PanelVariant, string> = {
+  default: "border border-[#D7DEE8] bg-white p-5 shadow-panel",
+  section: "border border-[#D7DEE8] bg-white p-5 shadow-panel",
+  subtle: "border border-[#D7DEE8] bg-lightgray/65 p-4 shadow-none",
+  report: "border border-[#D7DEE8] bg-white py-6 shadow-panel"
+};
+
+export function Panel({ children, className = "", variant = "default" }: { children: ReactNode; className?: string; variant?: PanelVariant }) {
   return (
-    <section className={`min-w-0 rounded-lg border border-[#D7DEE8] bg-white p-5 shadow-panel ${className}`}>
+    <section className={`min-w-0 rounded-lg ${panelVariants[variant]} ${className}`}>
       {children}
     </section>
   );

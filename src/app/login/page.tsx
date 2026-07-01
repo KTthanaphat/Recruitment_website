@@ -58,17 +58,18 @@ export default function LoginPage() {
       <section className="w-full max-w-md rounded-lg border border-[#D7DEE8] bg-white p-6 shadow-panel">
         <p className="mb-1 text-xs font-extrabold uppercase tracking-normal text-slate">Internal Recruitment</p>
         <h1 className="mb-2 text-3xl font-extrabold tracking-normal text-navy">Recruitment Tracking</h1>
-        <p className={`mb-5 text-sm font-bold ${status.includes("Invalid") || status.includes("not") ? "text-orange" : "text-slate"}`}>
+        <p role="status" aria-live="polite" aria-busy={busy} className={`mb-5 text-sm font-bold ${status.includes("Invalid") || status.includes("not") ? "text-orange" : "text-slate"}`}>
           {hasSupabaseConfig ? status : "Supabase environment variables are not configured."}
         </p>
 
         <form className="grid gap-4" onSubmit={onSubmit}>
           <Field label="Email">
             <TextInput
-              type="text"
+              type="email"
               inputMode="email"
               value={email}
               autoComplete="email"
+              spellCheck={false}
               required
               onChange={(event) => setEmail(event.target.value)}
               placeholder="recruiter@example.com"

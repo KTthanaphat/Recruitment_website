@@ -1,6 +1,8 @@
 import { Plus, Search, Workflow } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { PAGE_SIZE_OPTIONS, Pagination, paginateRows } from "@/components/ui/Pagination";
 import { Panel, SectionTitle } from "@/components/ui/Panel";
 import { Tag } from "@/components/ui/Tag";
 import { processLabel } from "@/lib/constants";
@@ -23,6 +25,15 @@ export function CandidatesView({
   onProcess: () => void;
   onOpen: (candidateId: string) => void;
 }) {
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(PAGE_SIZE_OPTIONS[0]);
+  const paginated = paginateRows(rows, page, pageSize);
+  const visibleRows = paginated.rows;
+
+  useEffect(() => {
+    setPage(1);
+  }, [rows.length, pageSize]);
+
   return (
     <Panel>
       <SectionTitle
@@ -41,7 +52,7 @@ export function CandidatesView({
       ) : (
         <>
         <div className="grid gap-3 md:hidden">
-          {rows.map((row) => (
+          {visibleRows.map((row) => (
             <button key={row.candidate_id} type="button" className="rounded-md border border-[#D7DEE8] bg-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-panel" onClick={() => onOpen(row.candidate_id)}>
               <div className="mb-2 flex items-center justify-between gap-2">
                 <strong className="text-navy">{row.name}</strong>
@@ -57,18 +68,18 @@ export function CandidatesView({
           <table className="w-full border-collapse text-left text-sm">
             <thead className="bg-lightgray text-xs uppercase text-slate">
               <tr>
-                <th className="px-3 py-3">ID</th>
-                <th className="px-3 py-3">Name</th>
-                <th className="px-3 py-3">Group</th>
-                <th className="px-3 py-3">Site</th>
-                <th className="px-3 py-3">{translate(language, "owner")}</th>
-                <th className="px-3 py-3">{translate(language, "latestProcess")}</th>
-                <th className="px-3 py-3">{translate(language, "result")}</th>
-                <th className="px-3 py-3"></th>
+                <th scope="col" className="px-3 py-3">ID</th>
+                <th scope="col" className="px-3 py-3">Name</th>
+                <th scope="col" className="px-3 py-3">Group</th>
+                <th scope="col" className="px-3 py-3">Site</th>
+                <th scope="col" className="px-3 py-3">{translate(language, "owner")}</th>
+                <th scope="col" className="px-3 py-3">{translate(language, "latestProcess")}</th>
+                <th scope="col" className="px-3 py-3">{translate(language, "result")}</th>
+                <th scope="col" className="px-3 py-3"></th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
+              {visibleRows.map((row) => (
                 <tr key={row.candidate_id} className="border-b border-[#D7DEE8] last:border-0">
                   <td className="px-3 py-3 font-extrabold text-primary">{row.candidate_id}</td>
                   <td className="px-3 py-3 font-bold text-navy">{row.name}</td>
@@ -93,6 +104,7 @@ export function CandidatesView({
             </tbody>
           </table>
         </div>
+        <Pagination language={language} page={paginated.page} pageSize={pageSize} totalRows={rows.length} onPageChange={setPage} onPageSizeChange={setPageSize} />
         </>
       )}
     </Panel>

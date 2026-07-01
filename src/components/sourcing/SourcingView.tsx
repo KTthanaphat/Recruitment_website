@@ -7,6 +7,7 @@ import { Panel, SectionTitle } from "@/components/ui/Panel";
 import { Tag } from "@/components/ui/Tag";
 import { SOURCING_CHANNELS } from "@/lib/constants";
 import { enrichSourcingGroups } from "@/lib/data";
+import { formatDate } from "@/lib/format";
 import { translate } from "@/lib/i18n/dictionary";
 import type { DashboardData, EnrichedSourcingGroup, Language, Profile } from "@/types/recruitment";
 
@@ -98,7 +99,7 @@ export function SourcingView({
                       Docs: {group.doc_ids.join(", ")} | Sites: {group.sites.join(", ")} | Owners: {group.owners.join(", ")}
                     </p>
                     <p className="mt-1 text-xs font-bold text-cool">
-                      Candidates: {group.candidate_count} | Last saved: {group.latest_update?.updated_at?.slice(0, 10) ?? "Not updated this week"}
+                      Candidates: {group.candidate_count} | Last saved: {group.latest_update?.updated_at ? formatDate(group.latest_update.updated_at, language) : "Not updated this week"}
                     </p>
                   </div>
                   {canWrite ? (

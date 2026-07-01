@@ -1,10 +1,12 @@
 import { Link2, Plus, UserPlus } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { PAGE_SIZE_OPTIONS, Pagination, paginateRows } from "@/components/ui/Pagination";
 import { Panel, SectionTitle } from "@/components/ui/Panel";
 import { Tag } from "@/components/ui/Tag";
 import { ROLE_LABELS, SOURCING_CHANNELS } from "@/lib/constants";
-import { statusTone } from "@/lib/format";
+import { formatDate, statusTone } from "@/lib/format";
 import { translate } from "@/lib/i18n/dictionary";
 import type { DashboardData, Language } from "@/types/recruitment";
 
@@ -25,6 +27,14 @@ export function SetupView({
   onMatch: () => void;
   onInvite: () => void;
 }) {
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(PAGE_SIZE_OPTIONS[0]);
+  const paginatedProfiles = paginateRows(data.profiles, page, pageSize);
+
+  useEffect(() => {
+    setPage(1);
+  }, [data.profiles.length, pageSize]);
+
   return (
     <div className="grid gap-4 xl:grid-cols-2">
       <Panel>
@@ -88,25 +98,26 @@ export function SetupView({
             <table className="w-full border-collapse text-left text-sm">
               <thead className="bg-lightgray text-xs uppercase text-slate">
                 <tr>
-                  <th className="px-3 py-3">Email</th>
-                  <th className="px-3 py-3">Nickname</th>
-                  <th className="px-3 py-3">Site</th>
-                  <th className="px-3 py-3">Role</th>
-                  <th className="px-3 py-3">Updated</th>
+                  <th scope="col" className="px-3 py-3">Email</th>
+                  <th scope="col" className="px-3 py-3">Nickname</th>
+                  <th scope="col" className="px-3 py-3">Site</th>
+                  <th scope="col" className="px-3 py-3">Role</th>
+                  <th scope="col" className="px-3 py-3">Updated</th>
                 </tr>
               </thead>
               <tbody>
-                {data.profiles.map((profile) => (
+                {paginatedProfiles.rows.map((profile) => (
                   <tr key={profile.id} className="border-b border-[#D7DEE8] last:border-0">
                     <td className="px-3 py-3 font-bold text-navy">{profile.email ?? "-"}</td>
                     <td className="px-3 py-3 text-slate">{profile.nickname ?? profile.full_name ?? "-"}</td>
                     <td className="px-3 py-3 text-slate">{profile.site ?? "-"}</td>
                     <td className="px-3 py-3"><Tag tone={statusTone(profile.role)}>{ROLE_LABELS[profile.role]}</Tag></td>
-                    <td className="px-3 py-3 text-slate">{profile.updated_at.slice(0, 10)}</td>
+                    <td className="px-3 py-3 text-slate">{formatDate(profile.updated_at, language)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            <Pagination language={language} page={paginatedProfiles.page} pageSize={pageSize} totalRows={data.profiles.length} onPageChange={setPage} onPageSizeChange={setPageSize} />
           </div>
         )}
       </Panel>

@@ -21,7 +21,7 @@ const sizes = {
 export function Button({ variant = "primary", size = "md", icon, className = "", children, ...props }: ButtonProps) {
   return (
     <button
-      className={`inline-flex items-center justify-center gap-2 rounded-md border-0 font-bold transition disabled:cursor-not-allowed disabled:bg-cool disabled:text-white ${variants[variant]} ${sizes[size]} ${className}`}
+      className={`inline-flex touch-manipulation items-center justify-center gap-2 rounded-md border-0 font-bold transition-colors disabled:cursor-not-allowed disabled:bg-cool disabled:text-white ${variants[variant]} ${sizes[size]} ${className}`}
       {...props}
     >
       {icon}

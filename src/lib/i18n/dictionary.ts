@@ -37,6 +37,10 @@ const en: Dictionary = {
   save: "Save",
   cancel: "Cancel",
   confirm: "Confirm",
+  create: "Create",
+  edit: "Edit",
+  reviewChanges: "Review changes",
+  saveChanges: "Save changes",
   view: "View",
   detail: "Detail",
   close: "Close",
@@ -75,7 +79,7 @@ const en: Dictionary = {
   setup: "Setup",
   newGroup: "New Group",
   addMatch: "Add Match",
-  weeklySourcingUpdates: "Weekly Sourcing Updates",
+  SourcingUpdates: "Sourcing Updates",
   noStaleSourcingUpdates: "No sourcing groups need a weekly update.",
   notUpdatedYet: "Not updated yet",
   lastSaved: "Last saved",
@@ -108,7 +112,25 @@ const en: Dictionary = {
   welcomeOpenVacancy: "Open vacancy",
   welcomeActiveCandidates: "Active candidates",
   welcomeOfferFinalization: "Offer finalization needed",
-  viewPipeline: "View Pipeline"
+  viewPipeline: "View Pipeline",
+  openRequisition: "Open requisition",
+  filledVacancy: "Filled vacancy",
+  requisitionsUnit: "requisitions",
+  vacancyUnit: "vacancies",
+  candidatesUnit: "candidates",
+  groupIdUnit: "Group ID",
+  updateStage: "Update stage",
+  updateStageFor: "Update stage for",
+  noProcessUpdateAvailable: "No process update available.",
+  noCandidatesInStage: "No candidates in {stage}. Add or update candidates when they are ready for this stage.",
+  noOpenedRequisitionsInRange: "No opened requisitions in the selected date range. Adjust the date range to review another period.",
+  showingRows: "Showing {start}-{end} of {total}",
+  pageOf: "Page {current} of {total}",
+  previousPage: "Previous page",
+  nextPage: "Next page",
+  rowsPerPage: "Rows per page",
+  previous: "Previous",
+  next: "Next"
 };
 
 const thLegacy: Dictionary = {
@@ -146,6 +168,10 @@ const thLegacy: Dictionary = {
   save: "บันทึก",
   cancel: "ยกเลิก",
   confirm: "ยืนยัน",
+  create: "สร้าง",
+  edit: "แก้ไข",
+  reviewChanges: "ตรวจสอบการแก้ไข",
+  saveChanges: "บันทึกการแก้ไข",
   view: "ดู",
   detail: "รายละเอียด",
   close: "ปิด",
@@ -193,6 +219,10 @@ const th: Dictionary = {
   save: "บันทึก",
   cancel: "ยกเลิก",
   confirm: "ยืนยัน",
+  create: "สร้าง",
+  edit: "แก้ไข",
+  reviewChanges: "ตรวจสอบการแก้ไข",
+  saveChanges: "บันทึกการแก้ไข",
   view: "ดู",
   detail: "รายละเอียด",
   close: "ปิด",
@@ -266,6 +296,27 @@ const th: Dictionary = {
   welcomeOfferFinalization: "ต้องดำเนินการข้อเสนอจ้าง",
   viewPipeline: "ดู Pipeline"
 };
+
+Object.assign(th, {
+  openRequisition: "คำขอที่เปิดอยู่",
+  filledVacancy: "อัตราที่เติมแล้ว",
+  requisitionsUnit: "คำขอ",
+  vacancyUnit: "อัตรา",
+  candidatesUnit: "ผู้สมัคร",
+  groupIdUnit: "Group ID",
+  updateStage: "อัปเดตขั้นตอน",
+  updateStageFor: "อัปเดตขั้นตอนสำหรับ",
+  noProcessUpdateAvailable: "ไม่สามารถอัปเดตขั้นตอนได้",
+  noCandidatesInStage: "ไม่มีผู้สมัครในขั้นตอน {stage} เพิ่มหรืออัปเดตผู้สมัครเมื่อพร้อมเข้าสู่ขั้นตอนนี้",
+  noOpenedRequisitionsInRange: "ไม่มีคำขอที่เปิดในช่วงวันที่เลือก กรุณาปรับช่วงวันที่เพื่อตรวจสอบช่วงอื่น",
+  showingRows: "แสดง {start}-{end} จาก {total}",
+  pageOf: "หน้า {current} จาก {total}",
+  previousPage: "หน้าก่อนหน้า",
+  nextPage: "หน้าถัดไป",
+  rowsPerPage: "จำนวนแถวต่อหน้า",
+  previous: "ก่อนหน้า",
+  next: "ถัดไป"
+});
 
 export const dictionaries = { en, th };
 

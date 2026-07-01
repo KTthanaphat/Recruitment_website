@@ -30,6 +30,11 @@ textarea {
   font: inherit;
 }
 
+button,
+[role="button"] {
+  touch-action: manipulation;
+}
+
 button:focus-visible,
 a:focus-visible,
 input:focus-visible,
@@ -49,6 +54,17 @@ dialog::backdrop {
 
 .table-scroll table {
   min-width: 980px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 .print-report-only {

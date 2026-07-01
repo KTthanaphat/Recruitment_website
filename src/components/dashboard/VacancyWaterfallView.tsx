@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, TextInput } from "@/components/ui/Field";
 import { ACTIVE_PIPELINE_STAGES, SOURCING_CHANNELS } from "@/lib/constants";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatNumber } from "@/lib/format";
 import { translate } from "@/lib/i18n/dictionary";
 import type {
   DashboardData,
@@ -20,7 +20,8 @@ import type {
 
 const siteOrder = ["HQ", "KT1", "KT2"];
 const detailStages = ACTIVE_PIPELINE_STAGES;
-const requisitionDetailHeaders = ["Site", "Department", "Position", "Job Level", "Vacancy", "Requisition Type", "PR Approved Date", "Person in Charge", "Applicants", ...detailStages.map(stageLabel), "Filled Status", "Filled Date"];
+const detailStageHeaders: string[] = detailStages.map(stageLabel);
+const requisitionDetailHeaders = ["Site", "Department", "Position", "Job Level", "Vacancy", "Requisition Type", "PR Approved Date", "Person in Charge", "Applicants", ...detailStageHeaders, "Filled Status", "Filled Date"];
 
 type PrintTarget = "chart" | "requisition-detail";
 
@@ -63,6 +64,7 @@ export function VacancyWaterfallView({
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [printTarget, setPrintTarget] = useState<PrintTarget | null>(null);
   const [exportPreparing, setExportPreparing] = useState(false);
+  const [urlStateReady, setUrlStateReady] = useState(false);
   const printFallbackTimer = useRef<number | null>(null);
 
   const waterfallRows = useMemo(
@@ -73,6 +75,26 @@ export function VacancyWaterfallView({
     () => buildOpenedRequisitionRows(data, requisitions, startDate, endDate),
     [data, endDate, requisitions, startDate]
   );
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const queryStart = params.get("start");
+    const queryEnd = params.get("end");
+    if (queryStart) setStartDate(queryStart);
+    if (queryEnd) setEndDate(queryEnd);
+    if (params.get("details") === "open") setDetailsOpen(true);
+    if (params.get("details") === "closed") setDetailsOpen(false);
+    setUrlStateReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!urlStateReady) return;
+    replaceReportQueryParams({
+      start: startDate,
+      end: endDate,
+      details: detailsOpen ? "open" : "closed"
+    });
+  }, [detailsOpen, endDate, startDate, urlStateReady]);
 
   useEffect(() => {
     const clearPrintTarget = () => {
@@ -111,22 +133,28 @@ export function VacancyWaterfallView({
   }
 
   async function exportRequisitionDetailXlsx() {
-    const XLSX = await import("xlsx");
-    const worksheet = XLSX.utils.json_to_sheet(requisitionRows.map(requisitionDetailExportRow), { header: requisitionDetailHeaders });
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Opened Requisitions");
-    XLSX.writeFile(workbook, `opened-requisitions-${startDate}-to-${endDate}.xlsx`);
+    setExportPreparing(true);
+    try {
+      const XLSX = await import("xlsx");
+      const worksheet = XLSX.utils.json_to_sheet(requisitionRows.map(requisitionDetailExportRow), { header: requisitionDetailHeaders });
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Opened Requisitions");
+      XLSX.writeFile(workbook, `opened-requisitions-${startDate}-to-${endDate}.xlsx`);
+    } finally {
+      window.setTimeout(() => setExportPreparing(false), 300);
+    }
   }
 
   return (
     <div className="grid gap-4">
       <section className="min-w-0 rounded-lg border border-[#D7DEE8] bg-white py-6 font-light shadow-panel">
-        <div className="mb-6 grid gap-5 px-4 sm:px-6 lg:grid-cols-[1fr_auto] lg:items-start lg:px-8">
+        <div className="mb-5 grid gap-5 border-b border-[#D7DEE8] px-4 pb-5 sm:px-6 lg:grid-cols-[1fr_auto] lg:items-start lg:px-8">
           <div>
+            <p className="mb-1 text-xs font-extrabold uppercase tracking-normal text-primary">{translate(language, "weeklyRecruitmentPerformance")}</p>
             <h2 className="text-2xl font-semibold tracking-normal text-navy sm:text-[28px]">{translate(language, "vacancyWaterfall")}</h2>
-            <p className="mt-1 text-sm font-light text-slate">{formatDate(startDate)} - {formatDate(endDate)}</p>
+            <p className="mt-1 text-sm font-light text-slate">{formatDate(startDate, language)} - {formatDate(endDate, language)}</p>
           </div>
-          <div className="grid gap-3 sm:flex sm:items-start sm:justify-end">
+          <div className="grid gap-3 rounded-md bg-lightgray/65 p-3 sm:flex sm:items-start sm:justify-end">
             <Field label={translate(language, "startDate")} className="text-xs font-light">
               <TextInput
                 className="min-h-9 w-full rounded-md border border-[#D7DEE8] bg-white px-2.5 py-1.5 text-sm font-light text-navy shadow-sm focus:border-electric sm:w-36"
@@ -170,9 +198,9 @@ export function VacancyWaterfallView({
           >
             <span>
               <strong className="block text-lg font-semibold text-navy">Opened Requisitions in Selected Range</strong>
-              <span className="text-sm font-light text-slate">{requisitionRows.length.toLocaleString()} requisitions - {formatDate(startDate)} to {formatDate(endDate)}</span>
+              <span className="text-sm font-light text-slate">{formatNumber(requisitionRows.length, language)} requisitions - {formatDate(startDate, language)} to {formatDate(endDate, language)}</span>
             </span>
-            <ChevronDown className={`shrink-0 transition ${detailsOpen ? "rotate-180" : ""}`} size={20} />
+            <ChevronDown className={`shrink-0 transition-transform motion-reduce:transition-none ${detailsOpen ? "rotate-180" : ""}`} size={20} />
           </button>
           <div className="flex flex-wrap gap-2 print:hidden">
             <Button type="button" size="sm" variant="secondary" icon={<Download size={16} />} disabled={exportPreparing} onClick={exportRequisitionDetailXlsx}>Export XLSX</Button>
@@ -181,18 +209,18 @@ export function VacancyWaterfallView({
         </div>
         {detailsOpen ? (
           <div className="border-t border-[#D7DEE8] p-4 sm:p-6 lg:p-8">
-            <RequisitionDetailTable rows={requisitionRows} />
+            <RequisitionDetailTable rows={requisitionRows} language={language} />
           </div>
         ) : null}
       </section>
 
       <div data-print-section="requisition-detail" className="print-report-only">
         <ReportHeader title="Opened Requisitions in Selected Range" startDate={startDate} endDate={endDate} />
-        <RequisitionDetailTable rows={requisitionRows} printMode />
+        <RequisitionDetailTable rows={requisitionRows} language={language} printMode />
       </div>
 
       {exportPreparing ? (
-        <div className="fixed inset-0 z-[70] grid place-items-center bg-navy/45 p-6 print:hidden">
+        <div className="fixed inset-0 z-[70] grid place-items-center bg-navy/45 p-6 print:hidden" role="status" aria-live="polite" aria-busy="true">
           <div className="rounded-lg border border-[#D7DEE8] bg-white px-6 py-5 text-center shadow-2xl">
             <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-4 border-[#D7DEE8] border-t-primary" />
             <p className="font-semibold text-navy">{translate(language, "preparingPdf")}</p>
@@ -213,11 +241,11 @@ function ReportHeader({ title, startDate, endDate }: { title: string; startDate:
 }
 
 function VacancyWaterfallChart({ language, rows }: { language: Language; rows: WaterfallRow[] }) {
-  const chart = buildWaterfall(rows);
+  const chart = buildWaterfall(rows, language);
   const plotWidth = 720;
   const plotHeight = 480;
   const width = 1120;
-  const topPad = 72;
+  const topPad = 58;
   const bottomPad = 58;
   const height = topPad + plotHeight + bottomPad;
   const leftPad = 70;
@@ -236,7 +264,7 @@ function VacancyWaterfallChart({ language, rows }: { language: Language; rows: W
         <h3 className="screen-chart-title text-2xl font-light leading-tight tracking-normal text-navy sm:text-[26px]">
           {translate(language, "weeklyRecruitmentPerformance")}
         </h3>
-        <div className="chart-legend mt-4 flex flex-wrap items-center gap-x-5 gap-y-2">
+        <div className="chart-legend mt-2 flex flex-wrap items-center gap-x-5 gap-y-1">
           {chart.legend.map((item) => (
             <div key={item.label} className="flex items-center gap-2 text-sm font-light text-slate">
               <span
@@ -383,36 +411,36 @@ function RightSegmentBrackets({
   );
 }
 
-function RequisitionDetailTable({ rows, printMode = false }: { rows: RequisitionDetailRow[]; printMode?: boolean }) {
-  if (rows.length === 0) return <EmptyState message="No opened requisitions in the selected date range." />;
+function RequisitionDetailTable({ rows, language, printMode = false }: { rows: RequisitionDetailRow[]; language: Language; printMode?: boolean }) {
+  if (rows.length === 0) return <EmptyState message={translate(language, "noOpenedRequisitionsInRange")} />;
 
   return (
-    <div className="table-scroll">
+    <div className="table-scroll max-h-[560px]">
       <table className={`w-full border-collapse text-left text-xs ${printMode ? "print-detail-table" : ""}`}>
         <thead>
           <tr className="bg-lightgray text-navy">
             {requisitionDetailHeaders.map((header) => (
-              <th key={header} className="border border-[#D7DEE8] px-2 py-2 font-semibold">{header}</th>
+              <th key={header} scope="col" className={`${detailHeaderClass(header, printMode)} border border-[#D7DEE8] px-2 py-2 font-semibold`}>{header}</th>
             ))}
           </tr>
         </thead>
         <tbody>
           {rows.map((row) => (
             <tr key={row.doc_id} className="align-top">
-              <td className="border border-[#D7DEE8] px-2 py-2">{row.site}</td>
-              <td className="border border-[#D7DEE8] px-2 py-2">{row.department}</td>
-              <td className="border border-[#D7DEE8] px-2 py-2">{row.position}</td>
-              <td className="border border-[#D7DEE8] px-2 py-2">{row.level}</td>
-              <td className="border border-[#D7DEE8] px-2 py-2 text-right">{row.vacancy}</td>
-              <td className="border border-[#D7DEE8] px-2 py-2">{row.request_type}</td>
-              <td className="border border-[#D7DEE8] px-2 py-2">{formatDate(row.pr_approved_date)}</td>
-              <td className="border border-[#D7DEE8] px-2 py-2">{row.person_in_charge}</td>
-              <td className="border border-[#D7DEE8] px-2 py-2 text-right">{row.applicant_count}</td>
+              <td className={`${detailCellClass("Site")} border border-[#D7DEE8] px-2 py-2`}>{row.site}</td>
+              <td className={`${detailCellClass("Department")} border border-[#D7DEE8] px-2 py-2`}>{row.department}</td>
+              <td className={`${detailCellClass("Position")} border border-[#D7DEE8] px-2 py-2`}>{row.position}</td>
+              <td className={`${detailCellClass("Job Level")} border border-[#D7DEE8] px-2 py-2`}>{row.level}</td>
+              <td className={`${detailCellClass("Vacancy")} border border-[#D7DEE8] px-2 py-2 text-right`}>{row.vacancy}</td>
+              <td className={`${detailCellClass("Requisition Type")} border border-[#D7DEE8] px-2 py-2`}>{row.request_type}</td>
+              <td className={`${detailCellClass("PR Approved Date")} border border-[#D7DEE8] px-2 py-2`}>{formatDate(row.pr_approved_date, language)}</td>
+              <td className={`${detailCellClass("Person in Charge")} border border-[#D7DEE8] px-2 py-2`}>{row.person_in_charge}</td>
+              <td className={`${detailCellClass("Applicants")} border border-[#D7DEE8] px-2 py-2 text-right`}>{row.applicant_count}</td>
               {detailStages.map((stage) => (
-                <td key={stage} className="border border-[#D7DEE8] px-2 py-2 text-right">{row.stage_counts[stage] ?? 0}</td>
+                <td key={stage} className={`${detailCellClass(stage)} border border-[#D7DEE8] px-2 py-2 text-right`}>{row.stage_counts[stage] ?? 0}</td>
               ))}
-              <td className="border border-[#D7DEE8] px-2 py-2">{row.filled_status}</td>
-              <td className="border border-[#D7DEE8] px-2 py-2">{row.filled_date ? formatDate(row.filled_date) : "-"}</td>
+              <td className={`${detailCellClass("Filled Status")} border border-[#D7DEE8] px-2 py-2`}>{row.filled_status}</td>
+              <td className={`${detailCellClass("Filled Date")} border border-[#D7DEE8] px-2 py-2`}>{row.filled_date ? formatDate(row.filled_date, language) : "-"}</td>
             </tr>
           ))}
         </tbody>
@@ -440,7 +468,18 @@ function requisitionDetailExportRow(row: RequisitionDetailRow) {
   );
 }
 
-function buildWaterfall(rows: WaterfallRow[]) {
+function detailHeaderClass(header: string, printMode: boolean) {
+  return `${printMode ? "" : "sticky top-0 z-10"} ${detailCellClass(header)}`;
+}
+
+function detailCellClass(header: string) {
+  if (["Site", "Department", "Position", "Job Level", "Vacancy", "Requisition Type", "PR Approved Date"].includes(header)) return "bg-white";
+  if (["Person in Charge", "Applicants"].includes(header)) return "bg-[#F8FBFF]";
+  if (detailStageHeaders.includes(header)) return "bg-[#F7F8FF]";
+  return "bg-[#F8FFF9]";
+}
+
+function buildWaterfall(rows: WaterfallRow[], language: Language) {
   const sites = siteOrder.filter((site) => rows.some((row) => row.site === site));
   const categories: string[] = [];
   if (rows.some((row) => row.waterfall_category === "Week Start")) categories.push("Week Start");
@@ -476,7 +515,7 @@ function buildWaterfall(rows: WaterfallRow[]) {
       top = Math.max(top, segmentTop);
       segments.push({
         key: `${category}-${row.site}-${row.request_type}`,
-        label: formatBreakdownLabel(row),
+        label: formatBreakdownLabel(row, language),
         bottom: segmentBottom,
         top: segmentTop,
         color: snapshotColor(row.site, row.request_type)
@@ -492,7 +531,7 @@ function buildWaterfall(rows: WaterfallRow[]) {
       categoryIndex: index,
       segments,
       total: totals[index],
-      label: formatChartValue(totals[index], isFilled),
+      label: formatChartValue(totals[index], language, isFilled),
       labelAnchor: Math.max(top, 0),
       startValue,
       endValue,
@@ -690,8 +729,8 @@ function categoryX(index: number, step: number, leftPad: number) {
   return leftPad + step * index + step / 2;
 }
 
-function formatChartValue(value: number, isFilled = false) {
-  const amount = Math.abs(value).toLocaleString();
+function formatChartValue(value: number, language: Language, isFilled = false) {
+  const amount = formatNumber(Math.abs(value), language);
   return isFilled || value < 0 ? `(${amount})` : amount;
 }
 
@@ -739,8 +778,8 @@ function formatLegendLabel(language: Language, label: string) {
   return `${site} ${suffix}`;
 }
 
-function formatBreakdownLabel(row: WaterfallRow) {
-  return `${row.site}-${row.request_type === "Replacement" ? "REP" : "NEW"}: ${row.vacancy_count.toLocaleString()}`;
+function formatBreakdownLabel(row: WaterfallRow, language: Language) {
+  return `${row.site}-${row.request_type === "Replacement" ? "REP" : "NEW"}: ${formatNumber(row.vacancy_count, language)}`;
 }
 
 function stageLabel(stage: ProcessStage) {
@@ -784,4 +823,17 @@ function today() {
 function dateOnly(value: string | null | undefined) {
   if (!value) return null;
   return value.slice(0, 10);
+}
+
+function replaceReportQueryParams(values: Record<string, string | null | undefined>) {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  for (const [key, value] of Object.entries(values)) {
+    if (value) {
+      url.searchParams.set(key, value);
+    } else {
+      url.searchParams.delete(key);
+    }
+  }
+  window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
 }

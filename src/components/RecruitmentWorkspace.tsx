@@ -17,6 +17,7 @@ import { Drawer } from "@/components/ui/Drawer";
 import { Field, SelectInput, TextArea, TextInput } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { Panel } from "@/components/ui/Panel";
+import { StageRail } from "@/components/ui/StageRail";
 import { Tag } from "@/components/ui/Tag";
 import { ACTIVE_PIPELINE_STAGES, canManageSetup as canManageSetupRole, canManageUsers as canManageUsersRole, canWrite as canWriteRole, PROCESS_UPDATE_STAGES, processLabel, recruiterNicknameOptions, ROLE_LABELS, ROLES, SITE_OPTIONS, SOURCING_CHANNELS, WRITABLE_REQUISITION_STATUSES } from "@/lib/constants";
 import {
@@ -32,7 +33,7 @@ import {
   staleOpenSourcingGroups,
   uniqueValues
 } from "@/lib/data";
-import { boolFromForm, emptyToNull, formatDate, resultText, statusTone } from "@/lib/format";
+import { boolFromForm, emptyToNull, formatDate, formatNumber, resultText, statusTone } from "@/lib/format";
 import { translate } from "@/lib/i18n/dictionary";
 import { hasSupabaseConfig, supabase } from "@/lib/supabase/client";
 import { asNumber, requireFields } from "@/lib/validation/forms";
@@ -139,6 +140,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const [detail, setDetail] = useState<{ type: "requisition" | "candidate"; id: string } | null>(null);
   const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [urlStateReady, setUrlStateReady] = useState(false);
 
   const loadData = useCallback(async () => {
     if (!supabase) {
@@ -169,19 +171,29 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   }, [router]);
 
   useEffect(() => {
-    setLanguage((localStorage.getItem("recruitment_lang") as Language | null) ?? "en");
+    const urlState = readWorkspaceUrlState();
+    const savedLanguage = localStorage.getItem("recruitment_lang") as Language | null;
     const savedFilters = localStorage.getItem("recruitment_filters");
-    if (savedFilters) setFilters(JSON.parse(savedFilters) as { site: string; owner: string });
+    setLanguage(urlState.language ?? savedLanguage ?? "en");
+    if (urlState.hasFilterParams) {
+      setFilters({ site: urlState.site ?? "", owner: urlState.owner ?? "" });
+    } else if (savedFilters) {
+      setFilters(JSON.parse(savedFilters) as { site: string; owner: string });
+    }
+    setUrlStateReady(true);
     loadData();
   }, [loadData]);
 
   useEffect(() => {
+    if (!urlStateReady) return;
     localStorage.setItem("recruitment_lang", language);
-  }, [language]);
-
-  useEffect(() => {
     localStorage.setItem("recruitment_filters", JSON.stringify(filters));
-  }, [filters]);
+    replaceQueryParams({
+      lang: language,
+      site: filters.site,
+      pic: filters.owner
+    });
+  }, [filters, language, urlStateReady]);
 
   const role = data.profile?.role ?? "viewer";
   const canWrite = canWriteRole(role);
@@ -449,10 +461,10 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
         </div>
       </div>
 
-      <p className={`mb-4 min-h-6 text-sm font-bold ${error ? "text-orange" : "text-slate"}`}>{loading ? "Loading recruitment records..." : error ?? status}</p>
+      <p role="status" aria-live="polite" aria-busy={loading || busy} className={`mb-4 min-h-6 text-sm font-bold ${error ? "text-orange" : "text-slate"}`}>{loading ? "Loading recruitment records..." : error ?? status}</p>
 
       {initialView === "home" ? (
-        <HomeView language={language} profile={data.profile} requisitions={filteredRequisitions} candidates={filteredCandidates} offers={data.offers} staleSourcingGroups={staleSourcingGroups} changeLogs={filteredChangeLogs} onOpenRequisition={(id) => setDetail({ type: "requisition", id })} onOpenCandidate={(id) => setDetail({ type: "candidate", id })} />
+        <HomeView language={language} profile={data.profile} requisitions={filteredRequisitions} candidates={filteredCandidates} offers={data.offers} staleSourcingGroups={staleSourcingGroups} changeLogs={filteredChangeLogs} canViewRecentActivity={role === "system_admin" || role === "admin_recruiter"} onOpenRequisition={(id) => setDetail({ type: "requisition", id })} onOpenCandidate={(id) => setDetail({ type: "candidate", id })} />
       ) : null}
 
       {initialView === "dashboard" ? (
@@ -494,6 +506,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
 
       <RecordModal
         modal={activeModal}
+        language={language}
         data={data}
         profile={data.profile}
         canManageUsers={canManageUsers}
@@ -523,6 +536,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       />
 
       <ConfirmModal
+        language={language}
         action={pendingAction}
         busy={busy}
         onClose={() => setPendingAction(null)}
@@ -749,6 +763,7 @@ function valueAsString(value: unknown) {
 
 function RecordModal({
   modal,
+  language,
   data,
   profile,
   canManageUsers,
@@ -759,6 +774,7 @@ function RecordModal({
   onValidationError
 }: {
   modal: ModalName;
+  language: Language;
   data: DashboardData;
   profile: DashboardData["profile"];
   canManageUsers: boolean;
@@ -797,7 +813,7 @@ function RecordModal({
   }
 
   return (
-    <Modal open={Boolean(modal)} title={modalTitle(modal)} onClose={onClose}>
+    <Modal open={Boolean(modal)} title={modalDialogTitle(language, modal, mode)} onClose={onClose}>
       <form key={`${modal}-${mode}-${selectedId}`} className="grid gap-4" onSubmit={handleSubmit}>
         {["requisition", "candidate", "offer", "group", "user"].includes(modal) ? <ModeRow mode={mode} onModeChange={handleModeChange} /> : null}
         {modal === "requisition" ? <RequisitionFields data={data} profile={profile} mode={mode} selectedId={selectedId} selected={selectedRecords.requisition} onSelect={setSelectedId} /> : null}
@@ -811,8 +827,8 @@ function RecordModal({
         {modal === "snapshot" ? <SnapshotFields data={data} /> : null}
         {modal === "user" ? <UserPrefillFields canManageUsers={canManageUsers} data={data} mode={mode} selectedId={selectedId} selected={selectedRecords.profile} onSelect={setSelectedId} /> : null}
         <div className="flex justify-end gap-2 border-t border-[#D7DEE8] pt-4">
-          <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button type="submit" disabled={processSubmitBlocked}>Review Save</Button>
+          <Button type="button" variant="secondary" onClick={onClose}>{translate(language, "cancel")}</Button>
+          <Button type="submit" disabled={processSubmitBlocked}>{translate(language, "reviewChanges")}</Button>
         </div>
       </form>
     </Modal>
@@ -1004,7 +1020,7 @@ function ProcessFields({ data, defaults }: { data: DashboardData; defaults: Proc
       <input type="hidden" name="source" value={defaults.source ?? "manual"} />
       <Field label="Candidate"><SelectInput name="candidate_id" required defaultValue={defaults.candidate_id}>{data.candidates.map((row) => <option key={row.candidate_id} value={row.candidate_id}>{row.candidate_id} · {row.name}</option>)}</SelectInput></Field>
       <Field label="Date"><TextInput name="log_date" type="date" defaultValue={today()} required /></Field>
-      {blockedReason ? <p className="rounded-md bg-lightgray p-3 text-sm font-bold text-orange md:col-span-2">{blockedReason}</p> : null}
+      {blockedReason ? <p className="rounded-md bg-lightgray p-3 text-sm font-medium text-orange md:col-span-2">{blockedReason}</p> : null}
       <Field label="Process">
         <SelectInput name="recruitment_process" required defaultValue={processValue} disabled={availableStages.length === 0}>
           {availableStages.length === 0 ? <option value="">No process update available</option> : null}
@@ -1474,10 +1490,10 @@ function WelcomeBackPrompt({
       <div className="grid gap-4">
         <p className="text-sm font-bold text-slate">{translate(language, "welcomeBackMessage").replace("{name}", name)}</p>
         <div className="grid gap-3 sm:grid-cols-2">
-          <WelcomeSummaryItem label={translate(language, "welcomeOpenRequisitions")} value={summary.openRequisitions} />
-          <WelcomeSummaryItem label={translate(language, "welcomeOpenVacancy")} value={summary.openVacancy} />
-          <WelcomeSummaryItem label={translate(language, "welcomeActiveCandidates")} value={summary.activeCandidates} />
-          <WelcomeSummaryItem label={translate(language, "welcomeOfferFinalization")} value={summary.offerFinalizationNeeded} />
+          <WelcomeSummaryItem language={language} label={translate(language, "welcomeOpenRequisitions")} value={summary.openRequisitions} />
+          <WelcomeSummaryItem language={language} label={translate(language, "welcomeOpenVacancy")} value={summary.openVacancy} />
+          <WelcomeSummaryItem language={language} label={translate(language, "welcomeActiveCandidates")} value={summary.activeCandidates} />
+          <WelcomeSummaryItem language={language} label={translate(language, "welcomeOfferFinalization")} value={summary.offerFinalizationNeeded} />
         </div>
         <div className="flex flex-wrap justify-end gap-2 border-t border-[#D7DEE8] pt-4">
           <Button type="button" variant="secondary" onClick={onClose}>{translate(language, "close")}</Button>
@@ -1488,11 +1504,12 @@ function WelcomeBackPrompt({
   );
 }
 
-function WelcomeSummaryItem({ label, value }: { label: string; value: number }) {
+function WelcomeSummaryItem({ language, label, value }: { language: Language; label: string; value: number }) {
   return (
-    <div className="rounded-md border border-[#D7DEE8] bg-lightgray p-3">
+    <div className="relative overflow-hidden rounded-md border border-[#D7DEE8] bg-white p-3 shadow-sm">
+      <span className="absolute inset-x-0 top-0 h-1 bg-primary" />
       <p className="text-xs font-extrabold uppercase tracking-normal text-slate">{label}</p>
-      <p className="mt-1 text-2xl font-extrabold text-navy">{value.toLocaleString()}</p>
+      <p className="mt-1 text-2xl font-extrabold text-primary">{formatNumber(value, language)}</p>
     </div>
   );
 }
@@ -1589,11 +1606,13 @@ function GuidePrompt({
 }
 
 function ConfirmModal({
+  language,
   action,
   busy,
   onClose,
   onConfirm
 }: {
+  language: Language;
   action: PendingAction | null;
   busy: boolean;
   onClose: () => void;
@@ -1605,8 +1624,8 @@ function ConfirmModal({
         <p className="text-sm font-bold text-slate">{action?.summary}</p>
         <pre className="max-h-72 overflow-auto rounded-md border border-[#D7DEE8] bg-lightgray p-3 text-xs text-navy">{JSON.stringify(action?.payload ?? {}, null, 2)}</pre>
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button type="button" disabled={busy} onClick={onConfirm}>Confirm</Button>
+          <Button type="button" variant="secondary" onClick={onClose}>{translate(language, "cancel")}</Button>
+          <Button type="button" disabled={busy} onClick={onConfirm}>{translate(language, "saveChanges")}</Button>
         </div>
       </div>
     </Modal>
@@ -1717,70 +1736,7 @@ function replacementNamesDisplay(value: string | null | undefined) {
 }
 
 function CandidateJourney({ logs }: { logs: RecruitmentLog[] }) {
-  const currentPendingStage = logs.find((log) => log.result === null)?.recruitment_process;
-
-  return (
-    <div className="rounded-lg bg-white px-4 py-4">
-      <h4 className="mb-4 font-extrabold text-navy">Candidate Pipeline Journey</h4>
-
-      <div className="relative grid gap-4 md:grid-cols-6 md:gap-2 md:justify-items-center">
-        {/* Desktop horizontal connector */}
-        <span className="absolute left-[8.5%] right-[8.5%] top-3 hidden h-0.5 bg-[#E5E5FB] md:block" />
-
-        {ACTIVE_PIPELINE_STAGES.map((stage, index) => {
-          const state = journeyStageState(logs, stage, currentPendingStage);
-
-          return (
-            <div
-              key={stage}
-              className="relative z-10 grid grid-cols-[1.5rem_minmax(0,1fr)] items-start gap-3 md:flex md:w-full md:flex-col md:items-center md:text-center"
-            >
-              {/* Mobile vertical connector */}
-              {index < ACTIVE_PIPELINE_STAGES.length - 1 ? (
-                <span className="absolute left-3 top-6 h-[calc(100%+1rem)] w-0.5 bg-[#E5E5FB] md:hidden" />
-              ) : null}
-
-              {/* Dot */}
-              <span className={`relative z-10 block size-6 shrink-0 rounded-full ring-4 md:mx-auto ${journeyDotClass(state)}`} />
-
-              {/* Label block */}
-              <div className="min-w-0 md:mt-3 md:flex md:min-h-[72px] md:flex-col md:items-center md:justify-start">
-                <p className="text-xs font-extrabold leading-tight text-navy">
-                  {processLabel(stage)}
-                </p>
-                <p className="mt-1 text-xs font-medium text-slate">
-                  {journeyStateLabel(state)}
-                </p>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function journeyStageState(logs: RecruitmentLog[], stage: ProcessStage, currentPendingStage?: ProcessStage) {
-  const stageLogs = logs.filter((log) => log.recruitment_process === stage).sort((a, b) => b.log_id - a.log_id);
-  const latest = stageLogs[0];
-  if (!latest) return "unreached";
-  if (latest.result === 0) return "failed";
-  if (latest.result === 1) return "passed";
-  return currentPendingStage === stage ? "pending" : "unreached";
-}
-
-function journeyDotClass(state: string) {
-  if (state === "passed") return "bg-[#0A3CDC] ring-[#E5E5FB]";
-  if (state === "failed") return "bg-[#E54848] ring-[#FFE1E1]";
-  if (state === "pending") return "bg-[#F6C445] ring-[#FFF4CC]";
-  return "bg-[#E5E5FB] ring-[#EEF7FF]";
-}
-
-function journeyStateLabel(state: string) {
-  if (state === "passed") return "Passed";
-  if (state === "failed") return "Failed";
-  if (state === "pending") return "Pending";
-  return "Not reached";
+  return <StageRail logs={logs} label="Candidate Pipeline Journey" />;
 }
 
 function DetailGrid({ rows }: { rows: Array<[string, string]> }) {
@@ -1832,6 +1788,21 @@ function modalTitle(modal: ModalName) {
   return modal ? titles[modal] : "";
 }
 
+function modalDialogTitle(language: Language, modal: ModalName, mode: "new" | "change") {
+  if (!modal) return "";
+  const editableLabels: Partial<Record<Exclude<ModalName, null>, string>> = {
+    requisition: "Requisition",
+    candidate: "Candidate",
+    offer: "Offer",
+    group: "Position Group",
+    user: "User"
+  };
+  const label = editableLabels[modal];
+  if (!label) return modalTitle(modal);
+  const action = mode === "change" ? translate(language, "edit") : translate(language, "create");
+  return `${action} ${label}`;
+}
+
 function today() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -1842,4 +1813,32 @@ function currentWeekStart() {
   const diff = day === 0 ? -6 : 1 - day;
   date.setDate(date.getDate() + diff);
   return date.toISOString().slice(0, 10);
+}
+
+function readWorkspaceUrlState() {
+  if (typeof window === "undefined") {
+    return { language: null, site: null, owner: null, hasFilterParams: false } as const;
+  }
+  const params = new URLSearchParams(window.location.search);
+  const language = params.get("lang");
+  const parsedLanguage: Language | null = language === "en" || language === "th" ? language : null;
+  return {
+    language: parsedLanguage,
+    site: params.get("site"),
+    owner: params.get("pic"),
+    hasFilterParams: params.has("site") || params.has("pic")
+  };
+}
+
+function replaceQueryParams(values: Record<string, string | null | undefined>) {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  for (const [key, value] of Object.entries(values)) {
+    if (value) {
+      url.searchParams.set(key, value);
+    } else {
+      url.searchParams.delete(key);
+    }
+  }
+  window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
 }

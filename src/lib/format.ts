@@ -1,15 +1,41 @@
-import type { ResultValue } from "@/types/recruitment";
+import type { Language, ResultValue } from "@/types/recruitment";
 
-export function formatDate(value: string | null | undefined) {
+export function formatDate(value: string | null | undefined, language: Language = "en") {
   if (!value) return "-";
-  return value.slice(0, 10);
+  const date = dateFromValue(value);
+  if (!date) return value.slice(0, 10);
+  return new Intl.DateTimeFormat(localeForLanguage(language), {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(date);
 }
 
-export function formatDateTime(value: string | null | undefined) {
+export function formatDateTime(value: string | null | undefined, language: Language = "en") {
   if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString();
+  const date = dateFromValue(value);
+  if (!date) return value;
+  return new Intl.DateTimeFormat(localeForLanguage(language), {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(date);
+}
+
+export function formatNumber(value: number, language: Language = "en") {
+  return new Intl.NumberFormat(localeForLanguage(language)).format(value);
+}
+
+function localeForLanguage(language: Language) {
+  return language === "th" ? "th-TH" : "en-US";
+}
+
+function dateFromValue(value: string) {
+  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value;
+  const date = new Date(normalized);
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 export function resultText(result: ResultValue) {
