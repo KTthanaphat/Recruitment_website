@@ -56,6 +56,7 @@ type ModalName =
   | "candidate"
   | "process"
   | "pipeline_pass"
+  | "test_maintenance"
   | "offer"
   | "group"
   | "match"
@@ -75,10 +76,13 @@ type PendingAction = {
 type ProcessDefaults = {
   candidate_id?: string;
   recruitment_process?: string;
+  result?: string;
+  round?: number;
   target_stage?: string;
   source?: string;
   remark?: string;
   passed_stages?: ProcessStage[];
+  current_round?: number;
 };
 
 type ModalDefaults = {
@@ -116,6 +120,7 @@ const rpcByModal: Record<Exclude<ModalName, null | "user">, string> = {
   candidate: "app_upsert_candidate",
   process: "app_insert_recruitment_log",
   pipeline_pass: "app_insert_pipeline_passes",
+  test_maintenance: "app_insert_test_maintenance",
   offer: "app_upsert_offer",
   group: "app_upsert_position_group",
   match: "app_create_group_match",
@@ -281,14 +286,55 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     const targetIndex = ACTIVE_PIPELINE_STAGES.indexOf(nextStage);
     if (currentIndex === -1 || targetIndex <= currentIndex) return;
     const passedStages = ACTIVE_PIPELINE_STAGES.slice(currentIndex, targetIndex);
+    const currentRound = latestRoundForStage(logs, candidate.latest_process as ProcessStage);
     setProcessDefaults({
       candidate_id: candidate.candidate_id,
       target_stage: nextStage,
       source: "pipeline",
       passed_stages: passedStages,
+      current_round: currentRound,
       remark: `Progressed from ${processLabel(candidate.latest_process)} to ${processLabel(nextStage)} by pipeline drag and drop`
     });
     setActiveModal("pipeline_pass");
+  }
+
+  function openMaintainTest(candidate: EnrichedCandidate) {
+    const logs = latestLogsForCandidate(data, candidate.candidate_id);
+    const blockedReason = processUpdateBlockReason(logs);
+    if (blockedReason) {
+      setStatus(blockedReason);
+      return;
+    }
+    if (candidate.latest_process !== "Test") return;
+    setProcessDefaults({
+      candidate_id: candidate.candidate_id,
+      recruitment_process: "Test",
+      round: latestRoundForStage(logs, "Test"),
+      result: "",
+      source: "manual",
+      current_round: latestRoundForStage(logs, "Test"),
+      remark: "Maintained in Test from pipeline"
+    });
+    setActiveModal("test_maintenance");
+  }
+
+  function openOfferUpdate(candidate: EnrichedCandidate) {
+    const logs = latestLogsForCandidate(data, candidate.candidate_id);
+    const blockedReason = processUpdateBlockReason(logs);
+    if (blockedReason) {
+      setStatus(blockedReason);
+      return;
+    }
+    if (candidate.latest_process !== "Offer") return;
+    setProcessDefaults({
+      candidate_id: candidate.candidate_id,
+      recruitment_process: "Offer",
+      round: latestRoundForStage(logs, "Offer") || 1,
+      result: "",
+      source: "manual",
+      remark: "Updated Offer from pipeline"
+    });
+    setActiveModal("process");
   }
 
   function openProcessFromDetail(candidateId: string) {
@@ -304,14 +350,24 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   function prepareAction(modal: Exclude<ModalName, null>, form: HTMLFormElement) {
     const formData = new FormData(form);
     const payload = buildPayload(modal, formData);
+    const actionPayload = payload as Record<string, unknown>;
     if (modal === "process") validateProcessUpdatePayload(data, payload);
     const summary = buildSummary(modal, payload);
+    const isPipelineTestExit = modal === "pipeline_pass"
+      && actionPayload.target_stage === "Reference Check"
+      && Array.isArray(actionPayload.stages)
+      && actionPayload.stages.some((stage) => typeof stage === "object" && stage !== null && "stage" in stage && stage.stage === "Test");
+    const endpoint = modal === "user"
+      ? "/api/admin/users"
+      : isPipelineTestExit
+        ? "app_insert_pipeline_test_exit"
+        : rpcByModal[modal];
 
     setPendingAction({
       title: "Confirm Save",
       summary,
-      endpoint: modal === "user" ? "/api/admin/users" : rpcByModal[modal],
-      payload,
+      endpoint,
+      payload: actionPayload,
       modal,
       route: modal === "user" ? "api" : "rpc"
     });
@@ -480,7 +536,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       ) : null}
 
       {initialView === "pipeline" ? (
-        <PipelineBoardView language={language} rows={filteredCandidates} canWrite={canWrite} onNewCandidate={() => setActiveModal("candidate")} onAddUpdate={() => setActiveModal("process")} onOpen={(id) => setDetail({ type: "candidate", id })} onMove={openProcessForMove} />
+        <PipelineBoardView language={language} rows={filteredCandidates} canWrite={canWrite} onNewCandidate={() => setActiveModal("candidate")} onAddUpdate={() => setActiveModal("process")} onOpen={(id) => setDetail({ type: "candidate", id })} onMove={openProcessForMove} onMaintainTest={openMaintainTest} onUpdateOffer={openOfferUpdate} />
       ) : null}
 
       {initialView === "offers" ? <OffersView language={language} rows={filteredOffers} canWrite={canWrite} onNew={() => setActiveModal("offer")} /> : null}
@@ -624,6 +680,8 @@ function buildPayload(modal: Exclude<ModalName, null>, formData: FormData) {
 
   if (modal === "pipeline_pass") {
     const stageCount = asNumber(formData.get("stage_count"), 0);
+    const extraTestRoundCount = asNumber(formData.get("extra_test_round_count"), 0);
+    const candidateId = emptyToNull(formData.get("candidate_id"));
     const stages = Array.from({ length: stageCount }, (_, index) => ({
       index,
       stage: emptyToNull(formData.get(`stage_${index}`)),
@@ -632,14 +690,51 @@ function buildPayload(modal: Exclude<ModalName, null>, formData: FormData) {
       interviewer: emptyToNull(formData.get(`interviewer_${index}`)),
       remark: emptyToNull(formData.get(`remark_${index}`))
     }));
+    const extraTestRounds = Array.from({ length: extraTestRoundCount }, (_, index) => ({
+      candidate_id: candidateId,
+      log_date: emptyToNull(formData.get(`extra_test_log_date_${index}`)),
+      recruitment_process: "Test",
+      round: asNumber(formData.get(`extra_test_round_${index}`), 1),
+      interviewer: emptyToNull(formData.get(`extra_test_interviewer_${index}`)),
+      result: null,
+      remark: emptyToNull(formData.get(`extra_test_remark_${index}`)),
+      source: "manual"
+    }));
     const payload = {
-      candidate_id: emptyToNull(formData.get("candidate_id")),
+      candidate_id: candidateId,
       target_stage: emptyToNull(formData.get("target_stage")),
-      stages
+      stages,
+      extra_test_rounds: extraTestRounds
     };
     requireFields(payload, ["candidate_id", "target_stage"]);
     if (stages.length === 0 || stages.some((stage) => !stage.stage || !stage.log_date)) {
       throw new Error("Every passed stage needs a stage and date.");
+    }
+    if (extraTestRounds.some((round) => !round.log_date)) {
+      throw new Error("Every additional Test round needs a date.");
+    }
+    return payload;
+  }
+
+  if (modal === "test_maintenance") {
+    const payload = {
+      candidate_id: emptyToNull(formData.get("candidate_id")),
+      current_test: {
+        log_date: emptyToNull(formData.get("current_log_date")),
+        round: asNumber(formData.get("current_round"), 1),
+        interviewer: emptyToNull(formData.get("current_interviewer")),
+        remark: emptyToNull(formData.get("current_remark"))
+      },
+      next_test: {
+        log_date: emptyToNull(formData.get("next_log_date")),
+        round: asNumber(formData.get("next_round"), 1),
+        interviewer: emptyToNull(formData.get("next_interviewer")),
+        remark: emptyToNull(formData.get("next_remark"))
+      }
+    };
+    requireFields(payload, ["candidate_id"]);
+    if (!payload.current_test.log_date || !payload.next_test.log_date) {
+      throw new Error("Current and next Test rounds both need a date.");
     }
     return payload;
   }
@@ -742,6 +837,12 @@ function availableProcessUpdateStages(logs: RecruitmentLog[]) {
   return PROCESS_UPDATE_STAGES.filter((stage) => latestIndex === -1 || PROCESS_UPDATE_STAGES.indexOf(stage) >= latestIndex);
 }
 
+function latestRoundForStage(logs: RecruitmentLog[], stage: ProcessStage) {
+  return logs
+    .filter((log) => log.recruitment_process === stage)
+    .reduce((maxRound, log) => Math.max(maxRound, log.round ?? 1), 0);
+}
+
 function candidateHasHistoricalFail(logs: RecruitmentLog[]) {
   return logs.some((log) => log.result === 0);
 }
@@ -821,6 +922,7 @@ function RecordModal({
         {modal === "candidate" ? <CandidatePrefillFields data={data} mode={mode} selectedId={selectedId} selected={selectedRecords.candidate} defaults={modalDefaults} onSelect={setSelectedId} /> : null}
         {modal === "process" ? <ProcessPrefillFields data={data} defaults={processDefaults} selectedId={selectedId} selected={selectedRecords.candidate} onSelect={setSelectedId} /> : null}
         {modal === "pipeline_pass" ? <PipelinePassFields data={data} defaults={processDefaults} /> : null}
+        {modal === "test_maintenance" ? <TestMaintenanceFields data={data} defaults={processDefaults} /> : null}
         {modal === "offer" ? <OfferPrefillFields data={data} mode={mode} selectedId={selectedId} selected={selectedRecords.offer} onSelect={setSelectedId} /> : null}
         {modal === "group" ? <GroupPrefillFields data={data} mode={mode} selectedId={selectedId} selected={selectedRecords.group} defaults={modalDefaults} onSelect={setSelectedId} /> : null}
         {modal === "match" ? <MatchFields data={data} defaults={modalDefaults} /> : null}
@@ -1027,9 +1129,9 @@ function ProcessFields({ data, defaults }: { data: DashboardData; defaults: Proc
           {availableStages.map((stage) => <option key={stage} value={stage}>{processLabel(stage)}</option>)}
         </SelectInput>
       </Field>
-      <Field label="Round"><TextInput name="round" type="number" min={1} defaultValue={1} required /></Field>
+      <Field label="Round"><TextInput name="round" type="number" min={1} defaultValue={defaults.round ?? 1} required /></Field>
       <Field label="Interviewer"><TextInput name="interviewer" list="interviewer-options" /></Field>
-      <Field label="Result"><SelectInput name="result"><option value="">Pending</option><option value="1">Pass</option><option value="0">Fail</option></SelectInput></Field>
+      <Field label="Result"><SelectInput name="result" defaultValue={defaults.result ?? ""}><option value="">Pending</option><option value="1">Pass</option><option value="0">Fail</option></SelectInput></Field>
       <Field label="Remark" className="md:col-span-2"><TextArea name="remark" rows={3} defaultValue={defaults.remark ?? ""} /></Field>
       <DataLists data={data} />
     </div>
@@ -1140,9 +1242,9 @@ function ProcessPrefillFields({
           {availableStages.map((stage) => <option key={stage} value={stage}>{processLabel(stage)}</option>)}
         </SelectInput>
       </Field>
-      <Field label="Round"><TextInput name="round" type="number" min={1} defaultValue={latest?.round ?? 1} required /></Field>
+      <Field label="Round"><TextInput name="round" type="number" min={1} defaultValue={defaults.round ?? latest?.round ?? 1} required /></Field>
       <Field label="Interviewer"><TextInput name="interviewer" list="interviewer-options" defaultValue={latest?.interviewer ?? ""} /></Field>
-      <Field label="Result"><SelectInput name="result"><option value="">Pending</option><option value="1">Pass</option><option value="0">Fail</option></SelectInput></Field>
+      <Field label="Result"><SelectInput name="result" defaultValue={defaults.result ?? ""}><option value="">Pending</option><option value="1">Pass</option><option value="0">Fail</option></SelectInput></Field>
       <Field label="Remark" className="md:col-span-2"><TextArea name="remark" rows={3} defaultValue={defaults.remark ?? ""} /></Field>
       <DataLists data={data} />
     </div>
@@ -1151,15 +1253,50 @@ function ProcessPrefillFields({
 
 function PipelinePassFields({ data, defaults }: { data: DashboardData; defaults: ProcessDefaults }) {
   const stages = defaults.passed_stages ?? [];
+  const isTestExit = stages.length === 1 && stages[0] === "Test" && defaults.target_stage === "Reference Check";
+  const currentRound = defaults.current_round ?? 1;
+  const [extraTestRoundCount, setExtraTestRoundCount] = useState(0);
+
+  useEffect(() => {
+    setExtraTestRoundCount(0);
+  }, [defaults.candidate_id, defaults.target_stage, defaults.current_round]);
 
   return (
     <div className="grid gap-4">
       <input type="hidden" name="candidate_id" value={defaults.candidate_id ?? ""} />
       <input type="hidden" name="target_stage" value={defaults.target_stage ?? ""} />
       <input type="hidden" name="stage_count" value={stages.length} />
+      <input type="hidden" name="extra_test_round_count" value={isTestExit ? extraTestRoundCount : 0} />
       <div className="rounded-md border border-[#D7DEE8] bg-lightgray p-3 text-sm font-bold text-slate">
         Confirm each passed stage. After save, {processLabel(defaults.target_stage as ProcessStage)} will be created as Pending automatically.
       </div>
+      {isTestExit ? (
+        <div className="grid gap-3 rounded-md border border-[#D7DEE8] bg-white p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <strong className="text-sm text-navy">Additional Test Rounds</strong>
+              <p className="mt-1 text-xs font-medium text-slate">Added rounds are saved as Pending before the candidate leaves Test.</p>
+            </div>
+            <Button type="button" size="sm" variant="secondary" onClick={() => setExtraTestRoundCount((count) => count + 1)}>Add Test Round</Button>
+          </div>
+          {Array.from({ length: extraTestRoundCount }, (_, index) => {
+            const round = currentRound + index + 1;
+            return (
+              <div key={index} className="grid gap-4 rounded-md border border-[#D7DEE8] bg-lightgray/70 p-3 md:grid-cols-2">
+                <div className="flex flex-wrap items-center gap-2 md:col-span-2">
+                  <Tag tone="teal">Test</Tag>
+                  <Tag tone="muted">Round {round}</Tag>
+                  <Tag tone="warning">Pending</Tag>
+                </div>
+                <Field label="Date"><TextInput name={`extra_test_log_date_${index}`} type="date" defaultValue={today()} required /></Field>
+                <Field label="Round"><TextInput name={`extra_test_round_${index}`} type="number" min={1} defaultValue={round} required /></Field>
+                <Field label="Interviewer"><TextInput name={`extra_test_interviewer_${index}`} list="interviewer-options" /></Field>
+                <Field label="Remark"><TextArea name={`extra_test_remark_${index}`} rows={2} defaultValue="Additional Test round before moving forward" /></Field>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
       {stages.map((stage, index) => (
         <div key={stage} className="grid gap-4 rounded-md border border-[#D7DEE8] bg-white p-3 md:grid-cols-2">
           <input type="hidden" name={`stage_${index}`} value={stage} />
@@ -1167,11 +1304,48 @@ function PipelinePassFields({ data, defaults }: { data: DashboardData; defaults:
             <Tag tone="teal">{processLabel(stage)}</Tag>
           </div>
           <Field label="Date"><TextInput name={`log_date_${index}`} type="date" defaultValue={today()} required /></Field>
-          <Field label="Round"><TextInput name={`round_${index}`} type="number" min={1} defaultValue={1} required /></Field>
+          <Field label="Round"><TextInput name={`round_${index}`} type="number" min={1} value={isTestExit && stage === "Test" ? currentRound : undefined} defaultValue={isTestExit && stage === "Test" ? undefined : 1} readOnly={isTestExit && stage === "Test"} required /></Field>
           <Field label="Interviewer"><TextInput name={`interviewer_${index}`} list="interviewer-options" /></Field>
           <Field label="Remark"><TextArea name={`remark_${index}`} rows={2} defaultValue={index === stages.length - 1 ? defaults.remark ?? "" : ""} /></Field>
         </div>
       ))}
+      <DataLists data={data} />
+    </div>
+  );
+}
+
+function TestMaintenanceFields({ data, defaults }: { data: DashboardData; defaults: ProcessDefaults }) {
+  const currentRound = defaults.current_round ?? defaults.round ?? 1;
+  const nextRound = currentRound + 1;
+
+  return (
+    <div className="grid gap-4">
+      <input type="hidden" name="candidate_id" value={defaults.candidate_id ?? ""} />
+      <div className="rounded-md border border-[#D7DEE8] bg-lightgray p-3 text-sm font-medium text-slate">
+        Save the current Test round as Pass, then create the next Test round as Pending.
+      </div>
+      <div className="grid gap-4 rounded-md border border-[#D7DEE8] bg-white p-3 md:grid-cols-2">
+        <div className="flex flex-wrap items-center gap-2 md:col-span-2">
+          <Tag tone="teal">Current Test</Tag>
+          <Tag tone="muted">Round {currentRound}</Tag>
+          <Tag tone="success">Pass</Tag>
+        </div>
+        <Field label="Date"><TextInput name="current_log_date" type="date" defaultValue={today()} required /></Field>
+        <Field label="Round"><TextInput name="current_round" type="number" min={1} value={currentRound} readOnly required /></Field>
+        <Field label="Interviewer"><TextInput name="current_interviewer" list="interviewer-options" /></Field>
+        <Field label="Remark"><TextArea name="current_remark" rows={2} defaultValue="Current Test round passed; maintaining candidate in Test." /></Field>
+      </div>
+      <div className="grid gap-4 rounded-md border border-[#D7DEE8] bg-lightgray/70 p-3 md:grid-cols-2">
+        <div className="flex flex-wrap items-center gap-2 md:col-span-2">
+          <Tag tone="teal">Next Test</Tag>
+          <Tag tone="muted">Round {nextRound}</Tag>
+          <Tag tone="warning">Pending</Tag>
+        </div>
+        <Field label="Date"><TextInput name="next_log_date" type="date" defaultValue={today()} required /></Field>
+        <Field label="Round"><TextInput name="next_round" type="number" min={1} value={nextRound} readOnly required /></Field>
+        <Field label="Interviewer"><TextInput name="next_interviewer" list="interviewer-options" /></Field>
+        <Field label="Remark"><TextArea name="next_remark" rows={2} defaultValue="Next Test round pending." /></Field>
+      </div>
       <DataLists data={data} />
     </div>
   );
@@ -1779,6 +1953,7 @@ function modalTitle(modal: ModalName) {
     candidate: "Candidate",
     process: "Process Update",
     pipeline_pass: "Confirm Passed Stages",
+    test_maintenance: "Maintain Test Round",
     offer: "Offer",
     group: "Position Group",
     match: "Match Requisition and Group",

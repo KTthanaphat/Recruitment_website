@@ -54,11 +54,13 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="grid min-h-screen place-items-center bg-offwhite px-4 py-10">
-      <section className="w-full max-w-md rounded-lg border border-[#D7DEE8] bg-white p-6 shadow-panel">
-        <p className="mb-1 text-xs font-extrabold uppercase tracking-normal text-slate">Internal Recruitment</p>
-        <h1 className="mb-2 text-3xl font-extrabold tracking-normal text-navy">Recruitment Tracking</h1>
-        <p role="status" aria-live="polite" aria-busy={busy} className={`mb-5 text-sm font-bold ${status.includes("Invalid") || status.includes("not") ? "text-orange" : "text-slate"}`}>
+    <main className="grid min-h-screen place-items-center bg-[linear-gradient(180deg,#FAFAFC_0%,#F1F5F9_100%)] px-4 py-10">
+      <section className="w-full max-w-md overflow-hidden rounded-lg border border-[#C9D5E6] bg-white shadow-[0_24px_70px_rgba(11,19,43,0.12)]">
+        <div className="h-1.5 bg-navy" />
+        <div className="p-6">
+        <p className="mb-1 text-xs font-semibold uppercase tracking-normal text-slate">Internal Recruitment</p>
+        <h1 className="mb-2 text-3xl font-semibold tracking-normal text-navy">Recruitment Tracking</h1>
+        <p role="status" aria-live="polite" aria-busy={busy} className={`mb-5 text-sm font-medium ${status.includes("Invalid") || status.includes("not") ? "text-orange" : "text-slate"}`}>
           {hasSupabaseConfig ? status : "Supabase environment variables are not configured."}
         </p>
 
@@ -93,6 +95,7 @@ export default function LoginPage() {
             Sign In
           </Button>
         </form>
+        </div>
       </section>
     </main>
   );

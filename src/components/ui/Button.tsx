@@ -7,10 +7,10 @@ type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 };
 
 const variants = {
-  primary: "bg-primary text-white hover:bg-[#082BB0]",
-  secondary: "bg-[#E6EDF7] text-navy hover:bg-[#D7DEE8]",
-  ghost: "bg-transparent text-slate hover:bg-lightgray",
-  danger: "bg-scarlet text-white hover:bg-[#D72F25]"
+  primary: "bg-primary text-white shadow-sm hover:bg-[#082BB0] active:bg-[#072596]",
+  secondary: "bg-[#EAF0FA] text-navy ring-1 ring-inset ring-[#C9D5E6] hover:bg-[#DDE7F5] active:bg-[#D2DEEF]",
+  ghost: "bg-transparent text-slate hover:bg-lightgray active:bg-[#E6EDF7]",
+  danger: "bg-scarlet text-white shadow-sm hover:bg-[#D72F25] active:bg-[#B92720]"
 };
 
 const sizes = {
@@ -21,7 +21,7 @@ const sizes = {
 export function Button({ variant = "primary", size = "md", icon, className = "", children, ...props }: ButtonProps) {
   return (
     <button
-      className={`inline-flex touch-manipulation items-center justify-center gap-2 rounded-md border-0 font-bold transition-colors disabled:cursor-not-allowed disabled:bg-cool disabled:text-white ${variants[variant]} ${sizes[size]} ${className}`}
+      className={`inline-flex touch-manipulation items-center justify-center gap-2 rounded-md border-0 font-semibold transition-all duration-150 motion-safe:active:translate-y-px disabled:cursor-not-allowed disabled:bg-cool disabled:text-white disabled:shadow-none disabled:ring-0 ${variants[variant]} ${sizes[size]} ${className}`}
       {...props}
     >
       {icon}

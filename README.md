@@ -2,6 +2,12 @@
 
 Cloud prototype for end-to-end recruitment tracking.
 
+Current canonical documentation:
+
+- [Website structure](docs/WEBSITE_STRUCTURE.md)
+- [Deployment and develop-branch push workflow](docs/DEPLOYMENT.md)
+- [AI handover overview](docs/AI_HANDOVER.md)
+
 ## Stack
 
 - Frontend: Next.js, TypeScript, Tailwind CSS
@@ -30,31 +36,34 @@ pnpm test:e2e
 
 The Playwright browser install is needed only once per machine.
 
-## Render Deployment
+## Product Areas
 
-This repository includes `render.yaml` for a Render web service deployment.
+- Home: responsible summary, candidate pipeline preview, stale weekly sourcing updates, needs action, and admin recent activity.
+- Dashboard: Vacancy Waterfall report with chart PDF, requisition detail PDF, and requisition detail XLSX export.
+- Requisitions: new/replacement requests, replacement names, headcount tracking, and guided sourcing flow after new requisition creation.
+- Sourcing: position groups, requisition matches, and weekly updates for marked channels.
+- Candidates and Pipeline: group-based candidate context, candidate folder links, pipeline journey, and validated stage updates.
+- Offers: Offer-pass candidates only, available Doc ID filtering by candidate group, and accepted-offer fill logic.
 
-Render build settings:
+## Develop Branch Push Workflow
 
-```text
-Build Command: npm install && npm run build
-Start Command: npm run start -- -H 0.0.0.0 -p $PORT
+The full safe workflow is documented in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
+Short version:
+
+```powershell
+git switch develop
+git fetch origin
+git pull --ff-only origin develop
+pnpm typecheck
+pnpm build
+git status --short
+git add <changed-files>
+git commit -m "Describe the product change"
+git push origin develop
 ```
 
-Render environment variables:
-
-```text
-NEXT_PUBLIC_SUPABASE_URL
-NEXT_PUBLIC_SUPABASE_ANON_KEY
-SUPABASE_SERVICE_ROLE_KEY
-NEXT_PUBLIC_APP_URL
-```
-
-After the first Render deploy, set `NEXT_PUBLIC_APP_URL` to the Render service URL, for example:
-
-```text
-https://recruitment-tracking.onrender.com
-```
+Do not use `git push --force` for normal product work.
 
 ## Required Supabase Setup
 
@@ -74,12 +83,10 @@ where email = 'your-admin-email@example.com';
 Roles:
 
 - `system_admin`: manage users, sourcing setup, and all recruitment records.
-- `admin_recruiter`: see all sites and create/edit all recruitment records.
-- `site_recruiter`: see assigned-site records and create/edit only records where their nickname is `person_in_charge`.
+- `admin_recruiter`: create/edit recruitment records and setup records, but not user administration.
+- `site_recruiter`: assigned-scope recruitment writer, including group and match creation.
 - `viewer`: see all sites, read only.
 
-Do not upload real `.db`, `.xlsx`, candidate, employee, or offer files to GitHub or Vercel.
+System admins can create users or update existing account nickname/site/role mappings from Administration.
 
-System admins can create users or update existing account nickname/site/role mappings from Sourcing > Administration > Manage User.
-
-The requisition form records whether each opening is a `New` or `Replacement` position. The Sourcing page stores weekly applicant counts per `group_id`. The dashboard waterfall derives from requisition headcount and accepted offers, defaults to January 1 through today, and can be filtered by start/end date.
+Do not upload real `.db`, `.xlsx`, candidate, employee, offer, or candidate document files to GitHub or Vercel.

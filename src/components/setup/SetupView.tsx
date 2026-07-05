@@ -4,11 +4,12 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PAGE_SIZE_OPTIONS, Pagination, paginateRows } from "@/components/ui/Pagination";
 import { Panel, SectionTitle } from "@/components/ui/Panel";
+import { SortableFilterHeader, type TableColumn, useTableControls } from "@/components/ui/TableControls";
 import { Tag } from "@/components/ui/Tag";
 import { ROLE_LABELS, SOURCING_CHANNELS } from "@/lib/constants";
 import { formatDate, statusTone } from "@/lib/format";
 import { translate } from "@/lib/i18n/dictionary";
-import type { DashboardData, Language } from "@/types/recruitment";
+import type { DashboardData, Language, Profile } from "@/types/recruitment";
 
 export function SetupView({
   language,
@@ -29,11 +30,19 @@ export function SetupView({
 }) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<number>(PAGE_SIZE_OPTIONS[0]);
-  const paginatedProfiles = paginateRows(data.profiles, page, pageSize);
+  const columns: TableColumn<Profile>[] = [
+    { key: "email", label: "Email", value: (profile) => profile.email ?? "-" },
+    { key: "nickname", label: "Nickname", value: (profile) => profile.nickname ?? profile.full_name ?? "-" },
+    { key: "site", label: "Site", value: (profile) => profile.site ?? "-" },
+    { key: "role", label: "Role", value: (profile) => ROLE_LABELS[profile.role], sortValue: (profile) => profile.role },
+    { key: "updated", label: "Updated", value: (profile) => formatDate(profile.updated_at, language), sortValue: (profile) => profile.updated_at ?? "" }
+  ];
+  const table = useTableControls(data.profiles, columns);
+  const paginatedProfiles = paginateRows(table.controlledRows, page, pageSize);
 
   useEffect(() => {
     setPage(1);
-  }, [data.profiles.length, pageSize]);
+  }, [data.profiles.length, pageSize, table.controlledRows.length, table.filters, table.sortDirection, table.sortKey]);
 
   return (
     <div className="grid gap-4 xl:grid-cols-2">
@@ -98,11 +107,19 @@ export function SetupView({
             <table className="w-full border-collapse text-left text-sm">
               <thead className="bg-lightgray text-xs uppercase text-slate">
                 <tr>
-                  <th scope="col" className="px-3 py-3">Email</th>
-                  <th scope="col" className="px-3 py-3">Nickname</th>
-                  <th scope="col" className="px-3 py-3">Site</th>
-                  <th scope="col" className="px-3 py-3">Role</th>
-                  <th scope="col" className="px-3 py-3">Updated</th>
+                  {columns.map((column) => (
+                    <th key={column.key} scope="col" className="min-w-[148px] px-3 py-3 align-top">
+                      <SortableFilterHeader
+                        columnKey={column.key}
+                        label={column.label}
+                        filterValue={table.filters[column.key] ?? ""}
+                        onFilter={table.setFilter}
+                        onSort={table.toggleSort}
+                        sortDirection={table.sortDirection}
+                        sortKey={table.sortKey}
+                      />
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
@@ -117,7 +134,7 @@ export function SetupView({
                 ))}
               </tbody>
             </table>
-            <Pagination language={language} page={paginatedProfiles.page} pageSize={pageSize} totalRows={data.profiles.length} onPageChange={setPage} onPageSizeChange={setPageSize} />
+            <Pagination language={language} page={paginatedProfiles.page} pageSize={pageSize} totalRows={table.controlledRows.length} onPageChange={setPage} onPageSizeChange={setPageSize} />
           </div>
         )}
       </Panel>

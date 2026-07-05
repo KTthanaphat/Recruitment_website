@@ -5,9 +5,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, TextInput } from "@/components/ui/Field";
+import { SortableFilterHeader, type TableColumn, useTableControls } from "@/components/ui/TableControls";
 import { ACTIVE_PIPELINE_STAGES, SOURCING_CHANNELS } from "@/lib/constants";
 import { formatDate, formatNumber } from "@/lib/format";
 import { translate } from "@/lib/i18n/dictionary";
+import { getRequisitionSlaState, type RequisitionSlaState, todayDate } from "@/lib/sla";
 import type {
   DashboardData,
   EnrichedOffer,
@@ -21,7 +23,7 @@ import type {
 const siteOrder = ["HQ", "KT1", "KT2"];
 const detailStages = ACTIVE_PIPELINE_STAGES;
 const detailStageHeaders: string[] = detailStages.map(stageLabel);
-const requisitionDetailHeaders = ["Site", "Department", "Position", "Job Level", "Vacancy", "Requisition Type", "PR Approved Date", "Person in Charge", "Applicants", ...detailStageHeaders, "Filled Status", "Filled Date"];
+const requisitionDetailHeaders = ["Site", "Department", "Position", "Job Level", "Vacancy", "Requisition Type", "Requisition Date", "Person in Charge", "Applicants", ...detailStageHeaders, "SLA", "Filled Status", "Filled Date"];
 
 type PrintTarget = "chart" | "requisition-detail";
 
@@ -41,9 +43,10 @@ type RequisitionDetailRow = {
   vacancy: number;
   applicant_count: number;
   request_type: RequisitionRequestType;
-  pr_approved_date: string;
+  requisition_date: string;
   person_in_charge: string;
   stage_counts: Record<ProcessStage, number>;
+  sla_state: RequisitionSlaState;
   filled_status: "Open" | "Filled";
   filled_date: string | null;
 };
@@ -146,26 +149,26 @@ export function VacancyWaterfallView({
   }
 
   return (
-    <div className="grid gap-4">
-      <section className="min-w-0 rounded-lg border border-[#D7DEE8] bg-white py-6 font-light shadow-panel">
+    <div className="grid min-w-0 max-w-full gap-4 overflow-x-hidden">
+      <section className="min-w-0 max-w-full overflow-hidden rounded-lg border border-[#D7DEE8] bg-white py-6 font-normal shadow-[0_14px_34px_rgba(11,19,43,0.06)]">
         <div className="mb-5 grid gap-5 border-b border-[#D7DEE8] px-4 pb-5 sm:px-6 lg:grid-cols-[1fr_auto] lg:items-start lg:px-8">
           <div>
-            <p className="mb-1 text-xs font-extrabold uppercase tracking-normal text-primary">{translate(language, "weeklyRecruitmentPerformance")}</p>
+            <p className="mb-1 text-xs font-semibold uppercase tracking-normal text-primary">{translate(language, "weeklyRecruitmentPerformance")}</p>
             <h2 className="text-2xl font-semibold tracking-normal text-navy sm:text-[28px]">{translate(language, "vacancyWaterfall")}</h2>
-            <p className="mt-1 text-sm font-light text-slate">{formatDate(startDate, language)} - {formatDate(endDate, language)}</p>
+            <p className="mt-1 text-sm font-medium text-slate">{formatDate(startDate, language)} - {formatDate(endDate, language)}</p>
           </div>
           <div className="grid gap-3 rounded-md bg-lightgray/65 p-3 sm:flex sm:items-start sm:justify-end">
-            <Field label={translate(language, "startDate")} className="text-xs font-light">
+            <Field label={translate(language, "startDate")} className="text-xs font-medium">
               <TextInput
-                className="min-h-9 w-full rounded-md border border-[#D7DEE8] bg-white px-2.5 py-1.5 text-sm font-light text-navy shadow-sm focus:border-electric sm:w-36"
+                className="min-h-9 w-full rounded-md border border-[#D7DEE8] bg-white px-2.5 py-1.5 text-sm font-normal text-navy shadow-sm focus:border-electric sm:w-36"
                 type="date"
                 value={startDate}
                 onChange={(event) => setStartDate(event.target.value)}
               />
             </Field>
-            <Field label={translate(language, "endDate")} className="text-xs font-light">
+            <Field label={translate(language, "endDate")} className="text-xs font-medium">
               <TextInput
-                className="min-h-9 w-full rounded-md border border-[#D7DEE8] bg-white px-2.5 py-1.5 text-sm font-light text-navy shadow-sm focus:border-electric sm:w-36"
+                className="min-h-9 w-full rounded-md border border-[#D7DEE8] bg-white px-2.5 py-1.5 text-sm font-normal text-navy shadow-sm focus:border-electric sm:w-36"
                 type="date"
                 value={endDate}
                 onChange={(event) => setEndDate(event.target.value)}
@@ -189,7 +192,7 @@ export function VacancyWaterfallView({
         )}
       </section>
 
-      <section className="rounded-lg border border-[#D7DEE8] bg-white shadow-panel">
+      <section className="min-w-0 max-w-full overflow-hidden rounded-lg border border-[#D7DEE8] bg-white shadow-panel">
         <div className="flex flex-col gap-3 px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
           <button
             type="button"
@@ -198,7 +201,7 @@ export function VacancyWaterfallView({
           >
             <span>
               <strong className="block text-lg font-semibold text-navy">Opened Requisitions in Selected Range</strong>
-              <span className="text-sm font-light text-slate">{formatNumber(requisitionRows.length, language)} requisitions - {formatDate(startDate, language)} to {formatDate(endDate, language)}</span>
+              <span className="text-sm font-medium text-slate">{formatNumber(requisitionRows.length, language)} requisitions - {formatDate(startDate, language)} to {formatDate(endDate, language)}</span>
             </span>
             <ChevronDown className={`shrink-0 transition-transform motion-reduce:transition-none ${detailsOpen ? "rotate-180" : ""}`} size={20} />
           </button>
@@ -208,7 +211,7 @@ export function VacancyWaterfallView({
           </div>
         </div>
         {detailsOpen ? (
-          <div className="border-t border-[#D7DEE8] p-4 sm:p-6 lg:p-8">
+          <div className="min-w-0 max-w-full overflow-hidden border-t border-[#D7DEE8] p-4 sm:p-6 lg:p-8">
             <RequisitionDetailTable rows={requisitionRows} language={language} />
           </div>
         ) : null}
@@ -261,12 +264,12 @@ function VacancyWaterfallChart({ language, rows }: { language: Language; rows: W
   return (
     <div className="chart-report-body w-full pb-2">
       <div className="w-full px-4 sm:px-6 lg:px-8">
-        <h3 className="screen-chart-title text-2xl font-light leading-tight tracking-normal text-navy sm:text-[26px]">
+        <h3 className="screen-chart-title text-2xl font-semibold leading-tight tracking-normal text-navy sm:text-[26px]">
           {translate(language, "weeklyRecruitmentPerformance")}
         </h3>
         <div className="chart-legend mt-2 flex flex-wrap items-center gap-x-5 gap-y-1">
           {chart.legend.map((item) => (
-            <div key={item.label} className="flex items-center gap-2 text-sm font-light text-slate">
+            <div key={item.label} className="flex items-center gap-2 text-sm font-medium text-slate">
               <span
                 className="chart-legend-swatch shrink-0"
                 style={{
@@ -412,20 +415,53 @@ function RightSegmentBrackets({
 }
 
 function RequisitionDetailTable({ rows, language, printMode = false }: { rows: RequisitionDetailRow[]; language: Language; printMode?: boolean }) {
+  const columns: TableColumn<RequisitionDetailRow>[] = [
+    { key: "site", label: "Site", value: (row) => row.site },
+    { key: "department", label: "Department", value: (row) => row.department },
+    { key: "position", label: "Position", value: (row) => row.position },
+    { key: "level", label: "Job Level", value: (row) => row.level },
+    { key: "vacancy", label: "Vacancy", value: (row) => row.vacancy },
+    { key: "request_type", label: "Requisition Type", value: (row) => row.request_type },
+    { key: "requisition_date", label: "Requisition Date", value: (row) => formatDate(row.requisition_date, language), sortValue: (row) => row.requisition_date },
+    { key: "person_in_charge", label: "Person in Charge", value: (row) => row.person_in_charge },
+    { key: "applicants", label: "Applicants", value: (row) => row.applicant_count },
+    ...detailStages.map((stage): TableColumn<RequisitionDetailRow> => ({
+      key: stage,
+      label: stageLabel(stage),
+      value: (row) => row.stage_counts[stage] ?? 0
+    })),
+    { key: "sla", label: "SLA", value: (row) => slaExportValue(row.sla_state), sortValue: (row) => row.sla_state.ageDays ?? Number.POSITIVE_INFINITY },
+    { key: "filled_status", label: "Filled Status", value: (row) => row.filled_status },
+    { key: "filled_date", label: "Filled Date", value: (row) => row.filled_date ? formatDate(row.filled_date, language) : "-", sortValue: (row) => row.filled_date ?? "" }
+  ];
+  const table = useTableControls(rows, columns);
+  const visibleRows = printMode ? rows : table.controlledRows;
   if (rows.length === 0) return <EmptyState message={translate(language, "noOpenedRequisitionsInRange")} />;
 
   return (
-    <div className="table-scroll max-h-[560px]">
-      <table className={`w-full border-collapse text-left text-xs ${printMode ? "print-detail-table" : ""}`}>
+    <div className={`max-h-[560px] min-w-0 max-w-full overflow-x-auto ${printMode ? "print-detail-scroll" : "dashboard-detail-scroll"}`}>
+      <table className={`${printMode ? "print-detail-table" : "min-w-max"} table-auto border-collapse text-left text-xs`}>
         <thead>
           <tr className="bg-lightgray text-navy">
-            {requisitionDetailHeaders.map((header) => (
-              <th key={header} scope="col" className={`${detailHeaderClass(header, printMode)} border border-[#D7DEE8] px-2 py-2 font-semibold`}>{header}</th>
+            {columns.map((column) => (
+              <th key={column.key} scope="col" className={`${detailHeaderClass(column.label, printMode)} border border-[#D7DEE8] px-2 py-2 font-semibold`}>
+                {printMode ? column.label : (
+                  <SortableFilterHeader
+                    columnKey={column.key}
+                    filterValue={table.filters[column.key] ?? ""}
+                    label={column.label}
+                    onFilter={table.setFilter}
+                    onSort={table.toggleSort}
+                    sortDirection={table.sortDirection}
+                    sortKey={table.sortKey}
+                  />
+                )}
+              </th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
+          {visibleRows.map((row) => (
             <tr key={row.doc_id} className="align-top">
               <td className={`${detailCellClass("Site")} border border-[#D7DEE8] px-2 py-2`}>{row.site}</td>
               <td className={`${detailCellClass("Department")} border border-[#D7DEE8] px-2 py-2`}>{row.department}</td>
@@ -433,12 +469,13 @@ function RequisitionDetailTable({ rows, language, printMode = false }: { rows: R
               <td className={`${detailCellClass("Job Level")} border border-[#D7DEE8] px-2 py-2`}>{row.level}</td>
               <td className={`${detailCellClass("Vacancy")} border border-[#D7DEE8] px-2 py-2 text-right`}>{row.vacancy}</td>
               <td className={`${detailCellClass("Requisition Type")} border border-[#D7DEE8] px-2 py-2`}>{row.request_type}</td>
-              <td className={`${detailCellClass("PR Approved Date")} border border-[#D7DEE8] px-2 py-2`}>{formatDate(row.pr_approved_date, language)}</td>
+              <td className={`${detailCellClass("Requisition Date")} border border-[#D7DEE8] px-2 py-2`}>{formatDate(row.requisition_date, language)}</td>
               <td className={`${detailCellClass("Person in Charge")} border border-[#D7DEE8] px-2 py-2`}>{row.person_in_charge}</td>
               <td className={`${detailCellClass("Applicants")} border border-[#D7DEE8] px-2 py-2 text-right`}>{row.applicant_count}</td>
               {detailStages.map((stage) => (
                 <td key={stage} className={`${detailCellClass(stage)} border border-[#D7DEE8] px-2 py-2 text-right`}>{row.stage_counts[stage] ?? 0}</td>
               ))}
+              <td className={`${detailCellClass("SLA")} border border-[#D7DEE8] px-2 py-2`}>{slaStatusCell(row.sla_state)}</td>
               <td className={`${detailCellClass("Filled Status")} border border-[#D7DEE8] px-2 py-2`}>{row.filled_status}</td>
               <td className={`${detailCellClass("Filled Date")} border border-[#D7DEE8] px-2 py-2`}>{row.filled_date ? formatDate(row.filled_date, language) : "-"}</td>
             </tr>
@@ -447,6 +484,22 @@ function RequisitionDetailTable({ rows, language, printMode = false }: { rows: R
       </table>
     </div>
   );
+}
+
+function slaStatusCell(state: RequisitionSlaState) {
+  if (state.ageDays === null || state.inSla === null) return "-";
+  const dotClass = state.inSla ? "sla-dot-ok bg-emerald" : "sla-dot-overdue bg-scarlet";
+  return (
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+      <span className={`sla-dot size-2.5 rounded-full ${dotClass}`} aria-hidden="true" />
+      <span>({state.ageDays}d)</span>
+    </span>
+  );
+}
+
+function slaExportValue(state: RequisitionSlaState) {
+  if (state.ageDays === null || state.inSla === null) return "-";
+  return `${state.inSla ? "In SLA" : "Over SLA"} (${state.ageDays}d)`;
 }
 
 function requisitionDetailExportRow(row: RequisitionDetailRow) {
@@ -458,9 +511,10 @@ function requisitionDetailExportRow(row: RequisitionDetailRow) {
       if (header === "Job Level") return [header, row.level];
       if (header === "Vacancy") return [header, row.vacancy];
       if (header === "Requisition Type") return [header, row.request_type];
-      if (header === "PR Approved Date") return [header, formatDate(row.pr_approved_date)];
+      if (header === "Requisition Date") return [header, formatDate(row.requisition_date)];
       if (header === "Person in Charge") return [header, row.person_in_charge];
       if (header === "Applicants") return [header, row.applicant_count];
+      if (header === "SLA") return [header, slaExportValue(row.sla_state)];
       if (header === "Filled Status") return [header, row.filled_status];
       if (header === "Filled Date") return [header, row.filled_date ? formatDate(row.filled_date) : "-"];
       return [header, row.stage_counts[header as ProcessStage] ?? 0];
@@ -473,10 +527,21 @@ function detailHeaderClass(header: string, printMode: boolean) {
 }
 
 function detailCellClass(header: string) {
-  if (["Site", "Department", "Position", "Job Level", "Vacancy", "Requisition Type", "PR Approved Date"].includes(header)) return "bg-white";
-  if (["Person in Charge", "Applicants"].includes(header)) return "bg-[#F8FBFF]";
-  if (detailStageHeaders.includes(header)) return "bg-[#F7F8FF]";
-  return "bg-[#F8FFF9]";
+  const sizing = detailColumnClass(header);
+  if (["Site", "Department", "Position", "Job Level", "Vacancy", "Requisition Type", "Requisition Date"].includes(header)) return `bg-white ${sizing}`;
+  if (["Person in Charge", "Applicants"].includes(header)) return `bg-[#F8FBFF] ${sizing}`;
+  if (detailStageHeaders.includes(header)) return `bg-[#F7F8FF] ${sizing}`;
+  return `bg-[#F8FFF9] ${sizing}`;
+}
+
+function detailColumnClass(header: string) {
+  if (["Department", "Position", "Person in Charge"].includes(header)) return "detail-text min-w-36 max-w-56 whitespace-normal";
+  if (["Requisition Type"].includes(header)) return "min-w-32 whitespace-nowrap";
+  if (["Requisition Date", "Filled Date"].includes(header)) return "min-w-28 whitespace-nowrap";
+  if (["SLA", "Filled Status"].includes(header)) return "min-w-24 whitespace-nowrap";
+  if (detailStageHeaders.includes(header)) return "min-w-16 whitespace-nowrap text-right";
+  if (["Vacancy", "Applicants"].includes(header)) return "min-w-16 whitespace-nowrap text-right";
+  return "min-w-20 whitespace-nowrap";
 }
 
 function buildWaterfall(rows: WaterfallRow[], language: Language) {
@@ -630,9 +695,13 @@ function buildOpenedRequisitionRows(data: DashboardData, requisitions: EnrichedR
         vacancy: requisition.head_count,
         applicant_count: applicantCountForGroups(data, groupIds, startDate, endDate),
         request_type: requisition.request_type,
-        pr_approved_date: openedDate,
+        requisition_date: openedDate,
         person_in_charge: requisition.person_in_charge ?? "-",
         stage_counts: stageCounts,
+        sla_state: getRequisitionSlaState(
+          requisition,
+          { endDate: filledStatus === "Filled" ? acceptedDates.sort().at(-1) ?? todayDate() : todayDate() }
+        ),
         filled_status: filledStatus,
         filled_date: filledStatus === "Filled" && acceptedDates.length > 0 ? acceptedDates.sort().at(-1) ?? null : null
       };
@@ -697,7 +766,7 @@ function compareRequisitionDetailRows(a: RequisitionDetailRow, b: RequisitionDet
   const dateA = a.filled_date ?? "9999-12-31";
   const dateB = b.filled_date ?? "9999-12-31";
   if (dateA !== dateB) return dateA.localeCompare(dateB);
-  return a.pr_approved_date.localeCompare(b.pr_approved_date);
+  return a.requisition_date.localeCompare(b.requisition_date);
 }
 
 function rowsForCategory(rows: WaterfallRow[], category: string) {

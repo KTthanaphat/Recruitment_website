@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PAGE_SIZE_OPTIONS, Pagination, paginateRows } from "@/components/ui/Pagination";
 import { Panel, SectionTitle } from "@/components/ui/Panel";
+import { SortableFilterHeader, type TableColumn, useTableControls } from "@/components/ui/TableControls";
 import { Tag } from "@/components/ui/Tag";
 import { processLabel } from "@/lib/constants";
 import { resultText, statusTone } from "@/lib/format";
@@ -27,12 +28,22 @@ export function CandidatesView({
 }) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<number>(PAGE_SIZE_OPTIONS[0]);
-  const paginated = paginateRows(rows, page, pageSize);
+  const columns: TableColumn<EnrichedCandidate>[] = [
+    { key: "candidate_id", label: "ID", value: (row) => row.candidate_id },
+    { key: "name", label: "Name", value: (row) => row.name },
+    { key: "group", label: "Group", value: (row) => row.group_position ?? "-" },
+    { key: "site", label: "Site", value: (row) => row.site ?? "-" },
+    { key: "owner", label: translate(language, "owner"), value: (row) => row.person_in_charge ?? "-" },
+    { key: "latest_process", label: translate(language, "latestProcess"), value: (row) => processLabel(row.latest_process) },
+    { key: "result", label: translate(language, "result"), value: (row) => resultText(row.latest_result) }
+  ];
+  const table = useTableControls(rows, columns);
+  const paginated = paginateRows(table.controlledRows, page, pageSize);
   const visibleRows = paginated.rows;
 
   useEffect(() => {
     setPage(1);
-  }, [rows.length, pageSize]);
+  }, [pageSize, rows.length, table.controlledRows.length, table.filters, table.sortDirection, table.sortKey]);
 
   return (
     <Panel>
@@ -68,13 +79,19 @@ export function CandidatesView({
           <table className="w-full border-collapse text-left text-sm">
             <thead className="bg-lightgray text-xs uppercase text-slate">
               <tr>
-                <th scope="col" className="px-3 py-3">ID</th>
-                <th scope="col" className="px-3 py-3">Name</th>
-                <th scope="col" className="px-3 py-3">Group</th>
-                <th scope="col" className="px-3 py-3">Site</th>
-                <th scope="col" className="px-3 py-3">{translate(language, "owner")}</th>
-                <th scope="col" className="px-3 py-3">{translate(language, "latestProcess")}</th>
-                <th scope="col" className="px-3 py-3">{translate(language, "result")}</th>
+                {columns.map((column) => (
+                  <th key={column.key} scope="col" className="px-3 py-3 align-top">
+                    <SortableFilterHeader
+                      columnKey={column.key}
+                      filterValue={table.filters[column.key] ?? ""}
+                      label={column.label}
+                      onFilter={table.setFilter}
+                      onSort={table.toggleSort}
+                      sortDirection={table.sortDirection}
+                      sortKey={table.sortKey}
+                    />
+                  </th>
+                ))}
                 <th scope="col" className="px-3 py-3"></th>
               </tr>
             </thead>
@@ -104,7 +121,7 @@ export function CandidatesView({
             </tbody>
           </table>
         </div>
-        <Pagination language={language} page={paginated.page} pageSize={pageSize} totalRows={rows.length} onPageChange={setPage} onPageSizeChange={setPageSize} />
+        <Pagination language={language} page={paginated.page} pageSize={pageSize} totalRows={table.controlledRows.length} onPageChange={setPage} onPageSizeChange={setPageSize} />
         </>
       )}
     </Panel>

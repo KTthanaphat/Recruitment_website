@@ -10,7 +10,7 @@ export function Field({
   className?: string;
 }) {
   return (
-    <label className={`grid gap-1.5 text-sm font-bold text-navy ${className}`}>
+    <label className={`grid gap-1.5 text-sm font-medium text-navy ${className}`}>
       <span>{label}</span>
       {children}
     </label>
@@ -18,7 +18,7 @@ export function Field({
 }
 
 const fieldClass =
-  "min-h-10 w-full rounded-md border border-[#D7DEE8] bg-white px-3 py-2 text-sm font-normal text-navy shadow-none transition placeholder:text-cool focus:border-electric";
+  "min-h-10 w-full rounded-md border border-[#D7DEE8] bg-white px-3 py-2 text-sm font-normal text-navy shadow-none transition placeholder:text-cool hover:border-[#C9D5E6] focus:border-electric focus:bg-[#FBFDFF]";
 
 export function TextInput(props: InputHTMLAttributes<HTMLInputElement>) {
   return <input className={fieldClass} {...props} />;

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PAGE_SIZE_OPTIONS, Pagination, paginateRows } from "@/components/ui/Pagination";
 import { Panel, SectionTitle } from "@/components/ui/Panel";
+import { SortableFilterHeader, type TableColumn, useTableControls } from "@/components/ui/TableControls";
 import { Tag } from "@/components/ui/Tag";
 import { formatDate } from "@/lib/format";
 import { translate } from "@/lib/i18n/dictionary";
@@ -22,12 +23,20 @@ export function OffersView({
 }) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<number>(PAGE_SIZE_OPTIONS[0]);
-  const paginated = paginateRows(rows, page, pageSize);
+  const columns: TableColumn<EnrichedOffer>[] = [
+    { key: "candidate", label: "Candidate", value: (row) => row.candidate_name ?? row.candidate_id },
+    { key: "doc_id", label: "Doc ID", value: (row) => row.doc_id },
+    { key: "position", label: "Position", value: (row) => row.position ?? "-" },
+    { key: "accepted", label: "Accepted", value: (row) => row.accepted_date ? formatDate(row.accepted_date) : "Pending", sortValue: (row) => row.accepted_date ?? "" },
+    { key: "first_working", label: "First Working", value: (row) => formatDate(row.first_working_date), sortValue: (row) => row.first_working_date ?? "" }
+  ];
+  const table = useTableControls(rows, columns);
+  const paginated = paginateRows(table.controlledRows, page, pageSize);
   const visibleRows = paginated.rows;
 
   useEffect(() => {
     setPage(1);
-  }, [rows.length, pageSize]);
+  }, [pageSize, rows.length, table.controlledRows.length, table.filters, table.sortDirection, table.sortKey]);
 
   return (
     <Panel>
@@ -55,11 +64,19 @@ export function OffersView({
           <table className="w-full border-collapse text-left text-sm">
             <thead className="bg-lightgray text-xs uppercase text-slate">
               <tr>
-                <th scope="col" className="px-3 py-3">Candidate</th>
-                <th scope="col" className="px-3 py-3">Doc ID</th>
-                <th scope="col" className="px-3 py-3">Position</th>
-                <th scope="col" className="px-3 py-3">Accepted</th>
-                <th scope="col" className="px-3 py-3">First Working</th>
+                {columns.map((column) => (
+                  <th key={column.key} scope="col" className="px-3 py-3 align-top">
+                    <SortableFilterHeader
+                      columnKey={column.key}
+                      filterValue={table.filters[column.key] ?? ""}
+                      label={column.label}
+                      onFilter={table.setFilter}
+                      onSort={table.toggleSort}
+                      sortDirection={table.sortDirection}
+                      sortKey={table.sortKey}
+                    />
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -75,7 +92,7 @@ export function OffersView({
             </tbody>
           </table>
         </div>
-        <Pagination language={language} page={paginated.page} pageSize={pageSize} totalRows={rows.length} onPageChange={setPage} onPageSizeChange={setPageSize} />
+        <Pagination language={language} page={paginated.page} pageSize={pageSize} totalRows={table.controlledRows.length} onPageChange={setPage} onPageSizeChange={setPageSize} />
         </>
       )}
     </Panel>

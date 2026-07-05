@@ -13,13 +13,13 @@ const tones: Record<StatTone, { card: string; icon: string; value: string; accen
 export function StatCard({ label, value, icon, tone = "neutral" }: { label: string; value: ReactNode; icon?: ReactNode; tone?: StatTone }) {
   const classes = tones[tone];
   return (
-    <article className={`relative overflow-hidden rounded-lg border border-[#D7DEE8] p-4 shadow-panel ${classes.card}`}>
+    <article className={`relative overflow-hidden rounded-lg border border-[#D7DEE8] p-4 shadow-[0_12px_28px_rgba(11,19,43,0.055)] ${classes.card}`}>
       <span className={`absolute inset-x-0 top-0 h-1 ${classes.accent}`} />
       <div className="mb-3 flex items-center justify-between gap-3">
-        <span className="text-sm font-bold text-slate">{label}</span>
-        {icon ? <span className={classes.icon}>{icon}</span> : null}
+        <span className="text-sm font-medium text-slate">{label}</span>
+        {icon ? <span className={`rounded-md bg-white/70 p-1.5 ${classes.icon}`}>{icon}</span> : null}
       </div>
-      <strong className={`block text-3xl font-extrabold tracking-normal ${classes.value}`}>{value}</strong>
+      <strong className={`block font-semibold tracking-normal [font-variant-numeric:tabular-nums] ${classes.value}`}>{value}</strong>
     </article>
   );
 }

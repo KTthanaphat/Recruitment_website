@@ -13,5 +13,5 @@ const tones: Record<Tone, string> = {
 };
 
 export function Tag({ children, tone = "muted" }: { children: ReactNode; tone?: Tone }) {
-  return <span className={`inline-flex min-h-7 items-center rounded-full px-3 text-xs font-bold ${tones[tone]}`}>{children}</span>;
+  return <span className={`inline-flex min-h-6 items-center rounded-md px-2.5 text-xs font-semibold ${tones[tone]}`}>{children}</span>;
 }
