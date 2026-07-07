@@ -4,7 +4,8 @@ import { ChevronDown, Download } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Field, TextInput } from "@/components/ui/Field";
+import { Field, SelectInput, TextInput } from "@/components/ui/Field";
+import { PipelineFunnel, type PipelineFunnelRow } from "@/components/ui/PipelineFunnel";
 import { SortableFilterHeader, type TableColumn, useTableControls } from "@/components/ui/TableControls";
 import { ACTIVE_PIPELINE_STAGES, SOURCING_CHANNELS } from "@/lib/constants";
 import { formatDate, formatNumber } from "@/lib/format";
@@ -24,8 +25,16 @@ const siteOrder = ["HQ", "KT1", "KT2"];
 const detailStages = ACTIVE_PIPELINE_STAGES;
 const detailStageHeaders: string[] = detailStages.map(stageLabel);
 const requisitionDetailHeaders = ["Site", "Department", "Position", "Job Level", "Vacancy", "Requisition Type", "Requisition Date", "Person in Charge", "Applicants", ...detailStageHeaders, "SLA", "Filled Status", "Filled Date"];
+const funnelLevelOptions: Array<{ value: FunnelLevelBand; label: string }> = [
+  { value: "all", label: "All levels" },
+  { value: "0-3", label: "L0-L3" },
+  { value: "4-9", label: "L4-L9" },
+  { value: "10-14", label: "L10-L14" }
+];
 
-type PrintTarget = "chart" | "requisition-detail";
+type PrintTarget = "chart" | "requisition-detail" | "pipeline-funnel";
+type FunnelLevelBand = "all" | "0-3" | "4-9" | "10-14";
+type FunnelChannelFilter = "all" | string;
 
 type WaterfallRow = {
   waterfall_category: VacancyWaterfallCategory;
@@ -65,6 +74,11 @@ export function VacancyWaterfallView({
   const [startDate, setStartDate] = useState(currentYearStart());
   const [endDate, setEndDate] = useState(today());
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [funnelStartDate, setFunnelStartDate] = useState(currentYearStart());
+  const [funnelEndDate, setFunnelEndDate] = useState(today());
+  const [funnelLevelBand, setFunnelLevelBand] = useState<FunnelLevelBand>("all");
+  const [funnelChannel, setFunnelChannel] = useState<FunnelChannelFilter>("all");
+  const [funnelOpen, setFunnelOpen] = useState(false);
   const [printTarget, setPrintTarget] = useState<PrintTarget | null>(null);
   const [exportPreparing, setExportPreparing] = useState(false);
   const [urlStateReady, setUrlStateReady] = useState(false);
@@ -78,6 +92,13 @@ export function VacancyWaterfallView({
     () => buildOpenedRequisitionRows(data, requisitions, startDate, endDate),
     [data, endDate, requisitions, startDate]
   );
+  const funnelRows = useMemo(
+    () => buildDashboardPipelineFunnelRows(data, requisitions, funnelStartDate, funnelEndDate, funnelLevelBand, funnelChannel),
+    [data, funnelChannel, funnelEndDate, funnelLevelBand, funnelStartDate, requisitions]
+  );
+  const funnelApplicantTotal = funnelRows[0]?.count ?? 0;
+  const funnelChannelOptions = useMemo(() => buildFunnelChannelOptions(data), [data]);
+  const funnelChannelLabel = channelFilterLabel(funnelChannel);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -87,6 +108,12 @@ export function VacancyWaterfallView({
     if (queryEnd) setEndDate(queryEnd);
     if (params.get("details") === "open") setDetailsOpen(true);
     if (params.get("details") === "closed") setDetailsOpen(false);
+    if (params.get("funnelStart")) setFunnelStartDate(params.get("funnelStart")!);
+    if (params.get("funnelEnd")) setFunnelEndDate(params.get("funnelEnd")!);
+    if (isFunnelLevelBand(params.get("funnelLevel"))) setFunnelLevelBand(params.get("funnelLevel") as FunnelLevelBand);
+    if (params.get("funnelChannel")) setFunnelChannel(params.get("funnelChannel")!);
+    if (params.get("funnel") === "open") setFunnelOpen(true);
+    if (params.get("funnel") === "closed") setFunnelOpen(false);
     setUrlStateReady(true);
   }, []);
 
@@ -95,9 +122,14 @@ export function VacancyWaterfallView({
     replaceReportQueryParams({
       start: startDate,
       end: endDate,
-      details: detailsOpen ? "open" : "closed"
+      details: detailsOpen ? "open" : "closed",
+      funnelStart: funnelStartDate,
+      funnelEnd: funnelEndDate,
+      funnelLevel: funnelLevelBand,
+      funnelChannel,
+      funnel: funnelOpen ? "open" : "closed"
     });
-  }, [detailsOpen, endDate, startDate, urlStateReady]);
+  }, [detailsOpen, endDate, funnelChannel, funnelEndDate, funnelLevelBand, funnelOpen, funnelStartDate, startDate, urlStateReady]);
 
   useEffect(() => {
     const clearPrintTarget = () => {
@@ -217,9 +249,83 @@ export function VacancyWaterfallView({
         ) : null}
       </section>
 
+      <section className="min-w-0 max-w-full overflow-hidden rounded-lg border border-[#D7DEE8] bg-white shadow-panel">
+        <div className="flex flex-col gap-3 px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
+          <button
+            type="button"
+            className="flex min-w-0 flex-1 items-center justify-between gap-3 text-left"
+            onClick={() => setFunnelOpen((open) => !open)}
+          >
+            <span>
+              <strong className="block text-lg font-semibold text-navy">Recruitment Pipeline Health in Selected Range</strong>
+              <span className="text-sm font-medium text-slate">
+                {formatNumber(funnelApplicantTotal, language)} applicants - {formatDate(funnelStartDate, language)} to {formatDate(funnelEndDate, language)} - {funnelLevelLabel(funnelLevelBand)} - {funnelChannelLabel}
+              </span>
+            </span>
+            <ChevronDown className={`shrink-0 transition-transform motion-reduce:transition-none ${funnelOpen ? "rotate-180" : ""}`} size={20} />
+          </button>
+          <div className="flex flex-wrap gap-2 print:hidden">
+            <Button type="button" size="sm" variant="secondary" icon={<Download size={16} />} disabled={exportPreparing} onClick={() => exportPdf("pipeline-funnel")}>Export PDF</Button>
+          </div>
+        </div>
+        {funnelOpen ? (
+          <div className="grid min-w-0 gap-4 border-t border-[#D7DEE8] p-4 sm:p-6 lg:p-8">
+            <div className="grid gap-3 rounded-md bg-lightgray/65 p-3 sm:grid-cols-2 lg:grid-cols-[repeat(4,minmax(0,10rem))_auto] sm:items-end">
+              <Field label={translate(language, "startDate")} className="text-xs font-medium">
+                <TextInput
+                  className="min-h-9 w-full rounded-md border border-[#D7DEE8] bg-white px-2.5 py-1.5 text-sm font-normal text-navy shadow-sm focus:border-electric"
+                  type="date"
+                  value={funnelStartDate}
+                  onChange={(event) => setFunnelStartDate(event.target.value)}
+                />
+              </Field>
+              <Field label={translate(language, "endDate")} className="text-xs font-medium">
+                <TextInput
+                  className="min-h-9 w-full rounded-md border border-[#D7DEE8] bg-white px-2.5 py-1.5 text-sm font-normal text-navy shadow-sm focus:border-electric"
+                  type="date"
+                  value={funnelEndDate}
+                  onChange={(event) => setFunnelEndDate(event.target.value)}
+                />
+              </Field>
+              <Field label="Level" className="text-xs font-medium">
+                <SelectInput value={funnelLevelBand} onChange={(event) => setFunnelLevelBand(event.target.value as FunnelLevelBand)}>
+                  {funnelLevelOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </SelectInput>
+              </Field>
+              <Field label="Channel" className="text-xs font-medium">
+                <SelectInput value={funnelChannel} onChange={(event) => setFunnelChannel(event.target.value)}>
+                  {funnelChannelOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </SelectInput>
+              </Field>
+            </div>
+            <PipelineFunnel
+              language={language}
+              rows={funnelRows}
+              title="Recruitment Pipeline Health"
+              subtitle="Activity in selected range, de-duplicated per candidate per stage"
+              meta={`${funnelLevelLabel(funnelLevelBand)} - ${funnelChannelLabel}`}
+              totalValue={funnelApplicantTotal}
+            />
+          </div>
+        ) : null}
+      </section>
+
       <div data-print-section="requisition-detail" className="print-report-only">
         <ReportHeader title="Opened Requisitions in Selected Range" startDate={startDate} endDate={endDate} />
         <RequisitionDetailTable rows={requisitionRows} language={language} printMode />
+      </div>
+
+      <div data-print-section="pipeline-funnel" className="print-report-only print-funnel-report">
+        <ReportHeader title="Recruitment Pipeline Health in Selected Range" startDate={funnelStartDate} endDate={funnelEndDate} />
+        <p className="px-4 pb-3 text-sm font-semibold text-primary sm:px-6 lg:px-8">Level: {funnelLevelLabel(funnelLevelBand)} - Channel: {funnelChannelLabel}</p>
+        <PipelineFunnel
+          language={language}
+          rows={funnelRows}
+          title="Recruitment Pipeline Health"
+          subtitle="Activity in selected range, de-duplicated per candidate per stage"
+          meta={`${funnelLevelLabel(funnelLevelBand)} - ${funnelChannelLabel}`}
+          totalValue={funnelApplicantTotal}
+        />
       </div>
 
       {exportPreparing ? (
@@ -709,6 +815,55 @@ function buildOpenedRequisitionRows(data: DashboardData, requisitions: EnrichedR
     .sort(compareRequisitionDetailRows);
 }
 
+function buildDashboardPipelineFunnelRows(
+  data: DashboardData,
+  requisitions: EnrichedRequisition[],
+  startDate: string,
+  endDate: string,
+  levelBand: FunnelLevelBand,
+  channelFilter: FunnelChannelFilter
+): PipelineFunnelRow[] {
+  if (!startDate || !endDate || startDate > endDate) return buildPipelineFunnelRows(0, emptyStageCounts());
+
+  const eligibleRequisitions = requisitions.filter((requisition) =>
+    requisition.status !== "cancel" && levelMatchesBand(requisition.level, levelBand)
+  );
+  const eligibleDocIds = new Set(eligibleRequisitions.map((requisition) => requisition.doc_id));
+  const groupIds = new Set<string>();
+  const directDocGroupIds = new Set<string>();
+
+  for (const group of data.document_groups) {
+    if (!eligibleDocIds.has(group.doc_id)) continue;
+    directDocGroupIds.add(group.doc_group_id);
+    if (group.group_id) groupIds.add(group.group_id);
+  }
+
+  const linkedDocGroupIds = docGroupIdsForGroupIds(data, groupIds);
+  for (const docGroupId of directDocGroupIds) linkedDocGroupIds.add(docGroupId);
+
+  return buildPipelineFunnelRows(
+    applicantCountForGroups(data, groupIds, startDate, endDate, channelFilter),
+    stageActivityCountsForDocGroups(data, linkedDocGroupIds, startDate, endDate, channelFilter)
+  );
+}
+
+function buildPipelineFunnelRows(applicantTotal: number, stageCounts: Record<ProcessStage, number>): PipelineFunnelRow[] {
+  const baseRows = [
+    { key: "applicants", label: "Applicants", count: applicantTotal },
+    ...detailStages.map((stage) => ({ key: stage, label: stageLabel(stage), count: stageCounts[stage] ?? 0 }))
+  ];
+
+  return baseRows.map((row, index) => {
+    const previousCount = index > 0 ? baseRows[index - 1].count : null;
+    return {
+      ...row,
+      conversionRate: previousCount && previousCount > 0 ? row.count / previousCount : null,
+      yieldRate: applicantTotal > 0 ? row.count / applicantTotal : null,
+      barRatio: applicantTotal > 0 ? Math.min(row.count / applicantTotal, 1) : null
+    };
+  });
+}
+
 function groupIdsForRequisition(data: DashboardData, docId: string) {
   return new Set(
     data.document_groups
@@ -726,12 +881,16 @@ function docGroupIdsForGroupIds(data: DashboardData, groupIds: Set<string>) {
   );
 }
 
-function applicantCountForGroups(data: DashboardData, groupIds: Set<string>, startDate: string, endDate: string) {
+function applicantCountForGroups(data: DashboardData, groupIds: Set<string>, startDate: string, endDate: string, channelFilter: FunnelChannelFilter = "all") {
   if (groupIds.size === 0) return 0;
+  const channels: ReadonlyArray<(typeof SOURCING_CHANNELS)[number]> = channelFilter === "all"
+    ? SOURCING_CHANNELS
+    : SOURCING_CHANNELS.filter((channel) => channel.label === channelFilter);
+  if (channels.length === 0) return 0;
   return data.sourcing_weekly_updates
     .filter((update) => groupIds.has(update.group_id) && update.week_start >= startDate && update.week_start <= endDate)
     .reduce(
-      (sum, update) => sum + SOURCING_CHANNELS.reduce((channelSum, channel) => channelSum + Number(update[channel.count] ?? 0), 0),
+      (sum, update) => sum + channels.reduce<number>((channelSum, channel) => channelSum + Number(update[channel.count] ?? 0), 0),
       0
     );
 }
@@ -754,8 +913,63 @@ function stageHistoryCountsForDocGroups(data: DashboardData, docGroupIds: Set<st
   return Object.fromEntries(detailStages.map((stage) => [stage, stageCandidates[stage].size])) as Record<ProcessStage, number>;
 }
 
+function stageActivityCountsForDocGroups(data: DashboardData, docGroupIds: Set<string>, startDate: string, endDate: string, channelFilter: FunnelChannelFilter = "all") {
+  const stageCandidates = Object.fromEntries(detailStages.map((stage) => [stage, new Set<string>()])) as Record<ProcessStage, Set<string>>;
+  if (docGroupIds.size === 0) return emptyStageCounts();
+
+  const candidateIds = new Set(
+    data.candidates
+      .filter((candidate) => docGroupIds.has(candidate.doc_group_id) && channelMatchesFilter(candidate.channel, channelFilter))
+      .map((candidate) => candidate.candidate_id)
+  );
+
+  for (const log of data.recruitment_logs) {
+    const logDate = dateOnly(log.log_date);
+    if (!logDate || logDate < startDate || logDate > endDate) continue;
+    if (!candidateIds.has(log.candidate_id) || !detailStages.includes(log.recruitment_process)) continue;
+    stageCandidates[log.recruitment_process].add(log.candidate_id);
+  }
+
+  return Object.fromEntries(detailStages.map((stage) => [stage, stageCandidates[stage].size])) as Record<ProcessStage, number>;
+}
+
 function emptyStageCounts() {
   return Object.fromEntries(detailStages.map((stage) => [stage, 0])) as Record<ProcessStage, number>;
+}
+
+function buildFunnelChannelOptions(data: DashboardData) {
+  const options = new Map<string, string>([["all", "All channels"]]);
+  for (const channel of SOURCING_CHANNELS) options.set(channel.label, channel.label);
+  for (const candidate of data.candidates) {
+    const channel = candidate.channel?.trim();
+    if (channel) options.set(channel, channel);
+  }
+  return Array.from(options, ([value, label]) => ({ value, label }));
+}
+
+function channelFilterLabel(value: FunnelChannelFilter) {
+  return value === "all" ? "All channels" : value;
+}
+
+function channelMatchesFilter(channel: string | null | undefined, filter: FunnelChannelFilter) {
+  return filter === "all" || channel?.trim() === filter;
+}
+
+function isFunnelLevelBand(value: string | null): value is FunnelLevelBand {
+  return value === "all" || value === "0-3" || value === "4-9" || value === "10-14";
+}
+
+function funnelLevelLabel(value: FunnelLevelBand) {
+  return funnelLevelOptions.find((option) => option.value === value)?.label ?? "All levels";
+}
+
+function levelMatchesBand(level: string | null | undefined, band: FunnelLevelBand) {
+  if (band === "all") return true;
+  const numericLevel = Number.parseInt(String(level ?? "").replace(/^L/i, ""), 10);
+  if (!Number.isFinite(numericLevel)) return false;
+  if (band === "0-3") return numericLevel >= 0 && numericLevel <= 3;
+  if (band === "4-9") return numericLevel >= 4 && numericLevel <= 9;
+  return numericLevel >= 10 && numericLevel <= 14;
 }
 
 function compareRequisitionDetailRows(a: RequisitionDetailRow, b: RequisitionDetailRow) {

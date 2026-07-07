@@ -17,6 +17,7 @@ import { Drawer } from "@/components/ui/Drawer";
 import { Field, SelectInput, TextArea, TextInput } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { Panel } from "@/components/ui/Panel";
+import { PipelineFunnel, type PipelineFunnelRow } from "@/components/ui/PipelineFunnel";
 import { StageRail } from "@/components/ui/StageRail";
 import { Tag } from "@/components/ui/Tag";
 import { ACTIVE_PIPELINE_STAGES, canManageSetup as canManageSetupRole, canManageUsers as canManageUsersRole, canWrite as canWriteRole, PROCESS_UPDATE_STAGES, processLabel, recruiterNicknameOptions, ROLE_LABELS, ROLES, SITE_OPTIONS, SOURCING_CHANNELS, WRITABLE_REQUISITION_STATUSES } from "@/lib/constants";
@@ -477,7 +478,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     return false;
   }
 
-  const detailBody = useMemo(() => buildDetailBody(detail, data, openProcessFromDetail), [detail, data]);
+  const detailBody = useMemo(() => buildDetailBody(detail, data, language, openProcessFromDetail), [detail, data, language, openProcessFromDetail]);
 
   if (!hasSupabaseConfig) {
     return (
@@ -947,6 +948,38 @@ function selectedModalRecords(data: DashboardData, selectedId: string) {
   };
 }
 
+function optionLabel(parts: Array<string | number | null | undefined>) {
+  return parts
+    .map((part) => String(part ?? "").trim())
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function requisitionOptionLabel(row: DashboardData["requisitions"][number]) {
+  return optionLabel([row.doc_id, row.position]);
+}
+
+function candidateOptionLabel(row: DashboardData["candidates"][number]) {
+  return optionLabel([row.candidate_id, row.name]);
+}
+
+function documentGroupOptionLabel(row: DashboardData["document_groups"][number]) {
+  return optionLabel([row.doc_group_id, row.group_position]);
+}
+
+function positionGroupOptionLabel(row: DashboardData["position_groups"][number]) {
+  return optionLabel([row.group_id, row.group_position]);
+}
+
+function offerOptionLabel(data: DashboardData, offer: DashboardData["offers"][number]) {
+  const candidate = data.candidates.find((row) => row.candidate_id === offer.candidate_id);
+  return optionLabel([offer.candidate_id, candidate?.name, offer.doc_id]);
+}
+
+function userOptionLabel(profile: DashboardData["profiles"][number]) {
+  return optionLabel([profile.nickname ?? profile.full_name ?? profile.email ?? profile.id, ROLE_LABELS[profile.role]]);
+}
+
 function ModeRow({
   mode,
   onModeChange
@@ -997,7 +1030,7 @@ function RequisitionFields({
         {mode === "change" ? (
           <SelectInput name="doc_id" required value={selectedId} onChange={(event) => onSelect(event.target.value)}>
             <option value="">Select requisition</option>
-            {data.requisitions.map((row) => <option key={row.doc_id} value={row.doc_id}>{row.doc_id}</option>)}
+            {data.requisitions.map((row) => <option key={row.doc_id} value={row.doc_id}>{requisitionOptionLabel(row)}</option>)}
           </SelectInput>
         ) : (
           <TextInput name="doc_id" list="doc-id-options" required />
@@ -1076,7 +1109,7 @@ function StatusFields({
 }) {
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      <Field label="Doc ID"><SelectInput name="doc_id" required value={selectedId} onChange={(event) => onSelect(event.target.value)}><option value="">Select requisition</option>{data.requisitions.map((row) => <option key={row.doc_id}>{row.doc_id}</option>)}</SelectInput></Field>
+      <Field label="Doc ID"><SelectInput name="doc_id" required value={selectedId} onChange={(event) => onSelect(event.target.value)}><option value="">Select requisition</option>{data.requisitions.map((row) => <option key={row.doc_id} value={row.doc_id}>{requisitionOptionLabel(row)}</option>)}</SelectInput></Field>
       <Field label="Date"><TextInput name="log_date" type="date" required defaultValue={today()} /></Field>
       <Field label="Status"><SelectInput name="status" defaultValue={selected?.status ?? "ongoing"}>{["ongoing", "filled", "cancel"].map((status) => <option key={status}>{status}</option>)}</SelectInput></Field>
       <Field label="Remark" className="md:col-span-2"><TextArea name="remark" rows={3} /></Field>
@@ -1095,10 +1128,10 @@ function splitReplacementNames(value: string | null | undefined) {
 function CandidateFields({ data }: { data: DashboardData }) {
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      <Field label="Candidate ID"><SelectInput name="candidate_id"><option value="">Auto in New mode</option>{data.candidates.map((row) => <option key={row.candidate_id}>{row.candidate_id}</option>)}</SelectInput></Field>
+      <Field label="Candidate ID"><SelectInput name="candidate_id"><option value="">Auto in New mode</option>{data.candidates.map((row) => <option key={row.candidate_id} value={row.candidate_id}>{candidateOptionLabel(row)}</option>)}</SelectInput></Field>
       <Field label="Name"><TextInput name="name" required /></Field>
       <Field label="Phone No."><TextInput name="phone_no" /></Field>
-      <Field label="Group ID"><SelectInput name="doc_group_id" required>{data.document_groups.map((row) => <option key={row.doc_group_id} value={row.doc_group_id}>{row.doc_group_id} · {row.group_position}</option>)}</SelectInput></Field>
+      <Field label="Group ID"><SelectInput name="doc_group_id" required>{data.document_groups.map((row) => <option key={row.doc_group_id} value={row.doc_group_id}>{documentGroupOptionLabel(row)}</option>)}</SelectInput></Field>
       <Field label="Channel"><TextInput name="channel" list="channel-options" /></Field>
       <Field label="Reference Name"><TextInput name="ref_name" list="ref-options" /></Field>
       <Field label="First Contact Date"><TextInput name="first_contact_date" type="date" /></Field>
@@ -1120,7 +1153,7 @@ function ProcessFields({ data, defaults }: { data: DashboardData; defaults: Proc
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <input type="hidden" name="source" value={defaults.source ?? "manual"} />
-      <Field label="Candidate"><SelectInput name="candidate_id" required defaultValue={defaults.candidate_id}>{data.candidates.map((row) => <option key={row.candidate_id} value={row.candidate_id}>{row.candidate_id} · {row.name}</option>)}</SelectInput></Field>
+      <Field label="Candidate"><SelectInput name="candidate_id" required defaultValue={defaults.candidate_id}>{data.candidates.map((row) => <option key={row.candidate_id} value={row.candidate_id}>{candidateOptionLabel(row)}</option>)}</SelectInput></Field>
       <Field label="Date"><TextInput name="log_date" type="date" defaultValue={today()} required /></Field>
       {blockedReason ? <p className="rounded-md bg-lightgray p-3 text-sm font-medium text-orange md:col-span-2">{blockedReason}</p> : null}
       <Field label="Process">
@@ -1176,10 +1209,10 @@ function CandidatePrefillFields({
         {mode === "change" ? (
           <SelectInput name="candidate_id" required value={selectedId} onChange={(event) => onSelect(event.target.value)}>
             <option value="">Select candidate</option>
-            {data.candidates.map((row) => <option key={row.candidate_id} value={row.candidate_id}>{row.candidate_id} - {row.name}</option>)}
+            {data.candidates.map((row) => <option key={row.candidate_id} value={row.candidate_id}>{candidateOptionLabel(row)}</option>)}
           </SelectInput>
         ) : (
-          <SelectInput name="candidate_id"><option value="">Auto in New mode</option>{data.candidates.map((row) => <option key={row.candidate_id}>{row.candidate_id}</option>)}</SelectInput>
+          <SelectInput name="candidate_id"><option value="">Auto in New mode</option>{data.candidates.map((row) => <option key={row.candidate_id} value={row.candidate_id}>{candidateOptionLabel(row)}</option>)}</SelectInput>
         )}
       </Field>
       <Field label="Name"><TextInput name="name" required defaultValue={selected?.name ?? ""} /></Field>
@@ -1187,7 +1220,7 @@ function CandidatePrefillFields({
       <Field label="Group ID">
         <SelectInput name="doc_group_id" required value={selectedDocGroupId} onChange={(event) => setSelectedDocGroupId(event.target.value)}>
           <option value="">Select group</option>
-          {data.document_groups.map((row) => <option key={row.doc_group_id} value={row.doc_group_id}>{row.doc_group_id} - {row.group_position}</option>)}
+          {data.document_groups.map((row) => <option key={row.doc_group_id} value={row.doc_group_id}>{documentGroupOptionLabel(row)}</option>)}
         </SelectInput>
       </Field>
       <Field label="Channel">
@@ -1231,7 +1264,7 @@ function ProcessPrefillFields({
       <Field label="Candidate">
         <SelectInput name="candidate_id" required value={candidateId} onChange={(event) => onSelect(event.target.value)}>
           <option value="">Select candidate</option>
-          {data.candidates.map((row) => <option key={row.candidate_id} value={row.candidate_id}>{row.candidate_id} - {row.name}</option>)}
+          {data.candidates.map((row) => <option key={row.candidate_id} value={row.candidate_id}>{candidateOptionLabel(row)}</option>)}
         </SelectInput>
       </Field>
       <Field label="Date"><TextInput name="log_date" type="date" defaultValue={today()} required /></Field>
@@ -1354,8 +1387,8 @@ function TestMaintenanceFields({ data, defaults }: { data: DashboardData; defaul
 function OfferFields({ data }: { data: DashboardData }) {
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      <Field label="Candidate"><SelectInput name="candidate_id" required>{data.candidates.map((row) => <option key={row.candidate_id} value={row.candidate_id}>{row.candidate_id} · {row.name}</option>)}</SelectInput></Field>
-      <Field label="Doc ID"><SelectInput name="doc_id" required>{data.requisitions.map((row) => <option key={row.doc_id}>{row.doc_id}</option>)}</SelectInput></Field>
+      <Field label="Candidate"><SelectInput name="candidate_id" required>{data.candidates.map((row) => <option key={row.candidate_id} value={row.candidate_id}>{candidateOptionLabel(row)}</option>)}</SelectInput></Field>
+      <Field label="Doc ID"><SelectInput name="doc_id" required>{data.requisitions.map((row) => <option key={row.doc_id} value={row.doc_id}>{requisitionOptionLabel(row)}</option>)}</SelectInput></Field>
       <Field label="Accepted Date"><TextInput name="accepted_date" type="date" /></Field>
       <Field label="First Working Date"><TextInput name="first_working_date" type="date" /></Field>
       <Field label="Remark" className="md:col-span-2"><TextArea name="remark" rows={3} /></Field>
@@ -1367,7 +1400,7 @@ function OfferFields({ data }: { data: DashboardData }) {
 function GroupFields({ data }: { data: DashboardData }) {
   return (
     <div className="grid gap-4">
-      <Field label="Group ID"><SelectInput name="group_id"><option value="">Auto in New mode</option>{data.position_groups.map((row) => <option key={row.group_id}>{row.group_id}</option>)}</SelectInput></Field>
+      <Field label="Group ID"><SelectInput name="group_id"><option value="">Auto in New mode</option>{data.position_groups.map((row) => <option key={row.group_id} value={row.group_id}>{positionGroupOptionLabel(row)}</option>)}</SelectInput></Field>
       <Field label="Group Position"><TextInput name="group_position" list="group-position-options" required /></Field>
       <div className="grid gap-2 rounded-md border border-[#D7DEE8] bg-lightgray p-3 text-sm font-bold text-navy md:grid-cols-4">
         {SOURCING_CHANNELS.map((channel) => (
@@ -1387,8 +1420,8 @@ function MatchFields({ data, defaults }: { data: DashboardData; defaults: ModalD
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      <Field label="Doc ID"><SelectInput name="doc_id" required defaultValue={defaults.doc_id ?? ""}>{docOptions.map((row) => <option key={row.doc_id} value={row.doc_id}>{row.doc_id} · {row.position}</option>)}</SelectInput></Field>
-      <Field label="Group ID"><SelectInput name="group_id" required defaultValue={defaults.group_id ?? ""}>{data.position_groups.map((row) => <option key={row.group_id} value={row.group_id}>{row.group_id} · {row.group_position}</option>)}</SelectInput></Field>
+      <Field label="Doc ID"><SelectInput name="doc_id" required defaultValue={defaults.doc_id ?? ""}>{docOptions.map((row) => <option key={row.doc_id} value={row.doc_id}>{requisitionOptionLabel(row)}</option>)}</SelectInput></Field>
+      <Field label="Group ID"><SelectInput name="group_id" required defaultValue={defaults.group_id ?? ""}>{data.position_groups.map((row) => <option key={row.group_id} value={row.group_id}>{positionGroupOptionLabel(row)}</option>)}</SelectInput></Field>
     </div>
   );
 }
@@ -1429,7 +1462,7 @@ function UserFields({ canManageUsers, data }: { canManageUsers: boolean; data: D
         <SelectInput name="user_id">
           <option value="">Required in Change mode</option>
           {data.profiles.map((profile) => (
-            <option key={profile.id} value={profile.id}>{profile.nickname ?? profile.full_name ?? profile.email ?? profile.id}</option>
+            <option key={profile.id} value={profile.id}>{userOptionLabel(profile)}</option>
           ))}
         </SelectInput>
       </Field>
@@ -1487,10 +1520,7 @@ function OfferPrefillFields({
         <Field label="Existing Offer">
           <SelectInput name="offer_selector" required value={selectedId} onChange={(event) => onSelect(event.target.value)}>
             <option value="">Select offer</option>
-            {data.offers.map((offer) => {
-              const candidate = data.candidates.find((row) => row.candidate_id === offer.candidate_id);
-              return <option key={offer.offer_id} value={offer.offer_id}>{offer.candidate_id} - {candidate?.name ?? offer.doc_id}</option>;
-            })}
+            {data.offers.map((offer) => <option key={offer.offer_id} value={offer.offer_id}>{offerOptionLabel(data, offer)}</option>)}
           </SelectInput>
         </Field>
       ) : null}
@@ -1501,14 +1531,14 @@ function OfferPrefillFields({
           setSelectedDocId("");
         }}>
           <option value="">Select Offer Pass candidate</option>
-          {candidateOptions.map((row) => <option key={row.candidate_id} value={row.candidate_id}>{row.candidate_id} - {row.name}</option>)}
+          {candidateOptions.map((row) => <option key={row.candidate_id} value={row.candidate_id}>{candidateOptionLabel(row)}</option>)}
         </SelectInput>
       </Field>
       {mode === "change" ? <input type="hidden" name="doc_id" value={selected?.doc_id ?? ""} /> : null}
       <Field label="Doc ID">
         <SelectInput name={mode === "change" ? undefined : "doc_id"} required value={selectedDocId} disabled={mode === "change" || !selectedCandidateId} onChange={(event) => setSelectedDocId(event.target.value)}>
           <option value="">{selectedCandidateId ? "Select requisition" : "Select candidate first"}</option>
-          {docOptions.map((row) => <option key={row.doc_id} value={row.doc_id}>{row.doc_id} - {row.position}</option>)}
+          {docOptions.map((row) => <option key={row.doc_id} value={row.doc_id}>{requisitionOptionLabel(row)}</option>)}
         </SelectInput>
       </Field>
       <Field label="Accepted Date"><TextInput name="accepted_date" type="date" defaultValue={selected?.accepted_date ?? ""} /></Field>
@@ -1561,10 +1591,10 @@ function GroupPrefillFields({
         {mode === "change" ? (
           <SelectInput name="group_id" required value={selectedId} onChange={(event) => onSelect(event.target.value)}>
             <option value="">Select group</option>
-            {data.position_groups.map((row) => <option key={row.group_id} value={row.group_id}>{row.group_id} - {row.group_position}</option>)}
+            {data.position_groups.map((row) => <option key={row.group_id} value={row.group_id}>{positionGroupOptionLabel(row)}</option>)}
           </SelectInput>
         ) : (
-          <SelectInput name="group_id"><option value="">Auto in New mode</option>{data.position_groups.map((row) => <option key={row.group_id}>{row.group_id}</option>)}</SelectInput>
+          <SelectInput name="group_id"><option value="">Auto in New mode</option>{data.position_groups.map((row) => <option key={row.group_id} value={row.group_id}>{positionGroupOptionLabel(row)}</option>)}</SelectInput>
         )}
       </Field>
       <Field label="Group Position"><TextInput name="group_position" list="group-position-options" required defaultValue={groupPositionValue} /></Field>
@@ -1603,7 +1633,7 @@ function UserPrefillFields({
         <SelectInput name="user_id" required={mode === "change"} value={selectedId} onChange={(event) => onSelect(event.target.value)}>
           <option value="">Select user</option>
           {data.profiles.map((profile) => (
-            <option key={profile.id} value={profile.id}>{profile.nickname ?? profile.full_name ?? profile.email ?? profile.id}</option>
+            <option key={profile.id} value={profile.id}>{userOptionLabel(profile)}</option>
           ))}
         </SelectInput>
       </Field> : null}
@@ -1806,16 +1836,21 @@ function ConfirmModal({
   );
 }
 
-function buildDetailBody(detail: { type: "requisition" | "candidate"; id: string } | null, data: DashboardData, onUpdateCandidate: (candidateId: string) => void) {
+function buildDetailBody(detail: { type: "requisition" | "candidate"; id: string } | null, data: DashboardData, language: Language, onUpdateCandidate: (candidateId: string) => void) {
   if (!detail) return { title: "Detail", body: null };
 
   if (detail.type === "requisition") {
     const requisition = enrichRequisitions(data).find((row) => row.doc_id === detail.id);
     if (!requisition) return { title: "Requisition", body: <p className="text-sm font-bold text-slate">Record not found.</p> };
     const groups = data.document_groups.filter((row) => row.doc_id === requisition.doc_id);
-    const groupIds = new Set(groups.map((row) => row.doc_group_id));
-    const candidates = enrichCandidates(data).filter((row) => groupIds.has(row.doc_group_id));
+    const positionGroupIds = new Set(groups.map((row) => row.group_id).filter(Boolean) as string[]);
+    const relatedDocGroupIds = positionGroupIds.size > 0
+      ? new Set(data.document_groups.filter((row) => row.group_id && positionGroupIds.has(row.group_id)).map((row) => row.doc_group_id))
+      : new Set(groups.map((row) => row.doc_group_id));
+    const candidates = enrichCandidates(data).filter((row) => relatedDocGroupIds.has(row.doc_group_id));
     const offers = data.offers.filter((row) => row.doc_id === requisition.doc_id);
+    const applicantTotal = applicantCountForPositionGroups(data, positionGroupIds);
+    const funnelRows = buildPipelineFunnelRows(applicantTotal, historicalPipelineCountsForCandidates(data, candidates.map((row) => row.candidate_id)));
 
     return {
       title: `${requisition.doc_id} · ${requisition.position}`,
@@ -1833,7 +1868,13 @@ function buildDetailBody(detail: { type: "requisition" | "candidate"; id: string
             ["Accepted", String(requisition.accepted_count)],
             ["Open", String(requisition.open_headcount)]
           ]} />
-          <DetailList title="Candidates" rows={candidates.map((row) => `${row.candidate_id} · ${row.name} · ${row.latest_process}`)} />
+          <PipelineFunnel
+            language={language}
+            rows={funnelRows}
+            subtitle="Historical stage touches, de-duplicated per candidate per stage"
+            totalValue={applicantTotal}
+          />
+          <DetailList title="Candidates" rows={candidates.map((row) => optionLabel([row.candidate_id, row.name, processLabel(row.latest_process)]))} />
           <DetailList title="Offers" rows={offers.map((row) => `${row.candidate_id} · accepted ${formatDate(row.accepted_date)}`)} />
         </div>
       )
@@ -1911,6 +1952,50 @@ function replacementNamesDisplay(value: string | null | undefined) {
 
 function CandidateJourney({ logs }: { logs: RecruitmentLog[] }) {
   return <StageRail logs={logs} label="Candidate Pipeline Journey" />;
+}
+
+type PipelineFunnelCount = {
+  stage: ProcessStage;
+  count: number;
+};
+
+function historicalPipelineCountsForCandidates(data: DashboardData, candidateIds: string[]): PipelineFunnelCount[] {
+  const relatedCandidateIds = new Set(candidateIds);
+  return ACTIVE_PIPELINE_STAGES.map((stage) => {
+    const stageCandidateIds = new Set(
+      data.recruitment_logs
+        .filter((log) => relatedCandidateIds.has(log.candidate_id) && log.recruitment_process === stage)
+        .map((log) => log.candidate_id)
+    );
+    return { stage, count: stageCandidateIds.size };
+  });
+}
+
+function applicantCountForPositionGroups(data: DashboardData, groupIds: Set<string>) {
+  if (groupIds.size === 0) return 0;
+  return data.sourcing_weekly_updates
+    .filter((update) => groupIds.has(update.group_id))
+    .reduce(
+      (sum, update) => sum + SOURCING_CHANNELS.reduce((channelSum, channel) => channelSum + Number(update[channel.count] ?? 0), 0),
+      0
+    );
+}
+
+function buildPipelineFunnelRows(applicantTotal: number, stageCounts: PipelineFunnelCount[]): PipelineFunnelRow[] {
+  const baseRows = [
+    { key: "applicants", label: "Applicants", count: applicantTotal },
+    ...stageCounts.map((row) => ({ key: row.stage, label: processLabel(row.stage), count: row.count }))
+  ];
+
+  return baseRows.map((row, index) => {
+    const previousCount = index > 0 ? baseRows[index - 1].count : null;
+    return {
+      ...row,
+      conversionRate: previousCount && previousCount > 0 ? row.count / previousCount : null,
+      yieldRate: applicantTotal > 0 ? row.count / applicantTotal : null,
+      barRatio: applicantTotal > 0 ? Math.min(row.count / applicantTotal, 1) : null
+    };
+  });
 }
 
 function DetailGrid({ rows }: { rows: Array<[string, string]> }) {

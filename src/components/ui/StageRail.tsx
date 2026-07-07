@@ -36,16 +36,16 @@ export function StageRail({ logs, currentStage, currentResult, compact = false, 
     : "No activity";
 
   return (
-    <div className={compact ? "grid gap-1.5" : "rounded-lg bg-white px-4 py-4"}>
+    <div className={compact ? "relative z-0 grid gap-1.5" : "relative z-0 rounded-lg bg-white px-4 py-4"}>
       {label ? <h4 className={compact ? "text-xs font-extrabold text-navy" : "mb-4 font-extrabold text-navy"}>{label}</h4> : null}
-      <ol aria-label={ariaLabel ?? label ?? "Candidate pipeline journey"} className={compact ? "flex items-center gap-1.5" : "relative grid gap-4 md:grid-cols-6 md:gap-2 md:justify-items-center"}>
-        {!compact ? <span className="absolute left-[8.5%] right-[8.5%] top-3 hidden h-0.5 bg-[#E5E5FB] md:block" /> : null}
+      <ol aria-label={ariaLabel ?? label ?? "Candidate pipeline journey"} className={compact ? "relative z-0 flex items-center gap-1.5" : "relative z-0 grid gap-4 md:grid-cols-6 md:gap-2 md:justify-items-center"}>
+        {!compact ? <span className="absolute left-[8.5%] right-[8.5%] top-3 z-0 hidden h-0.5 bg-[#E5E5FB] md:block" /> : null}
         {stageItems.map(({ stage, state, isCurrent }, index) => {
           if (compact) {
             return (
               <li
                 key={stage}
-                className={`block rounded-full ${isCurrent ? "size-2.5" : "size-2"} ${stageDotClass(state, isCurrent)}`}
+                className={`relative z-0 block rounded-full ${isCurrent ? "size-2.5" : "size-2"} ${stageDotClass(state, isCurrent)}`}
                 title={`${processLabel(stage)}: ${stageStateLabel(state)}`}
               >
                 <span className="sr-only">{processLabel(stage)}: {stageStateLabel(state)}</span>
@@ -56,12 +56,12 @@ export function StageRail({ logs, currentStage, currentResult, compact = false, 
           return (
             <li
               key={stage}
-              className="relative z-10 grid grid-cols-[1.5rem_minmax(0,1fr)] items-start gap-3 md:flex md:w-full md:flex-col md:items-center md:text-center"
+              className="relative z-[1] grid grid-cols-[1.5rem_minmax(0,1fr)] items-start gap-3 md:flex md:w-full md:flex-col md:items-center md:text-center"
             >
               {index < ACTIVE_PIPELINE_STAGES.length - 1 ? (
                 <span className="absolute left-3 top-6 h-[calc(100%+1rem)] w-0.5 bg-[#E5E5FB] md:hidden" />
               ) : null}
-              <span className={`relative z-10 grid shrink-0 place-items-center rounded-full ring-4 md:mx-auto ${isCurrent ? "size-8" : "size-6"} ${stageDotClass(state, isCurrent)}`}>
+              <span className={`relative z-[1] grid shrink-0 place-items-center rounded-full ring-4 md:mx-auto ${isCurrent ? "size-8" : "size-6"} ${stageDotClass(state, isCurrent)}`}>
                 <StageIcon state={state} current={isCurrent} />
               </span>
               <div className="min-w-0 md:mt-3 md:flex md:min-h-[72px] md:flex-col md:items-center md:justify-start">
