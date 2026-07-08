@@ -20,7 +20,23 @@ import { Panel } from "@/components/ui/Panel";
 import { PipelineFunnel, type PipelineFunnelRow } from "@/components/ui/PipelineFunnel";
 import { StageRail } from "@/components/ui/StageRail";
 import { Tag } from "@/components/ui/Tag";
-import { ACTIVE_PIPELINE_STAGES, canManageSetup as canManageSetupRole, canManageUsers as canManageUsersRole, canWrite as canWriteRole, PROCESS_UPDATE_STAGES, processLabel, recruiterNicknameOptions, ROLE_LABELS, ROLES, SITE_OPTIONS, SOURCING_CHANNELS, WRITABLE_REQUISITION_STATUSES } from "@/lib/constants";
+import {
+  ACTIVE_PIPELINE_STAGES,
+  canManageSetup as canManageSetupRole,
+  canManageUsers as canManageUsersRole,
+  canWrite as canWriteRole,
+  PIPELINE_FUNNEL_STAGES,
+  pipelineDisplayLabel,
+  PROCESS_UPDATE_STAGES,
+  processLabel,
+  recruiterNicknameOptions,
+  ROLE_LABELS,
+  ROLES,
+  SITE_OPTIONS,
+  SOURCING_CHANNELS,
+  WRITABLE_REQUISITION_STATUSES,
+  type PipelineDisplayStage
+} from "@/lib/constants";
 import {
   emptyDashboardData,
   enrichCandidates,
@@ -113,7 +129,13 @@ type WelcomeSummary = {
   openVacancy: number;
   activeCandidates: number;
   offerFinalizationNeeded: number;
+  filledLast7Days: number;
+  responsibleVacancyTotal: number;
+  filledResponsibleVacancyRatio: number;
+  filledResponsibleVacancyBucket: WelcomeRatioBucket;
 };
+
+type WelcomeRatioBucket = 0 | 25 | 50 | 75 | 100;
 
 const rpcByModal: Record<Exclude<ModalName, null | "user">, string> = {
   requisition: "app_upsert_requisition",
@@ -1688,11 +1710,33 @@ function WelcomeBackPrompt({
   onPipeline: () => void;
 }) {
   const name = profile?.nickname ?? profile?.full_name ?? profile?.email ?? translate(language, "system");
+  const message = translate(language, welcomeRatioMessageKey(summary.filledResponsibleVacancyBucket)).replace("{name}", name);
+  const progressWidth = `${Math.min(summary.filledResponsibleVacancyRatio, 100)}%`;
 
   return (
     <Modal open={open} title={translate(language, "welcomeBack")} onClose={onClose} width="max-w-xl">
       <div className="grid gap-4">
-        <p className="text-sm font-bold text-slate">{translate(language, "welcomeBackMessage").replace("{name}", name)}</p>
+        <div className="overflow-hidden rounded-lg border border-[#D7DEE8] bg-[#F8FBFF]">
+          <div className="border-l-4 border-primary px-4 py-4">
+            <p className="text-sm font-semibold leading-6 text-navy">{message}</p>
+            <div className="mt-4 grid gap-2">
+              <div className="flex flex-wrap items-end justify-between gap-2">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-normal text-slate">{translate(language, "welcomeFilledRatioLabel")}</p>
+                  <p className="mt-0.5 text-xs font-medium text-slate">
+                    {translate(language, "welcomeFilledRatioHelper")
+                      .replace("{filled}", formatNumber(summary.filledLast7Days, language))
+                      .replace("{total}", formatNumber(summary.responsibleVacancyTotal, language))}
+                  </p>
+                </div>
+                <p className="text-2xl font-extrabold tabular-nums text-primary">{formatNumber(summary.filledResponsibleVacancyRatio, language)}%</p>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-[#D7DEE8]" aria-hidden="true">
+                <div className="h-full rounded-full bg-primary" style={{ width: progressWidth }} />
+              </div>
+            </div>
+          </div>
+        </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <WelcomeSummaryItem language={language} label={translate(language, "welcomeOpenRequisitions")} value={summary.openRequisitions} />
           <WelcomeSummaryItem language={language} label={translate(language, "welcomeOpenVacancy")} value={summary.openVacancy} />
@@ -1728,6 +1772,15 @@ function buildWelcomeSummary(
   const responsibleCandidates = responsibleRows(candidates, profile);
   const offerCandidateIds = new Set(offers.map((offer) => offer.candidate_id));
   const actionableRequisitions = responsibleRequisitions.filter((row) => row.status !== "filled" && row.status !== "cancel" && row.open_headcount > 0);
+  const responsibleVacancyRequisitions = responsibleRequisitions.filter((row) => row.status !== "cancel");
+  const responsibleDocIds = new Set(responsibleVacancyRequisitions.map((row) => row.doc_id));
+  const responsibleVacancyTotal = responsibleVacancyRequisitions.reduce((sum, row) => sum + row.head_count, 0);
+  const filledLast7Days = offers.filter((offer) =>
+    responsibleDocIds.has(offer.doc_id) && isWithinLast7CalendarDays(offer.accepted_date)
+  ).length;
+  const filledResponsibleVacancyRatio = responsibleVacancyTotal > 0
+    ? Math.floor((filledLast7Days / responsibleVacancyTotal) * 100)
+    : 0;
   const activeCandidates = responsibleCandidates.filter(
     (row) => row.latest_process !== "No activity"
       && ACTIVE_PIPELINE_STAGES.includes(row.latest_process)
@@ -1740,8 +1793,57 @@ function buildWelcomeSummary(
     openRequisitions: actionableRequisitions.length,
     openVacancy: actionableRequisitions.reduce((sum, row) => sum + row.open_headcount, 0),
     activeCandidates: activeCandidates.length,
-    offerFinalizationNeeded
+    offerFinalizationNeeded,
+    filledLast7Days,
+    responsibleVacancyTotal,
+    filledResponsibleVacancyRatio,
+    filledResponsibleVacancyBucket: welcomeRatioBucket(filledResponsibleVacancyRatio)
   };
+}
+
+function isWithinLast7CalendarDays(value: string | null | undefined) {
+  const acceptedDate = dateOnly(value);
+  if (!acceptedDate) return false;
+  const endDate = todayDate();
+  const startDate = addDays(endDate, -6);
+  return acceptedDate >= startDate && acceptedDate <= endDate;
+}
+
+function welcomeRatioBucket(ratio: number): WelcomeRatioBucket {
+  if (ratio >= 100) return 100;
+  if (ratio >= 75) return 75;
+  if (ratio >= 50) return 50;
+  if (ratio >= 25) return 25;
+  return 0;
+}
+
+function welcomeRatioMessageKey(bucket: WelcomeRatioBucket) {
+  return `welcomeFilledRatioMessage${bucket}`;
+}
+
+function todayDate() {
+  return dateOnlyFromDate(new Date());
+}
+
+function addDays(date: string, days: number) {
+  const current = new Date(`${date}T00:00:00`);
+  current.setDate(current.getDate() + days);
+  return dateOnlyFromDate(current);
+}
+
+function dateOnly(value: string | null | undefined) {
+  if (!value) return null;
+  if (/^\d{4}-\d{2}-\d{2}/.test(value)) return value.slice(0, 10);
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value.slice(0, 10);
+  return dateOnlyFromDate(date);
+}
+
+function dateOnlyFromDate(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function responsibleRows<T extends { site?: string | null; person_in_charge?: string | null }>(rows: T[], profile: DashboardData["profile"]) {
@@ -1955,16 +2057,20 @@ function CandidateJourney({ logs }: { logs: RecruitmentLog[] }) {
 }
 
 type PipelineFunnelCount = {
-  stage: ProcessStage;
+  stage: PipelineDisplayStage;
   count: number;
 };
 
 function historicalPipelineCountsForCandidates(data: DashboardData, candidateIds: string[]): PipelineFunnelCount[] {
   const relatedCandidateIds = new Set(candidateIds);
-  return ACTIVE_PIPELINE_STAGES.map((stage) => {
+  return PIPELINE_FUNNEL_STAGES.map((stage) => {
     const stageCandidateIds = new Set(
       data.recruitment_logs
-        .filter((log) => relatedCandidateIds.has(log.candidate_id) && log.recruitment_process === stage)
+        .filter((log) => {
+          if (!relatedCandidateIds.has(log.candidate_id)) return false;
+          if (stage === "Resume Screening") return log.recruitment_process === "Phone Screen";
+          return log.recruitment_process === stage && log.result === 1;
+        })
         .map((log) => log.candidate_id)
     );
     return { stage, count: stageCandidateIds.size };
@@ -1984,7 +2090,7 @@ function applicantCountForPositionGroups(data: DashboardData, groupIds: Set<stri
 function buildPipelineFunnelRows(applicantTotal: number, stageCounts: PipelineFunnelCount[]): PipelineFunnelRow[] {
   const baseRows = [
     { key: "applicants", label: "Applicants", count: applicantTotal },
-    ...stageCounts.map((row) => ({ key: row.stage, label: processLabel(row.stage), count: row.count }))
+    ...stageCounts.map((row) => ({ key: row.stage, label: pipelineDisplayLabel(row.stage), count: row.count }))
   ];
 
   return baseRows.map((row, index) => {

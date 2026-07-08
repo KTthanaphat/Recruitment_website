@@ -108,6 +108,13 @@ const en: Dictionary = {
   offerFinalizationNeeded: "Offer finalization needed",
   welcomeBack: "Welcome back",
   welcomeBackMessage: "Welcome back, {name}. Here is your current responsible recruitment summary.",
+  welcomeFilledRatioLabel: "7-day filled vacancy ratio",
+  welcomeFilledRatioHelper: "{filled}/{total} vacancies",
+  welcomeFilledRatioMessage0: "Welcome back, {name}. This week is still open for progress. Start with the pipeline items that need attention and move one vacancy closer to filled.",
+  welcomeFilledRatioMessage25: "Welcome back, {name}. You’ve started building momentum this week. Keep the next candidate actions moving so today’s progress turns into filled vacancies.",
+  welcomeFilledRatioMessage50: "Welcome back, {name}. You’re halfway through the weekly hiring coverage. Focus on the closest candidates and keep the pipeline moving.",
+  welcomeFilledRatioMessage75: "Welcome back, {name}. Strong progress this week. A few focused follow-ups can help close the remaining vacancy gap.",
+  welcomeFilledRatioMessage100: "Welcome back, {name}. Excellent hiring progress this week. Your responsible vacancies are fully covered by recent fills; keep the pipeline healthy for what comes next.",
   welcomeOpenRequisitions: "Open requisitions",
   welcomeOpenVacancy: "Open vacancy",
   welcomeActiveCandidates: "Active candidates",
@@ -298,6 +305,13 @@ const th: Dictionary = {
 };
 
 Object.assign(th, {
+  welcomeFilledRatioLabel: "อัตราการเติมตำแหน่งใน 7 วัน",
+  welcomeFilledRatioHelper: "{filled}/{total} อัตรา",
+  welcomeFilledRatioMessage0: "ยินดีต้อนรับกลับ {name} สัปดาห์นี้ยังมีพื้นที่ให้ขยับงานต่อ เริ่มจากรายการใน Pipeline ที่ต้องติดตาม และช่วยให้อีกหนึ่งอัตราเข้าใกล้การเติมเต็ม",
+  welcomeFilledRatioMessage25: "ยินดีต้อนรับกลับ {name} สัปดาห์นี้เริ่มมีแรงส่งแล้ว เดินหน้าติดตามผู้สมัครขั้นถัดไป เพื่อเปลี่ยนความคืบหน้าในวันนี้เป็นอัตราที่เติมได้",
+  welcomeFilledRatioMessage50: "ยินดีต้อนรับกลับ {name} ตอนนี้คุณเดินมาได้ครึ่งทางของความคืบหน้าการเติมอัตราประจำสัปดาห์แล้ว โฟกัสผู้สมัครที่ใกล้ปิดที่สุดและรักษา Pipeline ให้เดินต่อ",
+  welcomeFilledRatioMessage75: "ยินดีต้อนรับกลับ {name} สัปดาห์นี้คืบหน้าได้ดีมาก การติดตามอีกไม่กี่จุดอย่างมีโฟกัสจะช่วยปิดช่องว่างอัตราที่เหลือได้",
+  welcomeFilledRatioMessage100: "ยินดีต้อนรับกลับ {name} สัปดาห์นี้มีความคืบหน้าการสรรหาที่ยอดเยี่ยม อัตราที่คุณรับผิดชอบได้รับการเติมครบจากการตอบรับล่าสุดแล้ว รักษา Pipeline ให้พร้อมสำหรับงานถัดไป",
   openRequisition: "คำขอที่เปิดอยู่",
   filledVacancy: "อัตราที่เติมแล้ว",
   requisitionsUnit: "คำขอ",

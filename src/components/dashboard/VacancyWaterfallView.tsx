@@ -7,7 +7,13 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, SelectInput, TextInput } from "@/components/ui/Field";
 import { PipelineFunnel, type PipelineFunnelRow } from "@/components/ui/PipelineFunnel";
 import { SortableFilterHeader, type TableColumn, useTableControls } from "@/components/ui/TableControls";
-import { ACTIVE_PIPELINE_STAGES, SOURCING_CHANNELS } from "@/lib/constants";
+import {
+  ACTIVE_PIPELINE_STAGES,
+  PIPELINE_FUNNEL_STAGES,
+  pipelineDisplayLabel,
+  SOURCING_CHANNELS,
+  type PipelineDisplayStage
+} from "@/lib/constants";
 import { formatDate, formatNumber } from "@/lib/format";
 import { translate } from "@/lib/i18n/dictionary";
 import { getRequisitionSlaState, type RequisitionSlaState, todayDate } from "@/lib/sla";
@@ -35,6 +41,7 @@ const funnelLevelOptions: Array<{ value: FunnelLevelBand; label: string }> = [
 type PrintTarget = "chart" | "requisition-detail" | "pipeline-funnel";
 type FunnelLevelBand = "all" | "0-3" | "4-9" | "10-14";
 type FunnelChannelFilter = "all" | string;
+type FunnelStageCounts = Record<PipelineDisplayStage, number>;
 
 type WaterfallRow = {
   waterfall_category: VacancyWaterfallCategory;
@@ -823,7 +830,7 @@ function buildDashboardPipelineFunnelRows(
   levelBand: FunnelLevelBand,
   channelFilter: FunnelChannelFilter
 ): PipelineFunnelRow[] {
-  if (!startDate || !endDate || startDate > endDate) return buildPipelineFunnelRows(0, emptyStageCounts());
+  if (!startDate || !endDate || startDate > endDate) return buildPipelineFunnelRows(0, emptyFunnelStageCounts());
 
   const eligibleRequisitions = requisitions.filter((requisition) =>
     requisition.status !== "cancel" && levelMatchesBand(requisition.level, levelBand)
@@ -843,14 +850,14 @@ function buildDashboardPipelineFunnelRows(
 
   return buildPipelineFunnelRows(
     applicantCountForGroups(data, groupIds, startDate, endDate, channelFilter),
-    stageActivityCountsForDocGroups(data, linkedDocGroupIds, startDate, endDate, channelFilter)
+    passedStageActivityCountsForDocGroups(data, linkedDocGroupIds, startDate, endDate, channelFilter)
   );
 }
 
-function buildPipelineFunnelRows(applicantTotal: number, stageCounts: Record<ProcessStage, number>): PipelineFunnelRow[] {
+function buildPipelineFunnelRows(applicantTotal: number, stageCounts: FunnelStageCounts): PipelineFunnelRow[] {
   const baseRows = [
     { key: "applicants", label: "Applicants", count: applicantTotal },
-    ...detailStages.map((stage) => ({ key: stage, label: stageLabel(stage), count: stageCounts[stage] ?? 0 }))
+    ...PIPELINE_FUNNEL_STAGES.map((stage) => ({ key: stage, label: pipelineDisplayLabel(stage), count: stageCounts[stage] ?? 0 }))
   ];
 
   return baseRows.map((row, index) => {
@@ -913,9 +920,9 @@ function stageHistoryCountsForDocGroups(data: DashboardData, docGroupIds: Set<st
   return Object.fromEntries(detailStages.map((stage) => [stage, stageCandidates[stage].size])) as Record<ProcessStage, number>;
 }
 
-function stageActivityCountsForDocGroups(data: DashboardData, docGroupIds: Set<string>, startDate: string, endDate: string, channelFilter: FunnelChannelFilter = "all") {
-  const stageCandidates = Object.fromEntries(detailStages.map((stage) => [stage, new Set<string>()])) as Record<ProcessStage, Set<string>>;
-  if (docGroupIds.size === 0) return emptyStageCounts();
+function passedStageActivityCountsForDocGroups(data: DashboardData, docGroupIds: Set<string>, startDate: string, endDate: string, channelFilter: FunnelChannelFilter = "all") {
+  const stageCandidates = emptyFunnelCandidateSets();
+  if (docGroupIds.size === 0) return emptyFunnelStageCounts();
 
   const candidateIds = new Set(
     data.candidates
@@ -927,14 +934,23 @@ function stageActivityCountsForDocGroups(data: DashboardData, docGroupIds: Set<s
     const logDate = dateOnly(log.log_date);
     if (!logDate || logDate < startDate || logDate > endDate) continue;
     if (!candidateIds.has(log.candidate_id) || !detailStages.includes(log.recruitment_process)) continue;
-    stageCandidates[log.recruitment_process].add(log.candidate_id);
+    if (log.recruitment_process === "Phone Screen") stageCandidates["Resume Screening"].add(log.candidate_id);
+    if (log.result === 1) stageCandidates[log.recruitment_process].add(log.candidate_id);
   }
 
-  return Object.fromEntries(detailStages.map((stage) => [stage, stageCandidates[stage].size])) as Record<ProcessStage, number>;
+  return Object.fromEntries(PIPELINE_FUNNEL_STAGES.map((stage) => [stage, stageCandidates[stage].size])) as FunnelStageCounts;
 }
 
 function emptyStageCounts() {
   return Object.fromEntries(detailStages.map((stage) => [stage, 0])) as Record<ProcessStage, number>;
+}
+
+function emptyFunnelStageCounts() {
+  return Object.fromEntries(PIPELINE_FUNNEL_STAGES.map((stage) => [stage, 0])) as FunnelStageCounts;
+}
+
+function emptyFunnelCandidateSets() {
+  return Object.fromEntries(PIPELINE_FUNNEL_STAGES.map((stage) => [stage, new Set<string>()])) as Record<PipelineDisplayStage, Set<string>>;
 }
 
 function buildFunnelChannelOptions(data: DashboardData) {

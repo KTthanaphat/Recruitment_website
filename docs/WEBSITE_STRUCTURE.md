@@ -107,7 +107,13 @@ Current order:
 4. Needs Action.
 5. Recent Activity, shown only to `system_admin` and `admin_recruiter`.
 
-The Welcome Back popup appears once per browser session/login. It summarizes actionable responsible records and links users toward Pipeline work.
+The Welcome Back popup appears once per browser session/login. It summarizes actionable responsible records, links users toward Pipeline work, and uses a warm professional message selected by the user’s last-7-days filled responsible vacancy ratio.
+
+Welcome Back message logic:
+
+- Ratio is accepted offers in the last 7 calendar days for responsible requisitions divided by total responsible non-cancelled vacancy headcount.
+- Buckets are floor-based: `0`, `25`, `50`, `75`, and `100`.
+- The popup shows the selected message, ratio percentage, and `{filled}/{total}` vacancy helper without backend connector changes.
 
 ## Dashboard Page
 
@@ -131,6 +137,8 @@ Dashboard export actions:
 PDF export uses browser print with A4 landscape print CSS and shows a loading overlay while preparing. Opened requisition detail stays horizontally scrollable on screen and uses print-specific table sizing so the SLA dot/age and dense columns remain readable in PDF.
 
 Opened requisition detail includes requisitions opened in the selected date range and is collapsed by default. It includes requisition ownership, requisition date, applicant totals, historical pipeline stage counts, SLA status, fill status, and fill date. Applicant totals include Facebook, JobThai, JobTopGun, JobDB, LinkedIn, Walk-in, Referral, and Others.
+
+Recruitment Pipeline Health is a separate collapsible funnel report with its own date range, level filter, channel filter, and PDF export. Funnel rows are `Applicants`, derived `Resume Screening`, then active pipeline stages. `Resume Screening` is display/reporting-only and is counted from candidates who have reached Phone Screen. Real stage funnel counts are passed-only and de-duplicated per candidate per stage.
 
 ## Recruitment Workflows
 
@@ -172,6 +180,7 @@ Candidates:
 - Candidate channel is a dropdown filtered by the selected group’s marked sourcing channels.
 - Candidate folder URL is stored in `candidate_folder_url` and shown as an external link in candidate detail.
 - Candidate detail shows a pipeline journey above the timeline.
+- Candidate Pipeline Journey includes a derived first `Resume Screening` dot. It is shown as passed for recorded candidates, but it is not stored in `recruitment_logs` and is not an active Pipeline board column.
 - The timeline has an Update action that opens the existing Process Update modal above the candidate detail drawer.
 
 Process update validation:

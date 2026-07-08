@@ -1,5 +1,10 @@
 import { Check, Circle, Clock3, X } from "lucide-react";
-import { ACTIVE_PIPELINE_STAGES, processLabel } from "@/lib/constants";
+import {
+  isDerivedResumeScreeningStage,
+  PIPELINE_JOURNEY_STAGES,
+  pipelineDisplayLabel,
+  type PipelineDisplayStage
+} from "@/lib/constants";
 import type { ProcessStage, RecruitmentLog } from "@/types/recruitment";
 
 export type StageRailState = "passed" | "pending" | "failed" | "unreached";
@@ -17,28 +22,29 @@ type StageRailProps = {
 export function StageRail({ logs, currentStage, currentResult, compact = false, label, ariaLabel, showSummary = compact }: StageRailProps) {
   const currentPendingStage = logs?.find((log) => log.result === null)?.recruitment_process;
   const activeStage = currentStage && currentStage !== "No activity" ? currentStage : undefined;
-  const activeIndex = activeStage ? ACTIVE_PIPELINE_STAGES.indexOf(activeStage) : -1;
-  const stageItems = ACTIVE_PIPELINE_STAGES.map((stage, index) => {
+  const activeIndex = activeStage ? PIPELINE_JOURNEY_STAGES.indexOf(activeStage) : -1;
+  const hasCandidateRecord = Boolean(activeStage) || Boolean(logs?.length);
+  const stageItems = PIPELINE_JOURNEY_STAGES.map((stage, index) => {
     const state = logs
-      ? stageStateFromLogs(logs, stage, currentPendingStage)
-      : stageStateFromCurrent(stage, index, activeIndex, currentResult);
+      ? stageStateFromLogs(logs, stage, currentPendingStage, hasCandidateRecord)
+      : stageStateFromCurrent(stage, index, activeIndex, currentResult, hasCandidateRecord);
     return {
       stage,
       state,
-      isCurrent: activeStage === stage && state !== "passed"
+      isCurrent: !isDerivedResumeScreeningStage(stage) && activeStage === stage && state !== "passed"
     };
   });
   const summaryItem = stageItems.find((item) => item.state === "pending")
     ?? stageItems.find((item) => item.isCurrent)
     ?? [...stageItems].reverse().find((item) => item.state === "failed" || item.state === "passed");
   const summary = summaryItem
-    ? `${processLabel(summaryItem.stage)}: ${stageStateLabel(summaryItem.state)}`
+    ? `${pipelineDisplayLabel(summaryItem.stage)}: ${stageStateLabel(summaryItem.state)}`
     : "No activity";
 
   return (
     <div className={compact ? "relative z-0 grid gap-1.5" : "relative z-0 rounded-lg bg-white px-4 py-4"}>
       {label ? <h4 className={compact ? "text-xs font-extrabold text-navy" : "mb-4 font-extrabold text-navy"}>{label}</h4> : null}
-      <ol aria-label={ariaLabel ?? label ?? "Candidate pipeline journey"} className={compact ? "relative z-0 flex items-center gap-1.5" : "relative z-0 grid gap-4 md:grid-cols-6 md:gap-2 md:justify-items-center"}>
+      <ol aria-label={ariaLabel ?? label ?? "Candidate pipeline journey"} className={compact ? "relative z-0 flex items-center gap-1.5" : "relative z-0 grid gap-4 md:grid-cols-7 md:gap-2 md:justify-items-center"}>
         {!compact ? <span className="absolute left-[8.5%] right-[8.5%] top-3 z-0 hidden h-0.5 bg-[#E5E5FB] md:block" /> : null}
         {stageItems.map(({ stage, state, isCurrent }, index) => {
           if (compact) {
@@ -46,9 +52,9 @@ export function StageRail({ logs, currentStage, currentResult, compact = false, 
               <li
                 key={stage}
                 className={`relative z-0 block rounded-full ${isCurrent ? "size-2.5" : "size-2"} ${stageDotClass(state, isCurrent)}`}
-                title={`${processLabel(stage)}: ${stageStateLabel(state)}`}
+                title={`${pipelineDisplayLabel(stage)}: ${stageStateLabel(state)}`}
               >
-                <span className="sr-only">{processLabel(stage)}: {stageStateLabel(state)}</span>
+                <span className="sr-only">{pipelineDisplayLabel(stage)}: {stageStateLabel(state)}</span>
               </li>
             );
           }
@@ -58,14 +64,14 @@ export function StageRail({ logs, currentStage, currentResult, compact = false, 
               key={stage}
               className="relative z-[1] grid grid-cols-[1.5rem_minmax(0,1fr)] items-start gap-3 md:flex md:w-full md:flex-col md:items-center md:text-center"
             >
-              {index < ACTIVE_PIPELINE_STAGES.length - 1 ? (
+              {index < PIPELINE_JOURNEY_STAGES.length - 1 ? (
                 <span className="absolute left-3 top-6 h-[calc(100%+1rem)] w-0.5 bg-[#E5E5FB] md:hidden" />
               ) : null}
               <span className={`relative z-[1] grid shrink-0 place-items-center rounded-full ring-4 md:mx-auto ${isCurrent ? "size-8" : "size-6"} ${stageDotClass(state, isCurrent)}`}>
                 <StageIcon state={state} current={isCurrent} />
               </span>
               <div className="min-w-0 md:mt-3 md:flex md:min-h-[72px] md:flex-col md:items-center md:justify-start">
-                <p className="text-xs font-extrabold leading-tight text-navy">{processLabel(stage)}</p>
+                <p className="text-xs font-extrabold leading-tight text-navy">{pipelineDisplayLabel(stage)}</p>
                 <p className="mt-1 text-xs font-medium text-slate">{stageStateLabel(state)}</p>
               </div>
             </li>
@@ -77,7 +83,8 @@ export function StageRail({ logs, currentStage, currentResult, compact = false, 
   );
 }
 
-function stageStateFromLogs(logs: RecruitmentLog[], stage: ProcessStage, currentPendingStage?: ProcessStage): StageRailState {
+function stageStateFromLogs(logs: RecruitmentLog[], stage: PipelineDisplayStage, currentPendingStage?: ProcessStage, hasCandidateRecord = false): StageRailState {
+  if (isDerivedResumeScreeningStage(stage)) return hasCandidateRecord ? "passed" : "unreached";
   const stageLogs = logs.filter((log) => log.recruitment_process === stage).sort((a, b) => b.log_id - a.log_id);
   const latest = stageLogs[0];
   if (!latest) return "unreached";
@@ -86,7 +93,8 @@ function stageStateFromLogs(logs: RecruitmentLog[], stage: ProcessStage, current
   return currentPendingStage === stage ? "pending" : "unreached";
 }
 
-function stageStateFromCurrent(stage: ProcessStage, index: number, activeIndex: number, currentResult?: number | null): StageRailState {
+function stageStateFromCurrent(stage: PipelineDisplayStage, index: number, activeIndex: number, currentResult?: number | null, hasCandidateRecord = false): StageRailState {
+  if (isDerivedResumeScreeningStage(stage)) return hasCandidateRecord ? "passed" : "unreached";
   if (activeIndex === -1) return "unreached";
   if (index < activeIndex) return "passed";
   if (index > activeIndex) return "unreached";

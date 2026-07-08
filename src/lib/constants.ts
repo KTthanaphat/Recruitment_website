@@ -43,6 +43,17 @@ export const ACTIVE_PIPELINE_STAGES: ProcessStage[] = PROCESS_STAGES.filter(
   (stage) => !["First Contact", "Rejected", "Withdrawn"].includes(stage)
 );
 
+export const DERIVED_RESUME_SCREENING_STAGE = "Resume Screening" as const;
+
+export type PipelineDisplayStage = ProcessStage | typeof DERIVED_RESUME_SCREENING_STAGE;
+
+export const PIPELINE_JOURNEY_STAGES: PipelineDisplayStage[] = [
+  DERIVED_RESUME_SCREENING_STAGE,
+  ...ACTIVE_PIPELINE_STAGES
+];
+
+export const PIPELINE_FUNNEL_STAGES: PipelineDisplayStage[] = PIPELINE_JOURNEY_STAGES;
+
 export const PROCESS_UPDATE_STAGES: ProcessStage[] = PROCESS_STAGES.filter((stage) => stage !== "First Contact");
 
 export const PROCESS_LABELS: Record<ProcessStage, string> = {
@@ -111,4 +122,14 @@ export function processIndex(stage: ProcessStage | "No activity" | null | undefi
 export function processLabel(stage: ProcessStage | "No activity" | null | undefined) {
   if (!stage || stage === "No activity") return "No activity";
   return PROCESS_LABELS[stage] ?? stage;
+}
+
+export function isDerivedResumeScreeningStage(stage: PipelineDisplayStage | string | null | undefined): stage is typeof DERIVED_RESUME_SCREENING_STAGE {
+  return stage === DERIVED_RESUME_SCREENING_STAGE;
+}
+
+export function pipelineDisplayLabel(stage: PipelineDisplayStage | "No activity" | null | undefined) {
+  if (!stage || stage === "No activity") return "No activity";
+  if (isDerivedResumeScreeningStage(stage)) return DERIVED_RESUME_SCREENING_STAGE;
+  return processLabel(stage);
 }

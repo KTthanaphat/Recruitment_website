@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  BarChart3,
   BriefcaseBusiness,
   ClipboardList,
   FileClock,
@@ -29,7 +28,7 @@ const icons: Record<ViewId, ReactNode> = {
   dashboard: <LayoutDashboard size={18} />,
   requisitions: <ClipboardList size={18} />,
   candidates: <UsersRound size={18} />,
-  pipeline: <BarChart3 size={18} />,
+  pipeline: <PipelineStagesIcon />,
   offers: <HandCoins size={18} />,
   sourcing: <Settings size={18} />,
   admin: <ShieldCheck size={18} />,
@@ -59,6 +58,17 @@ const kicker: Record<ViewId, string> = {
   admin: "System Control",
   audit: "History"
 };
+
+function PipelineStagesIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true" focusable="false">
+      <path d="M4 5h10M4 9h10M4 13h10" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+      <circle cx="4" cy="5" r="2" fill="currentColor" />
+      <circle cx="14" cy="9" r="2" fill="currentColor" />
+      <circle cx="4" cy="13" r="2" fill="currentColor" />
+    </svg>
+  );
+}
 
 export function AppShell({
   children,

@@ -153,6 +153,10 @@ Welcome Back popup:
 
 - Shows once per session/login.
 - Uses responsible actionable counts.
+- Uses a warm professional message selected from last-7-days filled responsible vacancy ratio.
+- Ratio is accepted offers in the last 7 calendar days for responsible requisitions divided by total responsible non-cancelled vacancy headcount.
+- Buckets are floor-based: `0`, `25`, `50`, `75`, and `100`.
+- No backend connector changes are required for the message; it uses loaded requisitions and offers.
 - Primary action goes to Pipeline.
 
 Weekly Sourcing Updates on Home:
@@ -183,6 +187,9 @@ Current report behavior:
 - PDF exports use A4 landscape print CSS and loading overlay.
 - Opened requisition detail must remain horizontally scrollable inside its panel on screen; it must not widen the whole page.
 - Opened requisition detail PDF uses print-specific sizing and print-safe SLA dots.
+- Recruitment Pipeline Health is a separate collapsible funnel with its own date range, level filter, channel filter, and PDF export.
+- Funnel rows are `Applicants`, derived `Resume Screening`, then active pipeline stages.
+- `Resume Screening` is display/reporting-only and is counted from candidates who reached Phone Screen; real stage funnel counts are passed-only and de-duplicated per candidate per stage.
 
 Opened requisition detail:
 
@@ -269,6 +276,7 @@ Candidate detail:
 
 - Shows candidate folder URL if present.
 - Shows Candidate Pipeline Journey above the timeline.
+- Candidate Pipeline Journey includes a derived first `Resume Screening` dot shown as passed for recorded candidates. It is not a stored `recruitment_logs.recruitment_process` value.
 - Timeline has an Update button.
 - Process update modal must open above the candidate detail drawer.
 
@@ -288,6 +296,8 @@ Process update validation:
 ## Pipeline Rules
 
 Pipeline is group-based.
+
+The real active Pipeline board starts at Phone Screen. Do not add a Resume Screening board column unless the database/RPC model is intentionally changed.
 
 Cards use grouped values from all requisitions matched to the candidate's `group_id`.
 
