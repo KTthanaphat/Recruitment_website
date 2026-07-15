@@ -1,3 +1,5 @@
+import { formatLocalDateInput } from "@/lib/dates";
+
 type RequisitionLike = {
   pr_approved_date: string | null;
   level: string | null;
@@ -64,7 +66,7 @@ export function getRequisitionSlaState(
 }
 
 export function todayDate() {
-  return new Date().toISOString().slice(0, 10);
+  return formatLocalDateInput();
 }
 
 function dateOnly(value: string | null | undefined) {

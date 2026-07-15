@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Field, TextInput } from "@/components/ui/Field";
-import { hasSupabaseConfig, supabase } from "@/lib/supabase/client";
+import { clearStoredSupabaseSession, hasSupabaseConfig, supabase, withAuthTimeout } from "@/lib/supabase/client";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -16,9 +16,18 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (!supabase) return;
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) router.replace("/home");
-    });
+    let active = true;
+    withAuthTimeout(supabase.auth.getSession(), "Session check timed out.")
+      .then(({ data }) => {
+        if (data.session) router.replace("/home");
+      })
+      .catch(() => {
+        clearStoredSupabaseSession();
+        if (active) setStatus("Your previous session could not be restored. Please sign in again.");
+      });
+    return () => {
+      active = false;
+    };
   }, [router]);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -33,12 +42,11 @@ export default function LoginPage() {
     setBusy(true);
     setStatus("Signing in...");
     try {
-      const signInResult = await Promise.race([
+      const signInResult = await withAuthTimeout(
         supabase.auth.signInWithPassword({ email: trimmedEmail, password }),
-        new Promise<never>((_, reject) =>
-          window.setTimeout(() => reject(new Error("Login request timed out. Please check your network and Supabase project.")), 15000)
-        )
-      ]);
+        "Login request timed out. Please check your network and Supabase project.",
+        15000
+      );
 
       if (signInResult.error) {
         setStatus(signInResult.error.message);

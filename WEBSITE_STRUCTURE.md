@@ -125,7 +125,7 @@ Electric Blue  #146EFA
 Deep Navy      #0B132B
 Off White      #FAFAFC
 Light Gray     #F1F5F9
-Emerald Green  #00B894
+Success Blue   #0A3CDC
 Energy Orange  #FF8A00
 Scarlet        #FF3B30
 Amber          #FFC107

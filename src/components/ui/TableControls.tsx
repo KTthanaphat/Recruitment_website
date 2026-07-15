@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDown, ArrowDownUp, ArrowUp } from "lucide-react";
+import { ArrowDown, ArrowDownUp, ArrowUp, Search, SlidersHorizontal } from "lucide-react";
 import { useMemo, useState } from "react";
 
 export type SortDirection = "asc" | "desc" | null;
@@ -13,18 +13,35 @@ export type TableColumn<T> = {
   sortValue?: (row: T) => string | number | null | undefined;
 };
 
-export function useTableControls<T>(rows: T[], columns: TableColumn<T>[]) {
-  const [sortKey, setSortKey] = useState<string | null>(null);
-  const [sortDirection, setSortDirection] = useState<SortDirection>(null);
-  const [filters, setFilters] = useState<Record<string, string>>({});
+export type TableControlsInitialState = {
+  filters?: Record<string, string>;
+  search?: string;
+  sortDirection?: SortDirection;
+  sortKey?: string | null;
+};
+
+export function useTableControls<T>(rows: T[], columns: TableColumn<T>[], initialState: TableControlsInitialState = {}) {
+  const [sortKey, setSortKey] = useState<string | null>(initialState.sortKey ?? null);
+  const [sortDirection, setSortDirection] = useState<SortDirection>(initialState.sortDirection ?? null);
+  const [filters, setFilters] = useState<Record<string, string>>(initialState.filters ?? {});
+  const [search, setSearch] = useState(initialState.search ?? "");
 
   const controlledRows = useMemo(() => {
-    const filtered = rows.filter((row) => columns.every((column) => {
+    const searchText = search.trim().toLowerCase();
+    const filtered = rows.filter((row) => {
+      const matchesSearch = !searchText || columns.some((column) => {
+        const rawValue = column.filterValue?.(row) ?? column.value(row);
+        return String(rawValue ?? "").toLowerCase().includes(searchText);
+      });
+      if (!matchesSearch) return false;
+
+      return columns.every((column) => {
       const filterText = (filters[column.key] ?? "").trim().toLowerCase();
       if (!filterText) return true;
       const rawValue = column.filterValue?.(row) ?? column.value(row);
       return String(rawValue ?? "").toLowerCase().includes(filterText);
-    }));
+      });
+    });
 
     if (!sortKey || !sortDirection) return filtered;
     const sortColumn = columns.find((column) => column.key === sortKey);
@@ -36,7 +53,7 @@ export function useTableControls<T>(rows: T[], columns: TableColumn<T>[]) {
       const delta = compareSortValues(left, right);
       return sortDirection === "asc" ? delta : -delta;
     });
-  }, [columns, filters, rows, sortDirection, sortKey]);
+  }, [columns, filters, rows, search, sortDirection, sortKey]);
 
   function setFilter(key: string, value: string) {
     setFilters((current) => ({ ...current, [key]: value }));
@@ -60,11 +77,59 @@ export function useTableControls<T>(rows: T[], columns: TableColumn<T>[]) {
   return {
     controlledRows,
     filters,
+    search,
     setFilter,
+    setSearch,
     sortDirection,
     sortKey,
     toggleSort
   };
+}
+
+export function TableToolbar({
+  advancedFiltersOpen,
+  onAdvancedFiltersToggle,
+  onSearch,
+  resultCount,
+  searchValue,
+  totalCount
+}: {
+  advancedFiltersOpen: boolean;
+  onAdvancedFiltersToggle: () => void;
+  onSearch: (value: string) => void;
+  resultCount: number;
+  searchValue: string;
+  totalCount: number;
+}) {
+  return (
+    <div className="mb-3 flex flex-col gap-2 rounded-md border border-[#D7DEE8] bg-[#F8FAFD] p-2.5 sm:flex-row sm:items-center sm:justify-between">
+      <label className="relative min-w-0 flex-1">
+        <span className="sr-only">Search table</span>
+        <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate" size={15} aria-hidden="true" />
+        <input
+          className="min-h-9 w-full rounded-md border border-[#C9D5E6] bg-white py-1.5 pl-9 pr-3 text-sm font-medium text-navy placeholder:text-cool focus:border-primary focus:outline-none"
+          value={searchValue}
+          onChange={(event) => onSearch(event.target.value)}
+          placeholder="Search records"
+          type="search"
+        />
+      </label>
+      <div className="flex flex-wrap items-center justify-between gap-2 sm:justify-end">
+        <span className="text-xs font-medium text-slate">{resultCount} of {totalCount} records</span>
+        <button
+          type="button"
+          className={`inline-flex min-h-9 items-center justify-center gap-2 rounded-md px-3 text-sm font-semibold transition-colors ${
+            advancedFiltersOpen ? "bg-primary text-white hover:bg-[#082BB0]" : "bg-white text-navy ring-1 ring-inset ring-[#C9D5E6] hover:bg-[#F8FAFD]"
+          }`}
+          aria-pressed={advancedFiltersOpen}
+          onClick={onAdvancedFiltersToggle}
+        >
+          <SlidersHorizontal size={15} aria-hidden="true" />
+          Advanced Filters
+        </button>
+      </div>
+    </div>
+  );
 }
 
 export function SortableFilterHeader({
@@ -74,7 +139,8 @@ export function SortableFilterHeader({
   onFilter,
   onSort,
   sortDirection,
-  sortKey
+  sortKey,
+  showFilter = true
 }: {
   columnKey: string;
   filterValue: string;
@@ -83,6 +149,7 @@ export function SortableFilterHeader({
   onSort: (key: string) => void;
   sortDirection: SortDirection;
   sortKey: string | null;
+  showFilter?: boolean;
 }) {
   const active = sortKey === columnKey && sortDirection;
   const Icon = active === "asc" ? ArrowUp : active === "desc" ? ArrowDown : ArrowDownUp;
@@ -98,13 +165,15 @@ export function SortableFilterHeader({
         <span>{label}</span>
         <Icon size={13} aria-hidden="true" />
       </button>
-      <input
-        className="min-h-8 rounded border border-[#C9D5E6] bg-white px-2 py-1 text-xs font-medium normal-case text-navy placeholder:text-cool focus:border-electric focus:outline-none"
-        value={filterValue}
-        onChange={(event) => onFilter(columnKey, event.target.value)}
-        placeholder="Filter"
-        aria-label={`Filter ${label}`}
-      />
+      {showFilter ? (
+        <input
+          className="min-h-8 rounded border border-[#C9D5E6] bg-white px-2 py-1 text-xs font-medium normal-case text-navy placeholder:text-cool focus:border-primary focus:outline-none"
+          value={filterValue}
+          onChange={(event) => onFilter(columnKey, event.target.value)}
+          placeholder="Filter"
+          aria-label={`Filter ${label}`}
+        />
+      ) : null}
     </div>
   );
 }

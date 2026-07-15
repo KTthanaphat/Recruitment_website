@@ -901,6 +901,9 @@ declare
   v_exists boolean;
 begin
   perform public.assert_recruitment_writer();
+  if v_mode not in ('new', 'change') then
+    raise exception 'mode must be new or change';
+  end if;
   if v_mode = 'new' then
     v_group_id := public.next_app_id('position_groups', 'GRP');
   elsif v_group_id is null then
@@ -910,6 +913,9 @@ begin
   select exists(select 1 from public.position_groups where group_id = v_group_id) into v_exists;
   if v_mode = 'new' and v_exists then raise exception 'Group ID already exists. Switch to Change mode to edit it.'; end if;
   if v_mode = 'change' and not v_exists then raise exception 'Group ID does not exist. Switch to New mode to create it.'; end if;
+  if v_mode = 'change' and not public.can_manage_sourcing_group(v_group_id) then
+    raise exception 'You can edit only sourcing groups linked to requisitions where you are responsible.';
+  end if;
 
   perform set_config('app.action', 'position_group:' || v_mode, true);
   insert into public.position_groups (
@@ -957,6 +963,12 @@ declare
   v_group public.position_groups%rowtype;
 begin
   perform public.assert_recruitment_writer();
+  if v_doc_id is null or not exists(select 1 from public.requisitions where doc_id = v_doc_id) then
+    raise exception 'Requisition does not exist.';
+  end if;
+  if not public.can_manage_requisition(v_doc_id) then
+    raise exception 'You can match only requisitions where you are person in charge.';
+  end if;
   select * into v_group from public.position_groups where group_id = v_group_id;
   if not found then raise exception 'Group ID does not exist.'; end if;
   if exists(select 1 from public.document_groups where doc_id = v_doc_id) then
@@ -989,12 +1001,14 @@ as $$
 declare
   v_group_id text := nullif(payload ->> 'group_id', '');
   v_week_start date := nullif(payload ->> 'week_start', '')::date;
+  v_group public.position_groups%rowtype;
 begin
   perform public.assert_recruitment_writer();
   if v_group_id is null then raise exception 'Group ID is required.'; end if;
   if v_week_start is null then raise exception 'Week start is required.'; end if;
   if not public.has_open_group_requisition(v_group_id) then raise exception 'Group has no unfilled active requisition.'; end if;
   if not public.can_manage_sourcing_group(v_group_id) then raise exception 'You can update only sourcing groups where you are responsible.'; end if;
+  select * into v_group from public.position_groups where group_id = v_group_id;
 
   perform set_config('app.action', 'sourcing_update:upsert', true);
   insert into public.sourcing_weekly_updates (
@@ -1008,14 +1022,14 @@ begin
   values (
     v_group_id,
     v_week_start,
-    coalesce((payload ->> 'channel_fb')::boolean, false),
-    coalesce((payload ->> 'channel_jobthai')::boolean, false),
-    coalesce((payload ->> 'channel_jobtopgun')::boolean, false),
-    coalesce((payload ->> 'channel_jobdb')::boolean, false),
-    coalesce((payload ->> 'channel_linkedin')::boolean, false),
-    coalesce((payload ->> 'channel_walkin')::boolean, false),
-    coalesce((payload ->> 'channel_referral')::boolean, false),
-    coalesce((payload ->> 'channel_others')::boolean, false),
+    case when payload ? 'channel_fb' then (payload ->> 'channel_fb')::boolean else coalesce(v_group.channel_fb, false) end,
+    case when payload ? 'channel_jobthai' then (payload ->> 'channel_jobthai')::boolean else coalesce(v_group.channel_jobthai, false) end,
+    case when payload ? 'channel_jobtopgun' then (payload ->> 'channel_jobtopgun')::boolean else coalesce(v_group.channel_jobtopgun, false) end,
+    case when payload ? 'channel_jobdb' then (payload ->> 'channel_jobdb')::boolean else coalesce(v_group.channel_jobdb, false) end,
+    case when payload ? 'channel_linkedin' then (payload ->> 'channel_linkedin')::boolean else coalesce(v_group.channel_linkedin, false) end,
+    case when payload ? 'channel_walkin' then (payload ->> 'channel_walkin')::boolean else coalesce(v_group.channel_walkin, false) end,
+    case when payload ? 'channel_referral' then (payload ->> 'channel_referral')::boolean else coalesce(v_group.channel_referral, false) end,
+    case when payload ? 'channel_others' then (payload ->> 'channel_others')::boolean else coalesce(v_group.channel_others, false) end,
     coalesce(nullif(payload ->> 'applicants_fb', '')::integer, 0),
     coalesce(nullif(payload ->> 'applicants_jobthai', '')::integer, 0),
     coalesce(nullif(payload ->> 'applicants_jobtopgun', '')::integer, 0),
@@ -1027,14 +1041,14 @@ begin
     auth.uid()
   )
   on conflict (group_id, week_start) do update set
-    channel_fb = excluded.channel_fb,
-    channel_jobthai = excluded.channel_jobthai,
-    channel_jobtopgun = excluded.channel_jobtopgun,
-    channel_jobdb = excluded.channel_jobdb,
-    channel_linkedin = excluded.channel_linkedin,
-    channel_walkin = excluded.channel_walkin,
-    channel_referral = excluded.channel_referral,
-    channel_others = excluded.channel_others,
+    channel_fb = case when payload ? 'channel_fb' then excluded.channel_fb else sourcing_weekly_updates.channel_fb end,
+    channel_jobthai = case when payload ? 'channel_jobthai' then excluded.channel_jobthai else sourcing_weekly_updates.channel_jobthai end,
+    channel_jobtopgun = case when payload ? 'channel_jobtopgun' then excluded.channel_jobtopgun else sourcing_weekly_updates.channel_jobtopgun end,
+    channel_jobdb = case when payload ? 'channel_jobdb' then excluded.channel_jobdb else sourcing_weekly_updates.channel_jobdb end,
+    channel_linkedin = case when payload ? 'channel_linkedin' then excluded.channel_linkedin else sourcing_weekly_updates.channel_linkedin end,
+    channel_walkin = case when payload ? 'channel_walkin' then excluded.channel_walkin else sourcing_weekly_updates.channel_walkin end,
+    channel_referral = case when payload ? 'channel_referral' then excluded.channel_referral else sourcing_weekly_updates.channel_referral end,
+    channel_others = case when payload ? 'channel_others' then excluded.channel_others else sourcing_weekly_updates.channel_others end,
     applicants_fb = excluded.applicants_fb,
     applicants_jobthai = excluded.applicants_jobthai,
     applicants_jobtopgun = excluded.applicants_jobtopgun,
@@ -1524,6 +1538,9 @@ begin
   return jsonb_build_object('ok', true, 'id', v_snapshot_id::text);
 end;
 $$;
+
+revoke all on function public.app_upsert_position_group(jsonb) from public, anon;
+revoke all on function public.app_create_group_match(jsonb) from public, anon;
 
 grant execute on function public.app_upsert_requisition(jsonb) to authenticated;
 grant execute on function public.app_insert_requisition_log(jsonb) to authenticated;

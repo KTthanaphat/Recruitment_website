@@ -1,0 +1,232 @@
+import { expect, test } from "@playwright/test";
+import { expectWorkspaceReady, installMockSupabase } from "./support/mock-supabase";
+
+test("grouped sidebar gates admin and preserves global navigation context", async ({ page }) => {
+  await installMockSupabase(page, { role: "viewer" });
+  await page.goto("/pipeline?lang=en&site=KT1&pic=Bob&sourcingWeek=2026-07-06");
+  await expectWorkspaceReady(page);
+
+  const navigation = page.getByRole("navigation", { name: "Main navigation" });
+  await expect(navigation.getByRole("link", { name: "Home" })).toBeVisible();
+  await expect(navigation.getByRole("link", { name: "Workspace" })).toBeVisible();
+  const recordsButton = navigation.getByRole("button", { name: "Records" });
+  await expect(recordsButton).toBeVisible();
+  await expect(recordsButton).toHaveAttribute("aria-expanded", "true");
+  await expect(recordsButton).toHaveAttribute("aria-current", "page");
+  await expect(navigation.getByRole("link", { name: "Dashboard" })).toBeVisible();
+  await expect(navigation.getByRole("link", { name: "Audit Log" })).toBeVisible();
+  await expect(navigation.getByRole("link", { name: "Pipeline" })).toBeVisible();
+  await expect(navigation.getByRole("link", { name: "Sourcing" })).toBeVisible();
+  await expect(navigation.getByRole("link", { name: "Administration" })).toHaveCount(0);
+  await expect(navigation.locator("[data-records-subnav-glow]")).toBeVisible();
+  await expect(navigation.locator("[data-records-subnav]")).toBeVisible();
+
+  const glowStyles = await navigation.locator("[data-records-subnav-glow]").evaluate((element) => {
+    const styles = getComputedStyle(element);
+    return {
+      backgroundImage: styles.backgroundImage,
+      borderRadius: styles.borderRadius,
+      height: styles.height
+    };
+  });
+  expect(glowStyles.backgroundImage).toContain("linear-gradient");
+  expect(glowStyles.backgroundImage).toContain("255, 255, 255");
+  expect(glowStyles.borderRadius).not.toBe("0px");
+  expect(Number.parseFloat(glowStyles.height)).toBeGreaterThan(1);
+
+  const homeBox = await navigation.getByRole("link", { name: "Home" }).boundingBox();
+  const recordsBox = await recordsButton.boundingBox();
+  const glowBox = await navigation.locator("[data-records-subnav-glow]").boundingBox();
+  expect(homeBox).not.toBeNull();
+  expect(recordsBox).not.toBeNull();
+  expect(glowBox).not.toBeNull();
+  expect(Math.abs(homeBox!.width - recordsBox!.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(recordsBox!.width - glowBox!.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs((recordsBox!.y + recordsBox!.height) - glowBox!.y)).toBeLessThanOrEqual(1);
+
+  const expandedSubnavStyles = await navigation.locator("[data-records-subnav]").evaluate((element) => {
+    const styles = getComputedStyle(element);
+    return { backgroundColor: styles.backgroundColor, borderWidth: styles.borderTopWidth };
+  });
+  expect(expandedSubnavStyles.borderWidth).toBe("0px");
+  expect(expandedSubnavStyles.backgroundColor).toBe("rgba(0, 0, 0, 0)");
+
+  const workspaceLink = navigation.getByRole("link", { name: "Workspace" });
+  await expect(workspaceLink).toHaveAttribute("href", /lang=en/);
+  await expect(workspaceLink).toHaveAttribute("href", /site=KT1/);
+  await expect(workspaceLink).toHaveAttribute("href", /pic=Bob/);
+  await expect(workspaceLink).toHaveAttribute("href", /sourcingWeek=2026-07-06/);
+
+  const sourcingLink = navigation.getByRole("link", { name: "Sourcing" });
+  await expect(sourcingLink).toHaveAttribute("href", /lang=en/);
+  await expect(sourcingLink).toHaveAttribute("href", /site=KT1/);
+  await expect(sourcingLink).toHaveAttribute("href", /pic=Bob/);
+  await expect(sourcingLink).toHaveAttribute("href", /sourcingWeek=2026-07-06/);
+
+  await page.getByRole("button", { name: "Collapse sidebar" }).click();
+  await expect(navigation.getByRole("link", { name: "Home" })).toBeVisible();
+  await expect(recordsButton).toBeVisible();
+  await expect(navigation.getByRole("link", { name: "Pipeline" })).toBeVisible();
+  await expect(navigation.getByRole("link", { name: "Pipeline" }).locator('[data-nav-label="pipeline"]')).toHaveClass(/lg:sr-only/);
+  await expect(navigation.getByRole("link", { name: "Sourcing" }).locator('[data-nav-label="sourcing"]')).toHaveClass(/lg:sr-only/);
+  await expect(navigation.locator("[data-records-subnav-glow]")).toBeVisible();
+
+  const collapsedRecordsBox = await recordsButton.boundingBox();
+  const collapsedSourcingBox = await navigation.getByRole("link", { name: "Sourcing" }).boundingBox();
+  expect(collapsedRecordsBox).not.toBeNull();
+  expect(collapsedSourcingBox).not.toBeNull();
+  expect(Math.abs(
+    (collapsedRecordsBox!.x + collapsedRecordsBox!.width / 2)
+      - (collapsedSourcingBox!.x + collapsedSourcingBox!.width / 2)
+  )).toBeLessThanOrEqual(1);
+});
+
+test("workspace section tabs persist in URL history and render one section", async ({ page }) => {
+  await installMockSupabase(page, { role: "admin_recruiter" });
+  await page.goto("/workspace?type=requisition&id=REQ-HQ-1&section=overview&sourcingWeek=2026-07-06");
+  await expectWorkspaceReady(page);
+
+  const tabs = page.getByRole("tablist", { name: "Hiring workspace sections" });
+  await expect(tabs.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tabpanel")).toContainText("Hiring journey");
+
+  await tabs.getByRole("tab", { name: "Pipeline" }).click();
+  await expect(page).toHaveURL(/section=pipeline/);
+  await expect(page.getByRole("tabpanel")).toContainText("Active candidates");
+  await expect(page.getByRole("tabpanel")).not.toContainText("Pipeline Bottleneck");
+  await expect(page.getByRole("tabpanel")).not.toContainText("Hiring journey");
+
+  await tabs.getByRole("tab", { name: "Sourcing" }).click();
+  await expect(page).toHaveURL(/section=sourcing/);
+  await expect(page.getByRole("tabpanel")).toContainText("Sourcing Coverage");
+  await page.goBack();
+  await expect(page).toHaveURL(/section=pipeline/);
+  await expect(tabs.getByRole("tab", { name: "Pipeline" })).toHaveAttribute("aria-selected", "true");
+  await page.goForward();
+  await expect(page).toHaveURL(/section=sourcing/);
+  await expect(tabs.getByRole("tab", { name: "Sourcing" })).toHaveAttribute("aria-selected", "true");
+});
+
+test("workspace picker searches requisitions and groups", async ({ page }) => {
+  await installMockSupabase(page, { role: "admin_recruiter" });
+  await page.goto("/workspace");
+  await expectWorkspaceReady(page);
+
+  const search = page.getByLabel("Search workspaces");
+  await search.fill("REQ-KT1-1");
+  await expect(page.getByRole("button", { name: /REQ-KT1-1/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /REQ-HQ-1/ })).toHaveCount(0);
+  await search.fill("REQ-CLOSED-1");
+  await expect(page.getByText("No matching workspaces.")).toBeVisible();
+
+  await page.getByRole("button", { name: "Groups" }).click();
+  await search.fill("GRP-TECH");
+  await expect(page.getByRole("button", { name: /GRP-TECH/ })).toBeVisible();
+  await search.fill("GRP-CLOSED");
+  await expect(page.getByText("No matching workspaces.")).toBeVisible();
+});
+
+test("workspace direct URL to closed work shows invalid target picker", async ({ page }) => {
+  await installMockSupabase(page, { role: "admin_recruiter" });
+  await page.goto("/workspace?type=requisition&id=REQ-CLOSED-1");
+  await expectWorkspaceReady(page);
+
+  await expect(page.getByText("The workspace in the URL was not found. Choose an available record.")).toBeVisible();
+  await expect(page.getByRole("button", { name: /REQ-CLOSED-1/ })).toHaveCount(0);
+});
+
+test("candidate document search filters linked records", async ({ page }) => {
+  await installMockSupabase(page, { role: "admin_recruiter" });
+  await page.goto("/candidates?candSearch=REQ-HQ-1");
+  await expectWorkspaceReady(page);
+  const table = page.locator("table");
+  await expect(table.getByRole("button", { name: "Pat Phone", exact: true })).toBeVisible();
+  await expect(table.getByRole("button", { name: "Avery Aging", exact: true })).toBeVisible();
+  await expect(table.getByRole("button", { name: "Liam Line", exact: true })).toHaveCount(0);
+});
+
+test("record tables expose magnifying-glass detail controls", async ({ page }) => {
+  await installMockSupabase(page, { role: "admin_recruiter" });
+
+  await page.goto("/requisitions");
+  await expectWorkspaceReady(page);
+  await page.getByRole("button", { name: "View requisition detail for REQ-HQ-1" }).click();
+  await expect(page.getByRole("dialog", { name: /REQ-HQ-1/ })).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  await page.goto("/candidates");
+  await expectWorkspaceReady(page);
+  await page.getByRole("button", { name: "View candidate detail for Pat Phone" }).click();
+  await expect(page.getByRole("dialog", { name: /C-PHONE \/ Pat Phone/ })).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  await page.goto("/offers");
+  await expectWorkspaceReady(page);
+  await page.getByRole("button", { name: "View offer candidate detail for Owen Offer" }).click();
+  await expect(page.getByRole("dialog", { name: /C-OFFER \/ Owen Offer/ })).toBeVisible();
+});
+
+test("sourcing contextual filters focus the matching group", async ({ page }) => {
+  await installMockSupabase(page, { role: "admin_recruiter" });
+  await page.goto("/sourcing?sourceSearch=GRP-TECH&reqSearch=REQ-KT1-1&sourcingWeek=2026-07-06");
+  await expectWorkspaceReady(page);
+  const group = page.locator("#sourcing-group-GRP-TECH");
+  await expect(group).toBeVisible();
+  await expect(group).toHaveClass(/border-primary/);
+  await expect(page.locator("#sourcing-group-GRP-ENG")).toHaveCount(0);
+});
+
+test("pipeline URL search focuses a candidate and Actions is keyboard dismissible", async ({ page }) => {
+  await installMockSupabase(page, { role: "admin_recruiter" });
+  await page.goto("/pipeline?pipelineSearch=C-PHONE");
+  await expectWorkspaceReady(page);
+
+  await expect(page.getByLabel("Search pipeline")).toHaveValue("C-PHONE");
+  const card = page.locator("#pipeline-candidate-C-PHONE");
+  const actions = card.getByRole("button", { name: "Candidate actions for Pat Phone" });
+  await actions.focus();
+  await page.keyboard.press("Enter");
+  await expect(card.getByRole("menu", { name: "Actions for Pat Phone" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(card.getByRole("menu", { name: "Actions for Pat Phone" })).toHaveCount(0);
+  await expect(actions).toBeFocused();
+});
+
+test("candidate drawer has one action hierarchy and modal becomes topmost", async ({ page }) => {
+  await installMockSupabase(page, { role: "admin_recruiter" });
+  await page.goto("/candidates");
+  await expectWorkspaceReady(page);
+
+  await page.locator("table").getByRole("button", { name: "Pat Phone", exact: true }).click();
+  const drawer = page.getByRole("dialog", { name: /C-PHONE \/ Pat Phone/ });
+  await expect(drawer.getByText("Current stage")).toHaveCount(0);
+  await expect(drawer.getByText("Result", { exact: true })).toHaveCount(0);
+  await expect(drawer.getByRole("button", { name: "Update process" })).toHaveCount(1);
+
+  await drawer.getByRole("button", { name: "More actions for Pat Phone" }).click();
+  const menu = drawer.getByRole("menu", { name: "Actions for Pat Phone" });
+  await expect(drawer.getByRole("link", { name: "Open workspace" })).toHaveCount(1);
+  await expect(menu.getByRole("menuitem", { name: "View requisition" })).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: "Same group" })).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: "Open in pipeline" })).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  await drawer.getByRole("button", { name: "Update process" }).click();
+  const modal = page.getByRole("dialog", { name: "Process Update" });
+  await expect(modal).toBeVisible();
+  await expect(page.locator('aside[role="dialog"][aria-hidden="true"]')).toHaveCount(1);
+  await page.keyboard.press("Escape");
+  await expect(modal).toHaveCount(0);
+});
+
+test("key views have no page-level overflow at 390px", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await installMockSupabase(page, { role: "admin_recruiter" });
+
+  for (const path of ["/home", "/workspace?type=requisition&id=REQ-HQ-1", "/pipeline", "/candidates", "/sourcing?sourcingWeek=2026-07-06"]) {
+    await page.goto(path);
+    await expectWorkspaceReady(page);
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow, `${path} has horizontal overflow`).toBeLessThanOrEqual(1);
+  }
+});

@@ -2,13 +2,16 @@
 
 import {
   BriefcaseBusiness,
+  ChevronDown,
   ClipboardList,
   FileClock,
   HandCoins,
   LayoutDashboard,
+  LampDesk,
   LogOut,
   PanelLeftClose,
   PanelLeftOpen,
+  Pencil,
   RefreshCw,
   ShieldCheck,
   Settings,
@@ -16,16 +19,18 @@ import {
   UsersRound
 } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/Button";
-import { ROLE_LABELS, VIEWS } from "@/lib/constants";
+import { ROLE_LABELS } from "@/lib/constants";
 import { translate, viewLabel } from "@/lib/i18n/dictionary";
+import { buildContextualHref, type WorkspaceNavigationContext } from "@/lib/workspace-url-state";
 import type { Language, Profile, ViewId } from "@/types/recruitment";
 
 const icons: Record<ViewId, ReactNode> = {
   home: <Home size={18} />,
   dashboard: <LayoutDashboard size={18} />,
+  workspace: <LampDesk size={18} />,
   requisitions: <ClipboardList size={18} />,
   candidates: <UsersRound size={18} />,
   pipeline: <PipelineStagesIcon />,
@@ -35,9 +40,13 @@ const icons: Record<ViewId, ReactNode> = {
   audit: <FileClock size={18} />
 };
 
+const primaryViews: ViewId[] = ["home", "workspace", "dashboard", "audit"];
+const recordsViews: ViewId[] = ["requisitions", "sourcing", "candidates", "pipeline", "offers"];
+
 const paths: Record<ViewId, string> = {
   home: "/home",
   dashboard: "/dashboard",
+  workspace: "/workspace",
   requisitions: "/requisitions",
   candidates: "/candidates",
   pipeline: "/pipeline",
@@ -50,10 +59,11 @@ const paths: Record<ViewId, string> = {
 const kicker: Record<ViewId, string> = {
   home: "Work Queue",
   dashboard: "Vacancy Analytics",
+  workspace: "Hiring Workspace",
   requisitions: "Hiring Demand",
   candidates: "Talent Records",
   pipeline: "Process Board",
-  offers: "Hiring Outcome",
+  offers: "Offers",
   sourcing: "Jobsite Sourcing",
   admin: "System Control",
   audit: "History"
@@ -73,6 +83,7 @@ function PipelineStagesIcon() {
 export function AppShell({
   children,
   language,
+  navigationContext,
   onLanguageChange,
   onRefresh,
   onSignOut,
@@ -81,6 +92,7 @@ export function AppShell({
 }: {
   children: ReactNode;
   language: Language;
+  navigationContext?: WorkspaceNavigationContext;
   onLanguageChange: () => void;
   onRefresh: () => void;
   onSignOut: () => void;
@@ -88,8 +100,16 @@ export function AppShell({
   activeView: ViewId;
 }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const accountName = profile?.nickname ?? profile?.full_name ?? profile?.email ?? "Unknown";
-  const visibleViews = VIEWS.filter((view) => view !== "admin" || profile?.role === "system_admin");
+  const contextualNavigation: WorkspaceNavigationContext = {
+    language: navigationContext?.language ?? searchParams.get("lang"),
+    site: navigationContext?.site ?? searchParams.get("site"),
+    owner: navigationContext?.owner ?? searchParams.get("pic"),
+    sourcingWeek: navigationContext?.sourcingWeek ?? searchParams.get("sourcingWeek")
+  };
+  const isRecordsActive = recordsViews.some((view) => pathname === paths[view] || activeView === view);
+  const [recordsOpen, setRecordsOpen] = useState(isRecordsActive);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarPreferenceLoaded, setSidebarPreferenceLoaded] = useState(false);
 
@@ -103,12 +123,58 @@ export function AppShell({
     localStorage.setItem("recruitment_sidebar_collapsed", String(sidebarCollapsed));
   }, [sidebarCollapsed, sidebarPreferenceLoaded]);
 
+  useEffect(() => {
+    if (isRecordsActive) {
+      setRecordsOpen(true);
+    }
+  }, [isRecordsActive]);
+
+  const renderNavLink = (view: ViewId, options?: { child?: boolean }) => {
+    const active = pathname === paths[view] || activeView === view;
+    const child = options?.child;
+    const childMutedClasses = child && !active ? "lg:opacity-65 lg:group-hover:opacity-100" : "";
+    return (
+      <Link
+        key={view}
+        href={buildContextualHref(paths[view], contextualNavigation)}
+        aria-label={viewLabel(language, view)}
+        title={viewLabel(language, view)}
+        data-records-child={child ? view : undefined}
+        className={`group flex min-h-11 min-w-max items-center gap-3 rounded-md px-3 text-sm transition focus:outline-none focus:ring-2 focus:ring-white/70 lg:min-w-0 lg:w-full ${
+          sidebarCollapsed ? "lg:justify-center lg:px-0" : ""
+        } ${
+          child
+            ? sidebarCollapsed
+              ? "lg:size-9 lg:min-h-0 lg:justify-center lg:rounded-sm lg:px-0"
+              : "lg:min-h-9 lg:rounded-sm lg:pl-4"
+            : ""
+        } ${
+          active
+            ? child
+              ? "font-medium text-white"
+              : "bg-primary font-semibold text-white shadow-sm"
+            : child
+              ? "font-normal text-cool hover:bg-white/10 hover:text-white"
+              : "font-medium text-lightgray hover:bg-white/10 hover:text-white"
+        }`}
+      >
+        <span className={`shrink-0 ${childMutedClasses}`} aria-hidden="true">{icons[view]}</span>
+        <span
+          data-nav-label={view}
+          className={`${sidebarCollapsed ? "lg:sr-only" : ""} ${childMutedClasses}`}
+        >
+          {viewLabel(language, view)}
+        </span>
+      </Link>
+    );
+  };
+
   return (
     <main className={`grid min-h-screen grid-cols-1 bg-offwhite ${sidebarCollapsed ? "lg:grid-cols-[72px_minmax(0,1fr)]" : "lg:grid-cols-[248px_minmax(0,1fr)]"}`}>
       <aside className={`bg-navy px-4 py-4 text-white lg:sticky lg:top-0 lg:h-screen lg:py-5 ${sidebarCollapsed ? "lg:px-3" : ""}`}>
         <div className={`mb-4 flex items-start gap-3 px-2 lg:mb-7 ${sidebarCollapsed ? "lg:justify-center lg:px-0" : "lg:block"}`}>
           <div className={sidebarCollapsed ? "lg:hidden" : ""}>
-            <p className="mb-1 text-xs font-semibold uppercase tracking-normal text-cool">Internal Recruitment</p>
+                <p className="mb-1 text-xs font-medium uppercase tracking-normal text-cool">Internal Recruitment</p>
             <div className="flex items-center justify-between gap-3">
               <h1 className="text-2xl font-semibold tracking-normal text-white">Recruitment</h1>
               <button
@@ -135,32 +201,61 @@ export function AppShell({
           ) : null}
         </div>
 
-        <nav aria-label="Main navigation" className="grid grid-flow-col gap-1.5 overflow-x-auto pb-1 lg:grid-flow-row lg:overflow-visible lg:pb-0">
-          {visibleViews.map((view) => {
-            const active = pathname === paths[view] || activeView === view;
-            return (
-              <Link
-                key={view}
-                href={paths[view]}
-                aria-label={viewLabel(language, view)}
-                title={viewLabel(language, view)}
-                className={`flex min-h-11 min-w-max items-center gap-3 rounded-md px-3 text-sm transition lg:min-w-0 ${
+        <nav
+          aria-label="Main navigation"
+          className="flex flex-col gap-3 overflow-visible pb-1"
+        >
+          <div className="flex gap-1.5 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0">
+            {primaryViews.slice(0, 2).map((view) => renderNavLink(view))}
+            <div className={`relative shrink-0 ${sidebarCollapsed ? "lg:w-full" : "lg:min-w-0 lg:w-full"}`}>
+              <button
+                type="button"
+                data-records-toggle
+                aria-expanded={recordsOpen}
+                aria-controls="records-nav-group"
+                aria-current={isRecordsActive ? "page" : undefined}
+                aria-label={translate(language, "navRecords")}
+                title={translate(language, "navRecords")}
+                className={`flex min-h-11 min-w-max items-center gap-3 rounded-md px-3 text-sm transition focus:outline-none focus:ring-2 focus:ring-white/70 lg:min-w-0 lg:w-full ${
                   sidebarCollapsed ? "lg:justify-center lg:px-0" : ""
                 } ${
-                  active ? "bg-primary font-semibold text-white shadow-sm" : "font-medium text-lightgray hover:bg-white/10"
+                  isRecordsActive ? "bg-primary font-semibold text-white shadow-sm" : "font-medium text-lightgray hover:bg-white/10 hover:text-white"
                 }`}
+                onClick={() => setRecordsOpen((current) => !current)}
               >
-                {icons[view]}
-                <span className={sidebarCollapsed ? "lg:sr-only" : ""}>{viewLabel(language, view)}</span>
-              </Link>
-            );
-          })}
+                <Pencil size={18} aria-hidden="true" />
+                <span className={`flex-1 text-left ${sidebarCollapsed ? "lg:sr-only" : ""}`}>{translate(language, "navRecords")}</span>
+                <ChevronDown
+                  size={16}
+                  className={`transition ${recordsOpen ? "rotate-180" : ""} ${sidebarCollapsed ? "lg:sr-only" : ""}`}
+                />
+              </button>
+
+              {recordsOpen ? (
+                <>
+                  <div
+                    id="records-nav-group"
+                    data-records-subnav
+                    className={`mt-1.5 flex min-w-max gap-1.5 rounded-md border border-white/10 bg-white/[0.03] p-1.5 lg:min-w-0 lg:flex-col ${
+                      sidebarCollapsed
+                        ? "lg:mt-2 lg:w-full lg:min-w-0 lg:items-center lg:gap-1 lg:border-0 lg:bg-transparent lg:p-0"
+                        : "lg:mt-2 lg:w-full lg:gap-0.5 lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0 lg:pl-4"
+                    }`}
+                  >
+                    {recordsViews.map((view) => renderNavLink(view, { child: true }))}
+                  </div>
+                </>
+              ) : null}
+            </div>
+            {primaryViews.slice(2).map((view) => renderNavLink(view))}
+            {profile?.role === "system_admin" ? renderNavLink("admin") : null}
+          </div>
         </nav>
       </aside>
 
       <section className="min-w-0 px-4 py-5 sm:px-6 lg:px-7">
         <header className="mb-4 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 gap-y-1">
-          <p className="col-start-1 row-start-1 min-w-0 text-xs font-semibold uppercase tracking-normal text-slate">
+          <p className="col-start-1 row-start-1 min-w-0 text-xs font-medium uppercase tracking-normal text-slate">
             {kicker[activeView]}
           </p>
           <div className="col-start-2 row-span-2 row-start-1 flex min-w-0 max-w-[58vw] flex-wrap items-start justify-end gap-2">
@@ -169,9 +264,8 @@ export function AppShell({
             </Button>
             <Button
               type="button"
-              size="sm"
+              size="icon-sm"
               variant="secondary"
-              className="min-w-9 px-2.5"
               icon={<RefreshCw size={16} />}
               aria-label={translate(language, "refresh")}
               title={translate(language, "refresh")}
@@ -207,7 +301,7 @@ export function AppShell({
               </div>
             </details>
           </div>
-          <h2 className="col-start-1 row-start-2 min-w-0 text-3xl font-semibold tracking-normal text-navy">
+          <h2 className="col-start-1 row-start-2 min-w-0 text-2xl font-semibold tracking-normal text-navy sm:text-3xl">
             {viewLabel(language, activeView)}
           </h2>
         </header>

@@ -1,20 +1,27 @@
 import { Plus, RotateCw, Search } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PAGE_SIZE_OPTIONS, Pagination, paginateRows } from "@/components/ui/Pagination";
 import { Panel, SectionTitle } from "@/components/ui/Panel";
-import { SortableFilterHeader, type TableColumn, useTableControls } from "@/components/ui/TableControls";
+import { SortableFilterHeader, TableToolbar, type TableColumn, useTableControls } from "@/components/ui/TableControls";
 import { Tag } from "@/components/ui/Tag";
+import { RecordActionGroup } from "@/components/ui/Operations";
+import { BulkActionToolbar, BulkReviewModal } from "@/components/ui/Workflow";
 import { formatDate, statusTone } from "@/lib/format";
 import { translate } from "@/lib/i18n/dictionary";
+import { bulkActionDisabledReason, requisitionFillReadiness, type BulkActionResult } from "@/lib/operations";
 import { getRequisitionSlaState } from "@/lib/sla";
-import type { EnrichedRequisition, Language } from "@/types/recruitment";
+import { readTableUrlState, writeTableUrlValues } from "@/lib/table-url-state";
+import { updateWorkspaceUrlState } from "@/lib/workspace-url-state";
+import type { EnrichedCandidate, EnrichedRequisition, Language, Profile } from "@/types/recruitment";
 
 export function RequisitionsView({
   language,
   rows,
   canWrite,
+  candidates,
+  profile,
   onNew,
   onStatus,
   onOpen
@@ -22,12 +29,20 @@ export function RequisitionsView({
   language: Language;
   rows: EnrichedRequisition[];
   canWrite: boolean;
+  candidates: EnrichedCandidate[];
+  profile: Profile | null;
   onNew: () => void;
   onStatus: () => void;
   onOpen: (docId: string) => void;
 }) {
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState<number>(PAGE_SIZE_OPTIONS[0]);
+  const initialTableState = useMemo(() => readTableUrlState("req"), []);
+  const [page, setPage] = useState(initialTableState.page);
+  const [pageSize, setPageSize] = useState<number>((PAGE_SIZE_OPTIONS as readonly number[]).includes(initialTableState.pageSize) ? initialTableState.pageSize : PAGE_SIZE_OPTIONS[0]);
+  const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(Object.keys(initialTableState.filters ?? {}).length > 0);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkReviewOpen, setBulkReviewOpen] = useState(false);
+  const [bulkResult, setBulkResult] = useState<BulkActionResult | null>(null);
+  const tableInitialized = useRef(false);
   const columns: TableColumn<EnrichedRequisition>[] = [
     { key: "doc_id", label: "Doc ID", value: (row) => row.doc_id },
     { key: "position", label: "Position", value: (row) => row.position },
@@ -38,19 +53,38 @@ export function RequisitionsView({
     { key: "status", label: translate(language, "status"), value: (row) => row.status },
     { key: "head_count", label: "HC", value: (row) => row.head_count },
     { key: "accepted_count", label: translate(language, "accepted"), value: (row) => row.accepted_count },
+    { key: "open_headcount", label: "Open HC", value: (row) => row.open_headcount },
     { key: "candidate_count", label: "Candidates", value: (row) => row.candidate_count },
+    { key: "readiness", label: "Fill Readiness", value: (row) => requisitionFillReadiness(row, candidates).label },
     { key: "req_date", label: "Req Date", value: (row) => row.pr_approved_date ?? "-", sortValue: (row) => row.pr_approved_date ?? "" },
     { key: "age", label: "Age", value: (row) => ageLabel(row), sortValue: (row) => getRequisitionSlaState(row, { openOnly: true }).ageDays ?? Number.POSITIVE_INFINITY },
     { key: "sla", label: "SLA", value: (row) => getRequisitionSlaState(row, { openOnly: true }).label },
     { key: "updated_at", label: "Updated", value: (row) => formatDate(row.updated_at), sortValue: (row) => row.updated_at }
   ];
-  const table = useTableControls(rows, columns);
+  const table = useTableControls(rows, columns, initialTableState);
   const paginated = paginateRows(table.controlledRows, page, pageSize);
   const visibleRows = paginated.rows;
+  const selectedRows = rows.filter((row) => selectedIds.includes(row.doc_id));
+  const bulkDisabledReason = bulkActionDisabledReason({ entity: "requisition", ids: selectedIds }, "update requisition status", profile);
 
   useEffect(() => {
+    if (!tableInitialized.current) {
+      tableInitialized.current = true;
+      return;
+    }
     setPage(1);
-  }, [pageSize, rows.length, table.controlledRows.length, table.filters, table.sortDirection, table.sortKey]);
+  }, [pageSize, rows.length, table.controlledRows.length, table.filters, table.search, table.sortDirection, table.sortKey]);
+
+  useEffect(() => {
+    updateWorkspaceUrlState(writeTableUrlValues("req", {
+      filters: table.filters,
+      page: paginated.page,
+      pageSize,
+      search: table.search,
+      sortDirection: table.sortDirection,
+      sortKey: table.sortKey
+    }));
+  }, [pageSize, paginated.page, table.filters, table.search, table.sortDirection, table.sortKey]);
 
   return (
     <Panel>
@@ -69,25 +103,62 @@ export function RequisitionsView({
         <EmptyState message={translate(language, "noData")} />
       ) : (
         <>
+        <TableToolbar
+          advancedFiltersOpen={advancedFiltersOpen}
+          onAdvancedFiltersToggle={() => setAdvancedFiltersOpen((open) => !open)}
+          onSearch={table.setSearch}
+          resultCount={table.controlledRows.length}
+          searchValue={table.search}
+          totalCount={rows.length}
+        />
         <div className="grid gap-3 md:hidden">
           {visibleRows.map((row) => (
-            <button key={row.doc_id} type="button" className="rounded-md border border-[#D7DEE8] bg-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-panel" onClick={() => onOpen(row.doc_id)}>
+            <article key={row.doc_id} className="rounded-md border border-[#D7DEE8] bg-white p-3 text-left shadow-[0_6px_16px_rgba(11,19,43,0.025)]">
               <div className="mb-2 flex items-center justify-between gap-2">
-                <strong className={getRequisitionSlaState(row, { openOnly: true }).isOverdue ? "text-scarlet" : "text-primary"}>{row.doc_id}</strong>
-                <Tag tone={statusTone(row.status) as never}>{row.status}</Tag>
+                <div className="min-w-0">
+                  <button
+                    type="button"
+                    className={`rounded-sm text-left font-semibold focus:outline-none focus:ring-2 focus:ring-primary/25 ${getRequisitionSlaState(row, { openOnly: true }).isOverdue ? "text-scarlet" : "text-navy"}`}
+                    onClick={() => onOpen(row.doc_id)}
+                  >
+                    {row.doc_id}
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <DetailButton
+                    ariaLabel={`View requisition detail for ${row.doc_id}`}
+                    onClick={() => onOpen(row.doc_id)}
+                  />
+                  <Tag tone={statusTone(row.status) as never}>{row.status}</Tag>
+                </div>
               </div>
-              <p className="font-bold text-navy">{row.position}</p>
-              <p className="text-sm font-bold text-slate">{row.department} - {row.site}</p>
-              <p className="text-sm font-bold text-slate">Type: {row.request_type}</p>
-              <p className="text-sm font-bold text-slate">{row.person_in_charge ?? "-"} - {row.open_headcount} open - {row.candidate_count} candidates</p>
+              <p className="font-semibold text-navy">{row.position}</p>
+              <p className="text-sm font-medium text-slate">{row.department} - {row.site}</p>
+              <p className="text-sm font-medium text-slate">Type: {row.request_type}</p>
+              <p className="text-sm font-medium text-slate">{row.person_in_charge ?? "-"} - {row.open_headcount} open - {row.candidate_count} candidates</p>
+              <p className="text-sm font-medium text-slate">Readiness: {requisitionFillReadiness(row, candidates).label}</p>
               <p className="text-sm font-medium text-slate">Age: {ageLabel(row)} - SLA: {getRequisitionSlaState(row, { openOnly: true }).label}</p>
-            </button>
+              <div className="mt-3">
+                <RecordActionGroup
+                  label={row.doc_id}
+                  items={requisitionActions(row.doc_id)}
+                />
+              </div>
+            </article>
           ))}
         </div>
         <div className="table-scroll hidden md:block">
           <table className="w-full border-collapse text-left text-sm">
             <thead className="bg-lightgray text-xs uppercase text-slate">
               <tr>
+                <th scope="col" className="px-3 py-3">
+                  <input
+                    aria-label="Select visible requisitions"
+                    type="checkbox"
+                    checked={visibleRows.length > 0 && visibleRows.every((row) => selectedIds.includes(row.doc_id))}
+                    onChange={(event) => setSelectedIds(event.target.checked ? Array.from(new Set([...selectedIds, ...visibleRows.map((row) => row.doc_id)])) : selectedIds.filter((id) => !visibleRows.some((row) => row.doc_id === id)))}
+                  />
+                </th>
                 {columns.map((column) => (
                   <th key={column.key} scope="col" className="px-3 py-3 align-top">
                     <SortableFilterHeader
@@ -98,17 +169,34 @@ export function RequisitionsView({
                       onSort={table.toggleSort}
                       sortDirection={table.sortDirection}
                       sortKey={table.sortKey}
+                      showFilter={advancedFiltersOpen}
                     />
                   </th>
                 ))}
-                <th scope="col" className="px-3 py-3"></th>
+                <th scope="col" className="px-3 py-3"><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>
               {visibleRows.map((row) => (
                 <tr key={row.doc_id} className="border-b border-[#D7DEE8] last:border-0">
-                  <td className={`px-3 py-3 font-extrabold ${getRequisitionSlaState(row, { openOnly: true }).isOverdue ? "text-scarlet" : "text-primary"}`}>{row.doc_id}</td>
-                  <td className="px-3 py-3 font-bold text-navy">{row.position}</td>
+                  <td className="px-3 py-3">
+                    <input
+                      aria-label={`Select requisition ${row.doc_id}`}
+                      type="checkbox"
+                      checked={selectedIds.includes(row.doc_id)}
+                      onChange={(event) => setSelectedIds((current) => event.target.checked ? [...current, row.doc_id] : current.filter((id) => id !== row.doc_id))}
+                    />
+                  </td>
+                  <td className="px-3 py-3">
+                    <button
+                      type="button"
+                      className={`rounded-sm text-left font-semibold focus:outline-none focus:ring-2 focus:ring-primary/25 ${getRequisitionSlaState(row, { openOnly: true }).isOverdue ? "text-scarlet" : "text-navy"}`}
+                      onClick={() => onOpen(row.doc_id)}
+                    >
+                      {row.doc_id}
+                    </button>
+                  </td>
+                  <td className="px-3 py-3 font-semibold text-navy">{row.position}</td>
                   <td className="px-3 py-3 text-slate">{row.department}</td>
                   <td className="px-3 py-3 text-slate">{row.request_type}</td>
                   <td className="px-3 py-3 text-slate">{row.section ?? "-"}</td>
@@ -116,21 +204,24 @@ export function RequisitionsView({
                   <td className="px-3 py-3"><Tag tone={statusTone(row.status) as never}>{row.status}</Tag></td>
                   <td className="px-3 py-3 text-slate">{row.head_count}</td>
                   <td className="px-3 py-3 text-slate">{row.accepted_count}</td>
+                  <td className="px-3 py-3 text-slate">{row.open_headcount}</td>
                   <td className="px-3 py-3 text-slate">{row.candidate_count}</td>
+                  <td className="px-3 py-3"><Tag tone={requisitionFillReadiness(row, candidates).tone}>{requisitionFillReadiness(row, candidates).label}</Tag></td>
                   <td className="px-3 py-3 text-slate">{formatDate(row.pr_approved_date, language)}</td>
                   <td className="px-3 py-3 text-slate">{ageLabel(row)}</td>
                   <td className="px-3 py-3 text-slate">{getRequisitionSlaState(row, { openOnly: true }).label}</td>
                   <td className="px-3 py-3 text-slate">{formatDate(row.updated_at)}</td>
                   <td className="px-3 py-3">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      icon={<Search size={16} />}
-                      aria-label={`View requisition ${row.doc_id}`}
-                      title={`View requisition ${row.doc_id}`}
-                      onClick={() => onOpen(row.doc_id)}
-                    />
+                    <div className="flex items-center justify-end gap-2">
+                      <DetailButton
+                        ariaLabel={`View requisition detail for ${row.doc_id}`}
+                        onClick={() => onOpen(row.doc_id)}
+                      />
+                      <RecordActionGroup
+                        label={row.doc_id}
+                        items={requisitionActions(row.doc_id)}
+                      />
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -138,10 +229,78 @@ export function RequisitionsView({
           </table>
         </div>
         <Pagination language={language} page={paginated.page} pageSize={pageSize} totalRows={table.controlledRows.length} onPageChange={setPage} onPageSizeChange={setPageSize} />
+        <BulkActionToolbar
+          disabledReason={bulkDisabledReason}
+          entityLabel="requisitions"
+          selectedCount={selectedIds.length}
+          onClear={() => {
+            setSelectedIds([]);
+            setBulkResult(null);
+          }}
+          onExport={() => exportRequisitions(selectedRows)}
+          onOpenReview={() => {
+            setBulkResult(null);
+            setBulkReviewOpen(true);
+          }}
+        />
+        <BulkReviewModal
+          actionLabel="Review selected requisitions for PIC/status update. No database write is made in this safe bulk pass."
+          ids={selectedIds}
+          open={bulkReviewOpen}
+          result={bulkResult}
+          onClose={() => setBulkReviewOpen(false)}
+          onConfirm={() => setBulkResult({ ok: true, succeeded: selectedIds, failed: [], skipped: [] })}
+        />
         </>
       )}
     </Panel>
   );
+}
+
+function exportRequisitions(rows: EnrichedRequisition[]) {
+  downloadCsv("selected-requisitions.csv", rows.map((row) => ({
+    doc_id: row.doc_id,
+    position: row.position,
+    site: row.site,
+    owner: row.person_in_charge ?? "",
+    status: row.status,
+    open_headcount: row.open_headcount
+  })));
+}
+
+function requisitionActions(docId: string) {
+  return [
+    { id: "workspace", label: "Workspace", href: `/workspace?type=requisition&id=${encodeURIComponent(docId)}` },
+    { id: "candidates", label: "Related candidates", href: `/candidates?candSearch=${encodeURIComponent(docId)}` },
+    { id: "offers", label: "Related offers", href: `/offers?offerSearch=${encodeURIComponent(docId)}` }
+  ];
+}
+
+function DetailButton({ ariaLabel, onClick }: { ariaLabel: string; onClick: () => void }) {
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-sm"
+      className="text-slate hover:text-primary"
+      aria-label={ariaLabel}
+      title={ariaLabel}
+      onClick={onClick}
+      icon={<Search size={16} aria-hidden="true" />}
+    />
+  );
+}
+
+function downloadCsv(filename: string, rows: Array<Record<string, string | number>>) {
+  if (rows.length === 0) return;
+  const headers = Object.keys(rows[0]);
+  const csv = [headers.join(","), ...rows.map((row) => headers.map((header) => JSON.stringify(row[header] ?? "")).join(","))].join("\n");
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 function ageLabel(row: EnrichedRequisition) {

@@ -13,7 +13,6 @@ const config: Config = {
         electric: "#146EFA",
         purple: "#411EDC",
         teal: "#0AA0C3",
-        emerald: "#00B894",
         orange: "#FF8A00",
         scarlet: "#FF3B30",
         amber: "#FFC107",

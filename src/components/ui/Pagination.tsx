@@ -47,7 +47,7 @@ export function Pagination({
         </label>
         <button
           type="button"
-          className={`grid size-8 place-items-center rounded text-lg font-medium transition-colors ${
+          className={`grid size-9 place-items-center rounded text-lg font-medium transition-colors ${
             safePage <= 1 ? "cursor-not-allowed text-[#AFC6EE]" : "text-navy hover:bg-lightgray hover:text-primary"
           }`}
           disabled={safePage <= 1}
@@ -63,7 +63,7 @@ export function Pagination({
         </span>
         <button
           type="button"
-          className={`grid size-8 place-items-center rounded text-lg font-medium transition-colors ${
+          className={`grid size-9 place-items-center rounded text-lg font-medium transition-colors ${
             safePage >= totalPages ? "cursor-not-allowed text-[#AFC6EE]" : "text-navy hover:bg-lightgray hover:text-primary"
           }`}
           disabled={safePage >= totalPages}

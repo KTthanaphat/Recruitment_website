@@ -1,12 +1,14 @@
 # AI Handover Overview
 
-Last updated: 2026-07-05
+Last updated: 2026-07-14
 
 ## Purpose
 
 Use this document to onboard a new AI chat quickly. It summarizes what the user is building, the current product state, the key business rules, and the working settings that make future changes efficient.
 
 The user is building an internal recruitment tracking web application for requisitions, sourcing, candidates, pipeline movement, offers, reporting, and audit history.
+
+The current product model is a five-section Hiring Workspace, not a four-tab read-only shell. The workspace spans Home, Requisitions, Sourcing, Candidates, and Pipeline, and it embeds transactional surfaces for creating and updating records in place.
 
 ## Repository And Runtime
 
@@ -76,6 +78,21 @@ requisitions.doc_id
 
 Candidates store `doc_group_id`, not direct `doc_id` or direct `group_id`. When a feature needs site, position, person in charge, or available requisitions, resolve through `document_groups` to the shared `group_id`.
 
+The active journey is group-scoped end to end. Candidate detail, offer filtering, and requisition matching should inherit the relevant `document_groups` context rather than assuming a standalone record view.
+
+Workspace behavior:
+
+- The Hiring Workspace is adaptive: users move through the same group-scoped journey from requisition intake to sourcing, candidate management, pipeline movement, and offers.
+- Group document URL context matters across the journey. It is the shared context used to keep requisitions, candidate detail, and offer actions aligned.
+- Embedded transactional surfaces should open the right drawer, modal, or update flow from the current record instead of forcing separate pages.
+- A command dispatcher coordinates these actions so the current workspace state, group context, and next-step intent stay aligned.
+- Group-first workspace navigation is the current mental model. Prefer opening a hiring case from `/workspace?type=group&id=...` when a group exists; requisition workspace links remain valid focused entry points for the same shared journey.
+- Treat workspace URL state as breadcrumbs: `type`, `id`, optional `doc`, and `section` identify the current hiring case, while `lang`, `site`, `pic`, and `sourcingWeek` must keep flowing through contextual links.
+- `section=offer` is the canonical URL state for the Offer surface. Treat `section=outcome` only as a legacy alias and replace it with `section=offer` without adding browser history.
+- Group workspaces show aggregate Sourcing, Pipeline, Offer, and Activity data when no `doc` is selected. Selecting `doc` narrows those sections to one requisition and must not reset the active `section`.
+- `/workspace` with no target shows the workspace picker directly; do not restore a redundant empty sticky workspace header.
+- Workspace picker and target resolution are active-open only: ongoing requisitions with `open_headcount > 0`, and groups containing at least one such requisition. Filled, cancelled, or zero-open direct URLs should fall into the invalid-target picker state.
+
 ## Current Routes
 
 - `/`: redirects to `/home`.
@@ -93,14 +110,12 @@ Candidates store `doc_group_id`, not direct `doc_id` or direct `group_id`. When 
 Sidebar order:
 
 1. Home
-2. Dashboard
-3. Requisitions
-4. Sourcing
-5. Candidates
-6. Pipeline
-7. Offers
-8. Administration
-9. Audit Log
+2. Workspace
+3. Records
+4. Dashboard
+5. Audit Log
+
+Records is an expandable parent using a pencil icon. In collapsed desktop mode, expanded Records children render as vertical icons under the parent instead of a flyout.
 
 ## User Preferences And Design Direction
 
@@ -111,9 +126,11 @@ Design preferences:
 - Keep the app as a professional internal tool, not a marketing page.
 - Use the existing blue/navy identity.
 - Keep UI dense enough for operational work.
-- Target a calm dense operations UI: fast scanning, restrained surfaces, compact action cards, clear owner/status/date hierarchy, and low visual noise.
+- Target a calm dense operations UI with a playful modern Swiss tone: crisp grid, restrained surfaces, compact action cards, clear owner/status/date hierarchy, and low visual noise.
 - Use Prompt font where the app has been tuned for it.
-- Prefer plain blue/navy summary cards, not many semantic color variants.
+- Prefer neutral-first summary cards, tables, and panels. Use navy for primary record names and metric values.
+- Reserve primary blue for active navigation, primary actions, selected filters/tabs, one dominant visualization fill, and all success/passed/in-SLA states.
+- Reserve orange/amber and scarlet for warning/risk. Do not use legacy success hues, teal, purple, or electric blue as general decoration.
 - Candidate pipeline movement is the signature visual language.
 - Avoid clutter in Pipeline cards.
 - Use icon buttons where appropriate, especially magnifying glass for View actions and next-step arrow for pipeline updates.
@@ -121,6 +138,8 @@ Design preferences:
 - Desktop sidebar has a persisted icon-only collapsed state in `localStorage`.
 - Thai and English language support must be preserved when changing user-facing labels.
 - Use `.agents/skills/internal-ops-ui/SKILL.md` for future internal-tool UX/UI design and review work. Leave `gpt-taste` for marketing-style pages.
+- Viewer access is limited, but the workspace itself is not read-only.
+- For future UI changes, prefer typography, spacing, border weight, and neutral contrast before adding color.
 
 Frontend quality preferences:
 
@@ -137,10 +156,12 @@ Home is first after opening/signing in.
 Current section order:
 
 1. Four responsive summary cards.
-2. Candidate Pipeline preview.
-3. Weekly Sourcing Updates.
-4. Needs Action.
-5. Recent Activity, only for `system_admin` and `admin_recruiter`.
+2. Today's Work / Workspace Watchlist.
+3. Data Quality.
+4. Candidate Pipeline preview.
+5. Weekly Sourcing Updates.
+6. Open Headcount.
+7. Recent Activity, only for `system_admin` and `admin_recruiter`.
 
 Four summary cards:
 
@@ -164,6 +185,15 @@ Weekly Sourcing Updates on Home:
 - Show open requisition groups not updated for more than 6 days.
 - Include groups that have never been updated.
 - Open group means matched to at least one ongoing requisition with open headcount.
+
+This home surface is part of the Hiring Workspace and can route into transactional work through the command dispatcher.
+
+Home-only recruiter bottleneck:
+
+- Home owns the recruiter-wide bottleneck view and compact work queue.
+- Home list sections render all available items. Today's Work, Data Quality, Sourcing Updates, Open Headcount, and Recent Activity become contained horizontal scroll rows when they exceed three items; Candidate Pipeline becomes a contained horizontal scroll row when it exceeds four items. Do not reintroduce kebab/reveal controls for these Home lists.
+- Keep cross-case prioritization on Home; do not recreate a global recommendation panel inside the selected workspace sections.
+- Recommendation and next-action terminology is removed. Use factual issue labels and explicit commands.
 
 ## Dashboard Rules
 
@@ -195,7 +225,7 @@ Opened requisition detail:
 
 - Rows are requisitions opened in selected date range.
 - Requisition Date means `requisitions.pr_approved_date`.
-- SLA shows green/red dot with age in days; unknown SLA displays neutral `-`.
+- SLA shows blue/red dot with age in days; unknown SLA displays neutral `-`.
 - Open rows calculate age to today; filled rows calculate age to the filled date.
 - Applicant counts use related `group_id`.
 - Stage counts mean candidates who are in or have ever been in the stage.
@@ -235,6 +265,8 @@ New requisition saved
 
 Each step should prefill values from the previous step.
 
+The requisition flow is now treated as a group-scope journey. New group creation, group matching, and downstream candidate setup all share the same document-group context.
+
 ## Sourcing Rules
 
 Channels:
@@ -251,7 +283,9 @@ Channels:
 Weekly sourcing update:
 
 - Only render update cards for marked channels.
-- Hidden/unmarked channels save as false and applicant count `0`.
+- Weekly update saves applicant counts only; it must not clear or change channel booleans.
+- Channel marking is controlled by sourcing setup/group matching. The RPC preserves omitted channel booleans and initializes new weekly rows from `position_groups`.
+- Unsaved selected weeks prefill applicant inputs from the latest saved group update.
 - Applicant totals include all channels.
 
 Add Match:
@@ -277,14 +311,21 @@ Candidate detail:
 - Shows candidate folder URL if present.
 - Shows Candidate Pipeline Journey above the timeline.
 - Candidate Pipeline Journey includes a derived first `Resume Screening` dot shown as passed for recorded candidates. It is not a stored `recruitment_logs.recruitment_process` value.
-- Timeline has an Update button.
+- Timeline has an Update button only when the candidate is updateable.
+- Secondary detail navigation lives under the kebab action menu.
 - Process update modal must open above the candidate detail drawer.
+
+Group doc URL context:
+
+- Use the group-level document URL as the shared anchor for related candidate and requisition records.
+- Group context should continue to resolve through `document_groups` so detail panes, available actions, and downstream offer work all point at the same group.
+- The UI should surface group-aware links and actions without flattening them into disconnected record pages.
 
 Pipeline journey color rules:
 
 - Light blue/gray: stage not reached.
-- Yellow: current pending stage.
-- Green: passed stage.
+- Amber: current pending stage.
+- Blue: passed stage.
 - Red: failed stage.
 
 Process update validation:
@@ -320,10 +361,24 @@ Aging:
 - Aging threshold is older than 7 days.
 - If any candidate in a stage is aging, show a red warning icon before the stage name.
 - If any candidate in a stage is aging, turn the stage name red.
-- Aging candidate next-step buttons are red.
-- Aging candidate last updated dates are red.
+- Candidate card updated dates stay neutral; candidate card arrows turn red only for the aging candidate itself.
+- Board filter and pipeline search belong in the right-aligned filter-icon popover on the board controls row. Keep Group cards visible on the left.
 - Do not show a separate aging count row under the stage.
 - Empty active stage columns stay blank; do not render per-stage empty-state text.
+
+Record details:
+
+- Detail drawer headers show one 3-dot action menu plus the compact Close button.
+- The detail action menu contains only `Open workspace`, rendered as an icon-only `LampDesk` button with tooltip and `aria-label`.
+- Related record links and candidate process update controls belong in the drawer body.
+- Requisition, Candidate, and Offer tables expose magnifying-glass detail buttons on desktop rows and mobile cards.
+
+Command dispatcher behavior:
+
+- Pipeline next-step actions should dispatch to the relevant modal or update flow for the current stage.
+- The dispatcher should preserve the current group scope and avoid resetting the surrounding workspace when advancing records.
+- Offer-pass handoff is confirmed through this dispatcher path. After a candidate passes Offer, the downstream offer flow must stay bound to the same candidate and resolved requisition context.
+- Confirmation invariant: the pass confirmation surface and the offer upsert surface must agree on candidate identity and requisition context. No silent re-targeting is acceptable.
 
 Test stage:
 
@@ -341,6 +396,7 @@ Failed Candidates and Passed Offer:
 
 - Failed Candidates use the same stage-column layout as the active pipeline for the current last-7-days window.
 - Empty Failed Candidates stage columns stay blank; only the whole panel empty state is shown when no failed candidates exist in any stage.
+- Failed candidates remain workflow state. They should stay visible in Pipeline failed-candidate sections, but a failed candidate in an active stage is not a Data Quality issue.
 - Passed Offer uses the same compact card arrangement.
 - No next-step update arrow.
 - Responsive multi-column layout.
@@ -366,6 +422,9 @@ Change Offer:
 - Candidate and Doc ID remain locked.
 - Accepted date, first working date, and remark remain editable.
 
+Offer work is embedded in the workspace and should inherit the current group document context.
+- The workspace Offer surface stays compact. Keep offer actions, reconciliation prompts, and linked record actions concise rather than rebuilding recommendation or summary blocks there.
+
 ## Permissions
 
 Roles:
@@ -373,7 +432,7 @@ Roles:
 - `system_admin`: recruitment data and user administration.
 - `admin_recruiter`: full recruitment-data editor and setup/group/match editor, but no user administration.
 - `site_recruiter`: recruitment writer for assigned scope, including group/match creation.
-- `viewer`: read-only.
+- `viewer`: limited read access to the workspace and related records.
 
 Important rule:
 
@@ -421,6 +480,8 @@ Schema/RPC changes require:
 - TypeScript type/payload updates,
 - UI/load/enrichment updates,
 - docs update.
+
+The new group-scope migration belongs in that path whenever workspace behavior, group document context, or offer availability rules change.
 
 ## Verification Commands
 
@@ -488,12 +549,13 @@ Start with this order:
 
 1. Read `docs/AI_HANDOVER.md`.
 2. Read `docs/WEBSITE_STRUCTURE.md` for canonical product structure.
-3. Read `docs/DEPLOYMENT.md` before push/deploy work.
-4. Run `git status --short --branch`.
-5. Inspect relevant source files with `rg` before editing.
-6. Make narrowly scoped changes aligned with existing patterns.
-7. Update docs in the same session when behavior changes.
-8. Run `pnpm typecheck`; run `pnpm build` before push.
+3. Read `docs/FEATURE_FILE_MAP.md` for component/helper/URL/role/RPC/test ownership.
+4. Read `docs/DEPLOYMENT.md` before push/deploy work.
+5. Run `git status --short --branch`.
+6. Inspect relevant source files with `rg` before editing.
+7. Make narrowly scoped changes aligned with existing patterns.
+8. Update docs in the same session when behavior changes.
+9. Run `pnpm typecheck`; run `pnpm build` before push.
 
 When implementing UI:
 

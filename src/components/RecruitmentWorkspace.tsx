@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { AdminView } from "@/components/admin/AdminView";
 import { AuditView } from "@/components/audit/AuditView";
 import { CandidatesView } from "@/components/candidates/CandidatesView";
@@ -11,15 +11,19 @@ import { AppShell } from "@/components/layout/AppShell";
 import { OffersView } from "@/components/offers/OffersView";
 import { PipelineBoardView } from "@/components/pipeline/PipelineBoardView";
 import { RequisitionsView } from "@/components/requisitions/RequisitionsView";
-import { SourcingView } from "@/components/sourcing/SourcingView";
+import { EmbeddedSourcingEditor, SourcingView } from "@/components/sourcing/SourcingView";
+import { WorkspaceOfferSection } from "@/components/workspace/WorkspaceOfferSection";
+import { HiringWorkspaceView } from "@/components/workspace/HiringWorkspaceView";
 import { Button } from "@/components/ui/Button";
 import { Drawer } from "@/components/ui/Drawer";
 import { Field, SelectInput, TextArea, TextInput } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
+import { OperationalSummaryStrip, RecordActionGroup } from "@/components/ui/Operations";
 import { Panel } from "@/components/ui/Panel";
 import { PipelineFunnel, type PipelineFunnelRow } from "@/components/ui/PipelineFunnel";
 import { StageRail } from "@/components/ui/StageRail";
 import { Tag } from "@/components/ui/Tag";
+import { DisabledReasonHint, InlineDataQualityIssues } from "@/components/ui/Workflow";
 import {
   ACTIVE_PIPELINE_STAGES,
   canManageSetup as canManageSetupRole,
@@ -37,11 +41,13 @@ import {
   WRITABLE_REQUISITION_STATUSES,
   type PipelineDisplayStage
 } from "@/lib/constants";
+import { currentLocalWeekStart, formatLocalDateInput } from "@/lib/dates";
 import {
   emptyDashboardData,
   enrichCandidates,
   enrichOffers,
   enrichRequisitions,
+  enrichSourcingGroups,
   filterChangeLogsByText,
   filterByText,
   latestLogsForCandidate,
@@ -52,19 +58,24 @@ import {
 } from "@/lib/data";
 import { boolFromForm, emptyToNull, formatDate, formatNumber, resultText, statusTone } from "@/lib/format";
 import { translate } from "@/lib/i18n/dictionary";
-import { hasSupabaseConfig, supabase } from "@/lib/supabase/client";
+import { candidateProcessDisabledReason, deriveDataQualityIssues, latestSuccessfulOfferPassDate, requisitionFillReadiness } from "@/lib/operations";
+import { getRequisitionSlaState } from "@/lib/sla";
+import { clearStoredSupabaseSession, hasSupabaseConfig, supabase, withAuthTimeout } from "@/lib/supabase/client";
 import { asNumber, requireFields } from "@/lib/validation/forms";
+import { buildContextualHref, pushWorkspaceUrlState, readWorkspaceUrlState as readWorkspaceUrlParams, updateWorkspaceUrlState, useWorkspaceUrlState } from "@/lib/workspace-url-state";
 import type {
   DashboardData,
   EnrichedCandidate,
   EnrichedRequisition,
   Language,
+  OfferPassHandoff,
   ProcessStage,
   RecruitmentLog,
   RequisitionRequestType,
   RequisitionStatus,
   RpcResult,
-  ViewId
+  ViewId,
+  WorkspaceActionRequest
 } from "@/types/recruitment";
 
 type ModalName =
@@ -103,11 +114,17 @@ type ProcessDefaults = {
 };
 
 type ModalDefaults = {
+  mode?: "new" | "change";
+  selectedId?: string;
+  candidate_id?: string;
   group_position?: string;
   doc_id?: string;
   group_id?: string;
   doc_group_id?: string;
   first_contact_date?: string;
+  accepted_date?: string;
+  offer_candidate_ids?: string[];
+  offer_doc_ids?: string[];
 };
 
 type GuideStep = "source_candidates" | "create_group" | "add_match" | "ask_candidate" | "create_candidate" | null;
@@ -136,6 +153,33 @@ type WelcomeSummary = {
 };
 
 type WelcomeRatioBucket = 0 | 25 | 50 | 75 | 100;
+type WorkspaceLoadState = "checking_session" | "redirecting_to_login" | "loading_data" | "ready" | "error";
+type ParsedWorkspaceUrlState = {
+  detailId: string | null;
+  detailType: "candidate" | "requisition" | null;
+  hasFilterParams: boolean;
+  language: Language | null;
+  owner: string | null;
+  site: string | null;
+  sourcingWeek: string | null;
+  workspaceId: string | null;
+  workspaceType: "requisition" | "group" | null;
+};
+
+function parseStoredFilters(value: string | null) {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    const filters = parsed as Record<string, unknown>;
+    return {
+      site: typeof filters.site === "string" ? filters.site : "",
+      owner: typeof filters.owner === "string" ? filters.owner : ""
+    };
+  } catch {
+    return null;
+  }
+}
 
 const rpcByModal: Record<Exclude<ModalName, null | "user">, string> = {
   requisition: "app_upsert_requisition",
@@ -152,8 +196,10 @@ const rpcByModal: Record<Exclude<ModalName, null | "user">, string> = {
 
 export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const router = useRouter();
+  const workspaceUrlState = useWorkspaceUrlState();
   const [language, setLanguage] = useState<Language>("en");
   const [data, setData] = useState<DashboardData>(emptyDashboardData);
+  const [workspaceLoadState, setWorkspaceLoadState] = useState<WorkspaceLoadState>("checking_session");
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("Loading recruitment records...");
   const [error, setError] = useState<string | null>(null);
@@ -161,11 +207,13 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const [sourcingWeek, setSourcingWeek] = useState(currentWeekStart());
   const [activeModal, setActiveModal] = useState<ModalName>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [offerPassHandoff, setOfferPassHandoff] = useState<OfferPassHandoff | null>(null);
   const [processDefaults, setProcessDefaults] = useState<ProcessDefaults>({});
   const [modalDefaults, setModalDefaults] = useState<ModalDefaults>({});
   const [guideStep, setGuideStep] = useState<GuideStep>(null);
   const [guideContext, setGuideContext] = useState<GuideContext>({});
   const [detail, setDetail] = useState<{ type: "requisition" | "candidate"; id: string } | null>(null);
+  const [workspaceTarget, setWorkspaceTarget] = useState<{ type: "requisition" | "group" | null; id: string | null }>({ type: null, id: null });
   const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [urlStateReady, setUrlStateReady] = useState(false);
@@ -173,55 +221,117 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const loadData = useCallback(async () => {
     if (!supabase) {
       setLoading(false);
+      setWorkspaceLoadState("error");
       setError("Supabase environment variables are not configured. Add .env.local or Vercel environment variables.");
-      return;
+      return null;
     }
 
     setLoading(true);
+    setWorkspaceLoadState("checking_session");
     setError(null);
-    const session = await supabase.auth.getSession();
+    let session;
+    try {
+      session = await withAuthTimeout(
+        supabase.auth.getSession(),
+        "Session verification timed out. Your saved session was cleared; please sign in again."
+      );
+    } catch (sessionError) {
+      clearStoredSupabaseSession();
+      setLoading(false);
+      setWorkspaceLoadState("redirecting_to_login");
+      setStatus(sessionError instanceof Error ? sessionError.message : "Session verification failed. Please sign in again.");
+      window.location.replace("/login?reason=session-timeout");
+      return null;
+    }
     if (!session.data.session) {
       setLoading(false);
+      setWorkspaceLoadState("redirecting_to_login");
       setStatus("No active session. Redirecting to login...");
-      router.replace("/login");
-      return;
+      window.location.replace("/login");
+      return null;
     }
 
+    setWorkspaceLoadState("loading_data");
     try {
       const loaded = await loadDashboardData(supabase);
       setData(loaded);
       setStatus("Recruitment records loaded.");
+      setWorkspaceLoadState("ready");
+      return loaded;
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Could not load recruitment data.");
+      setWorkspaceLoadState("error");
+      return null;
     } finally {
       setLoading(false);
     }
   }, [router]);
 
   useEffect(() => {
-    const urlState = readWorkspaceUrlState();
+    loadData();
+    const urlState = parseWorkspaceUrlState();
     const savedLanguage = localStorage.getItem("recruitment_lang") as Language | null;
     const savedFilters = localStorage.getItem("recruitment_filters");
+    const storedFilters = parseStoredFilters(savedFilters);
     setLanguage(urlState.language ?? savedLanguage ?? "en");
     if (urlState.hasFilterParams) {
       setFilters({ site: urlState.site ?? "", owner: urlState.owner ?? "" });
+    } else if (storedFilters) {
+      setFilters(storedFilters);
     } else if (savedFilters) {
-      setFilters(JSON.parse(savedFilters) as { site: string; owner: string });
+      localStorage.removeItem("recruitment_filters");
     }
+    if (urlState.sourcingWeek) setSourcingWeek(urlState.sourcingWeek);
+    if (urlState.detailType && urlState.detailId) setDetail({ type: urlState.detailType, id: urlState.detailId });
+    setWorkspaceTarget({ type: urlState.workspaceType, id: urlState.workspaceId });
     setUrlStateReady(true);
-    loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    function syncNavigationState() {
+      const urlState = parseWorkspaceUrlState();
+      setLanguage((current) => urlState.language ?? current);
+      if (urlState.hasFilterParams) {
+        setFilters((current) => {
+          const next = { site: urlState.site ?? "", owner: urlState.owner ?? "" };
+          return current.site === next.site && current.owner === next.owner ? current : next;
+        });
+      }
+      if (urlState.sourcingWeek) setSourcingWeek(urlState.sourcingWeek);
+      setDetail((current) => {
+        const next = urlState.detailType && urlState.detailId ? { type: urlState.detailType, id: urlState.detailId } : null;
+        if (!current && !next) return current;
+        return current?.type === next?.type && current?.id === next?.id ? current : next;
+      });
+      setWorkspaceTarget((current) => {
+        const next = { type: urlState.workspaceType, id: urlState.workspaceId };
+        return current.type === next.type && current.id === next.id ? current : next;
+      });
+    }
+
+    window.addEventListener("popstate", syncNavigationState);
+    window.addEventListener("workspace:urlchange", syncNavigationState);
+    return () => {
+      window.removeEventListener("popstate", syncNavigationState);
+      window.removeEventListener("workspace:urlchange", syncNavigationState);
+    };
+  }, []);
 
   useEffect(() => {
     if (!urlStateReady) return;
     localStorage.setItem("recruitment_lang", language);
     localStorage.setItem("recruitment_filters", JSON.stringify(filters));
-    replaceQueryParams({
+    updateWorkspaceUrlState({
       lang: language,
       site: filters.site,
-      pic: filters.owner
+      pic: filters.owner,
+      sourcingWeek,
+      type: initialView === "workspace" ? workspaceTarget.type : undefined,
+      id: initialView === "workspace" ? workspaceTarget.id : undefined,
+      detailType: detail?.type,
+      detailId: detail?.id
     });
-  }, [filters, language, urlStateReady]);
+  }, [detail, filters, initialView, language, sourcingWeek, urlStateReady, workspaceTarget]);
 
   const role = data.profile?.role ?? "viewer";
   const canWrite = canWriteRole(role);
@@ -231,7 +341,9 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const enrichedRequisitions = useMemo(() => enrichRequisitions(data), [data]);
   const enrichedCandidates = useMemo(() => enrichCandidates(data), [data]);
   const enrichedOffers = useMemo(() => enrichOffers(data), [data]);
+  const enrichedSourcingGroups = useMemo(() => enrichSourcingGroups(data, sourcingWeek), [data, sourcingWeek]);
   const staleSourcingGroups = useMemo(() => staleOpenSourcingGroups(data), [data]);
+  const dataQualityIssues = useMemo(() => deriveDataQualityIssues(data), [data]);
   const welcomeSummary = useMemo(
     () => buildWelcomeSummary(enrichedRequisitions, enrichedCandidates, data.offers, data.profile),
     [data.offers, data.profile, enrichedCandidates, enrichedRequisitions]
@@ -241,6 +353,67 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const filteredCandidates = useMemo(() => filterByText(enrichedCandidates, filters), [enrichedCandidates, filters]);
   const filteredOffers = useMemo(() => filterByText(enrichedOffers, filters), [enrichedOffers, filters]);
   const filteredChangeLogs = useMemo(() => filterChangeLogsByText(data, filters), [data, filters]);
+  const selectedWorkspaceDocId = workspaceUrlState.params.get("doc");
+
+  useEffect(() => {
+    if (initialView !== "workspace" || workspaceLoadState !== "ready" || workspaceTarget.type !== "requisition" || !workspaceTarget.id) return;
+    const match = data.document_groups.find((row) => row.doc_id === workspaceTarget.id && row.group_id);
+    if (!match?.group_id) return;
+    const docId = workspaceTarget.id;
+    setWorkspaceTarget({ type: "group", id: match.group_id });
+    updateWorkspaceUrlState({ type: "group", id: match.group_id, doc: docId, detailType: null, detailId: null, focusType: null, focusId: null });
+  }, [data.document_groups, initialView, workspaceLoadState, workspaceTarget]);
+
+  useEffect(() => {
+    if (initialView !== "workspace" || workspaceLoadState !== "ready" || activeModal) return;
+    const candidateId = workspaceUrlState.params.get("offerCandidate");
+    if (!candidateId) return;
+    const candidate = enrichedCandidates.find((row) => row.candidate_id === candidateId);
+    const docId = workspaceUrlState.params.get("doc")
+      ?? data.document_groups.find((row) => row.doc_group_id === candidate?.doc_group_id)?.doc_id;
+    const scopedDocGroupIds = new Set(data.document_groups.filter((row) => row.doc_id === docId).map((row) => row.doc_group_id));
+    setModalDefaults({
+      mode: "new",
+      candidate_id: candidateId,
+      doc_id: docId,
+      accepted_date: workspaceUrlState.params.get("offerDate") ?? undefined,
+      offer_candidate_ids: enrichedCandidates.filter((row) => scopedDocGroupIds.has(row.doc_group_id)).map((row) => row.candidate_id),
+      offer_doc_ids: docId ? [docId] : undefined
+    });
+    setActiveModal("offer");
+    updateWorkspaceUrlState({ offerCandidate: null, offerDate: null });
+  }, [activeModal, data.document_groups, enrichedCandidates, initialView, workspaceLoadState, workspaceUrlState.params]);
+  const workspaceScope = useMemo(() => {
+    const docIds = new Set<string>();
+    const groupIds = new Set<string>();
+    if (workspaceTarget.type === "requisition" && workspaceTarget.id) {
+      docIds.add(workspaceTarget.id);
+      data.document_groups.filter((row) => row.doc_id === workspaceTarget.id && row.group_id).forEach((row) => groupIds.add(row.group_id!));
+    } else if (workspaceTarget.type === "group" && workspaceTarget.id) {
+      groupIds.add(workspaceTarget.id);
+      const linked = data.document_groups.filter((row) => row.group_id === workspaceTarget.id).map((row) => row.doc_id);
+      if (selectedWorkspaceDocId && linked.includes(selectedWorkspaceDocId)) docIds.add(selectedWorkspaceDocId);
+      else linked.forEach((docId) => docIds.add(docId));
+    }
+    const documentGroups = data.document_groups.filter((row) => (
+      (row.group_id && groupIds.has(row.group_id))
+      || (docIds.has(row.doc_id) && groupIds.size === 0)
+    ));
+    const scopedDocumentGroups = selectedWorkspaceDocId
+      ? documentGroups.filter((row) => row.doc_id === selectedWorkspaceDocId)
+      : documentGroups;
+    const candidateDocGroupIds = new Set(documentGroups.map((row) => row.doc_group_id));
+    const scopedCandidates = enrichedCandidates.filter((row) => candidateDocGroupIds.has(row.doc_group_id));
+    const scopedRequisitions = enrichedRequisitions.filter((row) => docIds.has(row.doc_id));
+    const scopedOffers = enrichedOffers.filter((row) => docIds.has(row.doc_id));
+    return {
+      candidates: scopedCandidates,
+      docGroupId: scopedDocumentGroups[0]?.doc_group_id ?? null,
+      groupIds: [...groupIds],
+      offers: scopedOffers,
+      requisitions: scopedRequisitions
+    };
+  }, [data.document_groups, enrichedCandidates, enrichedOffers, enrichedRequisitions, selectedWorkspaceDocId, workspaceTarget]);
 
   const siteOptions = SITE_OPTIONS;
   const ownerOptions = recruiterNicknameOptions(data.profiles);
@@ -360,7 +533,17 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     setActiveModal("process");
   }
 
-  function openProcessFromDetail(candidateId: string) {
+  function openInitialProcessUpdate(candidate: EnrichedCandidate) {
+    setProcessDefaults({
+      candidate_id: candidate.candidate_id,
+      recruitment_process: "Phone Screen",
+      source: "manual",
+      remark: "Started from pipeline no-activity lane"
+    });
+    setActiveModal("process");
+  }
+
+  const openProcessFromDetail = useCallback((candidateId: string) => {
     const latest = latestLogsForCandidate(data, candidateId)[0];
     setProcessDefaults({
       candidate_id: candidateId,
@@ -368,6 +551,100 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       source: "manual"
     });
     setActiveModal("process");
+  }, [data]);
+
+  function dispatchWorkspaceAction(request: WorkspaceActionRequest) {
+    if (request.kind === "record.open") {
+      setDetail({ type: request.entity, id: request.id });
+      return;
+    }
+    if (!canWrite) {
+      setStatus("Read-only access: your role cannot update recruitment records.");
+      return;
+    }
+    if ((request.kind === "group.create" || request.kind === "group.match") && !canManageSetup) {
+      setStatus("Your role cannot change sourcing group setup.");
+      return;
+    }
+    if (request.kind === "requisition.create") {
+      setModalDefaults({ mode: "new" });
+      setActiveModal("requisition");
+      return;
+    }
+    if (request.kind === "requisition.edit") {
+      setModalDefaults({ mode: "change", selectedId: request.docId });
+      setActiveModal("requisition");
+      return;
+    }
+    if (request.kind === "requisition.status") {
+      setModalDefaults({ selectedId: request.docId });
+      setActiveModal("status");
+      return;
+    }
+    if (request.kind === "group.create") {
+      const requisition = data.requisitions.find((row) => row.doc_id === request.docId);
+      setGuideContext({ doc_id: request.docId, position: requisition?.position, site: requisition?.site, person_in_charge: requisition?.person_in_charge ?? undefined });
+      setGuideStep(request.docId ? "create_group" : null);
+      setModalDefaults({ mode: "new", group_position: requisition?.position ?? "" });
+      setActiveModal("group");
+      return;
+    }
+    if (request.kind === "group.match") {
+      setGuideContext({ doc_id: request.docId, group_id: request.groupId });
+      setGuideStep("add_match");
+      setModalDefaults({ doc_id: request.docId, group_id: request.groupId ?? "" });
+      setActiveModal("match");
+      return;
+    }
+    if (request.kind === "sourcing.update") {
+      if (request.payload) {
+        prepareRpcAction("app_upsert_sourcing_weekly_update", request.payload, `sourcing update - ${request.groupId}`);
+      } else {
+        pushWorkspaceUrlState({ section: "sourcing", focusType: "sourcing", focusId: request.groupId });
+      }
+      return;
+    }
+    if (request.kind === "candidate.create") {
+      setModalDefaults({ mode: "new", doc_group_id: request.docGroupId, first_contact_date: today() });
+      setActiveModal("candidate");
+      return;
+    }
+    if (request.kind === "candidate.process") {
+      const candidate = enrichedCandidates.find((row) => row.candidate_id === request.candidateId);
+      if (!candidate) {
+        setStatus("Candidate not found in this workspace.");
+        return;
+      }
+      if (request.intent === "start") openInitialProcessUpdate(candidate);
+      else if (request.intent === "maintain_test") openMaintainTest(candidate);
+      else if (request.intent === "update_offer") openOfferUpdate(candidate);
+      else if (request.intent === "manual") openProcessFromDetail(candidate.candidate_id);
+      else {
+        const currentIndex = ACTIVE_PIPELINE_STAGES.indexOf(candidate.latest_process as ProcessStage);
+        const targetStage = request.targetStage ?? ACTIVE_PIPELINE_STAGES[currentIndex + 1];
+        if (targetStage) openProcessForMove(candidate, targetStage);
+      }
+      return;
+    }
+    if (request.kind === "offer.upsert") {
+      const candidate = enrichedCandidates.find((row) => row.candidate_id === request.candidateId);
+      const candidateDocId = request.docId
+        ?? selectedWorkspaceDocId
+        ?? data.document_groups.find((row) => row.doc_group_id === candidate?.doc_group_id)?.doc_id;
+      const proposedAcceptedDate = request.proposedAcceptedDate
+        ?? latestSuccessfulOfferPassDate(request.candidateId ?? "", data.recruitment_logs)
+        ?? undefined;
+      setModalDefaults({
+        mode: request.offerId ? "change" : "new",
+        selectedId: request.offerId ? String(request.offerId) : "",
+        candidate_id: request.candidateId,
+        doc_id: candidateDocId,
+        accepted_date: proposedAcceptedDate,
+        offer_candidate_ids: initialView === "workspace" ? workspaceScope.candidates.map((row) => row.candidate_id) : undefined,
+        offer_doc_ids: initialView === "workspace" ? workspaceScope.requisitions.map((row) => row.doc_id) : undefined
+      });
+      setActiveModal("offer");
+    }
   }
 
   function prepareAction(modal: Exclude<ModalName, null>, form: HTMLFormElement) {
@@ -436,9 +713,15 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       setActiveModal(null);
       setProcessDefaults({});
       setModalDefaults({});
-      await loadData();
-      const guideContinued = continueGuideAfterSave(savedAction, result);
-      if (!guideContinued) setStatus("Saved successfully.");
+      const reloadedData = await loadData();
+      const handoff = offerPassHandoffFromAction(savedAction, reloadedData ?? data);
+      if (handoff) {
+        setOfferPassHandoff(handoff);
+        setStatus("Offer stage passed. Review and create the offer record when ready.");
+      } else {
+        const guideContinued = continueGuideAfterSave(savedAction, result);
+        if (!guideContinued) setStatus("Saved successfully.");
+      }
     } catch (saveError) {
       setStatus(saveError instanceof Error ? saveError.message : "Save failed.");
     } finally {
@@ -452,8 +735,11 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     const resultId = typeof result.id === "string" ? result.id : undefined;
 
     if (modal === "requisition" && payload.mode === "new") {
+      const createdDocId = resultId ?? valueAsString(payload.doc_id);
+      setWorkspaceTarget({ type: "requisition", id: createdDocId });
+      pushWorkspaceUrlState({ type: "requisition", id: createdDocId, section: "overview", doc: null, focusType: null, focusId: null });
       setGuideContext({
-        doc_id: resultId ?? valueAsString(payload.doc_id),
+        doc_id: createdDocId,
         position: valueAsString(payload.position),
         department: valueAsString(payload.department),
         site: valueAsString(payload.site),
@@ -492,6 +778,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     }
 
     if (modal === "candidate" && guideStep === "create_candidate") {
+      if (resultId) pushWorkspaceUrlState({ section: "pipeline", focusType: "candidate", focusId: resultId });
       clearGuide();
       setStatus("Candidate created and linked to the requisition group.");
       return true;
@@ -500,16 +787,81 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     return false;
   }
 
-  const detailBody = useMemo(() => buildDetailBody(detail, data, language, openProcessFromDetail), [detail, data, language, openProcessFromDetail]);
+  function openOfferFromHandoff() {
+    if (!offerPassHandoff) return;
+    const groupId = data.document_groups.find((row) => row.doc_id === offerPassHandoff.docId)?.group_id ?? null;
+    const defaults = {
+      candidate_id: offerPassHandoff.candidateId,
+      doc_id: offerPassHandoff.docId,
+      accepted_date: offerPassHandoff.passedDate,
+      offer_candidate_ids: initialView === "workspace" ? workspaceScope.candidates.map((row) => row.candidate_id) : undefined,
+      offer_doc_ids: initialView === "workspace" ? workspaceScope.requisitions.map((row) => row.doc_id) : undefined
+    };
+    const handoff = offerPassHandoff;
+    setOfferPassHandoff(null);
+    if (initialView === "workspace") {
+      if (groupId) setWorkspaceTarget({ type: "group", id: groupId });
+      pushWorkspaceUrlState({ type: groupId ? "group" : "requisition", id: groupId ?? handoff.docId, doc: groupId ? handoff.docId : null, section: "offer", focusType: null, focusId: null });
+      setModalDefaults({ mode: "new", ...defaults });
+      setActiveModal("offer");
+      return;
+    }
+    const path = `/workspace?type=${groupId ? "group" : "requisition"}&id=${encodeURIComponent(groupId ?? handoff.docId)}${groupId ? `&doc=${encodeURIComponent(handoff.docId)}` : ""}&section=offer&offerCandidate=${encodeURIComponent(handoff.candidateId)}&offerDate=${encodeURIComponent(handoff.passedDate)}`;
+    router.push(buildContextualHref(path, { language, site: filters.site, owner: filters.owner, sourcingWeek }));
+  }
+
+  const navigationContext = useMemo(
+    () => ({ language, site: filters.site, owner: filters.owner, sourcingWeek }),
+    [filters.owner, filters.site, language, sourcingWeek]
+  );
+  const detailBody = useMemo(
+    () => buildDetailBodyV2(detail, data, language, canWrite, openProcessFromDetail, navigationContext),
+    [canWrite, detail, data, language, navigationContext, openProcessFromDetail]
+  );
 
   if (!hasSupabaseConfig) {
     return (
       <main className="grid min-h-screen place-items-center bg-offwhite p-6">
         <Panel className="max-w-xl">
-          <h1 className="mb-2 text-2xl font-extrabold text-navy">Supabase configuration required</h1>
+          <h1 className="mb-2 text-2xl font-semibold text-navy">Supabase configuration required</h1>
           <p className="text-sm font-bold text-slate">Create `.env.local` from `.env.example`, then set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`.</p>
         </Panel>
       </main>
+    );
+  }
+
+  if (workspaceLoadState !== "ready") {
+    const stateMessages: Record<WorkspaceLoadState, { title: string; message: string }> = {
+      checking_session: {
+        title: "Checking Session",
+        message: "Confirming your recruitment tracking access..."
+      },
+      loading_data: {
+        title: "Loading Recruitment Records",
+        message: "Preparing the workspace and current filters..."
+      },
+      redirecting_to_login: {
+        title: "Sign In Required",
+        message: "No active session was found. Redirecting to login..."
+      },
+      error: {
+        title: "Could Not Load Recruitment Records",
+        message: error ?? "Please refresh and try again."
+      },
+      ready: {
+        title: "Recruitment Records Loaded",
+        message: "The workspace is ready."
+      }
+    };
+    const state = stateMessages[workspaceLoadState];
+    return (
+      <WorkspaceStatusScreen
+        title={state.title}
+        message={state.message}
+        busy={workspaceLoadState === "checking_session" || workspaceLoadState === "loading_data" || workspaceLoadState === "redirecting_to_login"}
+        loginHref={workspaceLoadState === "checking_session" || workspaceLoadState === "redirecting_to_login" ? "/login" : undefined}
+        onRetry={workspaceLoadState === "error" ? loadData : undefined}
+      />
     );
   }
 
@@ -517,12 +869,13 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     <AppShell
       activeView={initialView}
       language={language}
+      navigationContext={navigationContext}
       profile={data.profile}
       onLanguageChange={() => setLanguage((current) => (current === "en" ? "th" : "en"))}
       onRefresh={loadData}
       onSignOut={signOut}
     >
-      <div className="mb-4 grid gap-3 rounded-lg border border-[#D7DEE8] bg-white p-4 shadow-panel md:grid-cols-[1fr_1fr_auto]">
+      <div className="mb-4 grid gap-3 rounded-lg border border-[#D7DEE8] bg-white p-4 shadow-[0_8px_20px_rgba(11,19,43,0.035)] md:grid-cols-[1fr_1fr_auto]">
         <Field label="Site">
           <SelectInput value={filters.site} onChange={(event) => setFilters((old) => ({ ...old, site: event.target.value }))}>
             <option value="">All sites</option>
@@ -543,26 +896,87 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       <p role="status" aria-live="polite" aria-busy={loading || busy} className={`mb-4 min-h-6 text-sm font-bold ${error ? "text-orange" : "text-slate"}`}>{loading ? "Loading recruitment records..." : error ?? status}</p>
 
       {initialView === "home" ? (
-        <HomeView language={language} profile={data.profile} requisitions={filteredRequisitions} candidates={filteredCandidates} offers={data.offers} staleSourcingGroups={staleSourcingGroups} changeLogs={filteredChangeLogs} canViewRecentActivity={role === "system_admin" || role === "admin_recruiter"} onOpenRequisition={(id) => setDetail({ type: "requisition", id })} onOpenCandidate={(id) => setDetail({ type: "candidate", id })} />
+        <HomeView language={language} profile={data.profile} requisitions={filteredRequisitions} candidates={filteredCandidates} offers={filteredOffers} staleSourcingGroups={staleSourcingGroups} changeLogs={filteredChangeLogs} recruitmentLogs={data.recruitment_logs} dataQualityIssues={dataQualityIssues} canViewRecentActivity={role === "system_admin" || role === "admin_recruiter"} onOpenRequisition={(id) => setDetail({ type: "requisition", id })} onOpenCandidate={(id) => setDetail({ type: "candidate", id })} />
       ) : null}
 
       {initialView === "dashboard" ? (
         <VacancyWaterfallView language={language} data={data} requisitions={filteredRequisitions} offers={filteredOffers} />
       ) : null}
 
+      {initialView === "workspace" ? (
+        <HiringWorkspaceView
+          canWrite={canWrite}
+          data={data}
+          language={language}
+          onDispatchAction={dispatchWorkspaceAction}
+          offerSlot={(
+            <WorkspaceOfferSection
+              allOffers={data.offers}
+              candidates={workspaceScope.candidates}
+              canWrite={canWrite}
+              offers={workspaceScope.offers}
+              profile={data.profile}
+              requisitions={workspaceScope.requisitions}
+              onAction={dispatchWorkspaceAction}
+              onOpenCandidate={(id) => setDetail({ type: "candidate", id })}
+              onOpenRequisition={(id) => setDetail({ type: "requisition", id })}
+            />
+          )}
+          pipelineSlot={(
+            <PipelineBoardView
+              embedded
+              canWrite={canWrite}
+              dataQualityIssues={dataQualityIssues}
+              language={language}
+              profile={data.profile}
+              recruitmentLogs={data.recruitment_logs}
+              rows={workspaceScope.candidates}
+              onNewCandidate={workspaceScope.docGroupId ? () => dispatchWorkspaceAction({ kind: "candidate.create", docGroupId: workspaceScope.docGroupId! }) : undefined}
+              onOpen={(id) => setDetail({ type: "candidate", id })}
+              onMove={openProcessForMove}
+              onMaintainTest={openMaintainTest}
+              onStartProcess={openInitialProcessUpdate}
+              onUpdateOffer={openOfferUpdate}
+            />
+          )}
+          profile={data.profile}
+          selectedGroupDocId={selectedWorkspaceDocId}
+          sourcingSlot={(
+            <EmbeddedSourcingEditor
+              canManageSetup={canManageSetup}
+              canWrite={canWrite}
+              data={data}
+              docIds={workspaceScope.requisitions.map((row) => row.doc_id)}
+              groupIds={workspaceScope.groupIds}
+              language={language}
+              profile={data.profile}
+              weekStart={sourcingWeek}
+              onGroup={() => dispatchWorkspaceAction({ kind: "group.create", docId: workspaceScope.requisitions[0]?.doc_id ?? undefined })}
+              onMatch={workspaceScope.requisitions[0] ? () => dispatchWorkspaceAction({ kind: "group.match", docId: workspaceScope.requisitions[0].doc_id, groupId: workspaceScope.groupIds[0] }) : undefined}
+              onSaveSourcing={(payload, summary) => prepareRpcAction("app_upsert_sourcing_weekly_update", payload, summary)}
+              onWeekChange={setSourcingWeek}
+            />
+          )}
+          target={workspaceTarget}
+          weekStart={sourcingWeek}
+          onOpenCandidate={(id) => setDetail({ type: "candidate", id })}
+          onOpenRequisition={(id) => setDetail({ type: "requisition", id })}
+        />
+      ) : null}
+
       {initialView === "requisitions" ? (
-        <RequisitionsView language={language} rows={filteredRequisitions} canWrite={canWrite} onNew={() => setActiveModal("requisition")} onStatus={() => setActiveModal("status")} onOpen={(id) => setDetail({ type: "requisition", id })} />
+        <RequisitionsView language={language} rows={filteredRequisitions} candidates={filteredCandidates} profile={data.profile} canWrite={canWrite} onNew={() => setActiveModal("requisition")} onStatus={() => setActiveModal("status")} onOpen={(id) => setDetail({ type: "requisition", id })} />
       ) : null}
 
       {initialView === "candidates" ? (
-        <CandidatesView language={language} rows={filteredCandidates} canWrite={canWrite} onNew={() => setActiveModal("candidate")} onProcess={() => setActiveModal("process")} onOpen={(id) => setDetail({ type: "candidate", id })} />
+        <CandidatesView language={language} rows={filteredCandidates} profile={data.profile} canWrite={canWrite} onNew={() => setActiveModal("candidate")} onProcess={() => setActiveModal("process")} onOpen={(id) => setDetail({ type: "candidate", id })} />
       ) : null}
 
       {initialView === "pipeline" ? (
-        <PipelineBoardView language={language} rows={filteredCandidates} canWrite={canWrite} onNewCandidate={() => setActiveModal("candidate")} onAddUpdate={() => setActiveModal("process")} onOpen={(id) => setDetail({ type: "candidate", id })} onMove={openProcessForMove} onMaintainTest={openMaintainTest} onUpdateOffer={openOfferUpdate} />
+        <PipelineBoardView language={language} rows={filteredCandidates} recruitmentLogs={data.recruitment_logs} profile={data.profile} dataQualityIssues={dataQualityIssues} canWrite={canWrite} onNewCandidate={() => setActiveModal("candidate")} onAddUpdate={() => setActiveModal("process")} onOpen={(id) => setDetail({ type: "candidate", id })} onMove={openProcessForMove} onMaintainTest={openMaintainTest} onStartProcess={openInitialProcessUpdate} onUpdateOffer={openOfferUpdate} />
       ) : null}
 
-      {initialView === "offers" ? <OffersView language={language} rows={filteredOffers} canWrite={canWrite} onNew={() => setActiveModal("offer")} /> : null}
+      {initialView === "offers" ? <OffersView language={language} rows={filteredOffers} allOffers={data.offers} requisitions={filteredRequisitions} profile={data.profile} canWrite={canWrite} onNew={() => setActiveModal("offer")} onOpenCandidate={(id) => setDetail({ type: "candidate", id })} onOpenRequisition={(id) => setDetail({ type: "requisition", id })} /> : null}
 
       {initialView === "sourcing" ? (
         <SourcingView
@@ -622,10 +1036,19 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
         onConfirm={confirmPendingAction}
       />
 
+      <OfferPassHandoffPrompt
+        handoff={offerPassHandoff}
+        onCreateOffer={openOfferFromHandoff}
+        onStay={() => setOfferPassHandoff(null)}
+      />
+
       <Drawer
         open={Boolean(detail)}
         eyebrow={detail?.type === "candidate" ? "Candidate Detail" : "Requisition Detail"}
         title={detailBody.title}
+        headerMeta={detailBody.headerMeta}
+        headerActions={detailBody.headerActions}
+        inactive={Boolean(activeModal || pendingAction || offerPassHandoff)}
         onClose={() => setDetail(null)}
       >
         {detailBody.body}
@@ -912,9 +1335,9 @@ function RecordModal({
   const [selectedId, setSelectedId] = useState("");
 
   useEffect(() => {
-    setMode("new");
-    setSelectedId(processDefaults.candidate_id ?? "");
-  }, [modal, processDefaults.candidate_id]);
+    setMode(modalDefaults.mode ?? "new");
+    setSelectedId(modalDefaults.selectedId ?? processDefaults.candidate_id ?? "");
+  }, [modal, modalDefaults.mode, modalDefaults.selectedId, processDefaults.candidate_id]);
 
   if (!modal) return null;
   const selectedRecords = selectedModalRecords(data, selectedId);
@@ -946,7 +1369,7 @@ function RecordModal({
         {modal === "process" ? <ProcessPrefillFields data={data} defaults={processDefaults} selectedId={selectedId} selected={selectedRecords.candidate} onSelect={setSelectedId} /> : null}
         {modal === "pipeline_pass" ? <PipelinePassFields data={data} defaults={processDefaults} /> : null}
         {modal === "test_maintenance" ? <TestMaintenanceFields data={data} defaults={processDefaults} /> : null}
-        {modal === "offer" ? <OfferPrefillFields data={data} mode={mode} selectedId={selectedId} selected={selectedRecords.offer} onSelect={setSelectedId} /> : null}
+        {modal === "offer" ? <OfferPrefillFields data={data} mode={mode} selectedId={selectedId} selected={selectedRecords.offer} defaults={modalDefaults} onSelect={setSelectedId} /> : null}
         {modal === "group" ? <GroupPrefillFields data={data} mode={mode} selectedId={selectedId} selected={selectedRecords.group} defaults={modalDefaults} onSelect={setSelectedId} /> : null}
         {modal === "match" ? <MatchFields data={data} defaults={modalDefaults} /> : null}
         {modal === "snapshot" ? <SnapshotFields data={data} /> : null}
@@ -1501,33 +1924,41 @@ function UserFields({ canManageUsers, data }: { canManageUsers: boolean; data: D
 
 function OfferPrefillFields({
   data,
+  defaults,
   mode,
   selectedId,
   selected,
   onSelect
 }: {
   data: DashboardData;
+  defaults: ModalDefaults;
   mode: "new" | "change";
   selectedId: string;
   selected: DashboardData["offers"][number] | null;
   onSelect: (value: string) => void;
 }) {
   const offeredCandidateIds = new Set(data.offers.map((offer) => offer.candidate_id));
-  const eligibleCandidates = data.candidates.filter((candidate) => hasLatestOfferPass(data, candidate.candidate_id) && !offeredCandidateIds.has(candidate.candidate_id));
+  const allowedCandidateIds = defaults.offer_candidate_ids ? new Set(defaults.offer_candidate_ids) : null;
+  const eligibleCandidates = data.candidates.filter((candidate) => (
+    (!allowedCandidateIds || allowedCandidateIds.has(candidate.candidate_id))
+    && hasLatestOfferPass(data, candidate.candidate_id)
+    && !offeredCandidateIds.has(candidate.candidate_id)
+  ));
   const selectedCandidate = selected ? data.candidates.find((candidate) => candidate.candidate_id === selected.candidate_id) : null;
   const candidateOptions = selectedCandidate && !eligibleCandidates.some((candidate) => candidate.candidate_id === selectedCandidate.candidate_id)
     ? [...eligibleCandidates, selectedCandidate]
     : eligibleCandidates;
-  const [selectedCandidateId, setSelectedCandidateId] = useState(selected?.candidate_id ?? "");
-  const [selectedDocId, setSelectedDocId] = useState(selected?.doc_id ?? "");
+  const [selectedCandidateId, setSelectedCandidateId] = useState(selected?.candidate_id ?? defaults.candidate_id ?? "");
+  const [selectedDocId, setSelectedDocId] = useState(selected?.doc_id ?? defaults.doc_id ?? "");
+  const allowedDocIds = defaults.offer_doc_ids ? new Set(defaults.offer_doc_ids) : null;
   const docOptions = mode === "change" && selected?.doc_id
     ? data.requisitions.filter((row) => row.doc_id === selected.doc_id)
-    : availableOfferDocOptions(data, selectedCandidateId, selectedDocId);
+    : availableOfferDocOptions(data, selectedCandidateId, selectedDocId).filter((row) => !allowedDocIds || allowedDocIds.has(row.doc_id));
 
   useEffect(() => {
-    setSelectedCandidateId(selected?.candidate_id ?? "");
-    setSelectedDocId(selected?.doc_id ?? "");
-  }, [selected?.candidate_id, selected?.doc_id]);
+    setSelectedCandidateId(selected?.candidate_id ?? defaults.candidate_id ?? "");
+    setSelectedDocId(selected?.doc_id ?? defaults.doc_id ?? "");
+  }, [defaults.candidate_id, defaults.doc_id, selected?.candidate_id, selected?.doc_id]);
 
   useEffect(() => {
     if (mode === "change") return;
@@ -1563,7 +1994,7 @@ function OfferPrefillFields({
           {docOptions.map((row) => <option key={row.doc_id} value={row.doc_id}>{requisitionOptionLabel(row)}</option>)}
         </SelectInput>
       </Field>
-      <Field label="Accepted Date"><TextInput name="accepted_date" type="date" defaultValue={selected?.accepted_date ?? ""} /></Field>
+      <Field label="Accepted Date"><TextInput name="accepted_date" type="date" defaultValue={selected?.accepted_date ?? defaults.accepted_date ?? ""} /></Field>
       <Field label="First Working Date"><TextInput name="first_working_date" type="date" defaultValue={selected?.first_working_date ?? ""} /></Field>
       <Field label="Remark" className="md:col-span-2"><TextArea name="remark" rows={3} defaultValue={selected?.remark ?? ""} /></Field>
       <DataLists data={data} />
@@ -1729,7 +2160,7 @@ function WelcomeBackPrompt({
                       .replace("{total}", formatNumber(summary.responsibleVacancyTotal, language))}
                   </p>
                 </div>
-                <p className="text-2xl font-extrabold tabular-nums text-primary">{formatNumber(summary.filledResponsibleVacancyRatio, language)}%</p>
+                <p className="text-2xl font-semibold tabular-nums text-navy">{formatNumber(summary.filledResponsibleVacancyRatio, language)}%</p>
               </div>
               <div className="h-2 overflow-hidden rounded-full bg-[#D7DEE8]" aria-hidden="true">
                 <div className="h-full rounded-full bg-primary" style={{ width: progressWidth }} />
@@ -1755,9 +2186,8 @@ function WelcomeBackPrompt({
 function WelcomeSummaryItem({ language, label, value }: { language: Language; label: string; value: number }) {
   return (
     <div className="relative overflow-hidden rounded-md border border-[#D7DEE8] bg-white p-3 shadow-sm">
-      <span className="absolute inset-x-0 top-0 h-1 bg-primary" />
-      <p className="text-xs font-extrabold uppercase tracking-normal text-slate">{label}</p>
-      <p className="mt-1 text-2xl font-extrabold text-primary">{formatNumber(value, language)}</p>
+      <p className="text-xs font-medium uppercase tracking-normal text-slate">{label}</p>
+      <p className="mt-1 text-2xl font-semibold text-navy">{formatNumber(value, language)}</p>
     </div>
   );
 }
@@ -1822,7 +2252,7 @@ function welcomeRatioMessageKey(bucket: WelcomeRatioBucket) {
 }
 
 function todayDate() {
-  return dateOnlyFromDate(new Date());
+  return formatLocalDateInput();
 }
 
 function addDays(date: string, days: number) {
@@ -1840,10 +2270,7 @@ function dateOnly(value: string | null | undefined) {
 }
 
 function dateOnlyFromDate(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  return formatLocalDateInput(date);
 }
 
 function responsibleRows<T extends { site?: string | null; person_in_charge?: string | null }>(rows: T[], profile: DashboardData["profile"]) {
@@ -1938,7 +2365,218 @@ function ConfirmModal({
   );
 }
 
-function buildDetailBody(detail: { type: "requisition" | "candidate"; id: string } | null, data: DashboardData, language: Language, onUpdateCandidate: (candidateId: string) => void) {
+function OfferPassHandoffPrompt({
+  handoff,
+  onCreateOffer,
+  onStay
+}: {
+  handoff: OfferPassHandoff | null;
+  onCreateOffer: () => void;
+  onStay: () => void;
+}) {
+  return (
+    <Modal open={Boolean(handoff)} title="Offer stage passed" onClose={onStay} width="max-w-lg">
+      <div className="grid gap-4">
+        <p className="text-sm font-medium text-slate">
+          The candidate passed Offer on {formatDate(handoff?.passedDate ?? null)}. Create an offer record with this date proposed as the acceptance date, or remain in Pipeline.
+        </p>
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={onStay}>Stay in pipeline</Button>
+          <Button type="button" onClick={onCreateOffer}>Create offer</Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+type DetailBodyResult = {
+  title: string;
+  headerMeta?: ReactNode;
+  headerActions?: ReactNode;
+  body: ReactNode;
+};
+
+function buildDetailBodyV2(
+  detail: { type: "requisition" | "candidate"; id: string } | null,
+  data: DashboardData,
+  language: Language,
+  canWrite: boolean,
+  onUpdateCandidate: (candidateId: string) => void,
+  navigationContext: { language: Language; site: string; owner: string; sourcingWeek: string }
+): DetailBodyResult {
+  if (!detail) return { title: "Detail", body: null };
+  const href = (path: string) => buildContextualHref(path, navigationContext);
+
+  if (detail.type === "requisition") {
+    const requisition = enrichRequisitions(data).find((row) => row.doc_id === detail.id);
+    if (!requisition) return { title: "Requisition", body: <p className="text-sm font-bold text-slate">Record not found.</p> };
+    const groups = data.document_groups.filter((row) => row.doc_id === requisition.doc_id);
+    const positionGroupIds = new Set(groups.map((row) => row.group_id).filter(Boolean) as string[]);
+    const relatedDocGroupIds = positionGroupIds.size > 0
+      ? new Set(data.document_groups.filter((row) => row.group_id && positionGroupIds.has(row.group_id)).map((row) => row.doc_group_id))
+      : new Set(groups.map((row) => row.doc_group_id));
+    const candidates = enrichCandidates(data).filter((row) => relatedDocGroupIds.has(row.doc_group_id));
+    const offers = data.offers.filter((row) => row.doc_id === requisition.doc_id);
+    const applicantTotal = applicantCountForPositionGroups(data, positionGroupIds);
+    const funnelRows = buildPipelineFunnelRows(applicantTotal, historicalPipelineCountsForCandidates(data, candidates.map((row) => row.candidate_id)));
+    const readiness = requisitionFillReadiness(requisition, enrichCandidates(data));
+    const sla = getRequisitionSlaState(requisition, { openOnly: true });
+    const issues = deriveDataQualityIssues(data).filter((issue) =>
+      issue.entityId === requisition.doc_id
+      || candidates.some((candidate) => candidate.candidate_id === issue.entityId)
+      || offers.some((offer) => String(offer.offer_id) === issue.entityId)
+    );
+
+    return {
+      title: `${requisition.doc_id} / ${requisition.position}`,
+      headerMeta: (
+        <>
+          <Tag tone={statusTone(requisition.status)}>{requisition.status}</Tag>
+          <Tag tone={readiness.tone}>{readiness.label}</Tag>
+        </>
+      ),
+      headerActions: (
+        <RecordActionGroup
+          label={requisition.doc_id}
+          primary={{ id: "workspace", label: "Open workspace", href: href(`/workspace?type=requisition&id=${encodeURIComponent(requisition.doc_id)}&section=overview`), tone: "primary", iconOnly: true }}
+          items={[
+            { id: "sourcing", href: href(`/sourcing?reqSearch=${encodeURIComponent(requisition.doc_id)}`), label: "Open sourcing", tone: "primary" },
+            { id: "candidates", href: href(`/candidates?candSearch=${encodeURIComponent(requisition.doc_id)}`), label: "Related candidates" },
+            { id: "offers", href: href(`/offers?offerSearch=${encodeURIComponent(requisition.doc_id)}`), label: "Related offers" }
+          ]}
+        />
+      ),
+      body: (
+        <div className="grid min-w-0 gap-4">
+          <OperationalSummaryStrip items={[
+            { label: "Open HC", value: requisition.open_headcount, tone: requisition.open_headcount > 0 ? "warning" : "success", helper: "Remaining demand" },
+            { label: "Readiness", value: readiness.label, tone: readiness.tone, helper: readiness.reason },
+            { label: "SLA", value: sla?.label ?? "-", tone: sla?.isOverdue ? "danger" : "muted", helper: "Requisition age" }
+          ]} />
+          <InlineDataQualityIssues issues={issues} />
+          <DetailGrid rows={[
+            ["Site", requisition.site],
+            ["Department", requisition.department],
+            ["Section", requisition.section ?? "-"],
+            ["Request Type", requisition.request_type],
+            ["Replacement Names", requisition.request_type === "Replacement" ? replacementNamesDisplay(requisition.replacement_names) : "-"],
+            ["Owner", requisition.person_in_charge ?? "-"],
+            ["Line Manager", requisition.line_manager ?? "-"],
+            ["Headcount", String(requisition.head_count)],
+            ["Accepted", String(requisition.accepted_count)],
+            ["Open", String(requisition.open_headcount)]
+          ]} />
+          <DetailDisclosure title="Workflow" summary={`${candidates.length} candidates / ${offers.length} offers`}>
+            <PipelineFunnel
+              language={language}
+              rows={funnelRows}
+              subtitle="Historical stage touches, de-duplicated per candidate per stage"
+              totalValue={applicantTotal}
+            />
+          </DetailDisclosure>
+          <DetailDisclosure title="Related records" summary="Candidates and offers">
+            <div className="grid gap-4">
+              <DetailList title="Candidates" rows={candidates.map((row) => optionLabel([row.candidate_id, row.name, processLabel(row.latest_process)]))} />
+              <DetailList title="Offers" rows={offers.map((row) => `${row.candidate_id} / accepted ${formatDate(row.accepted_date)}`)} />
+            </div>
+          </DetailDisclosure>
+        </div>
+      )
+    };
+  }
+
+  const candidate = enrichCandidates(data).find((row) => row.candidate_id === detail.id);
+  if (!candidate) return { title: "Candidate", body: <p className="text-sm font-bold text-slate">Record not found.</p> };
+  const logs = latestLogsForCandidate(data, candidate.candidate_id);
+  const offers = data.offers.filter((row) => row.candidate_id === candidate.candidate_id);
+  const updateDisabledReason = candidateProcessDisabledReason(candidate, logs, data.profile);
+  const issues = deriveDataQualityIssues(data).filter((issue) =>
+    issue.entityId === candidate.candidate_id || offers.some((offer) => String(offer.offer_id) === issue.entityId)
+  );
+
+  return {
+    title: `${candidate.candidate_id} / ${candidate.name}`,
+    headerMeta: (
+      <>
+        <Tag tone={candidate.latest_result === 0 ? "danger" : candidate.accepted_date ? "success" : "teal"}>{processLabel(candidate.latest_process)}</Tag>
+        <Tag tone={statusTone(resultText(candidate.latest_result).toLowerCase())}>{resultText(candidate.latest_result)}</Tag>
+      </>
+    ),
+      headerActions: (
+        <RecordActionGroup
+          label={candidate.name}
+          primary={{ id: "workspace", label: "Open workspace", href: href(`/workspace?type=${candidate.group_id ? "group" : "requisition"}&id=${encodeURIComponent(candidate.group_id ?? candidate.doc_ids[0] ?? "")}&section=overview`), tone: "primary", iconOnly: true }}
+          items={[
+            ...(candidate.doc_ids[0] ? [{ id: "requisition", href: href(`/requisitions?detailType=requisition&detailId=${encodeURIComponent(candidate.doc_ids[0])}`), label: "View requisition", tone: "primary" as const }] : []),
+            { id: "same-group", href: href(`/candidates?candSearch=${encodeURIComponent(candidate.group_position ?? candidate.doc_group_id)}`), label: "Same group" },
+            { id: "pipeline", href: href(`/pipeline?pipelineSearch=${encodeURIComponent(candidate.candidate_id)}&detailType=candidate&detailId=${encodeURIComponent(candidate.candidate_id)}`), label: "Open in pipeline" }
+        ]}
+      />
+    ),
+    body: (
+      <div className="grid min-w-0 gap-4">
+        <InlineDataQualityIssues issues={issues} />
+        <DetailDisclosure title="Workflow" summary={`${logs.length} process updates`} defaultOpen>
+          <div className="grid gap-4">
+            {!updateDisabledReason.blocked ? (
+              <div className="flex flex-wrap items-start justify-between gap-3 rounded-md border border-[#D7DEE8] bg-lightgray/70 p-4">
+                <div className="min-w-0">
+                  <p className="text-xs font-medium uppercase tracking-normal text-slate">Update process</p>
+                  <p className="mt-1 text-sm font-medium text-slate">Move this candidate through the workflow using the process controls.</p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  disabled={!canWrite}
+                  onClick={() => onUpdateCandidate(candidate.candidate_id)}
+                >
+                  Update process
+                </Button>
+              </div>
+            ) : null}
+            <CandidateJourney logs={logs} />
+          </div>
+        </DetailDisclosure>
+        <DetailGrid rows={[
+          ["Phone", candidate.phone_no ?? "-"],
+          ["Group ID", candidate.group_id ?? candidate.doc_group_id],
+          ["Doc IDs", candidate.doc_ids.join(", ") || "-"],
+          ["Group Position", candidate.group_position ?? "-"],
+          ["Site", candidate.site ?? "-"],
+          ["Owner", candidate.person_in_charge ?? "-"],
+          ["Channel", candidate.channel ?? "-"],
+          ["Reference", candidate.ref_name ?? "-"]
+        ]} />
+        <DetailDisclosure title="Activity" summary="Timeline and offers">
+          <div className="grid gap-4">
+            <div>
+              <h4 className="mb-2 font-semibold text-navy">Timeline</h4>
+              <div className="grid gap-2">
+                {logs.length === 0 ? <p className="text-sm font-medium text-slate">No process logs yet.</p> : logs.map((log) => (
+                  <div key={log.log_id} className="min-w-0 rounded-md border border-[#D7DEE8] bg-white p-3 shadow-[0_6px_16px_rgba(11,19,43,0.025)]">
+                    <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                      <strong className="min-w-0 break-words text-navy">{processLabel(log.recruitment_process)}</strong>
+                      <Tag tone={statusTone(resultText(log.result).toLowerCase())}>{resultText(log.result)}</Tag>
+                    </div>
+                    <p className="mt-1 break-words text-sm font-medium text-slate">{formatDate(log.log_date)} / Round {log.round} / {log.interviewer ?? "No interviewer"}</p>
+                    {log.remark ? <p className="mt-1 break-words text-sm text-slate">{log.remark}</p> : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <DetailList title="Offers" rows={offers.map((row) => `${row.doc_id} / accepted ${formatDate(row.accepted_date)} / start ${formatDate(row.first_working_date)}`)} />
+          </div>
+        </DetailDisclosure>
+        {candidate.candidate_folder_url ? (
+          <a className="text-sm font-semibold text-primary underline" href={candidate.candidate_folder_url} target="_blank" rel="noreferrer">Open candidate folder</a>
+        ) : null}
+      </div>
+    )
+  };
+}
+
+function buildDetailBody(detail: { type: "requisition" | "candidate"; id: string } | null, data: DashboardData, language: Language, canWrite: boolean, onUpdateCandidate: (candidateId: string) => void) {
   if (!detail) return { title: "Detail", body: null };
 
   if (detail.type === "requisition") {
@@ -1953,11 +2591,33 @@ function buildDetailBody(detail: { type: "requisition" | "candidate"; id: string
     const offers = data.offers.filter((row) => row.doc_id === requisition.doc_id);
     const applicantTotal = applicantCountForPositionGroups(data, positionGroupIds);
     const funnelRows = buildPipelineFunnelRows(applicantTotal, historicalPipelineCountsForCandidates(data, candidates.map((row) => row.candidate_id)));
+    const allCandidates = enrichCandidates(data);
+    const readiness = requisitionFillReadiness(requisition, allCandidates);
+    const issues = deriveDataQualityIssues(data).filter((issue) => issue.entityId === requisition.doc_id || candidates.some((candidate) => candidate.candidate_id === issue.entityId) || offers.some((offer) => String(offer.offer_id) === issue.entityId));
 
     return {
       title: `${requisition.doc_id} · ${requisition.position}`,
       body: (
         <div className="grid gap-5">
+          <div className="rounded-md border border-[#D7DEE8] bg-lightgray/70 p-4">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-normal text-slate">Fill readiness</p>
+                <p className="mt-1 text-sm font-medium text-slate">{readiness.reason}</p>
+              </div>
+              <Tag tone={readiness.tone}>{readiness.label}</Tag>
+            </div>
+            <RecordActionGroup
+              label={requisition.doc_id}
+              primary={{ id: "workspace", href: `/workspace?type=requisition&id=${encodeURIComponent(requisition.doc_id)}`, label: "Open workspace", tone: "primary", iconOnly: true }}
+              items={[
+                { id: "sourcing", href: `/sourcing?site=${encodeURIComponent(requisition.site)}&pic=${encodeURIComponent(requisition.person_in_charge ?? "")}`, label: "Open sourcing", tone: "primary" },
+                { id: "candidates", href: `/candidates?candSearch=${encodeURIComponent(requisition.doc_id)}`, label: "Related candidates" },
+                { id: "offers", href: `/offers?offerSearch=${encodeURIComponent(requisition.doc_id)}`, label: "Related offers" }
+              ]}
+            />
+          </div>
+          <InlineDataQualityIssues issues={issues} />
           <DetailGrid rows={[
             ["Site", requisition.site],
             ["Department", requisition.department],
@@ -1987,27 +2647,43 @@ function buildDetailBody(detail: { type: "requisition" | "candidate"; id: string
   if (!candidate) return { title: "Candidate", body: <p className="text-sm font-bold text-slate">Record not found.</p> };
   const logs = latestLogsForCandidate(data, candidate.candidate_id);
   const offers = data.offers.filter((row) => row.candidate_id === candidate.candidate_id);
-  const updateBlockedReason = processUpdateBlockReason(logs);
+  const updateDisabledReason = candidateProcessDisabledReason(candidate, logs, data.profile);
+  const issues = deriveDataQualityIssues(data).filter((issue) => issue.entityId === candidate.candidate_id || offers.some((offer) => String(offer.offer_id) === issue.entityId));
 
   return {
     title: `${candidate.candidate_id} · ${candidate.name}`,
     body: (
       <div className="grid gap-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-xs font-extrabold uppercase tracking-normal text-slate">Pipeline Action</p>
-            {updateBlockedReason ? <p className="mt-1 text-sm font-bold text-orange">{updateBlockedReason}</p> : null}
+        {!updateDisabledReason.blocked ? (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-normal text-slate">Pipeline Action</p>
+              <p className="mt-1 text-sm font-medium text-slate">Update this candidate through the available process controls.</p>
+            </div>
+            <div className="flex flex-wrap justify-end gap-2">
+              {canWrite ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => onUpdateCandidate(candidate.candidate_id)}
+                >
+                  Update
+                </Button>
+              ) : <Tag tone="muted">{translate(language, "readonly")}</Tag>}
+            </div>
           </div>
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            disabled={Boolean(updateBlockedReason)}
-            onClick={() => onUpdateCandidate(candidate.candidate_id)}
-          >
-            Update
-          </Button>
-        </div>
+        ) : null}
+        <InlineDataQualityIssues issues={issues} />
+        <RecordActionGroup
+          label={candidate.name}
+          primary={{ id: "workspace", href: `/workspace?type=${candidate.group_id ? "group" : "requisition"}&id=${encodeURIComponent(candidate.group_id ?? candidate.doc_ids[0] ?? "")}`, label: "Open workspace", tone: "primary", iconOnly: true }}
+          items={[
+            ...(candidate.doc_ids[0] ? [{ id: "requisition", href: `/requisitions?detailType=requisition&detailId=${encodeURIComponent(candidate.doc_ids[0])}`, label: "View requisition", tone: "primary" as const }] : []),
+            { id: "same-group", href: `/candidates?candSearch=${encodeURIComponent(candidate.group_position ?? candidate.doc_group_id)}`, label: "Same group" },
+            { id: "pipeline", href: `/pipeline?detailType=candidate&detailId=${encodeURIComponent(candidate.candidate_id)}`, label: "Open in pipeline" }
+          ]}
+        />
         <DetailGrid rows={[
           ["Phone", candidate.phone_no ?? "-"],
           ["Group ID", candidate.group_id ?? candidate.doc_group_id],
@@ -2017,20 +2693,19 @@ function buildDetailBody(detail: { type: "requisition" | "candidate"; id: string
           ["Owner", candidate.person_in_charge ?? "-"],
           ["Channel", candidate.channel ?? "-"],
           ["Reference", candidate.ref_name ?? "-"],
-          ["Folder", candidate.candidate_folder_url ? "Open candidate folder" : "-"],
-          ["Latest Result", resultText(candidate.latest_result)]
+          ["Folder", candidate.candidate_folder_url ? "Open candidate folder" : "-"]
         ]} />
         {candidate.candidate_folder_url ? (
-          <a className="text-sm font-extrabold text-primary underline" href={candidate.candidate_folder_url} target="_blank" rel="noreferrer">Open candidate folder</a>
+          <a className="text-sm font-semibold text-primary underline" href={candidate.candidate_folder_url} target="_blank" rel="noreferrer">Open candidate folder</a>
         ) : null}
         <CandidateJourney logs={logs} />
         <div>
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <h4 className="font-extrabold text-navy">Timeline</h4>
+            <h4 className="font-semibold text-navy">Timeline</h4>
           </div>
           <div className="grid gap-2">
-            {logs.length === 0 ? <p className="text-sm font-bold text-slate">No process logs yet.</p> : logs.map((log) => (
-              <div key={log.log_id} className="rounded-md border border-[#D7DEE8] bg-white p-3 shadow-sm">
+            {logs.length === 0 ? <p className="text-sm font-medium text-slate">No process logs yet.</p> : logs.map((log) => (
+              <div key={log.log_id} className="rounded-md border border-[#D7DEE8] bg-white p-3 shadow-[0_6px_16px_rgba(11,19,43,0.025)]">
                 <div className="flex items-center justify-between gap-2">
                   <strong className="text-navy">{processLabel(log.recruitment_process)}</strong>
                   <Tag tone={statusTone(resultText(log.result).toLowerCase())}>{resultText(log.result)}</Tag>
@@ -2106,11 +2781,11 @@ function buildPipelineFunnelRows(applicantTotal: number, stageCounts: PipelineFu
 
 function DetailGrid({ rows }: { rows: Array<[string, string]> }) {
   return (
-    <dl className="grid gap-3 rounded-lg border border-[#D7DEE8] bg-lightgray p-4 sm:grid-cols-2">
+    <dl className="grid min-w-0 gap-3 rounded-lg border border-[#D7DEE8] bg-lightgray p-4 sm:grid-cols-2">
       {rows.map(([label, value]) => (
-        <div key={label}>
-          <dt className="text-xs font-extrabold uppercase tracking-normal text-slate">{label}</dt>
-          <dd className="mt-1 font-bold text-navy">{value}</dd>
+        <div key={label} className="min-w-0">
+          <dt className="text-xs font-medium uppercase tracking-normal text-slate">{label}</dt>
+          <dd className="mt-1 break-words font-semibold text-navy">{value}</dd>
         </div>
       ))}
     </dl>
@@ -2120,15 +2795,28 @@ function DetailGrid({ rows }: { rows: Array<[string, string]> }) {
 function DetailList({ title, rows }: { title: string; rows: string[] }) {
   return (
     <div>
-      <h4 className="mb-2 font-extrabold text-navy">{title}</h4>
+      <h4 className="mb-2 font-semibold text-navy">{title}</h4>
       <div className="grid gap-2">
         {rows.length === 0 ? (
-          <p className="text-sm font-bold text-slate">No records.</p>
+          <p className="text-sm font-medium text-slate">No records.</p>
         ) : (
-          rows.map((row) => <div key={row} className="rounded-md border border-[#D7DEE8] bg-white p-3 text-sm font-bold text-slate shadow-sm">{row}</div>)
+          rows.map((row) => <div key={row} className="min-w-0 break-words rounded-md border border-[#D7DEE8] bg-white p-3 text-sm font-medium text-slate shadow-[0_6px_16px_rgba(11,19,43,0.025)]">{row}</div>)
         )}
       </div>
     </div>
+  );
+}
+
+function DetailDisclosure({ children, defaultOpen = false, summary, title }: { children: ReactNode; defaultOpen?: boolean; summary: string; title: string }) {
+  return (
+    <details className="group min-w-0 rounded-md border border-[#D7DEE8] bg-white" open={defaultOpen}>
+      <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary/25 [&::-webkit-details-marker]:hidden">
+        <span className="font-semibold text-navy">{title}</span>
+        <span className="text-right text-xs font-medium text-slate group-open:hidden">{summary}</span>
+        <span className="hidden text-xs font-semibold text-primary group-open:inline">Hide</span>
+      </summary>
+      <div className="min-w-0 border-t border-[#D7DEE8] p-4">{children}</div>
+    </details>
   );
 }
 
@@ -2170,41 +2858,95 @@ function modalDialogTitle(language: Language, modal: ModalName, mode: "new" | "c
 }
 
 function today() {
-  return new Date().toISOString().slice(0, 10);
+  return formatLocalDateInput();
 }
 
 function currentWeekStart() {
-  const date = new Date();
-  const day = date.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  date.setDate(date.getDate() + diff);
-  return date.toISOString().slice(0, 10);
+  return currentLocalWeekStart();
 }
 
-function readWorkspaceUrlState() {
-  if (typeof window === "undefined") {
-    return { language: null, site: null, owner: null, hasFilterParams: false } as const;
+function offerPassHandoffFromAction(action: PendingAction, data: DashboardData): OfferPassHandoff | null {
+  const candidateId = valueAsString(action.payload.candidate_id);
+  if (!candidateId) return null;
+
+  let submittedPassDate = "";
+  if (
+    action.modal === "process"
+    && action.payload.recruitment_process === "Offer"
+    && String(action.payload.result) === "1"
+  ) {
+    submittedPassDate = valueAsString(action.payload.log_date);
   }
-  const params = new URLSearchParams(window.location.search);
+  if (action.modal === "pipeline_pass" && action.payload.target_stage === "Offer" && Array.isArray(action.payload.stages)) {
+    const offerStage = action.payload.stages.find((stage) => (
+      typeof stage === "object" && stage !== null && "stage" in stage && stage.stage === "Offer"
+    ));
+    if (offerStage && typeof offerStage === "object" && "log_date" in offerStage) submittedPassDate = valueAsString(offerStage.log_date);
+  }
+  if (!submittedPassDate) return null;
+
+  const candidate = data.candidates.find((row) => row.candidate_id === candidateId);
+  const docId = data.document_groups.find((row) => row.doc_group_id === candidate?.doc_group_id)?.doc_id;
+  const passedDate = latestSuccessfulOfferPassDate(candidateId, data.recruitment_logs) ?? submittedPassDate;
+  return docId ? { candidateId, docId, passedDate } : null;
+}
+
+function parseWorkspaceUrlState(): ParsedWorkspaceUrlState {
+  if (typeof window === "undefined") {
+    return { language: null, site: null, owner: null, sourcingWeek: null, detailType: null, detailId: null, workspaceType: null, workspaceId: null, hasFilterParams: false };
+  }
+  const params = readWorkspaceUrlParams();
   const language = params.get("lang");
   const parsedLanguage: Language | null = language === "en" || language === "th" ? language : null;
+  const detailType = params.get("detailType");
+  const workspaceType = params.get("type");
   return {
     language: parsedLanguage,
     site: params.get("site"),
     owner: params.get("pic"),
+    sourcingWeek: params.get("sourcingWeek"),
+    detailType: detailType === "candidate" || detailType === "requisition" ? detailType : null,
+    detailId: params.get("detailId"),
+    workspaceType: workspaceType === "requisition" || workspaceType === "group" ? workspaceType : null,
+    workspaceId: params.get("id"),
     hasFilterParams: params.has("site") || params.has("pic")
   };
 }
 
-function replaceQueryParams(values: Record<string, string | null | undefined>) {
-  if (typeof window === "undefined") return;
-  const url = new URL(window.location.href);
-  for (const [key, value] of Object.entries(values)) {
-    if (value) {
-      url.searchParams.set(key, value);
-    } else {
-      url.searchParams.delete(key);
-    }
-  }
-  window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+function WorkspaceStatusScreen({
+  busy,
+  loginHref,
+  message,
+  onRetry,
+  title
+}: {
+  busy: boolean;
+  loginHref?: string;
+  message: string;
+  onRetry?: () => void;
+  title: string;
+}) {
+  return (
+    <main className="grid min-h-screen place-items-center bg-offwhite p-6">
+      <Panel className="w-full max-w-md">
+        <div role="status" aria-live="polite" aria-busy={busy} className="grid gap-3 text-center">
+          {busy ? <div className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-[#D7DEE8] border-t-primary" /> : null}
+          <h1 className="text-xl font-semibold text-navy">{title}</h1>
+          <p className="text-sm font-medium text-slate">{message}</p>
+          {loginHref ? (
+            <div>
+              <a href={loginHref} className="inline-flex min-h-10 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#082FA8] focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2">
+                Go to sign in
+              </a>
+            </div>
+          ) : null}
+          {onRetry ? (
+            <div>
+              <Button type="button" variant="secondary" onClick={onRetry}>Retry</Button>
+            </div>
+          ) : null}
+        </div>
+      </Panel>
+    </main>
+  );
 }

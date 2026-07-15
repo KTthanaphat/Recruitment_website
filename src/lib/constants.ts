@@ -3,6 +3,7 @@ import type { ProcessStage, Profile, RequisitionStatus, Role, ViewId } from "@/t
 export const VIEWS: ViewId[] = [
   "home",
   "dashboard",
+  "workspace",
   "requisitions",
   "sourcing",
   "candidates",

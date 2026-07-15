@@ -243,6 +243,7 @@ export type EnrichedSourcingGroup = {
 export type ViewId =
   | "home"
   | "dashboard"
+  | "workspace"
   | "requisitions"
   | "candidates"
   | "pipeline"
@@ -250,6 +251,47 @@ export type ViewId =
   | "sourcing"
   | "admin"
   | "audit";
+
+export type WorkspaceSection = "overview" | "sourcing" | "pipeline" | "offer" | "activity";
+
+export type OfferDraftDefaults = {
+  candidateId?: string;
+  docId?: string;
+  proposedAcceptedDate?: string;
+};
+
+export type OfferPassHandoff = {
+  candidateId: string;
+  docId: string;
+  passedDate: string;
+};
+
+export type HiringJourneyStepId =
+  | "requisition"
+  | "setup"
+  | "sourcing"
+  | "candidates"
+  | "pipeline"
+  | "offer"
+  | "closure";
+
+export type HiringJourneyStepState = "completed" | "current" | "attention" | "blocked" | "not_started";
+
+export type WorkspaceActionRequest =
+  | { kind: "requisition.create" }
+  | { kind: "requisition.edit" | "requisition.status"; docId: string }
+  | { kind: "group.create"; docId?: string }
+  | { kind: "group.match"; docId: string; groupId?: string }
+  | { kind: "sourcing.update"; groupId: string; weekStart: string; payload?: Record<string, unknown> }
+  | { kind: "candidate.create"; docGroupId: string }
+  | {
+      kind: "candidate.process";
+      candidateId: string;
+      intent: "start" | "advance" | "maintain_test" | "update_offer" | "manual";
+      targetStage?: ProcessStage;
+    }
+  | ({ kind: "offer.upsert"; offerId?: number } & OfferDraftDefaults)
+  | { kind: "record.open"; entity: "candidate" | "requisition"; id: string };
 
 export type RpcResult = {
   ok: boolean;
