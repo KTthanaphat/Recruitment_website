@@ -34,7 +34,6 @@ import {
   PROCESS_UPDATE_STAGES,
   processLabel,
   recruiterNicknameOptions,
-  ROLE_LABELS,
   ROLES,
   SITE_OPTIONS,
   SOURCING_CHANNELS,
@@ -57,7 +56,7 @@ import {
   uniqueValues
 } from "@/lib/data";
 import { boolFromForm, emptyToNull, formatDate, formatNumber, resultText, statusTone } from "@/lib/format";
-import { translate } from "@/lib/i18n/dictionary";
+import { fillReadinessLabel, requisitionStatusLabel, requestTypeLabel, roleLabel, translate } from "@/lib/i18n/dictionary";
 import { candidateProcessDisabledReason, deriveDataQualityIssues, latestSuccessfulOfferPassDate, requisitionFillReadiness } from "@/lib/operations";
 import { getRequisitionSlaState } from "@/lib/sla";
 import { clearStoredSupabaseSession, hasSupabaseConfig, supabase, withAuthTimeout } from "@/lib/supabase/client";
@@ -833,24 +832,24 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   if (workspaceLoadState !== "ready") {
     const stateMessages: Record<WorkspaceLoadState, { title: string; message: string }> = {
       checking_session: {
-        title: "Checking Session",
-        message: "Confirming your recruitment tracking access..."
+        title: translate(language, "checkingSession"),
+        message: translate(language, "checkingSessionMessage")
       },
       loading_data: {
-        title: "Loading Recruitment Records",
-        message: "Preparing the workspace and current filters..."
+        title: translate(language, "loadingRecruitmentRecords"),
+        message: translate(language, "loadingRecruitmentRecordsMessage")
       },
       redirecting_to_login: {
-        title: "Sign In Required",
-        message: "No active session was found. Redirecting to login..."
+        title: translate(language, "signInRequired"),
+        message: translate(language, "redirectingToLoginMessage")
       },
       error: {
-        title: "Could Not Load Recruitment Records",
-        message: error ?? "Please refresh and try again."
+        title: translate(language, "couldNotLoadRecruitmentRecords"),
+        message: error ?? translate(language, "refreshAndTryAgain")
       },
       ready: {
-        title: "Recruitment Records Loaded",
-        message: "The workspace is ready."
+        title: translate(language, "recruitmentRecordsLoaded"),
+        message: translate(language, "workspaceReady")
       }
     };
     const state = stateMessages[workspaceLoadState];
@@ -876,24 +875,24 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       onSignOut={signOut}
     >
       <div className="mb-4 grid gap-3 rounded-lg border border-[#D7DEE8] bg-white p-4 shadow-[0_8px_20px_rgba(11,19,43,0.035)] md:grid-cols-[1fr_1fr_auto]">
-        <Field label="Site">
+        <Field label={translate(language, "site")}>
           <SelectInput value={filters.site} onChange={(event) => setFilters((old) => ({ ...old, site: event.target.value }))}>
-            <option value="">All sites</option>
+            <option value="">{translate(language, "allSites")}</option>
             {siteOptions.map((value) => <option key={value} value={value}>{value}</option>)}
           </SelectInput>
         </Field>
-        <Field label="Person in Charge">
+        <Field label={translate(language, "personInCharge")}>
           <SelectInput value={filters.owner} onChange={(event) => setFilters((old) => ({ ...old, owner: event.target.value }))}>
-            <option value="">All owners</option>
+            <option value="">{translate(language, "allOwners")}</option>
             {ownerOptions.map((value) => <option key={value} value={value}>{value}</option>)}
           </SelectInput>
         </Field>
         <div className="flex items-end">
-          <Button type="button" variant="secondary" onClick={() => setFilters({ site: "", owner: "" })}>Clear</Button>
+          <Button type="button" variant="secondary" onClick={() => setFilters({ site: "", owner: "" })}>{translate(language, "clear")}</Button>
         </div>
       </div>
 
-      <p role="status" aria-live="polite" aria-busy={loading || busy} className={`mb-4 min-h-6 text-sm font-bold ${error ? "text-orange" : "text-slate"}`}>{loading ? "Loading recruitment records..." : error ?? status}</p>
+      <p role="status" aria-live="polite" aria-busy={loading || busy} className={`mb-4 min-h-6 text-sm font-bold ${error ? "text-orange" : "text-slate"}`}>{loading ? translate(language, "loadingRecruitmentRecordsEllipsis") : error ?? status}</p>
 
       {initialView === "home" ? (
         <HomeView language={language} profile={data.profile} requisitions={filteredRequisitions} candidates={filteredCandidates} offers={filteredOffers} staleSourcingGroups={staleSourcingGroups} changeLogs={filteredChangeLogs} recruitmentLogs={data.recruitment_logs} dataQualityIssues={dataQualityIssues} canViewRecentActivity={role === "system_admin" || role === "admin_recruiter"} onOpenRequisition={(id) => setDetail({ type: "requisition", id })} onOpenCandidate={(id) => setDetail({ type: "candidate", id })} />
@@ -1360,20 +1359,20 @@ function RecordModal({
   }
 
   return (
-    <Modal open={Boolean(modal)} title={modalDialogTitle(language, modal, mode)} onClose={onClose}>
+    <Modal closeLabel={translate(language, "close")} open={Boolean(modal)} title={modalDialogTitle(language, modal, mode)} onClose={onClose}>
       <form key={`${modal}-${mode}-${selectedId}`} className="grid gap-4" onSubmit={handleSubmit}>
         {["requisition", "candidate", "offer", "group", "user"].includes(modal) ? <ModeRow mode={mode} onModeChange={handleModeChange} /> : null}
-        {modal === "requisition" ? <RequisitionFields data={data} profile={profile} mode={mode} selectedId={selectedId} selected={selectedRecords.requisition} onSelect={setSelectedId} /> : null}
-        {modal === "status" ? <StatusFields data={data} selectedId={selectedId} selected={selectedRecords.requisition} onSelect={setSelectedId} /> : null}
-        {modal === "candidate" ? <CandidatePrefillFields data={data} mode={mode} selectedId={selectedId} selected={selectedRecords.candidate} defaults={modalDefaults} onSelect={setSelectedId} /> : null}
-        {modal === "process" ? <ProcessPrefillFields data={data} defaults={processDefaults} selectedId={selectedId} selected={selectedRecords.candidate} onSelect={setSelectedId} /> : null}
-        {modal === "pipeline_pass" ? <PipelinePassFields data={data} defaults={processDefaults} /> : null}
-        {modal === "test_maintenance" ? <TestMaintenanceFields data={data} defaults={processDefaults} /> : null}
-        {modal === "offer" ? <OfferPrefillFields data={data} mode={mode} selectedId={selectedId} selected={selectedRecords.offer} defaults={modalDefaults} onSelect={setSelectedId} /> : null}
-        {modal === "group" ? <GroupPrefillFields data={data} mode={mode} selectedId={selectedId} selected={selectedRecords.group} defaults={modalDefaults} onSelect={setSelectedId} /> : null}
-        {modal === "match" ? <MatchFields data={data} defaults={modalDefaults} /> : null}
-        {modal === "snapshot" ? <SnapshotFields data={data} /> : null}
-        {modal === "user" ? <UserPrefillFields canManageUsers={canManageUsers} data={data} mode={mode} selectedId={selectedId} selected={selectedRecords.profile} onSelect={setSelectedId} /> : null}
+        {modal === "requisition" ? <RequisitionFields data={data} language={language} profile={profile} mode={mode} selectedId={selectedId} selected={selectedRecords.requisition} onSelect={setSelectedId} /> : null}
+        {modal === "status" ? <StatusFields data={data} language={language} selectedId={selectedId} selected={selectedRecords.requisition} onSelect={setSelectedId} /> : null}
+        {modal === "candidate" ? <CandidatePrefillFields data={data} language={language} mode={mode} selectedId={selectedId} selected={selectedRecords.candidate} defaults={modalDefaults} onSelect={setSelectedId} /> : null}
+        {modal === "process" ? <ProcessPrefillFields data={data} defaults={processDefaults} language={language} selectedId={selectedId} selected={selectedRecords.candidate} onSelect={setSelectedId} /> : null}
+        {modal === "pipeline_pass" ? <PipelinePassFields data={data} defaults={processDefaults} language={language} /> : null}
+        {modal === "test_maintenance" ? <TestMaintenanceFields data={data} defaults={processDefaults} language={language} /> : null}
+        {modal === "offer" ? <OfferPrefillFields data={data} language={language} mode={mode} selectedId={selectedId} selected={selectedRecords.offer} defaults={modalDefaults} onSelect={setSelectedId} /> : null}
+        {modal === "group" ? <GroupPrefillFields data={data} language={language} mode={mode} selectedId={selectedId} selected={selectedRecords.group} defaults={modalDefaults} onSelect={setSelectedId} /> : null}
+        {modal === "match" ? <MatchFields data={data} defaults={modalDefaults} language={language} /> : null}
+        {modal === "snapshot" ? <SnapshotFields data={data} language={language} /> : null}
+        {modal === "user" ? <UserPrefillFields canManageUsers={canManageUsers} data={data} language={language} mode={mode} selectedId={selectedId} selected={selectedRecords.profile} onSelect={setSelectedId} /> : null}
         <div className="flex justify-end gap-2 border-t border-[#D7DEE8] pt-4">
           <Button type="button" variant="secondary" onClick={onClose}>{translate(language, "cancel")}</Button>
           <Button type="submit" disabled={processSubmitBlocked}>{translate(language, "reviewChanges")}</Button>
@@ -1421,8 +1420,8 @@ function offerOptionLabel(data: DashboardData, offer: DashboardData["offers"][nu
   return optionLabel([offer.candidate_id, candidate?.name, offer.doc_id]);
 }
 
-function userOptionLabel(profile: DashboardData["profiles"][number]) {
-  return optionLabel([profile.nickname ?? profile.full_name ?? profile.email ?? profile.id, ROLE_LABELS[profile.role]]);
+function userOptionLabel(profile: DashboardData["profiles"][number], language: Language = "en") {
+  return optionLabel([profile.nickname ?? profile.full_name ?? profile.email ?? profile.id, roleLabel(language, profile.role)]);
 }
 
 function ModeRow({
@@ -1442,6 +1441,7 @@ function ModeRow({
 
 function RequisitionFields({
   data,
+  language,
   profile,
   mode,
   selectedId,
@@ -1449,6 +1449,7 @@ function RequisitionFields({
   onSelect
 }: {
   data: DashboardData;
+  language: Language;
   profile: DashboardData["profile"];
   mode: "new" | "change";
   selectedId: string;
@@ -1471,56 +1472,56 @@ function RequisitionFields({
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      <Field label="Doc ID">
+      <Field label={translate(language, "docId")}>
         {mode === "change" ? (
           <SelectInput name="doc_id" required value={selectedId} onChange={(event) => onSelect(event.target.value)}>
-            <option value="">Select requisition</option>
+            <option value="">{translate(language, "selectRequisitionOption")}</option>
             {data.requisitions.map((row) => <option key={row.doc_id} value={row.doc_id}>{requisitionOptionLabel(row)}</option>)}
           </SelectInput>
         ) : (
           <TextInput name="doc_id" list="doc-id-options" required />
         )}
       </Field>
-      <Field label="PR Approved Date"><TextInput name="pr_approved_date" type="date" defaultValue={selected?.pr_approved_date ?? ""} /></Field>
-      <Field label="Request Type">
+      <Field label={translate(language, "prApprovedDate")}><TextInput name="pr_approved_date" type="date" defaultValue={selected?.pr_approved_date ?? ""} /></Field>
+      <Field label={translate(language, "requestType")}>
         <SelectInput name="request_type" value={requestType} onChange={(event) => setRequestType(event.target.value as RequisitionRequestType)}>
-          <option value="New">New Position</option>
-          <option value="Replacement">Replacement Position</option>
+          <option value="New">{requestTypeLabel(language, "New")}</option>
+          <option value="Replacement">{requestTypeLabel(language, "Replacement")}</option>
         </SelectInput>
       </Field>
-      <Field label="Site">
+      <Field label={translate(language, "site")}>
         {isSiteRecruiter ? <input type="hidden" name="site" value={assignedSite} /> : null}
         <SelectInput name={isSiteRecruiter ? undefined : "site"} required defaultValue={siteValue ?? ""} disabled={isSiteRecruiter}>
-          <option value="">Select site</option>
+          <option value="">{translate(language, "selectSite")}</option>
           {SITE_OPTIONS.map((site) => <option key={site} value={site}>{site}</option>)}
         </SelectInput>
       </Field>
-      <Field label="Department"><TextInput name="department" list="department-options" required defaultValue={selected?.department ?? ""} /></Field>
-      <Field label="Section"><TextInput name="section" list="section-options" defaultValue={selected?.section ?? ""} /></Field>
-      <Field label="Position"><TextInput name="position" list="position-options" required defaultValue={selected?.position ?? ""} /></Field>
-      <Field label="Level (L)">
+      <Field label={translate(language, "department")}><TextInput name="department" list="department-options" required defaultValue={selected?.department ?? ""} /></Field>
+      <Field label={translate(language, "section")}><TextInput name="section" list="section-options" defaultValue={selected?.section ?? ""} /></Field>
+      <Field label={translate(language, "position")}><TextInput name="position" list="position-options" required defaultValue={selected?.position ?? ""} /></Field>
+      <Field label={translate(language, "levelL")}>
         <SelectInput name="level" defaultValue={selected?.level ?? ""}>
-          <option value="">Select level</option>
+          <option value="">{translate(language, "selectLevel")}</option>
           {Array.from({ length: 15 }, (_, level) => <option key={level} value={String(level)}>{level}</option>)}
         </SelectInput>
       </Field>
-      <Field label="Head Count"><TextInput name="head_count" type="number" min={1} defaultValue={selected?.head_count ?? 1} required /></Field>
-      <Field label="Person in Charge">
+      <Field label={translate(language, "headCount")}><TextInput name="head_count" type="number" min={1} defaultValue={selected?.head_count ?? 1} required /></Field>
+      <Field label={translate(language, "personInCharge")}>
         {isSiteRecruiter ? <input type="hidden" name="person_in_charge" value={nickname} /> : null}
         <SelectInput name={isSiteRecruiter ? undefined : "person_in_charge"} defaultValue={ownerValue ?? ""} disabled={isSiteRecruiter}>
-          <option value="">Unassigned</option>
+          <option value="">{translate(language, "unassigned")}</option>
           {personOptions.map((person) => <option key={person} value={person}>{person}</option>)}
         </SelectInput>
       </Field>
-      <Field label="Line Manager"><TextInput name="line_manager" list="manager-options" defaultValue={selected?.line_manager ?? ""} /></Field>
-      <Field label="Status">
-        <SelectInput name="status" defaultValue={selected?.status === "filled" ? "ongoing" : selected?.status ?? "ongoing"}>{WRITABLE_REQUISITION_STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}</SelectInput>
+      <Field label={translate(language, "lineManager")}><TextInput name="line_manager" list="manager-options" defaultValue={selected?.line_manager ?? ""} /></Field>
+      <Field label={translate(language, "status")}>
+        <SelectInput name="status" defaultValue={selected?.status === "filled" ? "ongoing" : selected?.status ?? "ongoing"}>{WRITABLE_REQUISITION_STATUSES.map((status) => <option key={status} value={status}>{requisitionStatusLabel(language, status)}</option>)}</SelectInput>
       </Field>
       {requestType === "Replacement" ? (
         <div className="grid gap-2 md:col-span-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-sm font-bold text-navy">Replacement Names</span>
-            <Button type="button" size="sm" variant="secondary" onClick={() => setReplacementNames((names) => [...names, ""])}>Add replacement</Button>
+            <span className="text-sm font-bold text-navy">{translate(language, "replacementNames")}</span>
+            <Button type="button" size="sm" variant="secondary" onClick={() => setReplacementNames((names) => [...names, ""])}>{translate(language, "addReplacement")}</Button>
           </div>
           <div className="grid gap-2">
             {replacementNames.map((name, index) => (
@@ -1528,7 +1529,7 @@ function RequisitionFields({
                 key={index}
                 name="replacement_names"
                 required={index === 0}
-                placeholder={`Replacement name ${index + 1}`}
+                placeholder={translate(language, "replacementName", { index: index + 1 })}
                 value={name}
                 onChange={(event) => setReplacementNames((names) => names.map((item, itemIndex) => itemIndex === index ? event.target.value : item))}
               />
@@ -1543,21 +1544,23 @@ function RequisitionFields({
 
 function StatusFields({
   data,
+  language,
   selectedId,
   selected,
   onSelect
 }: {
   data: DashboardData;
+  language: Language;
   selectedId: string;
   selected: DashboardData["requisitions"][number] | null;
   onSelect: (value: string) => void;
 }) {
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      <Field label="Doc ID"><SelectInput name="doc_id" required value={selectedId} onChange={(event) => onSelect(event.target.value)}><option value="">Select requisition</option>{data.requisitions.map((row) => <option key={row.doc_id} value={row.doc_id}>{requisitionOptionLabel(row)}</option>)}</SelectInput></Field>
-      <Field label="Date"><TextInput name="log_date" type="date" required defaultValue={today()} /></Field>
-      <Field label="Status"><SelectInput name="status" defaultValue={selected?.status ?? "ongoing"}>{["ongoing", "filled", "cancel"].map((status) => <option key={status}>{status}</option>)}</SelectInput></Field>
-      <Field label="Remark" className="md:col-span-2"><TextArea name="remark" rows={3} /></Field>
+      <Field label={translate(language, "docId")}><SelectInput name="doc_id" required value={selectedId} onChange={(event) => onSelect(event.target.value)}><option value="">{translate(language, "selectRequisitionOption")}</option>{data.requisitions.map((row) => <option key={row.doc_id} value={row.doc_id}>{requisitionOptionLabel(row)}</option>)}</SelectInput></Field>
+      <Field label={translate(language, "date")}><TextInput name="log_date" type="date" required defaultValue={today()} /></Field>
+      <Field label={translate(language, "status")}><SelectInput name="status" defaultValue={selected?.status ?? "ongoing"}>{["ongoing", "filled", "cancel"].map((status) => <option key={status} value={status}>{requisitionStatusLabel(language, status)}</option>)}</SelectInput></Field>
+      <Field label={translate(language, "remark")} className="md:col-span-2"><TextArea name="remark" rows={3} /></Field>
     </div>
   );
 }
@@ -1618,6 +1621,7 @@ function ProcessFields({ data, defaults }: { data: DashboardData; defaults: Proc
 
 function CandidatePrefillFields({
   data,
+  language,
   mode,
   selectedId,
   selected,
@@ -1625,6 +1629,7 @@ function CandidatePrefillFields({
   onSelect
 }: {
   data: DashboardData;
+  language: Language;
   mode: "new" | "change";
   selectedId: string;
   selected: DashboardData["candidates"][number] | null;
@@ -1650,33 +1655,33 @@ function CandidatePrefillFields({
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      <Field label="Candidate ID">
+      <Field label={translate(language, "candidateId")}>
         {mode === "change" ? (
           <SelectInput name="candidate_id" required value={selectedId} onChange={(event) => onSelect(event.target.value)}>
-            <option value="">Select candidate</option>
+            <option value="">{translate(language, "selectCandidateOption")}</option>
             {data.candidates.map((row) => <option key={row.candidate_id} value={row.candidate_id}>{candidateOptionLabel(row)}</option>)}
           </SelectInput>
         ) : (
-          <SelectInput name="candidate_id"><option value="">Auto in New mode</option>{data.candidates.map((row) => <option key={row.candidate_id} value={row.candidate_id}>{candidateOptionLabel(row)}</option>)}</SelectInput>
+          <SelectInput name="candidate_id"><option value="">{translate(language, "autoInNewMode")}</option>{data.candidates.map((row) => <option key={row.candidate_id} value={row.candidate_id}>{candidateOptionLabel(row)}</option>)}</SelectInput>
         )}
       </Field>
-      <Field label="Name"><TextInput name="name" required defaultValue={selected?.name ?? ""} /></Field>
-      <Field label="Phone No."><TextInput name="phone_no" defaultValue={selected?.phone_no ?? ""} /></Field>
-      <Field label="Group ID">
+      <Field label={translate(language, "name")}><TextInput name="name" required defaultValue={selected?.name ?? ""} /></Field>
+      <Field label={translate(language, "phoneNo")}><TextInput name="phone_no" defaultValue={selected?.phone_no ?? ""} /></Field>
+      <Field label={translate(language, "groupId")}>
         <SelectInput name="doc_group_id" required value={selectedDocGroupId} onChange={(event) => setSelectedDocGroupId(event.target.value)}>
-          <option value="">Select group</option>
+          <option value="">{translate(language, "selectGroup")}</option>
           {data.document_groups.map((row) => <option key={row.doc_group_id} value={row.doc_group_id}>{documentGroupOptionLabel(row)}</option>)}
         </SelectInput>
       </Field>
-      <Field label="Channel">
+      <Field label={translate(language, "channel")}>
         <SelectInput name="channel" value={selectedChannel} onChange={(event) => setSelectedChannel(event.target.value)} disabled={!selectedDocGroupId || availableChannels.length === 0}>
-          <option value="">{availableChannels.length === 0 ? "No sourcing channels marked for this group" : "Select channel"}</option>
+          <option value="">{availableChannels.length === 0 ? translate(language, "noSourcingChannelsForGroup") : translate(language, "selectChannel")}</option>
           {availableChannels.map((channel) => <option key={channel.enabled} value={channel.label}>{channel.label}</option>)}
         </SelectInput>
       </Field>
-      <Field label="Reference Name"><TextInput name="ref_name" list="ref-options" defaultValue={selected?.ref_name ?? ""} /></Field>
-      <Field label="First Contact Date"><TextInput name="first_contact_date" type="date" defaultValue={firstContactDate} /></Field>
-      <Field label="Candidate Folder Link" className="md:col-span-2"><TextInput name="candidate_folder_url" type="url" defaultValue={selected?.candidate_folder_url ?? ""} /></Field>
+      <Field label={translate(language, "referenceName")}><TextInput name="ref_name" list="ref-options" defaultValue={selected?.ref_name ?? ""} /></Field>
+      <Field label={translate(language, "firstContactDate")}><TextInput name="first_contact_date" type="date" defaultValue={firstContactDate} /></Field>
+      <Field label={translate(language, "candidateFolderLink")} className="md:col-span-2"><TextInput name="candidate_folder_url" type="url" defaultValue={selected?.candidate_folder_url ?? ""} /></Field>
       <DataLists data={data} />
     </div>
   );
@@ -1685,12 +1690,14 @@ function CandidatePrefillFields({
 function ProcessPrefillFields({
   data,
   defaults,
+  language,
   selectedId,
   selected,
   onSelect
 }: {
   data: DashboardData;
   defaults: ProcessDefaults;
+  language: Language;
   selectedId: string;
   selected: DashboardData["candidates"][number] | null;
   onSelect: (value: string) => void;
@@ -1706,30 +1713,30 @@ function ProcessPrefillFields({
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <input type="hidden" name="source" value={defaults.source ?? "manual"} />
-      <Field label="Candidate">
+      <Field label={translate(language, "candidate")}>
         <SelectInput name="candidate_id" required value={candidateId} onChange={(event) => onSelect(event.target.value)}>
-          <option value="">Select candidate</option>
+          <option value="">{translate(language, "selectCandidateOption")}</option>
           {data.candidates.map((row) => <option key={row.candidate_id} value={row.candidate_id}>{candidateOptionLabel(row)}</option>)}
         </SelectInput>
       </Field>
-      <Field label="Date"><TextInput name="log_date" type="date" defaultValue={today()} required /></Field>
+      <Field label={translate(language, "date")}><TextInput name="log_date" type="date" defaultValue={today()} required /></Field>
       {blockedReason ? <p className="rounded-md bg-lightgray p-3 text-sm font-bold text-orange md:col-span-2">{blockedReason}</p> : null}
-      <Field label="Process">
+      <Field label={translate(language, "process")}>
         <SelectInput name="recruitment_process" required defaultValue={processValue} disabled={availableStages.length === 0}>
-          {availableStages.length === 0 ? <option value="">No process update available</option> : null}
-          {availableStages.map((stage) => <option key={stage} value={stage}>{processLabel(stage)}</option>)}
+          {availableStages.length === 0 ? <option value="">{translate(language, "noProcessUpdateAvailable")}</option> : null}
+          {availableStages.map((stage) => <option key={stage} value={stage}>{processLabel(stage, language)}</option>)}
         </SelectInput>
       </Field>
-      <Field label="Round"><TextInput name="round" type="number" min={1} defaultValue={defaults.round ?? latest?.round ?? 1} required /></Field>
-      <Field label="Interviewer"><TextInput name="interviewer" list="interviewer-options" defaultValue={latest?.interviewer ?? ""} /></Field>
-      <Field label="Result"><SelectInput name="result" defaultValue={defaults.result ?? ""}><option value="">Pending</option><option value="1">Pass</option><option value="0">Fail</option></SelectInput></Field>
-      <Field label="Remark" className="md:col-span-2"><TextArea name="remark" rows={3} defaultValue={defaults.remark ?? ""} /></Field>
+      <Field label={translate(language, "round")}><TextInput name="round" type="number" min={1} defaultValue={defaults.round ?? latest?.round ?? 1} required /></Field>
+      <Field label={translate(language, "interviewer")}><TextInput name="interviewer" list="interviewer-options" defaultValue={latest?.interviewer ?? ""} /></Field>
+      <Field label={translate(language, "result")}><SelectInput name="result" defaultValue={defaults.result ?? ""}><option value="">{resultText(null, language)}</option><option value="1">{resultText(1, language)}</option><option value="0">{resultText(0, language)}</option></SelectInput></Field>
+      <Field label={translate(language, "remark")} className="md:col-span-2"><TextArea name="remark" rows={3} defaultValue={defaults.remark ?? ""} /></Field>
       <DataLists data={data} />
     </div>
   );
 }
 
-function PipelinePassFields({ data, defaults }: { data: DashboardData; defaults: ProcessDefaults }) {
+function PipelinePassFields({ data, defaults, language }: { data: DashboardData; defaults: ProcessDefaults; language: Language }) {
   const stages = defaults.passed_stages ?? [];
   const isTestExit = stages.length === 1 && stages[0] === "Test" && defaults.target_stage === "Reference Check";
   const currentRound = defaults.current_round ?? 1;
@@ -1746,30 +1753,30 @@ function PipelinePassFields({ data, defaults }: { data: DashboardData; defaults:
       <input type="hidden" name="stage_count" value={stages.length} />
       <input type="hidden" name="extra_test_round_count" value={isTestExit ? extraTestRoundCount : 0} />
       <div className="rounded-md border border-[#D7DEE8] bg-lightgray p-3 text-sm font-bold text-slate">
-        Confirm each passed stage. After save, {processLabel(defaults.target_stage as ProcessStage)} will be created as Pending automatically.
+        {translate(language, "confirmPassedStagesHint", { stage: processLabel(defaults.target_stage as ProcessStage, language), result: resultText(null, language) })}
       </div>
       {isTestExit ? (
         <div className="grid gap-3 rounded-md border border-[#D7DEE8] bg-white p-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <strong className="text-sm text-navy">Additional Test Rounds</strong>
-              <p className="mt-1 text-xs font-medium text-slate">Added rounds are saved as Pending before the candidate leaves Test.</p>
+              <strong className="text-sm text-navy">{translate(language, "additionalTestRounds")}</strong>
+              <p className="mt-1 text-xs font-medium text-slate">{translate(language, "additionalTestRoundsHelp")}</p>
             </div>
-            <Button type="button" size="sm" variant="secondary" onClick={() => setExtraTestRoundCount((count) => count + 1)}>Add Test Round</Button>
+            <Button type="button" size="sm" variant="secondary" onClick={() => setExtraTestRoundCount((count) => count + 1)}>{translate(language, "addTestRound")}</Button>
           </div>
           {Array.from({ length: extraTestRoundCount }, (_, index) => {
             const round = currentRound + index + 1;
             return (
               <div key={index} className="grid gap-4 rounded-md border border-[#D7DEE8] bg-lightgray/70 p-3 md:grid-cols-2">
                 <div className="flex flex-wrap items-center gap-2 md:col-span-2">
-                  <Tag tone="teal">Test</Tag>
-                  <Tag tone="muted">Round {round}</Tag>
-                  <Tag tone="warning">Pending</Tag>
+                  <Tag tone="teal">{processLabel("Test", language)}</Tag>
+                  <Tag tone="muted">{translate(language, "round")} {round}</Tag>
+                  <Tag tone="warning">{resultText(null, language)}</Tag>
                 </div>
-                <Field label="Date"><TextInput name={`extra_test_log_date_${index}`} type="date" defaultValue={today()} required /></Field>
-                <Field label="Round"><TextInput name={`extra_test_round_${index}`} type="number" min={1} defaultValue={round} required /></Field>
-                <Field label="Interviewer"><TextInput name={`extra_test_interviewer_${index}`} list="interviewer-options" /></Field>
-                <Field label="Remark"><TextArea name={`extra_test_remark_${index}`} rows={2} defaultValue="Additional Test round before moving forward" /></Field>
+                <Field label={translate(language, "date")}><TextInput name={`extra_test_log_date_${index}`} type="date" defaultValue={today()} required /></Field>
+                <Field label={translate(language, "round")}><TextInput name={`extra_test_round_${index}`} type="number" min={1} defaultValue={round} required /></Field>
+                <Field label={translate(language, "interviewer")}><TextInput name={`extra_test_interviewer_${index}`} list="interviewer-options" /></Field>
+                <Field label={translate(language, "remark")}><TextArea name={`extra_test_remark_${index}`} rows={2} defaultValue={translate(language, "additionalTestRoundRemark")} /></Field>
               </div>
             );
           })}
@@ -1779,12 +1786,12 @@ function PipelinePassFields({ data, defaults }: { data: DashboardData; defaults:
         <div key={stage} className="grid gap-4 rounded-md border border-[#D7DEE8] bg-white p-3 md:grid-cols-2">
           <input type="hidden" name={`stage_${index}`} value={stage} />
           <div className="md:col-span-2">
-            <Tag tone="teal">{processLabel(stage)}</Tag>
+            <Tag tone="teal">{processLabel(stage, language)}</Tag>
           </div>
-          <Field label="Date"><TextInput name={`log_date_${index}`} type="date" defaultValue={today()} required /></Field>
-          <Field label="Round"><TextInput name={`round_${index}`} type="number" min={1} value={isTestExit && stage === "Test" ? currentRound : undefined} defaultValue={isTestExit && stage === "Test" ? undefined : 1} readOnly={isTestExit && stage === "Test"} required /></Field>
-          <Field label="Interviewer"><TextInput name={`interviewer_${index}`} list="interviewer-options" /></Field>
-          <Field label="Remark"><TextArea name={`remark_${index}`} rows={2} defaultValue={index === stages.length - 1 ? defaults.remark ?? "" : ""} /></Field>
+          <Field label={translate(language, "date")}><TextInput name={`log_date_${index}`} type="date" defaultValue={today()} required /></Field>
+          <Field label={translate(language, "round")}><TextInput name={`round_${index}`} type="number" min={1} value={isTestExit && stage === "Test" ? currentRound : undefined} defaultValue={isTestExit && stage === "Test" ? undefined : 1} readOnly={isTestExit && stage === "Test"} required /></Field>
+          <Field label={translate(language, "interviewer")}><TextInput name={`interviewer_${index}`} list="interviewer-options" /></Field>
+          <Field label={translate(language, "remark")}><TextArea name={`remark_${index}`} rows={2} defaultValue={index === stages.length - 1 ? defaults.remark ?? "" : ""} /></Field>
         </div>
       ))}
       <DataLists data={data} />
@@ -1792,7 +1799,7 @@ function PipelinePassFields({ data, defaults }: { data: DashboardData; defaults:
   );
 }
 
-function TestMaintenanceFields({ data, defaults }: { data: DashboardData; defaults: ProcessDefaults }) {
+function TestMaintenanceFields({ data, defaults, language }: { data: DashboardData; defaults: ProcessDefaults; language: Language }) {
   const currentRound = defaults.current_round ?? defaults.round ?? 1;
   const nextRound = currentRound + 1;
 
@@ -1800,29 +1807,29 @@ function TestMaintenanceFields({ data, defaults }: { data: DashboardData; defaul
     <div className="grid gap-4">
       <input type="hidden" name="candidate_id" value={defaults.candidate_id ?? ""} />
       <div className="rounded-md border border-[#D7DEE8] bg-lightgray p-3 text-sm font-medium text-slate">
-        Save the current Test round as Pass, then create the next Test round as Pending.
+        {translate(language, "testMaintenanceHint")}
       </div>
       <div className="grid gap-4 rounded-md border border-[#D7DEE8] bg-white p-3 md:grid-cols-2">
         <div className="flex flex-wrap items-center gap-2 md:col-span-2">
-          <Tag tone="teal">Current Test</Tag>
-          <Tag tone="muted">Round {currentRound}</Tag>
-          <Tag tone="success">Pass</Tag>
+          <Tag tone="teal">{translate(language, "currentTest")}</Tag>
+          <Tag tone="muted">{translate(language, "round")} {currentRound}</Tag>
+          <Tag tone="success">{resultText(1, language)}</Tag>
         </div>
-        <Field label="Date"><TextInput name="current_log_date" type="date" defaultValue={today()} required /></Field>
-        <Field label="Round"><TextInput name="current_round" type="number" min={1} value={currentRound} readOnly required /></Field>
-        <Field label="Interviewer"><TextInput name="current_interviewer" list="interviewer-options" /></Field>
-        <Field label="Remark"><TextArea name="current_remark" rows={2} defaultValue="Current Test round passed; maintaining candidate in Test." /></Field>
+        <Field label={translate(language, "date")}><TextInput name="current_log_date" type="date" defaultValue={today()} required /></Field>
+        <Field label={translate(language, "round")}><TextInput name="current_round" type="number" min={1} value={currentRound} readOnly required /></Field>
+        <Field label={translate(language, "interviewer")}><TextInput name="current_interviewer" list="interviewer-options" /></Field>
+        <Field label={translate(language, "remark")}><TextArea name="current_remark" rows={2} defaultValue={translate(language, "currentTestRoundPassedRemark")} /></Field>
       </div>
       <div className="grid gap-4 rounded-md border border-[#D7DEE8] bg-lightgray/70 p-3 md:grid-cols-2">
         <div className="flex flex-wrap items-center gap-2 md:col-span-2">
-          <Tag tone="teal">Next Test</Tag>
-          <Tag tone="muted">Round {nextRound}</Tag>
-          <Tag tone="warning">Pending</Tag>
+          <Tag tone="teal">{translate(language, "nextTest")}</Tag>
+          <Tag tone="muted">{translate(language, "round")} {nextRound}</Tag>
+          <Tag tone="warning">{resultText(null, language)}</Tag>
         </div>
-        <Field label="Date"><TextInput name="next_log_date" type="date" defaultValue={today()} required /></Field>
-        <Field label="Round"><TextInput name="next_round" type="number" min={1} value={nextRound} readOnly required /></Field>
-        <Field label="Interviewer"><TextInput name="next_interviewer" list="interviewer-options" /></Field>
-        <Field label="Remark"><TextArea name="next_remark" rows={2} defaultValue="Next Test round pending." /></Field>
+        <Field label={translate(language, "date")}><TextInput name="next_log_date" type="date" defaultValue={today()} required /></Field>
+        <Field label={translate(language, "round")}><TextInput name="next_round" type="number" min={1} value={nextRound} readOnly required /></Field>
+        <Field label={translate(language, "interviewer")}><TextInput name="next_interviewer" list="interviewer-options" /></Field>
+        <Field label={translate(language, "remark")}><TextArea name="next_remark" rows={2} defaultValue={translate(language, "nextTestRoundPendingRemark")} /></Field>
       </div>
       <DataLists data={data} />
     </div>
@@ -1859,46 +1866,46 @@ function GroupFields({ data }: { data: DashboardData }) {
   );
 }
 
-function MatchFields({ data, defaults }: { data: DashboardData; defaults: ModalDefaults }) {
+function MatchFields({ data, defaults, language }: { data: DashboardData; defaults: ModalDefaults; language: Language }) {
   const matchedDocIds = new Set(data.document_groups.map((group) => group.doc_id));
   const docOptions = data.requisitions.filter((row) => !matchedDocIds.has(row.doc_id) || row.doc_id === defaults.doc_id);
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      <Field label="Doc ID"><SelectInput name="doc_id" required defaultValue={defaults.doc_id ?? ""}>{docOptions.map((row) => <option key={row.doc_id} value={row.doc_id}>{requisitionOptionLabel(row)}</option>)}</SelectInput></Field>
-      <Field label="Group ID"><SelectInput name="group_id" required defaultValue={defaults.group_id ?? ""}>{data.position_groups.map((row) => <option key={row.group_id} value={row.group_id}>{positionGroupOptionLabel(row)}</option>)}</SelectInput></Field>
+      <Field label={translate(language, "docId")}><SelectInput name="doc_id" required defaultValue={defaults.doc_id ?? ""}>{docOptions.map((row) => <option key={row.doc_id} value={row.doc_id}>{requisitionOptionLabel(row)}</option>)}</SelectInput></Field>
+      <Field label={translate(language, "groupId")}><SelectInput name="group_id" required defaultValue={defaults.group_id ?? ""}>{data.position_groups.map((row) => <option key={row.group_id} value={row.group_id}>{positionGroupOptionLabel(row)}</option>)}</SelectInput></Field>
     </div>
   );
 }
 
-function SnapshotFields({ data }: { data: DashboardData }) {
+function SnapshotFields({ data, language }: { data: DashboardData; language: Language }) {
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      <Field label="Week Start"><TextInput name="week_start" type="date" defaultValue={currentWeekStart()} required /></Field>
-      <Field label="Category">
+      <Field label={translate(language, "weekStart")}><TextInput name="week_start" type="date" defaultValue={currentWeekStart()} required /></Field>
+      <Field label={translate(language, "category")}>
         <SelectInput name="waterfall_category">
           {["Week Start", "Open", "Filled", "Total"].map((category) => <option key={category} value={category}>{category}</option>)}
         </SelectInput>
       </Field>
-      <Field label="Site">
+      <Field label={translate(language, "site")}>
         <SelectInput name="site" required>
-          <option value="">Select site</option>
+          <option value="">{translate(language, "selectSite")}</option>
           {SITE_OPTIONS.map((site) => <option key={site} value={site}>{site}</option>)}
         </SelectInput>
       </Field>
-      <Field label="Request Type">
+      <Field label={translate(language, "requestType")}>
         <SelectInput name="request_type">
-          <option value="New">New</option>
-          <option value="Replacement">Replacement</option>
+          <option value="New">{requestTypeLabel(language, "New")}</option>
+          <option value="Replacement">{requestTypeLabel(language, "Replacement")}</option>
         </SelectInput>
       </Field>
-      <Field label="Vacancy Count"><TextInput name="vacancy_count" type="number" defaultValue={0} /></Field>
+      <Field label={translate(language, "vacancyCount")}><TextInput name="vacancy_count" type="number" defaultValue={0} /></Field>
       <DataLists data={data} />
     </div>
   );
 }
 
-function UserFields({ canManageUsers, data }: { canManageUsers: boolean; data: DashboardData }) {
+function UserFields({ canManageUsers, data, language = "en" }: { canManageUsers: boolean; data: DashboardData; language?: Language }) {
   if (!canManageUsers) return <p className="text-sm font-bold text-orange">Only system admins can manage app accounts.</p>;
 
   return (
@@ -1907,7 +1914,7 @@ function UserFields({ canManageUsers, data }: { canManageUsers: boolean; data: D
         <SelectInput name="user_id">
           <option value="">Required in Change mode</option>
           {data.profiles.map((profile) => (
-            <option key={profile.id} value={profile.id}>{userOptionLabel(profile)}</option>
+            <option key={profile.id} value={profile.id}>{userOptionLabel(profile, language)}</option>
           ))}
         </SelectInput>
       </Field>
@@ -1916,7 +1923,7 @@ function UserFields({ canManageUsers, data }: { canManageUsers: boolean; data: D
       <Field label="Nickname / Account Name"><TextInput name="nickname" list="pic-options-form" required /></Field>
       <Field label="Full Name"><TextInput name="full_name" /></Field>
       <Field label="Assigned Site"><TextInput name="site" list="site-options-form" /></Field>
-      <Field label="Role"><SelectInput name="role">{ROLES.map((role) => <option key={role} value={role}>{ROLE_LABELS[role]}</option>)}</SelectInput></Field>
+      <Field label="Role"><SelectInput name="role">{ROLES.map((role) => <option key={role} value={role}>{roleLabel(language, role)}</option>)}</SelectInput></Field>
       <DataLists data={data} />
     </div>
   );
@@ -1925,6 +1932,7 @@ function UserFields({ canManageUsers, data }: { canManageUsers: boolean; data: D
 function OfferPrefillFields({
   data,
   defaults,
+  language,
   mode,
   selectedId,
   selected,
@@ -1932,6 +1940,7 @@ function OfferPrefillFields({
 }: {
   data: DashboardData;
   defaults: ModalDefaults;
+  language: Language;
   mode: "new" | "change";
   selectedId: string;
   selected: DashboardData["offers"][number] | null;
@@ -1970,33 +1979,33 @@ function OfferPrefillFields({
   return (
     <div className="grid gap-4 md:grid-cols-2">
       {mode === "change" ? (
-        <Field label="Existing Offer">
+        <Field label={translate(language, "existingOffer")}>
           <SelectInput name="offer_selector" required value={selectedId} onChange={(event) => onSelect(event.target.value)}>
-            <option value="">Select offer</option>
+            <option value="">{translate(language, "selectOfferOption")}</option>
             {data.offers.map((offer) => <option key={offer.offer_id} value={offer.offer_id}>{offerOptionLabel(data, offer)}</option>)}
           </SelectInput>
         </Field>
       ) : null}
       {mode === "change" ? <input type="hidden" name="candidate_id" value={selected?.candidate_id ?? ""} /> : null}
-      <Field label="Candidate">
+      <Field label={translate(language, "candidate")}>
         <SelectInput name={mode === "change" ? undefined : "candidate_id"} required value={selectedCandidateId} disabled={mode === "change"} onChange={(event) => {
           setSelectedCandidateId(event.target.value);
           setSelectedDocId("");
         }}>
-          <option value="">Select Offer Pass candidate</option>
+          <option value="">{translate(language, "selectOfferPassCandidate")}</option>
           {candidateOptions.map((row) => <option key={row.candidate_id} value={row.candidate_id}>{candidateOptionLabel(row)}</option>)}
         </SelectInput>
       </Field>
       {mode === "change" ? <input type="hidden" name="doc_id" value={selected?.doc_id ?? ""} /> : null}
-      <Field label="Doc ID">
+      <Field label={translate(language, "docId")}>
         <SelectInput name={mode === "change" ? undefined : "doc_id"} required value={selectedDocId} disabled={mode === "change" || !selectedCandidateId} onChange={(event) => setSelectedDocId(event.target.value)}>
-          <option value="">{selectedCandidateId ? "Select requisition" : "Select candidate first"}</option>
+          <option value="">{selectedCandidateId ? translate(language, "selectRequisitionOption") : translate(language, "selectCandidateFirst")}</option>
           {docOptions.map((row) => <option key={row.doc_id} value={row.doc_id}>{requisitionOptionLabel(row)}</option>)}
         </SelectInput>
       </Field>
-      <Field label="Accepted Date"><TextInput name="accepted_date" type="date" defaultValue={selected?.accepted_date ?? defaults.accepted_date ?? ""} /></Field>
-      <Field label="First Working Date"><TextInput name="first_working_date" type="date" defaultValue={selected?.first_working_date ?? ""} /></Field>
-      <Field label="Remark" className="md:col-span-2"><TextArea name="remark" rows={3} defaultValue={selected?.remark ?? ""} /></Field>
+      <Field label={translate(language, "acceptedDateField")}><TextInput name="accepted_date" type="date" defaultValue={selected?.accepted_date ?? defaults.accepted_date ?? ""} /></Field>
+      <Field label={translate(language, "firstWorkingDate")}><TextInput name="first_working_date" type="date" defaultValue={selected?.first_working_date ?? ""} /></Field>
+      <Field label={translate(language, "remark")} className="md:col-span-2"><TextArea name="remark" rows={3} defaultValue={selected?.remark ?? ""} /></Field>
       <DataLists data={data} />
     </div>
   );
@@ -2023,6 +2032,7 @@ function availableOfferDocOptions(data: DashboardData, candidateId: string, curr
 
 function GroupPrefillFields({
   data,
+  language,
   mode,
   selectedId,
   selected,
@@ -2030,6 +2040,7 @@ function GroupPrefillFields({
   onSelect
 }: {
   data: DashboardData;
+  language: Language;
   mode: "new" | "change";
   selectedId: string;
   selected: DashboardData["position_groups"][number] | null;
@@ -2040,17 +2051,17 @@ function GroupPrefillFields({
 
   return (
     <div className="grid gap-4">
-      <Field label="Group ID">
+      <Field label={translate(language, "groupId")}>
         {mode === "change" ? (
           <SelectInput name="group_id" required value={selectedId} onChange={(event) => onSelect(event.target.value)}>
-            <option value="">Select group</option>
+            <option value="">{translate(language, "selectGroup")}</option>
             {data.position_groups.map((row) => <option key={row.group_id} value={row.group_id}>{positionGroupOptionLabel(row)}</option>)}
           </SelectInput>
         ) : (
-          <SelectInput name="group_id"><option value="">Auto in New mode</option>{data.position_groups.map((row) => <option key={row.group_id} value={row.group_id}>{positionGroupOptionLabel(row)}</option>)}</SelectInput>
+          <SelectInput name="group_id"><option value="">{translate(language, "autoInNewMode")}</option>{data.position_groups.map((row) => <option key={row.group_id} value={row.group_id}>{positionGroupOptionLabel(row)}</option>)}</SelectInput>
         )}
       </Field>
-      <Field label="Group Position"><TextInput name="group_position" list="group-position-options" required defaultValue={groupPositionValue} /></Field>
+      <Field label={translate(language, "groupPosition")}><TextInput name="group_position" list="group-position-options" required defaultValue={groupPositionValue} /></Field>
       <div className="grid gap-2 rounded-md border border-[#D7DEE8] bg-lightgray p-3 text-sm font-bold text-navy md:grid-cols-4">
         {SOURCING_CHANNELS.map((channel) => (
           <label key={channel.enabled} className="flex items-center gap-2">
@@ -2066,6 +2077,7 @@ function GroupPrefillFields({
 function UserPrefillFields({
   canManageUsers,
   data,
+  language,
   mode,
   selectedId,
   selected,
@@ -2073,34 +2085,35 @@ function UserPrefillFields({
 }: {
   canManageUsers: boolean;
   data: DashboardData;
+  language: Language;
   mode: "new" | "change";
   selectedId: string;
   selected: DashboardData["profiles"][number] | null;
   onSelect: (value: string) => void;
 }) {
-  if (!canManageUsers) return <p className="text-sm font-bold text-orange">Only system admins can manage app accounts.</p>;
+  if (!canManageUsers) return <p className="text-sm font-bold text-orange">{translate(language, "onlySystemAdmins")}</p>;
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      {mode === "change" ? <Field label="Existing User">
+      {mode === "change" ? <Field label={translate(language, "existingUser")}>
         <SelectInput name="user_id" required={mode === "change"} value={selectedId} onChange={(event) => onSelect(event.target.value)}>
-          <option value="">Select user</option>
+          <option value="">{translate(language, "selectUser")}</option>
           {data.profiles.map((profile) => (
-            <option key={profile.id} value={profile.id}>{userOptionLabel(profile)}</option>
+            <option key={profile.id} value={profile.id}>{userOptionLabel(profile, language)}</option>
           ))}
         </SelectInput>
       </Field> : null}
-      <Field label="Email"><TextInput name="email" type="email" defaultValue={selected?.email ?? ""} /></Field>
-      <Field label="Temporary Password"><TextInput name="password" type="password" minLength={8} /></Field>
-      <Field label="Nickname / Account Name"><TextInput name="nickname" list="pic-options-form" required defaultValue={selected?.nickname ?? ""} /></Field>
-      <Field label="Full Name"><TextInput name="full_name" defaultValue={selected?.full_name ?? ""} /></Field>
-      <Field label="Assigned Site">
+      <Field label={translate(language, "email")}><TextInput name="email" type="email" defaultValue={selected?.email ?? ""} /></Field>
+      <Field label={translate(language, "temporaryPassword")}><TextInput name="password" type="password" minLength={8} /></Field>
+      <Field label={translate(language, "nicknameAccountName")}><TextInput name="nickname" list="pic-options-form" required defaultValue={selected?.nickname ?? ""} /></Field>
+      <Field label={translate(language, "fullName")}><TextInput name="full_name" defaultValue={selected?.full_name ?? ""} /></Field>
+      <Field label={translate(language, "assignedSite")}>
         <SelectInput name="site" defaultValue={selected?.site ?? ""}>
-          <option value="">No assigned site</option>
+          <option value="">{translate(language, "noAssignedSite")}</option>
           {SITE_OPTIONS.map((site) => <option key={site} value={site}>{site}</option>)}
         </SelectInput>
       </Field>
-      <Field label="Role"><SelectInput name="role" defaultValue={selected?.role ?? "viewer"}>{ROLES.map((role) => <option key={role} value={role}>{ROLE_LABELS[role]}</option>)}</SelectInput></Field>
+      <Field label={translate(language, "role")}><SelectInput name="role" defaultValue={selected?.role ?? "viewer"}>{ROLES.map((role) => <option key={role} value={role}>{roleLabel(language, role)}</option>)}</SelectInput></Field>
       <DataLists data={data} />
     </div>
   );
@@ -2418,7 +2431,7 @@ function buildDetailBodyV2(
     const candidates = enrichCandidates(data).filter((row) => relatedDocGroupIds.has(row.doc_group_id));
     const offers = data.offers.filter((row) => row.doc_id === requisition.doc_id);
     const applicantTotal = applicantCountForPositionGroups(data, positionGroupIds);
-    const funnelRows = buildPipelineFunnelRows(applicantTotal, historicalPipelineCountsForCandidates(data, candidates.map((row) => row.candidate_id)));
+    const funnelRows = buildPipelineFunnelRows(applicantTotal, historicalPipelineCountsForCandidates(data, candidates.map((row) => row.candidate_id)), language);
     const readiness = requisitionFillReadiness(requisition, enrichCandidates(data));
     const sla = getRequisitionSlaState(requisition, { openOnly: true });
     const issues = deriveDataQualityIssues(data).filter((issue) =>
@@ -2431,8 +2444,8 @@ function buildDetailBodyV2(
       title: `${requisition.doc_id} / ${requisition.position}`,
       headerMeta: (
         <>
-          <Tag tone={statusTone(requisition.status)}>{requisition.status}</Tag>
-          <Tag tone={readiness.tone}>{readiness.label}</Tag>
+          <Tag tone={statusTone(requisition.status)}>{requisitionStatusLabel(language, requisition.status)}</Tag>
+          <Tag tone={readiness.tone}>{fillReadinessLabel(language, readiness.label)}</Tag>
         </>
       ),
       headerActions: (
@@ -2450,10 +2463,10 @@ function buildDetailBodyV2(
         <div className="grid min-w-0 gap-4">
           <OperationalSummaryStrip items={[
             { label: "Open HC", value: requisition.open_headcount, tone: requisition.open_headcount > 0 ? "warning" : "success", helper: "Remaining demand" },
-            { label: "Readiness", value: readiness.label, tone: readiness.tone, helper: readiness.reason },
+            { label: "Readiness", value: fillReadinessLabel(language, readiness.label), tone: readiness.tone, helper: readiness.reason },
             { label: "SLA", value: sla?.label ?? "-", tone: sla?.isOverdue ? "danger" : "muted", helper: "Requisition age" }
           ]} />
-          <InlineDataQualityIssues issues={issues} />
+          <InlineDataQualityIssues issues={issues} language={language} />
           <DetailGrid rows={[
             ["Site", requisition.site],
             ["Department", requisition.department],
@@ -2476,8 +2489,8 @@ function buildDetailBodyV2(
           </DetailDisclosure>
           <DetailDisclosure title="Related records" summary="Candidates and offers">
             <div className="grid gap-4">
-              <DetailList title="Candidates" rows={candidates.map((row) => optionLabel([row.candidate_id, row.name, processLabel(row.latest_process)]))} />
-              <DetailList title="Offers" rows={offers.map((row) => `${row.candidate_id} / accepted ${formatDate(row.accepted_date)}`)} />
+              <DetailList title={translate(language, "candidates")} rows={candidates.map((row) => optionLabel([row.candidate_id, row.name, processLabel(row.latest_process, language)]))} />
+              <DetailList title={translate(language, "offers")} rows={offers.map((row) => `${row.candidate_id} / ${translate(language, "acceptedLower")} ${formatDate(row.accepted_date, language)}`)} />
             </div>
           </DetailDisclosure>
         </div>
@@ -2498,8 +2511,8 @@ function buildDetailBodyV2(
     title: `${candidate.candidate_id} / ${candidate.name}`,
     headerMeta: (
       <>
-        <Tag tone={candidate.latest_result === 0 ? "danger" : candidate.accepted_date ? "success" : "teal"}>{processLabel(candidate.latest_process)}</Tag>
-        <Tag tone={statusTone(resultText(candidate.latest_result).toLowerCase())}>{resultText(candidate.latest_result)}</Tag>
+        <Tag tone={candidate.latest_result === 0 ? "danger" : candidate.accepted_date ? "success" : "teal"}>{processLabel(candidate.latest_process, language)}</Tag>
+        <Tag tone={statusTone(resultText(candidate.latest_result).toLowerCase())}>{resultText(candidate.latest_result, language)}</Tag>
       </>
     ),
       headerActions: (
@@ -2515,7 +2528,7 @@ function buildDetailBodyV2(
     ),
     body: (
       <div className="grid min-w-0 gap-4">
-        <InlineDataQualityIssues issues={issues} />
+        <InlineDataQualityIssues issues={issues} language={language} />
         <DetailDisclosure title="Workflow" summary={`${logs.length} process updates`} defaultOpen>
           <div className="grid gap-4">
             {!updateDisabledReason.blocked ? (
@@ -2535,7 +2548,7 @@ function buildDetailBodyV2(
                 </Button>
               </div>
             ) : null}
-            <CandidateJourney logs={logs} />
+            <CandidateJourney language={language} logs={logs} />
           </div>
         </DetailDisclosure>
         <DetailGrid rows={[
@@ -2556,16 +2569,16 @@ function buildDetailBodyV2(
                 {logs.length === 0 ? <p className="text-sm font-medium text-slate">No process logs yet.</p> : logs.map((log) => (
                   <div key={log.log_id} className="min-w-0 rounded-md border border-[#D7DEE8] bg-white p-3 shadow-[0_6px_16px_rgba(11,19,43,0.025)]">
                     <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-                      <strong className="min-w-0 break-words text-navy">{processLabel(log.recruitment_process)}</strong>
-                      <Tag tone={statusTone(resultText(log.result).toLowerCase())}>{resultText(log.result)}</Tag>
+                      <strong className="min-w-0 break-words text-navy">{processLabel(log.recruitment_process, language)}</strong>
+                      <Tag tone={statusTone(resultText(log.result).toLowerCase())}>{resultText(log.result, language)}</Tag>
                     </div>
-                    <p className="mt-1 break-words text-sm font-medium text-slate">{formatDate(log.log_date)} / Round {log.round} / {log.interviewer ?? "No interviewer"}</p>
+                    <p className="mt-1 break-words text-sm font-medium text-slate">{formatDate(log.log_date, language)} / {translate(language, "round")} {log.round} / {log.interviewer ?? translate(language, "noInterviewer")}</p>
                     {log.remark ? <p className="mt-1 break-words text-sm text-slate">{log.remark}</p> : null}
                   </div>
                 ))}
               </div>
             </div>
-            <DetailList title="Offers" rows={offers.map((row) => `${row.doc_id} / accepted ${formatDate(row.accepted_date)} / start ${formatDate(row.first_working_date)}`)} />
+            <DetailList title={translate(language, "offers")} rows={offers.map((row) => `${row.doc_id} / ${translate(language, "acceptedLower")} ${formatDate(row.accepted_date, language)} / ${translate(language, "startLower")} ${formatDate(row.first_working_date, language)}`)} />
           </div>
         </DetailDisclosure>
         {candidate.candidate_folder_url ? (
@@ -2590,7 +2603,7 @@ function buildDetailBody(detail: { type: "requisition" | "candidate"; id: string
     const candidates = enrichCandidates(data).filter((row) => relatedDocGroupIds.has(row.doc_group_id));
     const offers = data.offers.filter((row) => row.doc_id === requisition.doc_id);
     const applicantTotal = applicantCountForPositionGroups(data, positionGroupIds);
-    const funnelRows = buildPipelineFunnelRows(applicantTotal, historicalPipelineCountsForCandidates(data, candidates.map((row) => row.candidate_id)));
+    const funnelRows = buildPipelineFunnelRows(applicantTotal, historicalPipelineCountsForCandidates(data, candidates.map((row) => row.candidate_id)), language);
     const allCandidates = enrichCandidates(data);
     const readiness = requisitionFillReadiness(requisition, allCandidates);
     const issues = deriveDataQualityIssues(data).filter((issue) => issue.entityId === requisition.doc_id || candidates.some((candidate) => candidate.candidate_id === issue.entityId) || offers.some((offer) => String(offer.offer_id) === issue.entityId));
@@ -2605,7 +2618,7 @@ function buildDetailBody(detail: { type: "requisition" | "candidate"; id: string
                 <p className="text-xs font-medium uppercase tracking-normal text-slate">Fill readiness</p>
                 <p className="mt-1 text-sm font-medium text-slate">{readiness.reason}</p>
               </div>
-              <Tag tone={readiness.tone}>{readiness.label}</Tag>
+              <Tag tone={readiness.tone}>{fillReadinessLabel(language, readiness.label)}</Tag>
             </div>
             <RecordActionGroup
               label={requisition.doc_id}
@@ -2617,7 +2630,7 @@ function buildDetailBody(detail: { type: "requisition" | "candidate"; id: string
               ]}
             />
           </div>
-          <InlineDataQualityIssues issues={issues} />
+          <InlineDataQualityIssues issues={issues} language={language} />
           <DetailGrid rows={[
             ["Site", requisition.site],
             ["Department", requisition.department],
@@ -2636,8 +2649,8 @@ function buildDetailBody(detail: { type: "requisition" | "candidate"; id: string
             subtitle="Historical stage touches, de-duplicated per candidate per stage"
             totalValue={applicantTotal}
           />
-          <DetailList title="Candidates" rows={candidates.map((row) => optionLabel([row.candidate_id, row.name, processLabel(row.latest_process)]))} />
-          <DetailList title="Offers" rows={offers.map((row) => `${row.candidate_id} · accepted ${formatDate(row.accepted_date)}`)} />
+          <DetailList title={translate(language, "candidates")} rows={candidates.map((row) => optionLabel([row.candidate_id, row.name, processLabel(row.latest_process, language)]))} />
+          <DetailList title={translate(language, "offers")} rows={offers.map((row) => `${row.candidate_id} - ${translate(language, "acceptedLower")} ${formatDate(row.accepted_date, language)}`)} />
         </div>
       )
     };
@@ -2674,7 +2687,7 @@ function buildDetailBody(detail: { type: "requisition" | "candidate"; id: string
             </div>
           </div>
         ) : null}
-        <InlineDataQualityIssues issues={issues} />
+        <InlineDataQualityIssues issues={issues} language={language} />
         <RecordActionGroup
           label={candidate.name}
           primary={{ id: "workspace", href: `/workspace?type=${candidate.group_id ? "group" : "requisition"}&id=${encodeURIComponent(candidate.group_id ?? candidate.doc_ids[0] ?? "")}`, label: "Open workspace", tone: "primary", iconOnly: true }}
@@ -2698,7 +2711,7 @@ function buildDetailBody(detail: { type: "requisition" | "candidate"; id: string
         {candidate.candidate_folder_url ? (
           <a className="text-sm font-semibold text-primary underline" href={candidate.candidate_folder_url} target="_blank" rel="noreferrer">Open candidate folder</a>
         ) : null}
-        <CandidateJourney logs={logs} />
+        <CandidateJourney language={language} logs={logs} />
         <div>
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <h4 className="font-semibold text-navy">Timeline</h4>
@@ -2707,16 +2720,16 @@ function buildDetailBody(detail: { type: "requisition" | "candidate"; id: string
             {logs.length === 0 ? <p className="text-sm font-medium text-slate">No process logs yet.</p> : logs.map((log) => (
               <div key={log.log_id} className="rounded-md border border-[#D7DEE8] bg-white p-3 shadow-[0_6px_16px_rgba(11,19,43,0.025)]">
                 <div className="flex items-center justify-between gap-2">
-                  <strong className="text-navy">{processLabel(log.recruitment_process)}</strong>
-                  <Tag tone={statusTone(resultText(log.result).toLowerCase())}>{resultText(log.result)}</Tag>
+                  <strong className="text-navy">{processLabel(log.recruitment_process, language)}</strong>
+                  <Tag tone={statusTone(resultText(log.result).toLowerCase())}>{resultText(log.result, language)}</Tag>
                 </div>
-                <p className="mt-1 text-sm font-bold text-slate">{formatDate(log.log_date)} · Round {log.round} · {log.interviewer ?? "No interviewer"}</p>
+                <p className="mt-1 text-sm font-bold text-slate">{formatDate(log.log_date, language)} - {translate(language, "round")} {log.round} - {log.interviewer ?? translate(language, "noInterviewer")}</p>
                 {log.remark ? <p className="mt-1 text-sm text-slate">{log.remark}</p> : null}
               </div>
             ))}
           </div>
         </div>
-        <DetailList title="Offers" rows={offers.map((row) => `${row.doc_id} · accepted ${formatDate(row.accepted_date)} · start ${formatDate(row.first_working_date)}`)} />
+        <DetailList title={translate(language, "offers")} rows={offers.map((row) => `${row.doc_id} - ${translate(language, "acceptedLower")} ${formatDate(row.accepted_date, language)} - ${translate(language, "startLower")} ${formatDate(row.first_working_date, language)}`)} />
       </div>
     )
   };
@@ -2727,8 +2740,8 @@ function replacementNamesDisplay(value: string | null | undefined) {
   return names.length > 0 ? names.join(", ") : "-";
 }
 
-function CandidateJourney({ logs }: { logs: RecruitmentLog[] }) {
-  return <StageRail logs={logs} label="Candidate Pipeline Journey" />;
+function CandidateJourney({ language, logs }: { language: Language; logs: RecruitmentLog[] }) {
+  return <StageRail language={language} logs={logs} label={translate(language, "candidatePipelineJourney")} />;
 }
 
 type PipelineFunnelCount = {
@@ -2762,10 +2775,10 @@ function applicantCountForPositionGroups(data: DashboardData, groupIds: Set<stri
     );
 }
 
-function buildPipelineFunnelRows(applicantTotal: number, stageCounts: PipelineFunnelCount[]): PipelineFunnelRow[] {
+function buildPipelineFunnelRows(applicantTotal: number, stageCounts: PipelineFunnelCount[], language: Language): PipelineFunnelRow[] {
   const baseRows = [
-    { key: "applicants", label: "Applicants", count: applicantTotal },
-    ...stageCounts.map((row) => ({ key: row.stage, label: pipelineDisplayLabel(row.stage), count: row.count }))
+    { key: "applicants", label: translate(language, "applicants"), count: applicantTotal },
+    ...stageCounts.map((row) => ({ key: row.stage, label: pipelineDisplayLabel(row.stage, language), count: row.count }))
   ];
 
   return baseRows.map((row, index) => {
@@ -2935,7 +2948,7 @@ function WorkspaceStatusScreen({
           <p className="text-sm font-medium text-slate">{message}</p>
           {loginHref ? (
             <div>
-              <a href={loginHref} className="inline-flex min-h-10 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#082FA8] focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2">
+              <a href={loginHref} className="inline-flex min-h-10 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2">
                 Go to sign in
               </a>
             </div>

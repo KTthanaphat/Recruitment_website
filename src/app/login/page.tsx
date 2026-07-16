@@ -5,14 +5,24 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Field, TextInput } from "@/components/ui/Field";
+import { translate } from "@/lib/i18n/dictionary";
+import { siteAccentStyle } from "@/lib/site-theme";
 import { clearStoredSupabaseSession, hasSupabaseConfig, supabase, withAuthTimeout } from "@/lib/supabase/client";
+import type { Language } from "@/types/recruitment";
 
 export default function LoginPage() {
   const router = useRouter();
+  const [language, setLanguage] = useState<Language>("en");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [status, setStatus] = useState("Sign in with your recruitment tracking account.");
+  const [statusKey, setStatusKey] = useState("loginHelp");
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    const savedLanguage = localStorage.getItem("recruitment_lang");
+    if (savedLanguage === "en" || savedLanguage === "th") setLanguage(savedLanguage);
+  }, []);
 
   useEffect(() => {
     if (!supabase) return;
@@ -23,57 +33,79 @@ export default function LoginPage() {
       })
       .catch(() => {
         clearStoredSupabaseSession();
-        if (active) setStatus("Your previous session could not be restored. Please sign in again.");
+        if (active) {
+          setStatusKey("loginRestoreFailed");
+          setStatusMessage(null);
+        }
       });
     return () => {
       active = false;
     };
   }, [router]);
 
+  function toggleLanguage() {
+    setLanguage((current) => {
+      const next = current === "en" ? "th" : "en";
+      localStorage.setItem("recruitment_lang", next);
+      return next;
+    });
+  }
+
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!supabase) return;
     const trimmedEmail = email.trim();
     if (!trimmedEmail.includes("@")) {
-      setStatus("Please sign in with your email address, not your nickname.");
+      setStatusKey("loginInvalidEmail");
+      setStatusMessage(null);
       return;
     }
 
     setBusy(true);
-    setStatus("Signing in...");
+    setStatusKey("loginSigningIn");
+    setStatusMessage(null);
     try {
       const signInResult = await withAuthTimeout(
         supabase.auth.signInWithPassword({ email: trimmedEmail, password }),
-        "Login request timed out. Please check your network and Supabase project.",
+        translate(language, "loginTimeout"),
         15000
       );
 
       if (signInResult.error) {
-        setStatus(signInResult.error.message);
+        setStatusMessage(signInResult.error.message);
         return;
       }
 
       router.replace("/home");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Unable to sign in. Please try again.");
+      setStatusMessage(error instanceof Error ? error.message : translate(language, "loginUnknownError"));
     } finally {
       setBusy(false);
     }
   }
 
+  const statusText = hasSupabaseConfig ? statusMessage ?? translate(language, statusKey) : translate(language, "loginNoConfig");
+
   return (
-    <main className="grid min-h-screen place-items-center bg-[linear-gradient(180deg,#FAFAFC_0%,#F1F5F9_100%)] px-4 py-10">
+    <main className="grid min-h-screen place-items-center bg-[linear-gradient(180deg,#FAFAFC_0%,#F1F5F9_100%)] px-4 py-10" style={siteAccentStyle(null)}>
       <section className="w-full max-w-md overflow-hidden rounded-lg border border-[#C9D5E6] bg-white shadow-[0_24px_70px_rgba(11,19,43,0.12)]">
         <div className="h-1.5 bg-navy" />
         <div className="p-6">
-        <p className="mb-1 text-xs font-semibold uppercase tracking-normal text-slate">Internal Recruitment</p>
-        <h1 className="mb-2 text-3xl font-semibold tracking-normal text-navy">Recruitment Tracking</h1>
-        <p role="status" aria-live="polite" aria-busy={busy} className={`mb-5 text-sm font-medium ${status.includes("Invalid") || status.includes("not") ? "text-orange" : "text-slate"}`}>
-          {hasSupabaseConfig ? status : "Supabase environment variables are not configured."}
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div>
+            <p className="mb-1 text-xs font-semibold uppercase tracking-normal text-slate">{translate(language, "internalRecruitment")}</p>
+            <h1 className="text-3xl font-semibold tracking-normal text-navy">{translate(language, "recruitmentTracking")}</h1>
+          </div>
+          <button type="button" className="min-h-8 rounded-md border border-[#D7DEE8] px-3 text-xs font-semibold text-navy hover:bg-[#F8FAFD] focus:outline-none focus:ring-2 focus:ring-primary/25" onClick={toggleLanguage}>
+            {translate(language, "language")}
+          </button>
+        </div>
+        <p role="status" aria-live="polite" aria-busy={busy} className={`mb-5 text-sm font-medium ${statusText.includes("Invalid") || statusText.includes("not") || statusText.includes("ไม่") ? "text-orange" : "text-slate"}`}>
+          {statusText}
         </p>
 
         <form className="grid gap-4" onSubmit={onSubmit}>
-          <Field label="Email">
+          <Field label={translate(language, "email")}>
             <TextInput
               type="email"
               inputMode="email"
@@ -82,17 +114,17 @@ export default function LoginPage() {
               spellCheck={false}
               required
               onChange={(event) => setEmail(event.target.value)}
-              placeholder="recruiter@example.com"
+              placeholder={translate(language, "recruiterEmailPlaceholder")}
             />
           </Field>
-          <Field label="Password">
+          <Field label={translate(language, "password")}>
             <TextInput
               type="password"
               value={password}
               autoComplete="current-password"
               required
               onChange={(event) => setPassword(event.target.value)}
-              placeholder="Account password"
+              placeholder={translate(language, "accountPasswordPlaceholder")}
             />
           </Field>
           <Button
@@ -100,7 +132,7 @@ export default function LoginPage() {
             disabled={busy || !hasSupabaseConfig}
             icon={busy ? <LockKeyhole size={17} /> : <Mail size={17} />}
           >
-            Sign In
+            {translate(language, "signIn")}
           </Button>
         </form>
         </div>

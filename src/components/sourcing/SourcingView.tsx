@@ -118,7 +118,7 @@ export function SourcingView({
             action={
               <>
                 {onGroup ? <Button type="button" size="sm" icon={<Plus size={16} />} onClick={onGroup}>New Group</Button> : null}
-                {onMatch ? <Button type="button" size="sm" variant="secondary" icon={<Link2 size={16} />} onClick={onMatch}>Add Match</Button> : null}
+                {onMatch ? <Button type="button" size="sm" variant="secondary" icon={<Link2 size={16} />} onClick={onMatch}>{translate(language, "addMatch")}</Button> : null}
               </>
             }
           />
@@ -127,10 +127,10 @@ export function SourcingView({
 
       <Panel>
         <SectionTitle
-          title={embedded ? "Sourcing Coverage" : "Weekly Sourcing Updates"}
-          eyebrow="Open requisition groups"
+          title={embedded ? translate(language, "sourcingCoverage") : translate(language, "weeklySourcingUpdates")}
+          eyebrow={translate(language, "openRequisitionGroups")}
           action={
-            <Field label="Week Start">
+            <Field label={translate(language, "weekStart")}>
               <TextInput type="date" value={weekStart} onChange={(event) => onWeekChange(event.target.value)} />
             </Field>
           }
@@ -148,7 +148,7 @@ export function SourcingView({
               const markedChannels = SOURCING_CHANNELS.filter((channel) => group[channel.enabled]);
               const latestSavedUpdate = latestSourcingUpdateForGroup(data, group.group_id);
               return (
-              <form id={`sourcing-group-${group.group_id}`} key={group.group_id} tabIndex={focusedGroupId === group.group_id ? -1 : undefined} className={`rounded-lg border bg-white p-4 shadow-[0_8px_20px_rgba(11,19,43,0.035)] focus:outline-none focus:ring-2 focus:ring-primary/30 ${focusedGroupId === group.group_id ? "border-primary ring-2 ring-primary/25" : "border-[#D7DEE8]"}`} onSubmit={(event) => saveGroup(event, group)}>
+              <form id={`sourcing-group-${group.group_id}`} key={group.group_id} tabIndex={focusedGroupId === group.group_id ? -1 : undefined} className={`rounded-lg border bg-white p-4 shadow-[0_4px_14px_rgba(11,19,43,0.025)] focus:outline-none focus:ring-2 focus:ring-primary/30 ${focusedGroupId === group.group_id ? "border-primary ring-2 ring-primary/25" : "border-[#D7DEE8]"}`} onSubmit={(event) => saveGroup(event, group)}>
                 {(() => {
                   const previousUpdate = sourcingPreviousUpdate(data, group.group_id, weekStart);
                   const defaultUpdate = group.latest_update ?? latestSavedUpdate;
@@ -163,20 +163,20 @@ export function SourcingView({
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
                       <input
-                        aria-label={`Select sourcing group ${group.group_id}`}
+                        aria-label={translate(language, "selectSourcingGroup", { id: group.group_id })}
                         type="checkbox"
                         checked={selectedGroupIds.includes(group.group_id)}
                         onChange={(event) => setSelectedGroupIds((current) => event.target.checked ? [...current, group.group_id] : current.filter((id) => id !== group.group_id))}
                       />
                       <strong className="text-lg text-navy">{group.group_id}</strong>
                       <Tag tone="teal">{group.group_position}</Tag>
-                      <Tag tone="warning">{group.open_headcount} open</Tag>
+                      <Tag tone="warning">{translate(language, "openCount", { count: group.open_headcount })}</Tag>
                     </div>
                     <p className="mt-1 text-sm font-medium text-slate">
-                      Docs: {group.doc_ids.join(", ")} | Sites: {group.sites.join(", ")} | Owners: {group.owners.join(", ")}
+                      {translate(language, "docs")}: {group.doc_ids.join(", ")} | {translate(language, "sites")}: {group.sites.join(", ")} | {translate(language, "owners")}: {group.owners.join(", ")}
                     </p>
                     <p className="mt-1 text-xs font-medium text-cool">
-                      Candidates: {group.candidate_count} | Last saved: {group.latest_update?.updated_at ? formatDate(group.latest_update.updated_at, language) : "Not updated this week"}
+                      {translate(language, "candidates")}: {group.candidate_count} | {translate(language, "lastSaved")}: {group.latest_update?.updated_at ? formatDate(group.latest_update.updated_at, language) : translate(language, "notUpdatedThisWeek")}
                     </p>
                   </div>
                   <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
@@ -186,16 +186,16 @@ export function SourcingView({
                         size="icon-sm"
                         icon={<Save size={16} />}
                         disabled={disabledReason.blocked}
-                        aria-label={`Save sourcing week for ${group.group_id}`}
-                        title={disabledReason.blocked ? disabledReason.detail : `Save sourcing week for ${group.group_id}`}
+                        aria-label={translate(language, "saveSourcingWeekFor", { id: group.group_id })}
+                        title={disabledReason.blocked ? disabledReason.detail : translate(language, "saveSourcingWeekFor", { id: group.group_id })}
                       >
-                        <span className="sr-only">Save</span>
+                        <span className="sr-only">{translate(language, "save")}</span>
                       </Button>
                     ) : (
                       <Tag tone="muted">{translate(language, "readonly")}</Tag>
                     )}
                     <RecordActionGroup
-                      label={`sourcing group ${group.group_id}`}
+                      label={`${translate(language, "sourcingGroup")} ${group.group_id}`}
                       items={[
                         ...(canWrite ? [{ id: "copy-previous", label: "Copy Previous Week", onSelect: () => copyPreviousWeek(document.getElementById(`sourcing-group-${group.group_id}`) as HTMLFormElement | null, previousUpdate), disabledReason: { blocked: !previousUpdate || disabledReason.blocked, label: "Copy unavailable", detail: disabledReason.blocked ? disabledReason.detail : "No previous week update is available." } }] : []),
                         { id: "requisitions", href: `/requisitions?reqSearch=${encodeURIComponent(group.doc_ids.join(" "))}`, label: "Matching requisitions" },
@@ -205,18 +205,18 @@ export function SourcingView({
                     />
                   </div>
                 </div>
-                <DisabledReasonHint reason={disabledReason} />
+                <DisabledReasonHint language={language} reason={disabledReason} />
                 <div className="mb-4 grid gap-3">
                   <OperationalSummaryStrip
                     items={[
-                      { label: "This week", value: thisWeekApplicants, tone: thisWeekApplicants > 0 ? "teal" : "warning", helper: "Applicants saved" },
-                      { label: "Previous week", value: previousApplicants, tone: "muted", helper: previousUpdate ? "For comparison" : "No prior update" },
-                      { label: "Trend", value: trendLabel(thisWeekApplicants, previousApplicants), tone: trendTone(thisWeekApplicants, previousApplicants), helper: "Applicant movement" },
-                      { label: "Channels", value: activeChannels, tone: activeChannels > 0 ? "primary" : "warning", helper: "Enabled channels" },
-                      { label: "Last update age", value: group.latest_update?.updated_at ? `${ageDays(group.latest_update.updated_at) ?? "-"}d` : "Never", tone: group.latest_update?.updated_at ? "muted" : "warning", helper: "Selected week" }
+                      { label: translate(language, "thisWeek"), value: thisWeekApplicants, tone: thisWeekApplicants > 0 ? "teal" : "warning", helper: translate(language, "applicantsSaved") },
+                      { label: translate(language, "previousWeek"), value: previousApplicants, tone: "muted", helper: previousUpdate ? translate(language, "forComparison") : translate(language, "noPriorUpdate") },
+                      { label: translate(language, "trend"), value: trendLabel(thisWeekApplicants, previousApplicants), tone: trendTone(thisWeekApplicants, previousApplicants), helper: translate(language, "applicantMovement") },
+                      { label: translate(language, "channels"), value: activeChannels, tone: activeChannels > 0 ? "primary" : "warning", helper: translate(language, "enabledChannels") },
+                      { label: translate(language, "lastUpdateAge"), value: group.latest_update?.updated_at ? `${ageDays(group.latest_update.updated_at) ?? "-"}d` : translate(language, "never"), tone: group.latest_update?.updated_at ? "muted" : "warning", helper: translate(language, "selectedWeek") }
                     ]}
                   />
-                  <SourcingConversionPanel collapsible defaultOpen={false} metrics={conversionMetrics} />
+                  <SourcingConversionPanel collapsible defaultOpen={false} language={language} metrics={conversionMetrics} />
                 </div>
 
                 {markedChannels.length === 0 ? (
@@ -226,7 +226,7 @@ export function SourcingView({
                   {markedChannels.map((channel) => (
                     <div key={channel.count} className="rounded-md border border-[#D7DEE8] bg-[#F8FAFD] p-3">
                       <p className="mb-3 text-sm font-semibold text-navy">{channel.label}</p>
-                      <Field label="Applicants">
+                      <Field label={translate(language, "applicants")}>
                         <TextInput
                           name={channel.count}
                           type="number"
@@ -249,7 +249,8 @@ export function SourcingView({
         )}
         {!embedded ? <BulkActionToolbar
           disabledReason={bulkDisabledReason}
-          entityLabel="sourcing groups"
+          entityLabel={translate(language, "sourcingGroupsUnit")}
+          language={language}
           selectedCount={selectedGroupIds.length}
           onClear={() => {
             setSelectedGroupIds([]);
@@ -262,8 +263,9 @@ export function SourcingView({
           }}
         /> : null}
         {!embedded ? <BulkReviewModal
-          actionLabel="Review selected sourcing groups for copy-previous-week workflow. Existing per-group save remains unchanged."
+          actionLabel={translate(language, "bulkSourcingReviewAction")}
           ids={selectedGroupIds}
+          language={language}
           open={bulkReviewOpen}
           result={bulkResult}
           onClose={() => setBulkReviewOpen(false)}

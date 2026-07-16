@@ -7,6 +7,7 @@ import { RecordActionGroup, type RecordAction } from "@/components/ui/Operations
 import { Panel, SectionTitle } from "@/components/ui/Panel";
 import { Tag } from "@/components/ui/Tag";
 import { formatDate } from "@/lib/format";
+import { offerStatusLabel, translate } from "@/lib/i18n/dictionary";
 import { offerStatus } from "@/lib/operations";
 import type { EnrichedCandidate, EnrichedOffer, EnrichedRequisition, Language, Offer, Profile, WorkspaceActionRequest } from "@/types/recruitment";
 
@@ -30,6 +31,7 @@ export function WorkspaceOfferSection({
   requisitions,
   allOffers,
   canWrite,
+  language = "en",
   profile,
   onAction,
   onOpenCandidate,
@@ -95,7 +97,7 @@ export function WorkspaceOfferSection({
                 </button>
                 <button
                   type="button"
-                  className="inline-flex min-h-9 shrink-0 items-center gap-2 rounded-md bg-primary px-3 text-sm font-semibold text-white hover:bg-[#082BB0] focus:outline-none focus:ring-2 focus:ring-primary/25 disabled:cursor-not-allowed disabled:bg-cool"
+                  className="inline-flex min-h-9 shrink-0 items-center gap-2 rounded-md bg-primary px-3 text-sm font-semibold text-white hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary/25 disabled:cursor-not-allowed disabled:bg-cool"
                   disabled={!canWrite}
                   title={!canWrite ? writeDisabledReason : "Mark the requisition as filled"}
                   onClick={() => onAction({ kind: "requisition.status", docId: row.doc_id })}
@@ -109,7 +111,7 @@ export function WorkspaceOfferSection({
         </div>
       ) : null}
 
-      {offers.length === 0 ? <EmptyState message="No offers are linked to this workspace." /> : (
+      {offers.length === 0 ? <EmptyState message={translate(language, "noOffersWorkspace")} /> : (
         <div className="grid min-w-0 gap-2">
           {offers.map((offer) => {
             const status = offerStatus(offer);
@@ -137,7 +139,7 @@ export function WorkspaceOfferSection({
                     <button type="button" className="min-w-0 break-words text-left font-bold text-navy focus:outline-none focus:ring-2 focus:ring-primary/25" onClick={() => onOpenCandidate(offer.candidate_id)}>
                       {offer.candidate_name ?? offer.candidate_id}
                     </button>
-                    <Tag tone={status.tone}>{status.label}</Tag>
+                    <Tag tone={status.tone}>{offerStatusLabel(language, status.label)}</Tag>
                   </div>
                   <p className="break-words text-sm font-semibold text-navy">{offer.doc_id}{offer.position ? ` - ${offer.position}` : ""}</p>
                   <div className="flex min-w-0 flex-wrap gap-x-3 gap-y-1 text-xs font-medium text-slate">

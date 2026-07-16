@@ -9,12 +9,14 @@ export function Modal({
   open,
   title,
   children,
+  closeLabel = "Close",
   onClose,
   width = "max-w-3xl"
 }: {
   open: boolean;
   title: string;
   children: ReactNode;
+  closeLabel?: string;
   onClose: () => void;
   width?: string;
 }) {
@@ -44,8 +46,8 @@ export function Modal({
             variant="ghost"
             size="icon-sm"
             onClick={onClose}
-            title="Close"
-            aria-label="Close"
+            title={closeLabel}
+            aria-label={closeLabel}
             className="relative text-slate after:absolute after:-inset-1 hover:text-navy"
             icon={<X size={16} aria-hidden="true" />}
           />

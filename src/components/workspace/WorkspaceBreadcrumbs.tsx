@@ -2,6 +2,8 @@
 
 import { ChevronRight } from "lucide-react";
 import Link from "next/link";
+import { translate } from "@/lib/i18n/dictionary";
+import type { Language } from "@/types/recruitment";
 
 type BreadcrumbItem = {
   current?: boolean;
@@ -10,11 +12,11 @@ type BreadcrumbItem = {
   onSelect?: () => void;
 };
 
-export function WorkspaceBreadcrumbs({ group, requisition, workspace }: { group?: BreadcrumbItem; requisition?: BreadcrumbItem; workspace: BreadcrumbItem }) {
+export function WorkspaceBreadcrumbs({ group, language, requisition, workspace }: { group?: BreadcrumbItem; language: Language; requisition?: BreadcrumbItem; workspace: BreadcrumbItem }) {
   const items = [workspace, group, requisition].filter(Boolean) as BreadcrumbItem[];
 
   return (
-    <nav aria-label="Workspace breadcrumbs" className="mb-2 min-w-0">
+    <nav aria-label={translate(language, "workspaceBreadcrumbs")} className="mb-2 min-w-0">
       <ol className="flex min-w-0 flex-wrap items-center gap-1 text-xs font-semibold text-slate">
         {items.map((item, index) => (
           <li key={`${item.label}-${index}`} className="flex min-w-0 items-center gap-1">

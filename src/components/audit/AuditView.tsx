@@ -5,7 +5,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Panel, SectionTitle } from "@/components/ui/Panel";
 import { Tag } from "@/components/ui/Tag";
 import { formatDateTime, statusTone, toTitle } from "@/lib/format";
-import { translate } from "@/lib/i18n/dictionary";
+import { actionToneLabel, translate } from "@/lib/i18n/dictionary";
 import { auditDiffRows } from "@/lib/operations";
 import type { ChangeLog, Language } from "@/types/recruitment";
 
@@ -25,39 +25,39 @@ export function AuditView({ language, rows }: { language: Language; rows: Change
     <Panel>
       <SectionTitle title={translate(language, "audit")} />
       <div className="mb-4 grid gap-2 rounded-md border border-[#D7DEE8] bg-[#F8FAFD] p-3 md:grid-cols-3 xl:grid-cols-6">
-        <AuditFilter label="Entity" value={filters.entity} onChange={(value) => setFilters((current) => ({ ...current, entity: value }))} />
-        <AuditFilter label="Action" value={filters.action} onChange={(value) => setFilters((current) => ({ ...current, action: value }))} />
-        <AuditFilter label="Changed by" value={filters.changedBy} onChange={(value) => setFilters((current) => ({ ...current, changedBy: value }))} />
-        <AuditFilter label="Entity ID" value={filters.entityId} onChange={(value) => setFilters((current) => ({ ...current, entityId: value }))} />
-        <AuditFilter label="Start" type="date" value={filters.start} onChange={(value) => setFilters((current) => ({ ...current, start: value }))} />
-        <AuditFilter label="End" type="date" value={filters.end} onChange={(value) => setFilters((current) => ({ ...current, end: value }))} />
+        <AuditFilter label={translate(language, "entity")} value={filters.entity} onChange={(value) => setFilters((current) => ({ ...current, entity: value }))} />
+        <AuditFilter label={translate(language, "action")} value={filters.action} onChange={(value) => setFilters((current) => ({ ...current, action: value }))} />
+        <AuditFilter label={translate(language, "changedBy")} value={filters.changedBy} onChange={(value) => setFilters((current) => ({ ...current, changedBy: value }))} />
+        <AuditFilter label={translate(language, "entityId")} value={filters.entityId} onChange={(value) => setFilters((current) => ({ ...current, entityId: value }))} />
+        <AuditFilter label={translate(language, "startDate")} type="date" value={filters.start} onChange={(value) => setFilters((current) => ({ ...current, start: value }))} />
+        <AuditFilter label={translate(language, "endDate")} type="date" value={filters.end} onChange={(value) => setFilters((current) => ({ ...current, end: value }))} />
       </div>
       {rows.length === 0 ? (
-        <EmptyState message="No audit records yet." />
+        <EmptyState message={translate(language, "noAuditRecords")} />
       ) : (
         <div className="grid gap-3">
-          {filteredRows.length === 0 ? <EmptyState message="No audit records match the current filters." /> : null}
+          {filteredRows.length === 0 ? <EmptyState message={translate(language, "noAuditRecordsMatch")} /> : null}
           {filteredRows.map((row) => (
-            <article key={row.log_id} className="rounded-md border border-[#D7DEE8] bg-white p-4 shadow-[0_6px_16px_rgba(11,19,43,0.025)]">
+            <article key={row.log_id} className="rounded-md border border-[#D7DEE8] bg-white p-4 shadow-[0_3px_10px_rgba(11,19,43,0.02)]">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <strong className="text-navy">{toTitle(row.entity)} - {row.entity_id}</strong>
-                  <p className="text-sm font-medium text-slate">{row.changed_by_email ?? "System"} - {formatDateTime(row.changed_at)}</p>
+                  <p className="text-sm font-medium text-slate">{row.changed_by_email ?? translate(language, "system")} - {formatDateTime(row.changed_at, language)}</p>
                 </div>
-                <Tag tone={statusTone(row.action) as never}>{row.action}</Tag>
+                <Tag tone={statusTone(row.action) as never}>{actionToneLabel(language, row.action)}</Tag>
               </div>
               <AuditRecordLinks row={row} />
               <details className="rounded-md border border-[#D7DEE8] bg-[#F8FAFD] p-3 text-sm">
-                <summary className="inline-flex cursor-pointer items-center gap-2 font-semibold text-navy hover:text-primary" aria-label={`View field changes for ${row.entity} ${row.entity_id}`}>
+                <summary className="inline-flex cursor-pointer items-center gap-2 font-semibold text-navy hover:text-primary" aria-label={translate(language, "viewFieldChangesFor", { entity: row.entity, id: row.entity_id })}>
                   <Search size={16} aria-hidden="true" />
-                  Field changes
+                  {translate(language, "fieldChanges")}
                 </summary>
                 <div className="mt-3 grid gap-2">
                   {auditDiffRows(row).map((diff) => (
                     <div key={diff.field} className={`grid gap-2 rounded border border-[#D7DEE8] bg-white p-2 text-xs md:grid-cols-[10rem_1fr_1fr] ${diff.changed ? "" : "opacity-70"}`}>
                       <strong className="text-navy">{diff.field}</strong>
-                      <span className="text-slate">Old: {diff.oldValue}</span>
-                      <span className="text-slate">New: {diff.newValue}</span>
+                      <span className="text-slate">{translate(language, "oldValue")}: {diff.oldValue}</span>
+                      <span className="text-slate">{translate(language, "newValue")}: {diff.newValue}</span>
                     </div>
                   ))}
                 </div>

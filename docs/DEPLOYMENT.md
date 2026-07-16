@@ -86,6 +86,7 @@ NEXT_PUBLIC_APP_URL
 ## How To Push Product Changes To `develop` Without Error
 
 Use this workflow for product code, UI, database migration, and documentation changes.
+Use plain `git` commands only. Do not use GitHub CLI (`gh`) for this workflow.
 
 ### 1. Confirm Branch And Clean Scope
 
@@ -179,6 +180,9 @@ Refine home summary and pipeline card layout
 ```powershell
 git push origin develop
 ```
+
+This pushes the current local `develop` commit to the remote `develop` branch directly through Git.
+It does not create a pull request and does not require `gh`.
 
 If push is rejected because remote has new commits:
 

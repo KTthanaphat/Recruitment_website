@@ -9,7 +9,7 @@ import { Tag } from "@/components/ui/Tag";
 import { RecordActionGroup } from "@/components/ui/Operations";
 import { BulkActionToolbar, BulkReviewModal } from "@/components/ui/Workflow";
 import { formatDate } from "@/lib/format";
-import { translate } from "@/lib/i18n/dictionary";
+import { offerStatusLabel, translate } from "@/lib/i18n/dictionary";
 import { bulkActionDisabledReason, offerImpact, offerStatus, type BulkActionResult } from "@/lib/operations";
 import { readTableUrlState, writeTableUrlValues } from "@/lib/table-url-state";
 import { updateWorkspaceUrlState } from "@/lib/workspace-url-state";
@@ -48,9 +48,9 @@ export function OffersView({
     { key: "candidate", label: "Candidate", value: (row) => row.candidate_name ?? row.candidate_id },
     { key: "doc_id", label: "Doc ID", value: (row) => row.doc_id },
     { key: "position", label: "Position", value: (row) => row.position ?? "-" },
-    { key: "status", label: "Offer Status", value: (row) => offerStatus(row).label },
+    { key: "status", label: "Offer Status", value: (row) => offerStatusLabel(language, offerStatus(row).label) },
     { key: "impact", label: "Impact", value: (row) => offerImpact(row, allOffers, requisitions) },
-    { key: "accepted", label: "Accepted", value: (row) => row.accepted_date ? formatDate(row.accepted_date) : "Pending", sortValue: (row) => row.accepted_date ?? "" },
+    { key: "accepted", label: "Accepted", value: (row) => row.accepted_date ? formatDate(row.accepted_date, language) : translate(language, "pending"), sortValue: (row) => row.accepted_date ?? "" },
     { key: "first_working", label: "First Working", value: (row) => formatDate(row.first_working_date), sortValue: (row) => row.first_working_date ?? "" },
     { key: "age", label: "Age", value: (row) => ageLabel(row), sortValue: (row) => offerStatus(row).ageDays ?? Number.POSITIVE_INFINITY }
   ];
@@ -91,6 +91,7 @@ export function OffersView({
         <>
         <TableToolbar
           advancedFiltersOpen={advancedFiltersOpen}
+          language={language}
           onAdvancedFiltersToggle={() => setAdvancedFiltersOpen((open) => !open)}
           onSearch={table.setSearch}
           resultCount={table.controlledRows.length}
@@ -99,7 +100,7 @@ export function OffersView({
         />
         <div className="grid gap-3 md:hidden">
           {visibleRows.map((row) => (
-            <article key={row.offer_id} className="rounded-md border border-[#D7DEE8] bg-white p-3 shadow-[0_6px_16px_rgba(11,19,43,0.025)]">
+            <article key={row.offer_id} className="rounded-md border border-[#D7DEE8] bg-white p-3 shadow-[0_3px_10px_rgba(11,19,43,0.02)]">
               <div className="mb-2 flex items-center justify-between gap-2">
                 <button
                   type="button"
@@ -113,12 +114,12 @@ export function OffersView({
                     ariaLabel={`View offer candidate detail for ${row.candidate_name ?? row.candidate_id}`}
                     onClick={() => onOpenCandidate(row.candidate_id)}
                   />
-                  {row.accepted_date ? <Tag tone="success">{formatDate(row.accepted_date)}</Tag> : <Tag tone="muted">Pending</Tag>}
+                  {row.accepted_date ? <Tag tone="success">{formatDate(row.accepted_date, language)}</Tag> : <Tag tone="muted">{translate(language, "pending")}</Tag>}
                 </div>
               </div>
               <p className="text-sm font-semibold text-navy">{row.doc_id}</p>
-              <p className="text-sm font-medium text-slate">{row.position ?? "-"} - start {formatDate(row.first_working_date)}</p>
-              <p className="text-sm font-medium text-slate">{offerImpact(row, allOffers, requisitions)} - Age {ageLabel(row)}</p>
+              <p className="text-sm font-medium text-slate">{row.position ?? "-"} - {translate(language, "startLower")} {formatDate(row.first_working_date, language)}</p>
+              <p className="text-sm font-medium text-slate">{offerImpact(row, allOffers, requisitions)} - {translate(language, "age")} {ageLabel(row)}</p>
               <div className="mt-3">
                 <RecordActionGroup
                   label={row.candidate_name ?? row.candidate_id}
@@ -134,7 +135,7 @@ export function OffersView({
               <tr>
                 <th scope="col" className="px-3 py-3">
                   <input
-                    aria-label="Select visible offers"
+                    aria-label={translate(language, "selectVisibleOffers")}
                     type="checkbox"
                     checked={visibleRows.length > 0 && visibleRows.every((row) => selectedIds.includes(String(row.offer_id)))}
                     onChange={(event) => setSelectedIds(event.target.checked ? Array.from(new Set([...selectedIds, ...visibleRows.map((row) => String(row.offer_id))])) : selectedIds.filter((id) => !visibleRows.some((row) => String(row.offer_id) === id)))}
@@ -145,6 +146,7 @@ export function OffersView({
                     <SortableFilterHeader
                       columnKey={column.key}
                       filterValue={table.filters[column.key] ?? ""}
+                      language={language}
                       label={column.label}
                       onFilter={table.setFilter}
                       onSort={table.toggleSort}
@@ -154,7 +156,7 @@ export function OffersView({
                     />
                   </th>
                 ))}
-                <th scope="col" className="px-3 py-3"><span className="sr-only">Actions</span></th>
+                <th scope="col" className="px-3 py-3"><span className="sr-only">{translate(language, "actions")}</span></th>
               </tr>
             </thead>
             <tbody>
@@ -162,7 +164,7 @@ export function OffersView({
                 <tr key={row.offer_id} className="border-b border-[#D7DEE8] last:border-0">
                   <td className="px-3 py-3">
                     <input
-                      aria-label={`Select offer ${row.offer_id}`}
+                      aria-label={translate(language, "selectOffer", { id: row.offer_id })}
                       type="checkbox"
                       checked={selectedIds.includes(String(row.offer_id))}
                       onChange={(event) => setSelectedIds((current) => event.target.checked ? [...current, String(row.offer_id)] : current.filter((id) => id !== String(row.offer_id)))}
@@ -179,10 +181,10 @@ export function OffersView({
                   </td>
                   <td className="px-3 py-3 font-semibold text-navy">{row.doc_id}</td>
                   <td className="px-3 py-3 text-slate">{row.position ?? "-"}</td>
-                  <td className="px-3 py-3"><Tag tone={offerStatus(row).tone}>{offerStatus(row).label}</Tag></td>
+                  <td className="px-3 py-3"><Tag tone={offerStatus(row).tone}>{offerStatusLabel(language, offerStatus(row).label)}</Tag></td>
                   <td className="px-3 py-3 text-slate">{offerImpact(row, allOffers, requisitions)}</td>
-                  <td className="px-3 py-3">{row.accepted_date ? <Tag tone="success">{formatDate(row.accepted_date)}</Tag> : <Tag tone="muted">Pending</Tag>}</td>
-                  <td className="px-3 py-3 text-slate">{formatDate(row.first_working_date)}</td>
+                  <td className="px-3 py-3">{row.accepted_date ? <Tag tone="success">{formatDate(row.accepted_date, language)}</Tag> : <Tag tone="muted">{translate(language, "pending")}</Tag>}</td>
+                  <td className="px-3 py-3 text-slate">{formatDate(row.first_working_date, language)}</td>
                   <td className="px-3 py-3 text-slate">{ageLabel(row)}</td>
                   <td className="px-3 py-3">
                     <div className="flex items-center justify-end gap-2">
@@ -204,7 +206,8 @@ export function OffersView({
         <Pagination language={language} page={paginated.page} pageSize={pageSize} totalRows={table.controlledRows.length} onPageChange={setPage} onPageSizeChange={setPageSize} />
         <BulkActionToolbar
           disabledReason={bulkDisabledReason}
-          entityLabel="offers"
+          entityLabel={translate(language, "offers")}
+          language={language}
           selectedCount={selectedIds.length}
           onClear={() => {
             setSelectedIds([]);
@@ -217,8 +220,9 @@ export function OffersView({
           }}
         />
         <BulkReviewModal
-          actionLabel="Review selected offers and related candidate/requisition links."
+          actionLabel={translate(language, "bulkOfferReviewAction")}
           ids={selectedIds}
+          language={language}
           open={bulkReviewOpen}
           result={bulkResult}
           onClose={() => setBulkReviewOpen(false)}

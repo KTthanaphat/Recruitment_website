@@ -9,7 +9,7 @@ const config: Config = {
         charcoal: "#1F2937",
         slate: "#475569",
         cool: "#94A3B8",
-        primary: "#0A3CDC",
+        primary: "rgb(var(--app-primary-rgb) / <alpha-value>)",
         electric: "#146EFA",
         purple: "#411EDC",
         teal: "#0AA0C3",

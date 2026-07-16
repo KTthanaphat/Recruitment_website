@@ -48,7 +48,7 @@ export function Pagination({
         <button
           type="button"
           className={`grid size-9 place-items-center rounded text-lg font-medium transition-colors ${
-            safePage <= 1 ? "cursor-not-allowed text-[#AFC6EE]" : "text-navy hover:bg-lightgray hover:text-primary"
+            safePage <= 1 ? "cursor-not-allowed text-cool" : "text-navy hover:bg-lightgray hover:text-primary"
           }`}
           disabled={safePage <= 1}
           aria-label={translate(language, "previousPage")}
@@ -64,7 +64,7 @@ export function Pagination({
         <button
           type="button"
           className={`grid size-9 place-items-center rounded text-lg font-medium transition-colors ${
-            safePage >= totalPages ? "cursor-not-allowed text-[#AFC6EE]" : "text-navy hover:bg-lightgray hover:text-primary"
+            safePage >= totalPages ? "cursor-not-allowed text-cool" : "text-navy hover:bg-lightgray hover:text-primary"
           }`}
           disabled={safePage >= totalPages}
           aria-label={translate(language, "nextPage")}

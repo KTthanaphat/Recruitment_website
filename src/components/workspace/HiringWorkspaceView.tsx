@@ -11,7 +11,7 @@ import { DataQualityPanel, SourcingConversionPanel } from "@/components/ui/Workf
 import { ACTIVE_PIPELINE_STAGES, processLabel, SOURCING_CHANNELS } from "@/lib/constants";
 import { enrichCandidates, enrichOffers, enrichRequisitions, enrichSourcingGroups } from "@/lib/data";
 import { formatDate, resultText, statusTone } from "@/lib/format";
-import { translate } from "@/lib/i18n/dictionary";
+import { actionToneLabel, fillReadinessLabel, offerStatusLabel, translate } from "@/lib/i18n/dictionary";
 import {
   deriveDataQualityIssues,
   deriveHiringJourney,
@@ -153,9 +153,9 @@ export function HiringWorkspaceView({
   }, [selectedGroupDocId, target]);
 
   const context = selectedTarget.type === "requisition" && selectedTarget.id
-    ? contextForRequisition(selectedTarget.id, data, activeOpenRequisitions, candidates, offers, activeOpenGroups, contextualHref)
+    ? contextForRequisition(selectedTarget.id, data, activeOpenRequisitions, candidates, offers, activeOpenGroups, contextualHref, language)
     : selectedTarget.type === "group" && selectedTarget.id
-      ? contextForGroup(selectedTarget.id, urlState.docId, data, activeOpenRequisitions, candidates, offers, activeOpenGroups, contextualHref)
+      ? contextForGroup(selectedTarget.id, urlState.docId, data, activeOpenRequisitions, candidates, offers, activeOpenGroups, contextualHref, language)
       : null;
   const hasMultipleGroupDocuments = context?.type === "group" && context.requisitions.length > 1;
   const readiness = context?.primaryRequisition ? requisitionFillReadiness(context.primaryRequisition, candidates) : null;
@@ -226,10 +226,11 @@ export function HiringWorkspaceView({
 
   return (
     <div className="grid min-w-0 gap-4">
-      {pickerOpen || !context ? null : <section className="sticky top-3 z-30 min-w-0 rounded-lg border border-[#C9D5E6] bg-white/95 p-3 shadow-[0_8px_20px_rgba(11,19,43,0.045)] backdrop-blur">
+      {pickerOpen || !context ? null : <section className="sticky top-3 z-30 min-w-0 rounded-lg border border-[#D7DEE8] bg-white/95 p-3 shadow-[0_6px_18px_rgba(11,19,43,0.04)] backdrop-blur">
         <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
           <div className="min-w-0">
             {context ? <WorkspaceBreadcrumbs
+              language={language}
               workspace={{ label: translate(language, "workspace"), href: contextualHref("/workspace"), onSelect: showWorkspaceCatalog }}
               group={context.groups[0] ? { label: context.groups[0].group_id, href: contextualHref(`/workspace?type=group&id=${encodeURIComponent(context.groups[0].group_id)}&section=overview`), current: !context.primaryRequisition, onSelect: () => showGroup(context.groups[0].group_id) } : undefined}
               requisition={context.primaryRequisition ? { label: context.primaryRequisition.doc_id, href: context.groups[0] ? contextualHref(`/workspace?type=group&id=${encodeURIComponent(context.groups[0].group_id)}&doc=${encodeURIComponent(context.primaryRequisition.doc_id)}&section=overview`) : contextualHref(`/workspace?type=requisition&id=${encodeURIComponent(context.primaryRequisition.doc_id)}&section=overview`), current: true } : undefined}
@@ -237,7 +238,7 @@ export function HiringWorkspaceView({
             <p className="text-xs font-medium uppercase tracking-normal text-slate">{translate(language, "workspace")}</p>
             <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2">
               <h1 className="min-w-0 break-words text-xl font-semibold text-navy">{context?.title ?? translate(language, "workspaceSelectTitle")}</h1>
-              {readiness ? <Tag tone={readiness.tone}>{readiness.label}</Tag> : null}
+              {readiness ? <Tag tone={readiness.tone}>{fillReadinessLabel(language, readiness.label)}</Tag> : null}
               {sla ? <Tag tone={sla.isOverdue ? "danger" : "muted"}>{sla.label}</Tag> : null}
             </div>
             <p className="mt-1 break-words text-sm font-medium text-slate">{context?.meta ?? "Choose a requisition or sourcing group to focus the workspace."}</p>
@@ -259,7 +260,7 @@ export function HiringWorkspaceView({
         ) : null}
 
         {context && !pickerOpen ? (
-          <div role="tablist" aria-label="Hiring workspace sections" className="mt-3 flex min-w-0 gap-1 overflow-x-auto border-t border-[#D7DEE8] pt-3">
+          <div role="tablist" aria-label={translate(language, "hiringWorkspaceSections")} className="mt-3 flex min-w-0 gap-1 overflow-x-auto border-t border-[#D7DEE8] pt-3">
             {workspaceSections.map((section) => {
               const active = urlState.section === section;
               return (
@@ -279,8 +280,8 @@ export function HiringWorkspaceView({
           {hasMultipleGroupDocuments ? <GroupDocumentSelector language={language} requisitions={context.requisitions} selectedDocId={context.primaryRequisition?.doc_id ?? null} onSelect={selectGroupDocument} /> : null}
           {urlState.section === "overview" ? <OverviewSection canWrite={canWrite} context={context} contextIssues={contextIssues} journey={journey} language={language} onDispatchAction={onDispatchAction} /> : null}
           {urlState.section === "pipeline" ? pipelineSlot : null}
-          {urlState.section === "sourcing" ? sourcingSlot ?? <SourcingFallbackSection data={data} groups={context.groups} weekStart={weekStart} /> : null}
-          {urlState.section === "offer" ? offerSlot ?? <OfferSection context={context} data={data} requisitions={requisitions} /> : null}
+          {urlState.section === "sourcing" ? sourcingSlot ?? <SourcingFallbackSection data={data} groups={context.groups} language={language} weekStart={weekStart} /> : null}
+          {urlState.section === "offer" ? offerSlot ?? <OfferSection context={context} data={data} language={language} requisitions={requisitions} /> : null}
           {urlState.section === "activity" ? <ActivitySection activity={context.activity} language={language} /> : null}
         </div>
       )}
@@ -316,7 +317,7 @@ function OverviewSection({ canWrite, context, contextIssues, journey, language, 
           <JourneyGuide language={language} steps={journey} />
         </Panel>
       </div>
-      <DataQualityPanel compact issues={contextIssues} title={translate(language, "workspaceDataQuality")} />
+      <DataQualityPanel compact issues={contextIssues} language={language} title={translate(language, "workspaceDataQuality")} />
     </div>
   );
 }
@@ -337,19 +338,19 @@ function JourneyGuide({ language, steps }: { language: Language; steps: HiringJo
   );
 }
 
-function SourcingFallbackSection({ data, groups, weekStart }: { data: DashboardData; groups: EnrichedSourcingGroup[]; weekStart: string }) {
+function SourcingFallbackSection({ data, groups, language, weekStart }: { data: DashboardData; groups: EnrichedSourcingGroup[]; language: Language; weekStart: string }) {
   return (
     <Panel>
-      <SectionTitle title="Sourcing coverage" eyebrow="Read-only fallback" />
+      <SectionTitle title={translate(language, "sourcingCoverage")} eyebrow={translate(language, "readOnlyFallback")} />
       <div className="grid min-w-0 gap-3">
-        {groups.length === 0 ? <EmptyState message="No matched sourcing group for this workspace." /> : groups.map((group) => {
+        {groups.length === 0 ? <EmptyState message={translate(language, "noMatchedSourcingGroup")} /> : groups.map((group) => {
           const previous = sourcingPreviousUpdate(data, group.group_id, weekStart);
           const metrics = deriveSourcingConversionMetrics(data, group.group_id, weekStart);
           return (
             <article key={group.group_id} className="grid min-w-0 gap-3 rounded-md border border-[#D7DEE8] bg-white p-3">
-              <div className="flex min-w-0 flex-wrap items-start justify-between gap-2"><div className="min-w-0"><strong className="block break-words text-navy">{group.group_id} - {group.group_position}</strong><p className="text-sm font-medium text-slate">{group.sites.join(", ") || "-"} - {group.owners.join(", ") || "Unassigned"}</p></div><Tag tone={group.open_headcount > 0 ? "warning" : "success"}>{group.open_headcount} open</Tag></div>
-              <p className="text-sm font-medium text-slate">This week: {sourcingApplicants(group.latest_update)} applicants. Previous week: {sourcingApplicants(previous)}. Enabled channels: {SOURCING_CHANNELS.filter((channel) => group[channel.enabled]).length}.</p>
-              <SourcingConversionPanel metrics={metrics} />
+              <div className="flex min-w-0 flex-wrap items-start justify-between gap-2"><div className="min-w-0"><strong className="block break-words text-navy">{group.group_id} - {group.group_position}</strong><p className="text-sm font-medium text-slate">{group.sites.join(", ") || "-"} - {group.owners.join(", ") || translate(language, "unassigned")}</p></div><Tag tone={group.open_headcount > 0 ? "warning" : "success"}>{translate(language, "openCount", { count: group.open_headcount })}</Tag></div>
+              <p className="text-sm font-medium text-slate">{translate(language, "sourcingWeekSummary", { applicants: sourcingApplicants(group.latest_update), previous: sourcingApplicants(previous), channels: SOURCING_CHANNELS.filter((channel) => group[channel.enabled]).length })}</p>
+              <SourcingConversionPanel language={language} metrics={metrics} />
             </article>
           );
         })}
@@ -358,16 +359,16 @@ function SourcingFallbackSection({ data, groups, weekStart }: { data: DashboardD
   );
 }
 
-function OfferSection({ context, data, requisitions }: { context: WorkspaceContext; data: DashboardData; requisitions: EnrichedRequisition[] }) {
+function OfferSection({ context, data, language, requisitions }: { context: WorkspaceContext; data: DashboardData; language: Language; requisitions: EnrichedRequisition[] }) {
   return (
     <Panel>
-      <SectionTitle title="Hiring offers" eyebrow="Offers and starts" />
+      <SectionTitle title={translate(language, "hiringOffers")} eyebrow={translate(language, "offersAndStarts")} />
       <div className="grid gap-2">
-        {context.offers.length === 0 ? <EmptyState message="No offers are linked to this workspace." /> : context.offers.map((offer) => (
+        {context.offers.length === 0 ? <EmptyState message={translate(language, "noOffersWorkspace")} /> : context.offers.map((offer) => (
           <article key={offer.offer_id} className="min-w-0 rounded-md border border-[#D7DEE8] bg-white p-3">
-            <div className="flex min-w-0 flex-wrap items-start justify-between gap-2"><div className="min-w-0"><strong className="block break-words text-navy">{offer.candidate_name ?? offer.candidate_id}</strong>{context.requisitions.length > 1 ? <p className="text-sm font-medium text-slate">{offer.doc_id}</p> : null}</div><Tag tone={offerStatus(offer).tone}>{offerStatus(offer).label}</Tag></div>
+            <div className="flex min-w-0 flex-wrap items-start justify-between gap-2"><div className="min-w-0"><strong className="block break-words text-navy">{offer.candidate_name ?? offer.candidate_id}</strong>{context.requisitions.length > 1 ? <p className="text-sm font-medium text-slate">{offer.doc_id}</p> : null}</div><Tag tone={offerStatus(offer).tone}>{offerStatusLabel(language, offerStatus(offer).label)}</Tag></div>
             <p className="mt-2 break-words text-sm font-medium text-slate">{offerImpact(offer, data.offers, requisitions)}</p>
-            <p className="text-xs font-medium text-cool">Accepted {formatDate(offer.accepted_date)} - Start {formatDate(offer.first_working_date)}</p>
+            <p className="text-xs font-medium text-cool">{translate(language, "acceptedStartSummary", { accepted: formatDate(offer.accepted_date, language), start: formatDate(offer.first_working_date, language) })}</p>
           </article>
         ))}
       </div>
@@ -380,9 +381,9 @@ function ActivitySection({ activity, language }: { activity: WorkspaceActivity[]
     <Panel>
       <SectionTitle title={translate(language, "workspaceRecentActivity")} eyebrow={translate(language, "workspaceNewestFirst")} />
       <div className="grid min-w-0 gap-2">
-        {activity.length === 0 ? <EmptyState message="No recent activity for this workspace." /> : activity.slice(0, 20).map((item) => (
-          <Link key={item.id} href={item.href} className="grid min-w-0 gap-1 rounded-md border border-[#D7DEE8] bg-white p-3 transition-colors hover:border-primary/40 hover:bg-[#F8FAFD] focus:outline-none focus:ring-2 focus:ring-primary/25">
-            <div className="flex min-w-0 flex-wrap items-center justify-between gap-2"><strong className="break-words text-sm text-navy">{item.title}</strong><Tag tone={statusTone(item.tone) as never}>{item.tone}</Tag></div>
+        {activity.length === 0 ? <EmptyState message={translate(language, "noRecentWorkspaceActivity")} /> : activity.slice(0, 20).map((item) => (
+          <Link key={item.id} href={item.href} className="grid min-w-0 gap-1 rounded-md border border-[#D7DEE8] bg-white p-3 transition-colors hover:border-[#C9D5E6] hover:bg-[#F8FAFD] focus:outline-none focus:ring-2 focus:ring-primary/25">
+            <div className="flex min-w-0 flex-wrap items-center justify-between gap-2"><strong className="break-words text-sm text-navy">{item.title}</strong><Tag tone={statusTone(item.tone) as never}>{actionToneLabel(language, item.tone)}</Tag></div>
             <p className="break-words text-xs font-medium text-slate">{formatDate(item.date)} - {item.meta}</p>
           </Link>
         ))}
@@ -414,11 +415,14 @@ function WorkspacePicker({ candidates, canCreate, groups, invalidTarget, languag
   const rows = mode === "requisitions" ? filteredRequisitions.slice(0, 12) : filteredGroups.slice(0, 12);
   return (
     <Panel className="min-w-0">
-      <div className="mb-4 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-xs font-medium uppercase tracking-normal text-slate">{translate(language, "workspacePicker")}</p><h2 className="mt-1 text-lg font-semibold text-navy">{translate(language, "workspaceSelectTitle")}</h2>{invalidTarget ? <p className="mt-1 text-sm font-medium text-orange">The workspace in the URL was not found. Choose an available record.</p> : null}</div><div className="flex flex-wrap items-center gap-2">{canCreate ? <Button type="button" size="sm" onClick={onCreate}>{translate(language, "newRequisition")}</Button> : null}<div className="inline-flex w-fit rounded-md border border-[#C9D5E6] bg-[#F8FAFD] p-1" aria-label="Workspace record type">{(["requisitions", "groups"] as PickerMode[]).map((item) => <button key={item} type="button" className={`min-h-8 rounded px-3 text-sm font-semibold transition-colors ${mode === item ? "bg-white text-primary shadow-sm" : "text-slate hover:text-navy"}`} aria-pressed={mode === item} onClick={() => onModeChange(item)}>{item === "requisitions" ? translate(language, "requisitions") : translate(language, "workspaceGroups")}</button>)}</div></div></div>
-      <label className="grid gap-1 text-sm font-semibold text-navy">{translate(language, "workspaceSearch")}<input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ID, position, site, owner" className="min-h-10 w-full min-w-0 rounded-md border border-[#C9D5E6] bg-white px-3 text-sm font-medium text-navy outline-none placeholder:text-cool focus:border-primary focus:ring-2 focus:ring-primary/20" /></label>
+      <div className="mb-4 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-xs font-medium uppercase tracking-normal text-slate">{translate(language, "workspacePicker")}</p><h2 className="mt-1 text-lg font-semibold text-navy">{translate(language, "workspaceSelectTitle")}</h2>{invalidTarget ? <p className="mt-1 text-sm font-medium text-orange">{translate(language, "workspaceUrlNotFound")}</p> : null}</div><div className="flex flex-wrap items-center gap-2">{canCreate ? <Button type="button" size="sm" onClick={onCreate}>{translate(language, "newRequisition")}</Button> : null}<div className="inline-flex w-fit rounded-md border border-[#C9D5E6] bg-[#F8FAFD] p-1" aria-label={translate(language, "workspaceRecordType")}>{(["requisitions", "groups"] as PickerMode[]).map((item) => <button key={item} type="button" className={`min-h-8 rounded px-3 text-sm font-semibold transition-colors ${mode === item ? "bg-white text-primary shadow-sm" : "text-slate hover:text-navy"}`} aria-pressed={mode === item} onClick={() => onModeChange(item)}>{item === "requisitions" ? translate(language, "requisitions") : translate(language, "workspaceGroups")}</button>)}</div></div></div>
+      <label className="grid gap-1 text-sm font-semibold text-navy">{translate(language, "workspaceSearch")}<input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={translate(language, "workspaceSearchPlaceholder")} className="min-h-10 w-full min-w-0 rounded-md border border-[#C9D5E6] bg-white px-3 text-sm font-medium text-navy outline-none placeholder:text-cool focus:border-primary focus:ring-2 focus:ring-primary/20" /></label>
       <div className="mt-3 grid min-w-0 gap-2 sm:grid-cols-2 xl:grid-cols-3">
-        {rows.length === 0 ? <EmptyState message="No matching workspaces." /> : null}
-        {mode === "requisitions" ? (rows as EnrichedRequisition[]).map((row) => <button key={row.doc_id} type="button" className="grid min-w-0 gap-2 rounded-md border border-[#D7DEE8] bg-white p-3 text-left shadow-[0_6px_16px_rgba(11,19,43,0.025)] transition hover:border-primary/40 hover:bg-[#F8FAFD]" onClick={() => onSelect({ type: "requisition", id: row.doc_id })}><div className="flex min-w-0 items-start justify-between gap-2"><strong className="break-words text-navy">{row.doc_id}</strong><Tag tone={row.open_headcount > 0 ? "warning" : "success"}>{row.open_headcount} open</Tag></div><p className="break-words font-medium text-slate">{row.position}</p><p className="text-xs font-medium text-cool">{row.site} - {row.person_in_charge ?? "-"} - {candidates.filter((candidate) => candidate.doc_ids.includes(row.doc_id)).length} candidates</p></button>) : (rows as EnrichedSourcingGroup[]).map((group) => <button key={group.group_id} type="button" className="grid min-w-0 gap-2 rounded-md border border-[#D7DEE8] bg-white p-3 text-left shadow-[0_6px_16px_rgba(11,19,43,0.025)] transition hover:border-primary/40 hover:bg-[#F8FAFD]" onClick={() => onSelect({ type: "group", id: group.group_id })}><div className="flex min-w-0 items-start justify-between gap-2"><strong className="break-words text-navy">{group.group_id}</strong><Tag tone="muted">{group.candidate_count} candidates</Tag></div><p className="break-words font-medium text-slate">{group.group_position}</p><p className="text-xs font-medium text-cool">{group.sites.join(", ")} - {group.owners.join(", ") || "-"}</p></button>)}
+        {rows.length === 0 ? <EmptyState message={translate(language, "noMatchingWorkspaces")} /> : null}
+        {mode === "requisitions" ? (rows as EnrichedRequisition[]).map((row) => {
+          const candidateCount = candidates.filter((candidate) => candidate.doc_ids.includes(row.doc_id)).length;
+          return <button key={row.doc_id} type="button" className="grid min-w-0 gap-2 rounded-md border border-[#D7DEE8] bg-white p-3 text-left shadow-[0_3px_10px_rgba(11,19,43,0.02)] transition hover:border-[#C9D5E6] hover:bg-[#F8FAFD]" onClick={() => onSelect({ type: "requisition", id: row.doc_id })}><div className="flex min-w-0 items-start justify-between gap-2"><strong className="break-words text-navy">{row.doc_id}</strong><Tag tone={row.open_headcount > 0 ? "warning" : "success"}>{translate(language, "openCount", { count: row.open_headcount })}</Tag></div><p className="break-words font-medium text-slate">{row.position}</p><p className="text-xs font-medium text-cool">{row.site} - {row.person_in_charge ?? "-"} - {translate(language, "candidatesCount", { count: candidateCount })}</p></button>;
+        }) : (rows as EnrichedSourcingGroup[]).map((group) => <button key={group.group_id} type="button" className="grid min-w-0 gap-2 rounded-md border border-[#D7DEE8] bg-white p-3 text-left shadow-[0_3px_10px_rgba(11,19,43,0.02)] transition hover:border-[#C9D5E6] hover:bg-[#F8FAFD]" onClick={() => onSelect({ type: "group", id: group.group_id })}><div className="flex min-w-0 items-start justify-between gap-2"><strong className="break-words text-navy">{group.group_id}</strong><Tag tone="muted">{translate(language, "candidatesCount", { count: group.candidate_count })}</Tag></div><p className="break-words font-medium text-slate">{group.group_position}</p><p className="text-xs font-medium text-cool">{group.sites.join(", ")} - {group.owners.join(", ") || "-"}</p></button>)}
       </div>
     </Panel>
   );
@@ -441,7 +445,7 @@ function updateLegacyOutcomeSection() {
   window.dispatchEvent(new Event("workspace:urlchange"));
 }
 
-function contextForRequisition(id: string, data: DashboardData, requisitions: EnrichedRequisition[], candidates: EnrichedCandidate[], offers: EnrichedOffer[], groups: EnrichedSourcingGroup[], contextualHref: (path: string) => string): WorkspaceContext | null {
+function contextForRequisition(id: string, data: DashboardData, requisitions: EnrichedRequisition[], candidates: EnrichedCandidate[], offers: EnrichedOffer[], groups: EnrichedSourcingGroup[], contextualHref: (path: string) => string, language: Language): WorkspaceContext | null {
   const requisition = requisitions.find((row) => row.doc_id === id);
   if (!requisition) return null;
   const matches = data.document_groups.filter((match) => match.doc_id === id);
@@ -450,10 +454,10 @@ function contextForRequisition(id: string, data: DashboardData, requisitions: En
   const relatedCandidates = candidates.filter((candidate) => docGroupIds.has(candidate.doc_group_id) || candidate.doc_ids.includes(id));
   const relatedOffers = offers.filter((offer) => offer.doc_id === id);
   const relatedGroups = groups.filter((group) => groupIds.has(group.group_id));
-  return { id, type: "requisition", title: `${requisition.doc_id} - ${requisition.position}`, meta: `${requisition.site} - ${requisition.department} - ${requisition.person_in_charge ?? "Unassigned"}`, primaryRequisition: requisition, requisitions: [requisition], groups: relatedGroups, candidates: relatedCandidates, offers: relatedOffers, openHeadcount: requisition.open_headcount, docGroupId: matches[0]?.doc_group_id ?? null, activity: activityForContext(data, relatedCandidates.map((row) => row.candidate_id), [id], [...groupIds], contextualHref) };
+  return { id, type: "requisition", title: `${requisition.doc_id} - ${requisition.position}`, meta: `${requisition.site} - ${requisition.department} - ${requisition.person_in_charge ?? translate(language, "unassigned")}`, primaryRequisition: requisition, requisitions: [requisition], groups: relatedGroups, candidates: relatedCandidates, offers: relatedOffers, openHeadcount: requisition.open_headcount, docGroupId: matches[0]?.doc_group_id ?? null, activity: activityForContext(data, relatedCandidates.map((row) => row.candidate_id), [id], [...groupIds], contextualHref, language) };
 }
 
-function contextForGroup(id: string, selectedDocId: string | null, data: DashboardData, requisitions: EnrichedRequisition[], candidates: EnrichedCandidate[], offers: EnrichedOffer[], groups: EnrichedSourcingGroup[], contextualHref: (path: string) => string): WorkspaceContext | null {
+function contextForGroup(id: string, selectedDocId: string | null, data: DashboardData, requisitions: EnrichedRequisition[], candidates: EnrichedCandidate[], offers: EnrichedOffer[], groups: EnrichedSourcingGroup[], contextualHref: (path: string) => string, language: Language): WorkspaceContext | null {
   const group = groups.find((row) => row.group_id === id);
   if (!group) return null;
   const matches = data.document_groups.filter((match) => match.group_id === id);
@@ -464,18 +468,18 @@ function contextForGroup(id: string, selectedDocId: string | null, data: Dashboa
   const groupDocGroupIds = new Set(matches.map((match) => match.doc_group_id));
   const relatedCandidates = candidates.filter((candidate) => groupDocGroupIds.has(candidate.doc_group_id));
   const relatedOffers = offers.filter((offer) => primaryRequisition ? offer.doc_id === primaryRequisition.doc_id : linkedDocIds.has(offer.doc_id));
-  return { id, type: "group", title: `${group.group_id} - ${group.group_position}`, meta: `${group.sites.join(", ") || "-"} - ${group.owners.join(", ") || "Unassigned"}`, primaryRequisition, requisitions: relatedRequisitions, groups: [group], candidates: relatedCandidates, offers: relatedOffers, openHeadcount: primaryRequisition?.open_headcount ?? group.open_headcount, docGroupId: primaryRequisition ? scopedMatches[0]?.doc_group_id ?? null : null, activity: activityForContext(data, relatedCandidates.map((row) => row.candidate_id), primaryRequisition ? [primaryRequisition.doc_id] : [...linkedDocIds], [id], contextualHref) };
+  return { id, type: "group", title: `${group.group_id} - ${group.group_position}`, meta: `${group.sites.join(", ") || "-"} - ${group.owners.join(", ") || translate(language, "unassigned")}`, primaryRequisition, requisitions: relatedRequisitions, groups: [group], candidates: relatedCandidates, offers: relatedOffers, openHeadcount: primaryRequisition?.open_headcount ?? group.open_headcount, docGroupId: primaryRequisition ? scopedMatches[0]?.doc_group_id ?? null : null, activity: activityForContext(data, relatedCandidates.map((row) => row.candidate_id), primaryRequisition ? [primaryRequisition.doc_id] : [...linkedDocIds], [id], contextualHref, language) };
 }
 
-function activityForContext(data: DashboardData, candidateIds: string[], docIds: string[], groupIds: string[], contextualHref: (path: string) => string): WorkspaceActivity[] {
+function activityForContext(data: DashboardData, candidateIds: string[], docIds: string[], groupIds: string[], contextualHref: (path: string) => string, language: Language): WorkspaceActivity[] {
   const candidateSet = new Set(candidateIds);
   const docSet = new Set(docIds);
   const groupSet = new Set(groupIds);
   return [
-    ...data.recruitment_logs.filter((log) => candidateSet.has(log.candidate_id)).map((log) => ({ id: `log:${log.log_id}`, date: log.log_date, title: `${log.candidate_id} - ${processLabel(log.recruitment_process)}`, meta: `Round ${log.round} - ${resultText(log.result)}`, tone: resultText(log.result).toLowerCase(), href: contextualHref(`/pipeline?detailId=${encodeURIComponent(log.candidate_id)}`) })),
-    ...data.requisition_logs.filter((log) => docSet.has(log.doc_id)).map((log) => ({ id: `reqlog:${log.log_id}`, date: log.log_date, title: `${log.doc_id} - status update`, meta: log.remark ?? "No remark", tone: log.status, href: contextualHref(`/requisitions?detailId=${encodeURIComponent(log.doc_id)}`) })),
-    ...data.offers.filter((offer) => docSet.has(offer.doc_id) || candidateSet.has(offer.candidate_id)).map((offer) => ({ id: `offer:${offer.offer_id}`, date: offer.updated_at, title: `${offer.candidate_id} - offer`, meta: `Accepted ${formatDate(offer.accepted_date)} - Start ${formatDate(offer.first_working_date)}`, tone: offer.accepted_date ? "accepted" : "pending", href: contextualHref(`/offers?offerSearch=${encodeURIComponent(offer.doc_id)}`) })),
-    ...data.sourcing_weekly_updates.filter((update) => groupSet.has(update.group_id)).map((update) => ({ id: `source:${update.group_id}:${update.week_start}`, date: update.updated_at, title: `${update.group_id} - sourcing update`, meta: `${sourcingApplicants(update)} applicants`, tone: "update", href: contextualHref(`/sourcing?sourceSearch=${encodeURIComponent(update.group_id)}`) }))
+    ...data.recruitment_logs.filter((log) => candidateSet.has(log.candidate_id)).map((log) => ({ id: `log:${log.log_id}`, date: log.log_date, title: `${log.candidate_id} - ${processLabel(log.recruitment_process, language)}`, meta: `${translate(language, "round")} ${log.round} - ${resultText(log.result, language)}`, tone: resultText(log.result).toLowerCase(), href: contextualHref(`/pipeline?detailId=${encodeURIComponent(log.candidate_id)}`) })),
+    ...data.requisition_logs.filter((log) => docSet.has(log.doc_id)).map((log) => ({ id: `reqlog:${log.log_id}`, date: log.log_date, title: `${log.doc_id} - ${translate(language, "statusUpdate")}`, meta: log.remark ?? translate(language, "noRemark"), tone: log.status, href: contextualHref(`/requisitions?detailId=${encodeURIComponent(log.doc_id)}`) })),
+    ...data.offers.filter((offer) => docSet.has(offer.doc_id) || candidateSet.has(offer.candidate_id)).map((offer) => ({ id: `offer:${offer.offer_id}`, date: offer.updated_at, title: `${offer.candidate_id} - ${translate(language, "offerLower")}`, meta: translate(language, "acceptedStartSummary", { accepted: formatDate(offer.accepted_date, language), start: formatDate(offer.first_working_date, language) }), tone: offer.accepted_date ? "accepted" : "pending", href: contextualHref(`/offers?offerSearch=${encodeURIComponent(offer.doc_id)}`) })),
+    ...data.sourcing_weekly_updates.filter((update) => groupSet.has(update.group_id)).map((update) => ({ id: `source:${update.group_id}:${update.week_start}`, date: update.updated_at, title: `${update.group_id} - ${translate(language, "sourcingUpdate")}`, meta: translate(language, "applicantsCount", { count: sourcingApplicants(update) }), tone: "update", href: contextualHref(`/sourcing?sourceSearch=${encodeURIComponent(update.group_id)}`) }))
   ].sort((left, right) => right.date.localeCompare(left.date));
 }
 

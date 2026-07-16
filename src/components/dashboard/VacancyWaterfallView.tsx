@@ -103,8 +103,8 @@ export function VacancyWaterfallView({
     [data, endDate, requisitions, startDate]
   );
   const funnelRows = useMemo(
-    () => buildDashboardPipelineFunnelRows(data, requisitions, funnelStartDate, funnelEndDate, funnelLevelBand, funnelChannel),
-    [data, funnelChannel, funnelEndDate, funnelLevelBand, funnelStartDate, requisitions]
+    () => buildDashboardPipelineFunnelRows(data, requisitions, funnelStartDate, funnelEndDate, funnelLevelBand, funnelChannel, language),
+    [data, funnelChannel, funnelEndDate, funnelLevelBand, funnelStartDate, language, requisitions]
   );
   const funnelApplicantTotal = funnelRows[0]?.count ?? 0;
   const funnelChannelOptions = useMemo(() => buildFunnelChannelOptions(data), [data]);
@@ -214,14 +214,14 @@ export function VacancyWaterfallView({
 
   return (
     <div className="grid min-w-0 max-w-full gap-4 overflow-x-hidden">
-      <section className="min-w-0 max-w-full overflow-hidden rounded-lg border border-[#D7DEE8] bg-white py-6 font-normal shadow-[0_8px_22px_rgba(11,19,43,0.035)]">
+      <section className="min-w-0 max-w-full overflow-hidden rounded-lg border border-[#D7DEE8] bg-white py-6 font-normal shadow-[0_4px_14px_rgba(11,19,43,0.025)]">
         <div className="mb-5 grid gap-5 border-b border-[#D7DEE8] px-4 pb-5 sm:px-6 lg:grid-cols-[1fr_auto] lg:items-start lg:px-8">
           <div>
             <p className="mb-1 text-xs font-medium uppercase tracking-normal text-slate">{translate(language, "weeklyRecruitmentPerformance")}</p>
             <h2 className="text-2xl font-semibold tracking-normal text-navy sm:text-[28px]">{translate(language, "vacancyWaterfall")}</h2>
             <p className="mt-1 text-sm font-medium text-slate">{formatDate(startDate, language)} - {formatDate(endDate, language)}</p>
           </div>
-          <div className="grid gap-3 rounded-md bg-[#F8FAFD] p-3 sm:flex sm:items-start sm:justify-end">
+          <div className="grid gap-3 rounded-md border border-[#D7DEE8] bg-white p-3 sm:flex sm:items-start sm:justify-end">
             <Field label={translate(language, "startDate")} className="text-xs font-medium">
               <TextInput
                 className="min-h-9 w-full rounded-md border border-[#D7DEE8] bg-white px-2.5 py-1.5 text-sm font-normal text-navy shadow-none focus:border-primary sm:w-36"
@@ -263,7 +263,7 @@ export function VacancyWaterfallView({
         )}
       </section>
 
-      <section className="min-w-0 max-w-full overflow-hidden rounded-lg border border-[#D7DEE8] bg-white shadow-[0_8px_22px_rgba(11,19,43,0.035)]">
+      <section className="min-w-0 max-w-full overflow-hidden rounded-lg border border-[#D7DEE8] bg-white shadow-[0_4px_14px_rgba(11,19,43,0.025)]">
         <div className="flex flex-col gap-3 px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
           <button
             type="button"
@@ -288,7 +288,7 @@ export function VacancyWaterfallView({
         ) : null}
       </section>
 
-      <section className="min-w-0 max-w-full overflow-hidden rounded-lg border border-[#D7DEE8] bg-white shadow-[0_8px_22px_rgba(11,19,43,0.035)]">
+      <section className="min-w-0 max-w-full overflow-hidden rounded-lg border border-[#D7DEE8] bg-white shadow-[0_4px_14px_rgba(11,19,43,0.025)]">
         <div className="flex flex-col gap-3 px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
           <button
             type="button"
@@ -309,7 +309,7 @@ export function VacancyWaterfallView({
         </div>
         {funnelOpen ? (
           <div className="grid min-w-0 gap-4 border-t border-[#D7DEE8] p-4 sm:p-6 lg:p-8">
-            <div className="grid gap-3 rounded-md bg-[#F8FAFD] p-3 sm:grid-cols-2 lg:grid-cols-[repeat(4,minmax(0,10rem))_auto] sm:items-end">
+            <div className="grid gap-3 rounded-md border border-[#D7DEE8] bg-white p-3 sm:grid-cols-2 lg:grid-cols-[repeat(4,minmax(0,10rem))_auto] sm:items-end">
               <Field label={translate(language, "startDate")} className="text-xs font-medium">
                 <TextInput
                   className="min-h-9 w-full rounded-md border border-[#D7DEE8] bg-white px-2.5 py-1.5 text-sm font-normal text-navy shadow-none focus:border-primary"
@@ -326,12 +326,12 @@ export function VacancyWaterfallView({
                   onChange={(event) => setFunnelEndDate(event.target.value)}
                 />
               </Field>
-              <Field label="Level" className="text-xs font-medium">
+              <Field label={translate(language, "level")} className="text-xs font-medium">
                 <SelectInput value={funnelLevelBand} onChange={(event) => setFunnelLevelBand(event.target.value as FunnelLevelBand)}>
                   {funnelLevelOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </SelectInput>
               </Field>
-              <Field label="Channel" className="text-xs font-medium">
+              <Field label={translate(language, "channel")} className="text-xs font-medium">
                 <SelectInput value={funnelChannel} onChange={(event) => setFunnelChannel(event.target.value)}>
                   {funnelChannelOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </SelectInput>
@@ -370,7 +370,7 @@ export function VacancyWaterfallView({
 
       {exportPreparing ? (
         <div className="fixed inset-0 z-[70] grid place-items-center bg-navy/45 p-6 print:hidden" role="status" aria-live="polite" aria-busy="true">
-          <div className="rounded-lg border border-[#D7DEE8] bg-white px-6 py-5 text-center shadow-2xl">
+          <div className="rounded-lg border border-[#D7DEE8] bg-white px-6 py-5 text-center shadow-[0_12px_30px_rgba(11,19,43,0.12)]">
             <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-4 border-[#D7DEE8] border-t-primary" />
             <p className="font-semibold text-navy">{translate(language, "preparingPdf")}</p>
           </div>
@@ -595,6 +595,7 @@ function RequisitionDetailTable({ rows, language, printMode = false }: { rows: R
                   <SortableFilterHeader
                     columnKey={column.key}
                     filterValue={table.filters[column.key] ?? ""}
+                    language={language}
                     label={column.label}
                     onFilter={table.setFilter}
                     onSort={table.toggleSort}
@@ -861,9 +862,10 @@ function buildDashboardPipelineFunnelRows(
   startDate: string,
   endDate: string,
   levelBand: FunnelLevelBand,
-  channelFilter: FunnelChannelFilter
+  channelFilter: FunnelChannelFilter,
+  language: Language
 ): PipelineFunnelRow[] {
-  if (!startDate || !endDate || startDate > endDate) return buildPipelineFunnelRows(0, emptyFunnelStageCounts());
+  if (!startDate || !endDate || startDate > endDate) return buildPipelineFunnelRows(0, emptyFunnelStageCounts(), language);
 
   const eligibleRequisitions = requisitions.filter((requisition) =>
     requisition.status !== "cancel" && levelMatchesBand(requisition.level, levelBand)
@@ -883,14 +885,15 @@ function buildDashboardPipelineFunnelRows(
 
   return buildPipelineFunnelRows(
     applicantCountForGroups(data, groupIds, startDate, endDate, channelFilter),
-    passedStageActivityCountsForDocGroups(data, linkedDocGroupIds, startDate, endDate, channelFilter)
+    passedStageActivityCountsForDocGroups(data, linkedDocGroupIds, startDate, endDate, channelFilter),
+    language
   );
 }
 
-function buildPipelineFunnelRows(applicantTotal: number, stageCounts: FunnelStageCounts): PipelineFunnelRow[] {
+function buildPipelineFunnelRows(applicantTotal: number, stageCounts: FunnelStageCounts, language: Language): PipelineFunnelRow[] {
   const baseRows = [
-    { key: "applicants", label: "Applicants", count: applicantTotal },
-    ...PIPELINE_FUNNEL_STAGES.map((stage) => ({ key: stage, label: pipelineDisplayLabel(stage), count: stageCounts[stage] ?? 0 }))
+    { key: "applicants", label: translate(language, "applicants"), count: applicantTotal },
+    ...PIPELINE_FUNNEL_STAGES.map((stage) => ({ key: stage, label: pipelineDisplayLabel(stage, language), count: stageCounts[stage] ?? 0 }))
   ];
 
   return baseRows.map((row, index) => {
@@ -1052,8 +1055,8 @@ function requestTypeRank(requestType: RequisitionRequestType) {
 }
 
 function snapshotColor(site: string, requestType: string) {
-  const rep: Record<string, string> = { HQ: "#0A3CDC", KT1: "#2E4A78", KT2: "#475569" };
-  const fresh: Record<string, string> = { HQ: "#AFC6EE", KT1: "#D7DEE8", KT2: "#EEF2F7" };
+  const rep: Record<string, string> = { HQ: "#0AA0C3", KT1: "#146EFA", KT2: "#411EDC" };
+  const fresh: Record<string, string> = { HQ: "#90F5EC", KT1: "#80BDFF", KT2: "#C7BCF5" };
   return requestType === "New" ? fresh[site] ?? "#D7DEE8" : rep[site] ?? "#475569";
 }
 

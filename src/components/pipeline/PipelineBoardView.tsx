@@ -142,7 +142,7 @@ export function PipelineBoardView({
             action={
               canWrite && (onNewCandidate || onAddUpdate) ? (
                 <>
-                  {onNewCandidate ? <Button type="button" size="sm" icon={<Plus size={16} />} onClick={onNewCandidate}>New Candidate</Button> : null}
+                  {onNewCandidate ? <Button type="button" size="sm" icon={<Plus size={16} />} onClick={onNewCandidate}>{translate(language, "newCandidate")}</Button> : null}
                   {onAddUpdate ? <Button type="button" size="sm" variant="secondary" icon={<Workflow size={16} />} onClick={onAddUpdate}>{translate(language, "addUpdate")}</Button> : null}
                 </>
               ) : null
@@ -152,16 +152,16 @@ export function PipelineBoardView({
         <div className="mb-3 grid gap-3">
           <OperationalSummaryStrip
             items={[
-              { label: "Active candidates", value: activeRows.length, tone: "primary", helper: "Visible on board" },
-              { label: "Aging", value: agingRows.length, tone: agingRows.length > 0 ? "danger" : "success", helper: ">7 days since touch" },
-              { label: "Failed 7d", value: failedGroups.reduce((sum, group) => sum + group.rows.length, 0), tone: "danger", helper: "Recent failed outcomes" },
-              { label: "Offer pass 7d", value: passedOfferRows.length, tone: "success", helper: "Recently completed" },
-              { label: "No activity", value: noActivityRows.length, tone: noActivityRows.length > 0 ? "warning" : "success", helper: "Needs first update" }
+              { label: translate(language, "activeCandidates"), value: activeRows.length, tone: "primary", helper: translate(language, "visibleOnBoard") },
+              { label: translate(language, "aging"), value: agingRows.length, tone: agingRows.length > 0 ? "danger" : "success", helper: translate(language, "daysSinceTouch") },
+              { label: translate(language, "failed7d"), value: failedGroups.reduce((sum, group) => sum + group.rows.length, 0), tone: "danger", helper: translate(language, "recentFailedOutcomes") },
+              { label: translate(language, "offerPass7d"), value: passedOfferRows.length, tone: "success", helper: translate(language, "recentlyCompleted") },
+              { label: translate(language, "noActivity"), value: noActivityRows.length, tone: noActivityRows.length > 0 ? "warning" : "success", helper: translate(language, "needsFirstUpdate") }
             ]}
           />
           <div className="relative flex flex-wrap items-center justify-between gap-2" data-filter-popover-root="true">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <span className="text-xs font-semibold text-slate">Group cards</span>
+              <span className="text-xs font-semibold text-slate">{translate(language, "groupCards")}</span>
               {pipelineGroupOptions.map((option) => (
                 <button
                   key={option.value}
@@ -170,7 +170,7 @@ export function PipelineBoardView({
                   aria-pressed={groupBy === option.value}
                   onClick={() => setGroupBy(option.value)}
                 >
-                  {option.label}
+                  {translate(language, option.labelKey)}
                 </button>
               ))}
             </div>
@@ -179,23 +179,23 @@ export function PipelineBoardView({
                 ref={filterTriggerRef}
                 type="button"
                 className={`relative inline-flex h-9 w-9 items-center justify-center rounded-md ring-1 ring-inset transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 ${activeFilterCount > 0 ? "bg-primary text-white ring-primary" : "bg-white text-slate ring-[#C9D5E6] hover:bg-[#F8FAFD]"}`}
-                aria-label={`Pipeline filters${activeFilterCount > 0 ? `, ${activeFilterCount} active` : ""}`}
+                aria-label={activeFilterCount > 0 ? translate(language, "pipelineFiltersActive", { count: activeFilterCount }) : translate(language, "pipelineFilters")}
                 aria-expanded={filterOpen}
                 aria-controls="pipeline-filter-popover"
-                title="Pipeline filters"
+                title={translate(language, "pipelineFilters")}
                 onClick={() => setFilterOpen((open) => !open)}
               >
                 <Filter size={15} aria-hidden="true" />
                 {activeFilterCount > 0 ? <span className="absolute -right-1 -top-1 inline-flex min-h-4 min-w-4 items-center justify-center rounded-full bg-navy px-1 text-[10px] font-bold leading-none text-white" aria-hidden="true">{activeFilterCount}</span> : null}
               </button>
               {filterOpen ? (
-                <div id="pipeline-filter-popover" role="dialog" aria-label="Pipeline filters" className="absolute right-0 top-10 z-30 grid w-[min(22rem,calc(100vw-2rem))] gap-3 rounded-md border border-[#C9D5E6] bg-white p-3 shadow-[0_14px_34px_rgba(11,19,43,0.08)]">
+                <div id="pipeline-filter-popover" role="dialog" aria-label={translate(language, "pipelineFilters")} className="absolute right-0 top-10 z-30 grid w-[min(22rem,calc(100vw-2rem))] gap-3 rounded-md border border-[#D7DEE8] bg-white p-3 shadow-[0_10px_28px_rgba(11,19,43,0.08)]">
                   <div className="flex items-center justify-between gap-3">
-                    <strong className="text-sm text-navy">Pipeline filters</strong>
-                    {activeFilterCount > 0 ? <button type="button" className="text-xs font-semibold text-primary hover:underline focus:outline-none focus:ring-2 focus:ring-primary/30" onClick={() => { setBoardFilter("all"); setPipelineSearch(""); }}>Clear</button> : null}
+                    <strong className="text-sm text-navy">{translate(language, "pipelineFilters")}</strong>
+                    {activeFilterCount > 0 ? <button type="button" className="text-xs font-semibold text-primary hover:underline focus:outline-none focus:ring-2 focus:ring-primary/30" onClick={() => { setBoardFilter("all"); setPipelineSearch(""); }}>{translate(language, "clear")}</button> : null}
                   </div>
                   <div className="grid gap-2">
-                    <span className="text-xs font-semibold text-slate">Board filter</span>
+                    <span className="text-xs font-semibold text-slate">{translate(language, "boardFilter")}</span>
                     <div className="flex flex-wrap gap-2">
                       {boardFilterOptions.map((option) => (
                         <button
@@ -205,20 +205,20 @@ export function PipelineBoardView({
                           aria-pressed={boardFilter === option.value}
                           onClick={() => setBoardFilter(option.value)}
                         >
-                          {option.label}
+                          {translate(language, option.labelKey)}
                         </button>
                       ))}
                     </div>
                   </div>
                   <label className="grid gap-1 text-xs font-semibold text-slate">
-                    Search pipeline
+                    {translate(language, "searchPipeline")}
                     <input
                       ref={filterSearchRef}
                       type="search"
                       value={pipelineSearch}
                       onChange={(event) => setPipelineSearch(event.target.value)}
                       className="min-h-9 w-full rounded-md border border-[#C9D5E6] bg-white px-3 text-sm font-medium text-navy outline-none transition-colors placeholder:text-cool focus:border-primary focus:ring-2 focus:ring-primary/20"
-                      placeholder="Candidate, ID, role, site, or owner"
+                      placeholder={translate(language, "pipelineSearchPlaceholder")}
                     />
                   </label>
                 </div>
@@ -231,7 +231,7 @@ export function PipelineBoardView({
             const stageRows = sortByLastUpdateAsc(activeRows.filter((row) => row.latest_process === stage));
             const isBlocked = blockedStage === stage;
             const metrics = deriveStageHealth(stage, stageRows, recruitmentLogs);
-            const groupedRows = groupPipelineRows(stageRows, groupBy);
+            const groupedRows = groupPipelineRows(stageRows, groupBy, language);
 
             return (
               <section
@@ -266,7 +266,7 @@ export function PipelineBoardView({
                 }}
               >
                 <div className="mb-3 grid gap-2">
-                  <StageHealthHeader health={metrics} />
+                  <StageHealthHeader health={metrics} language={language} />
                 </div>
                 <div className="grid gap-2">
                   {groupedRows.map((group) => (
@@ -314,15 +314,15 @@ export function PipelineBoardView({
 
       <div className="grid gap-4 xl:grid-cols-2">
         <Panel>
-          <SectionTitle title="Failed Candidates - Last 7 Days" />
+          <SectionTitle title={translate(language, "failedCandidatesLast7Days")} />
           {failedGroups.every((group) => group.rows.length === 0) ? (
-            <EmptyState message="No failed candidates in the last 7 days." />
+            <EmptyState message={translate(language, "noFailedCandidatesLast7Days")} />
           ) : (
             <div className="grid grid-flow-col gap-3 overflow-x-auto pb-2" style={{ gridAutoColumns: "minmax(240px, 1fr)" }}>
               {failedGroups.map((group) => (
                 <section key={group.stage} className="min-h-48 rounded-lg border border-[#F4B4AE] bg-[#FFF8F7] p-2.5">
                   <div className="mb-2 flex items-center justify-between gap-2">
-                    <strong className="text-sm text-scarlet">{processLabel(group.stage)}</strong>
+                    <strong className="text-sm text-scarlet">{processLabel(group.stage, language)}</strong>
                     <Tag tone="danger">{group.rows.length}</Tag>
                   </div>
                   <div className="grid gap-2">
@@ -345,9 +345,9 @@ export function PipelineBoardView({
         </Panel>
 
         <Panel>
-          <SectionTitle title="Passed Offer - Last 7 Days" />
+          <SectionTitle title={translate(language, "passedOfferLast7Days")} />
           {passedOfferRows.length === 0 ? (
-            <EmptyState message="No Offer Pass candidates in the last 7 days." />
+            <EmptyState message={translate(language, "noOfferPassLast7Days")} />
           ) : (
             <div className="grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(240px,1fr))]">
               {passedOfferRows.map((candidate) => (
@@ -463,8 +463,8 @@ function PipelineCandidateCard({
   const toneClass = tone === "failed"
       ? "hover:border-scarlet/40 hover:bg-[#FFF8F7]"
     : tone === "passed"
-      ? "hover:border-primary/40 hover:bg-[#F8FAFD]"
-      : "hover:border-primary/40 hover:bg-[#F8FAFD]";
+      ? "hover:border-[#C9D5E6] hover:bg-[#F8FAFD]"
+      : "hover:border-[#C9D5E6] hover:bg-[#F8FAFD]";
 
   return (
     <article
@@ -474,7 +474,7 @@ function PipelineCandidateCard({
       onDragEnd={onDragEnd}
       id={`pipeline-candidate-${candidate.candidate_id}`}
       tabIndex={focused ? -1 : undefined}
-      className={`relative min-w-0 rounded-md border border-[#D7DEE8] bg-white p-3 shadow-[0_6px_16px_rgba(11,19,43,0.025)] transition-colors duration-150 motion-safe:hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-primary/30 ${focused ? "border-primary ring-2 ring-primary/25" : ""} ${toneClass}`}
+      className={`relative min-w-0 rounded-md border border-[#D7DEE8] bg-white p-3 shadow-[0_3px_10px_rgba(11,19,43,0.02)] transition-colors duration-150 motion-safe:hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-primary/30 ${focused ? "border-primary ring-2 ring-primary/25" : ""} ${toneClass}`}
     >
       <div className="flex items-start justify-between gap-2">
         <button
@@ -496,8 +496,8 @@ function PipelineCandidateCard({
             aria-haspopup="menu"
             aria-expanded={menuOpen}
             aria-controls={stageMenuId}
-            aria-label={`Candidate actions for ${candidate.name}`}
-            title={hasCardAction ? `Candidate actions for ${candidate.name}` : `No actions available for ${candidate.name}`}
+            aria-label={translate(language, "candidateActionsFor", { name: candidate.name })}
+            title={hasCardAction ? translate(language, "candidateActionsFor", { name: candidate.name }) : translate(language, "noActionsFor", { name: candidate.name })}
             disabled={!hasCardAction}
             onClick={(event) => {
               event.stopPropagation();
@@ -508,35 +508,35 @@ function PipelineCandidateCard({
           </button>
         ) : null}
       </div>
-      <p className="mt-3 text-[10px] font-medium text-cool">Updated {formatDate(lastUpdate)}</p>
+      <p className="mt-3 text-[10px] font-medium text-cool">{translate(language, "updatedDate", { date: formatDate(lastUpdate, language) })}</p>
       <div className="mt-1 flex flex-wrap items-center gap-2">
-        {issueCount ? <Tag tone="warning">{issueCount} data issue{issueCount === 1 ? "" : "s"}</Tag> : null}
+        {issueCount ? <Tag tone="warning">{translate(language, "dataIssuesCount", { count: issueCount, plural: issueCount === 1 ? "" : "s" })}</Tag> : null}
       </div>
       {menuOpen ? (
         <div
           ref={menuRef}
           id={stageMenuId}
           role="menu"
-          aria-label={`Actions for ${candidate.name}`}
-          className="absolute right-3 top-12 z-20 grid w-[min(20rem,calc(100vw-2rem))] gap-1 rounded-md border border-[#D7DEE8] bg-white p-2 shadow-[0_14px_34px_rgba(11,19,43,0.08)]"
+          aria-label={translate(language, "candidateActionsFor", { name: candidate.name })}
+          className="absolute right-3 top-12 z-20 grid w-[min(20rem,calc(100vw-2rem))] gap-1 rounded-md border border-[#D7DEE8] bg-white p-2 shadow-[0_10px_28px_rgba(11,19,43,0.08)]"
           onClick={(event) => event.stopPropagation()}
           onKeyDown={(event) => handlePipelineMenuKeyDown(event, menuRef.current, actionsButtonRef.current, onMenuClose)}
         >
-          <DisabledReasonHint reason={baseDisabledReason} />
+          <DisabledReasonHint language={language} reason={baseDisabledReason} />
           {candidate.latest_process === "No activity" ? (
             <button
               type="button"
               role="menuitem"
               className="rounded px-2 py-1 text-left text-xs font-medium text-slate transition-colors hover:bg-lightgray hover:text-primary focus:bg-lightgray focus:text-primary"
               disabled={baseDisabledReason.blocked}
-              aria-label={`Start phone screen for ${candidate.name}`}
+              aria-label={translate(language, "startPhoneScreenFor", { name: candidate.name })}
               onClick={(event) => {
                 event.stopPropagation();
                 onMenuClose?.();
                 onStartProcess?.(candidate);
               }}
             >
-              Start phone screen
+              {translate(language, "startPhoneScreen")}
             </button>
           ) : null}
           {candidate.latest_process === "Offer" ? (
@@ -545,14 +545,14 @@ function PipelineCandidateCard({
               role="menuitem"
               className="rounded px-2 py-1 text-left text-xs font-medium text-slate transition-colors hover:bg-lightgray hover:text-primary focus:bg-lightgray focus:text-primary"
               disabled={baseDisabledReason.blocked}
-              aria-label={`Update Offer for ${candidate.name}`}
+              aria-label={translate(language, "updateOfferFor", { name: candidate.name })}
               onClick={(event) => {
                 event.stopPropagation();
                 onMenuClose?.();
                 onUpdateOffer?.(candidate);
               }}
             >
-              Update Offer
+              {translate(language, "updateOffer")}
             </button>
           ) : null}
           {candidate.latest_process === "Test" ? (
@@ -561,14 +561,14 @@ function PipelineCandidateCard({
               role="menuitem"
               className="rounded px-2 py-1 text-left text-xs font-medium text-slate transition-colors hover:bg-lightgray hover:text-primary focus:bg-lightgray focus:text-primary"
               disabled={baseDisabledReason.blocked}
-              aria-label={`Maintain in Test for ${candidate.name}`}
+              aria-label={translate(language, "maintainTestFor", { name: candidate.name })}
               onClick={(event) => {
                 event.stopPropagation();
                 onMenuClose?.();
                 onMaintainTest?.(candidate);
               }}
             >
-              Maintain in Test
+              {translate(language, "maintainInTest")}
             </button>
           ) : null}
           {updateStages.map((nextStage) => (
@@ -582,7 +582,7 @@ function PipelineCandidateCard({
               className="rounded px-2 py-1 text-left text-xs font-medium text-slate transition-colors hover:bg-lightgray hover:text-primary focus:bg-lightgray focus:text-primary"
               disabled={disabledReason.blocked}
               title={disabledReason.detail}
-              aria-label={`${translate(language, "updateStage")} ${candidate.name} to ${processLabel(nextStage)}`}
+              aria-label={`${translate(language, "updateStage")} ${candidate.name} ${processLabel(nextStage, language)}`}
               onClick={(event) => {
                 event.stopPropagation();
                 if (disabledReason.blocked) return;
@@ -590,7 +590,7 @@ function PipelineCandidateCard({
                 onMove?.(candidate, nextStage);
               }}
             >
-              {processLabel(nextStage)}
+              {processLabel(nextStage, language)}
             </button>
               );
             })()
@@ -648,18 +648,18 @@ function nextStages(stage: ProcessStage | "No activity" | null | undefined) {
   return ACTIVE_PIPELINE_STAGES.slice(currentIndex + 1);
 }
 
-const pipelineGroupOptions: Array<{ value: PipelineGroupBy; label: string }> = [
-  { value: "none", label: "None" },
-  { value: "site", label: "Site" },
-  { value: "owner", label: "Owner" }
+const pipelineGroupOptions: Array<{ value: PipelineGroupBy; labelKey: string }> = [
+  { value: "none", labelKey: "none" },
+  { value: "site", labelKey: "site" },
+  { value: "owner", labelKey: "owner" }
 ];
 
-const boardFilterOptions: Array<{ value: BoardFilter; label: string }> = [
-  { value: "all", label: "All" },
-  { value: "aging", label: "Aging only" },
-  { value: "no_activity", label: "No activity" },
-  { value: "offer_pending", label: "Offer pending" },
-  { value: "over_sla", label: "Over SLA" }
+const boardFilterOptions: Array<{ value: BoardFilter; labelKey: string }> = [
+  { value: "all", labelKey: "candidateTriageAll" },
+  { value: "aging", labelKey: "agingOnly" },
+  { value: "no_activity", labelKey: "candidateTriageNoActivity" },
+  { value: "offer_pending", labelKey: "candidateTriageOfferPending" },
+  { value: "over_sla", labelKey: "overSlaFilter" }
 ];
 
 function filterBoardRows(rows: EnrichedCandidate[], filter: BoardFilter) {
@@ -682,11 +682,11 @@ function filterPipelineRows(rows: EnrichedCandidate[], search: string) {
   ].some((value) => value?.toLocaleLowerCase().includes(normalizedSearch)));
 }
 
-function groupPipelineRows(rows: EnrichedCandidate[], groupBy: PipelineGroupBy) {
+function groupPipelineRows(rows: EnrichedCandidate[], groupBy: PipelineGroupBy, language: Language) {
   if (groupBy === "none") return [{ label: "", rows }];
   const groups = new Map<string, EnrichedCandidate[]>();
   for (const row of rows) {
-    const label = groupBy === "site" ? row.site ?? "No site" : row.person_in_charge ?? "Unassigned";
+    const label = groupBy === "site" ? row.site ?? translate(language, "noSite") : row.person_in_charge ?? translate(language, "unassigned");
     groups.set(label, [...(groups.get(label) ?? []), row]);
   }
   return Array.from(groups.entries())

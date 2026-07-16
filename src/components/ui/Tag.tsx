@@ -3,13 +3,13 @@ import type { ReactNode } from "react";
 export type Tone = "primary" | "success" | "warning" | "danger" | "muted" | "teal" | "purple";
 
 const tones: Record<Tone, string> = {
-  primary: "bg-white text-primary ring-1 ring-inset ring-[#C9D5E6]",
-  success: "bg-white text-primary ring-1 ring-inset ring-[#C9D5E6]",
-  warning: "bg-[#FFFDF5] text-[#8A5A00] ring-1 ring-inset ring-[#F3D3A2]",
-  danger: "bg-[#FFF8F7] text-[#B42318] ring-1 ring-inset ring-[#F4B4AE]",
-  muted: "bg-[#F6F8FC] text-slate ring-1 ring-inset ring-[#D7DEE8]",
-  teal: "bg-[#F6F8FC] text-slate ring-1 ring-inset ring-[#D7DEE8]",
-  purple: "bg-[#F6F8FC] text-slate ring-1 ring-inset ring-[#D7DEE8]"
+  primary: "bg-[color-mix(in_srgb,rgb(var(--app-primary-rgb))_88%,#00151F)] text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.22)]",
+  success: "bg-[color-mix(in_srgb,rgb(var(--app-primary-rgb))_88%,#00151F)] text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.22)]",
+  warning: "bg-[#e86800] text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.22)]",
+  danger: "bg-[#ff2d55] text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.22)]",
+  muted: "bg-[#7085a5] text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.22)]",
+  teal: "bg-[#0099c7] text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.22)]",
+  purple: "bg-[#9b4dff] text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.22)]"
 };
 
 export function Tag({ children, tone = "muted" }: { children: ReactNode; tone?: Tone }) {

@@ -5,11 +5,12 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { OperationalSummaryStrip } from "@/components/ui/Operations";
 import { Panel, SectionTitle } from "@/components/ui/Panel";
 import { Tag } from "@/components/ui/Tag";
-import { ROLE_LABELS } from "@/lib/constants";
 import { statusTone } from "@/lib/format";
+import { roleLabel, translate } from "@/lib/i18n/dictionary";
 import type { DashboardData, Language } from "@/types/recruitment";
 
 export function AdminView({
+  language,
   data,
   canManageUsers,
   onInvite
@@ -34,7 +35,7 @@ export function AdminView({
   if (!canManageUsers) {
     return (
       <Panel>
-        <EmptyState message="Only system admins can manage app accounts." />
+        <EmptyState message={translate(language, "onlySystemAdmins")} />
       </Panel>
     );
   }
@@ -42,46 +43,46 @@ export function AdminView({
   return (
     <Panel>
       <SectionTitle
-        title="User Administration"
-        eyebrow="Accounts and role mapping"
-        action={<Button type="button" size="sm" variant="secondary" icon={<UserPlus size={16} />} onClick={onInvite}>Manage User</Button>}
+        title={translate(language, "userAdministration")}
+        eyebrow={translate(language, "accountsAndRoleMapping")}
+        action={<Button type="button" size="sm" variant="secondary" icon={<UserPlus size={16} />} onClick={onInvite}>{translate(language, "manageUser")}</Button>}
       />
       <div className="mb-4 grid gap-3">
         <OperationalSummaryStrip
           items={[
-            { label: "System admins", value: data.profiles.filter((profile) => profile.role === "system_admin").length, tone: "success", helper: "Full access" },
-            { label: "Recruiters", value: data.profiles.filter((profile) => profile.role === "admin_recruiter").length, tone: "primary", helper: "Operational access" },
-            { label: "Site recruiters", value: siteRecruiters, tone: "teal", helper: "Site-scoped users" },
-            { label: "Missing site", value: usersWithoutSite, tone: usersWithoutSite > 0 ? "warning" : "success", helper: "Site recruiters only" },
-            { label: "Viewers", value: data.profiles.filter((profile) => profile.role === "viewer").length, tone: "muted", helper: "Read-only access" }
+            { label: translate(language, "systemAdmins"), value: data.profiles.filter((profile) => profile.role === "system_admin").length, tone: "success", helper: translate(language, "fullAccess") },
+            { label: translate(language, "recruiters"), value: data.profiles.filter((profile) => profile.role === "admin_recruiter").length, tone: "primary", helper: translate(language, "operationalAccess") },
+            { label: translate(language, "siteRecruiters"), value: siteRecruiters, tone: "teal", helper: translate(language, "siteScopedUsers") },
+            { label: translate(language, "missingSite"), value: usersWithoutSite, tone: usersWithoutSite > 0 ? "warning" : "success", helper: translate(language, "siteRecruitersOnly") },
+            { label: translate(language, "viewers"), value: data.profiles.filter((profile) => profile.role === "viewer").length, tone: "muted", helper: translate(language, "readOnlyAccess") }
           ]}
         />
         <div className="rounded-md border border-[#D7DEE8] bg-[#F8FAFD] p-3 text-sm font-medium text-slate">
-          Permission changes affect which records users can view and update. Confirm role and site responsibility before saving.
+          {translate(language, "userPermissionWarning")}
         </div>
         <label className="grid gap-1 text-sm font-semibold text-slate">
-          Search users
+          {translate(language, "searchUsers")}
           <input
             className="min-h-9 rounded-md border border-[#C9D5E6] bg-white px-3 text-sm font-medium text-navy focus:border-primary focus:outline-none"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Name, email, role, or site"
+            placeholder={translate(language, "userSearchPlaceholder")}
             type="search"
           />
         </label>
       </div>
       {data.profiles.length === 0 ? (
-        <EmptyState message="No readable user profiles. Confirm the first admin profile exists in Supabase." />
+        <EmptyState message={translate(language, "noReadableProfiles")} />
       ) : (
         <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
           {filteredProfiles.map((account) => (
-            <div key={account.id} className="rounded-md border border-[#D7DEE8] bg-white p-3 shadow-[0_6px_16px_rgba(11,19,43,0.025)]">
+            <div key={account.id} className="rounded-md border border-[#D7DEE8] bg-white p-3 shadow-[0_3px_10px_rgba(11,19,43,0.02)]">
               <div className="flex items-center justify-between gap-2">
-                <strong className="text-navy">{account.nickname ?? account.full_name ?? account.email ?? "User"}</strong>
-                <Tag tone={statusTone(account.role)}>{ROLE_LABELS[account.role]}</Tag>
+                <strong className="text-navy">{account.nickname ?? account.full_name ?? account.email ?? translate(language, "user")}</strong>
+                <Tag tone={statusTone(account.role)}>{roleLabel(language, account.role)}</Tag>
               </div>
               <p className="mt-1 text-sm font-medium text-slate">{account.email ?? "-"}</p>
-              <p className="text-sm font-medium text-slate">Site: {account.site ?? "-"}</p>
+              <p className="text-sm font-medium text-slate">{translate(language, "siteValue", { site: account.site ?? "-" })}</p>
             </div>
           ))}
         </div>

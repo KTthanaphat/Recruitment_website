@@ -9,6 +9,7 @@ export function Drawer({
   open,
   eyebrow,
   title,
+  closeLabel = "Close",
   headerActions,
   headerMeta,
   inactive = false,
@@ -18,6 +19,7 @@ export function Drawer({
   open: boolean;
   eyebrow: string;
   title: string;
+  closeLabel?: string;
   headerActions?: ReactNode;
   headerMeta?: ReactNode;
   inactive?: boolean;
@@ -64,8 +66,8 @@ export function Drawer({
               variant="ghost"
               size="icon-sm"
               onClick={onClose}
-              title="Close"
-              aria-label="Close"
+              title={closeLabel}
+              aria-label={closeLabel}
               className="relative text-slate after:absolute after:-inset-1 hover:text-navy"
               icon={<X size={16} aria-hidden="true" />}
             />

@@ -1,3 +1,4 @@
+import { resultLabel } from "@/lib/i18n/dictionary";
 import type { Language, ResultValue } from "@/types/recruitment";
 
 export function formatDate(value: string | null | undefined, language: Language = "en") {
@@ -38,10 +39,8 @@ function dateFromValue(value: string) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-export function resultText(result: ResultValue) {
-  if (result === 1) return "Pass";
-  if (result === 0) return "Fail";
-  return "Pending";
+export function resultText(result: ResultValue, language: Language = "en") {
+  return resultLabel(language, result);
 }
 
 export function statusTone(status: string): "primary" | "success" | "warning" | "danger" | "muted" | "teal" | "purple" {

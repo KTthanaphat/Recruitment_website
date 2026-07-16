@@ -22,8 +22,8 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/Button";
-import { ROLE_LABELS } from "@/lib/constants";
-import { translate, viewLabel } from "@/lib/i18n/dictionary";
+import { roleLabel, translate, viewLabel } from "@/lib/i18n/dictionary";
+import { siteAccentStyle } from "@/lib/site-theme";
 import { buildContextualHref, type WorkspaceNavigationContext } from "@/lib/workspace-url-state";
 import type { Language, Profile, ViewId } from "@/types/recruitment";
 
@@ -56,17 +56,17 @@ const paths: Record<ViewId, string> = {
   audit: "/audit"
 };
 
-const kicker: Record<ViewId, string> = {
-  home: "Work Queue",
-  dashboard: "Vacancy Analytics",
-  workspace: "Hiring Workspace",
-  requisitions: "Hiring Demand",
-  candidates: "Talent Records",
-  pipeline: "Process Board",
-  offers: "Offers",
-  sourcing: "Jobsite Sourcing",
-  admin: "System Control",
-  audit: "History"
+const kickerKeys: Record<ViewId, string> = {
+  home: "workQueue",
+  dashboard: "vacancyAnalytics",
+  workspace: "hiringWorkspace",
+  requisitions: "hiringDemand",
+  candidates: "talentRecords",
+  pipeline: "processBoard",
+  offers: "offers",
+  sourcing: "jobsiteSourcing",
+  admin: "systemControl",
+  audit: "history"
 };
 
 function PipelineStagesIcon() {
@@ -101,7 +101,7 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const accountName = profile?.nickname ?? profile?.full_name ?? profile?.email ?? "Unknown";
+  const accountName = profile?.nickname ?? profile?.full_name ?? profile?.email ?? translate(language, "unknown");
   const contextualNavigation: WorkspaceNavigationContext = {
     language: navigationContext?.language ?? searchParams.get("lang"),
     site: navigationContext?.site ?? searchParams.get("site"),
@@ -152,7 +152,7 @@ export function AppShell({
           active
             ? child
               ? "font-medium text-white"
-              : "bg-primary font-semibold text-white shadow-sm"
+              : "bg-primary font-semibold text-white"
             : child
               ? "font-normal text-cool hover:bg-white/10 hover:text-white"
               : "font-medium text-lightgray hover:bg-white/10 hover:text-white"
@@ -170,18 +170,21 @@ export function AppShell({
   };
 
   return (
-    <main className={`grid min-h-screen grid-cols-1 bg-offwhite ${sidebarCollapsed ? "lg:grid-cols-[72px_minmax(0,1fr)]" : "lg:grid-cols-[248px_minmax(0,1fr)]"}`}>
+    <main
+      className={`grid min-h-screen grid-cols-1 bg-offwhite ${sidebarCollapsed ? "lg:grid-cols-[72px_minmax(0,1fr)]" : "lg:grid-cols-[248px_minmax(0,1fr)]"}`}
+      style={siteAccentStyle(profile?.site)}
+    >
       <aside className={`bg-navy px-4 py-4 text-white lg:sticky lg:top-0 lg:h-screen lg:py-5 ${sidebarCollapsed ? "lg:px-3" : ""}`}>
         <div className={`mb-4 flex items-start gap-3 px-2 lg:mb-7 ${sidebarCollapsed ? "lg:justify-center lg:px-0" : "lg:block"}`}>
           <div className={sidebarCollapsed ? "lg:hidden" : ""}>
-                <p className="mb-1 text-xs font-medium uppercase tracking-normal text-cool">Internal Recruitment</p>
+                <p className="mb-1 text-xs font-medium uppercase tracking-normal text-cool">{translate(language, "internalRecruitment")}</p>
             <div className="flex items-center justify-between gap-3">
-              <h1 className="text-2xl font-semibold tracking-normal text-white">Recruitment</h1>
+              <h1 className="text-2xl font-semibold tracking-normal text-white">{translate(language, "recruitment")}</h1>
               <button
                 type="button"
                 className="hidden size-9 shrink-0 place-items-center rounded-md text-lightgray transition hover:bg-white/10 hover:text-white focus:outline-none focus:ring-2 focus:ring-white/70 lg:grid"
-                aria-label="Collapse sidebar"
-                title="Collapse sidebar"
+                aria-label={translate(language, "collapseSidebar")}
+                title={translate(language, "collapseSidebar")}
                 onClick={() => setSidebarCollapsed(true)}
               >
                 <PanelLeftClose size={18} />
@@ -192,8 +195,8 @@ export function AppShell({
             <button
               type="button"
               className="hidden size-9 shrink-0 place-items-center rounded-md text-lightgray transition hover:bg-white/10 hover:text-white focus:outline-none focus:ring-2 focus:ring-white/70 lg:grid"
-              aria-label="Expand sidebar"
-              title="Expand sidebar"
+              aria-label={translate(language, "expandSidebar")}
+              title={translate(language, "expandSidebar")}
               onClick={() => setSidebarCollapsed(false)}
             >
               <PanelLeftOpen size={18} />
@@ -202,7 +205,7 @@ export function AppShell({
         </div>
 
         <nav
-          aria-label="Main navigation"
+          aria-label={translate(language, "mainNavigation")}
           className="flex flex-col gap-3 overflow-visible pb-1"
         >
           <div className="flex gap-1.5 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0">
@@ -219,7 +222,7 @@ export function AppShell({
                 className={`flex min-h-11 min-w-max items-center gap-3 rounded-md px-3 text-sm transition focus:outline-none focus:ring-2 focus:ring-white/70 lg:min-w-0 lg:w-full ${
                   sidebarCollapsed ? "lg:justify-center lg:px-0" : ""
                 } ${
-                  isRecordsActive ? "bg-primary font-semibold text-white shadow-sm" : "font-medium text-lightgray hover:bg-white/10 hover:text-white"
+                  isRecordsActive ? "bg-primary font-semibold text-white" : "font-medium text-lightgray hover:bg-white/10 hover:text-white"
                 }`}
                 onClick={() => setRecordsOpen((current) => !current)}
               >
@@ -256,7 +259,7 @@ export function AppShell({
       <section className="min-w-0 px-4 py-5 sm:px-6 lg:px-7">
         <header className="mb-4 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 gap-y-1">
           <p className="col-start-1 row-start-1 min-w-0 text-xs font-medium uppercase tracking-normal text-slate">
-            {kicker[activeView]}
+            {translate(language, kickerKeys[activeView])}
           </p>
           <div className="col-start-2 row-span-2 row-start-1 flex min-w-0 max-w-[58vw] flex-wrap items-start justify-end gap-2">
             <Button type="button" size="sm" variant="secondary" className="min-w-9 px-3" onClick={onLanguageChange}>
@@ -275,16 +278,16 @@ export function AppShell({
             </Button>
             <details className="group relative min-w-0">
               <summary
-                className="flex min-h-9 max-w-[220px] cursor-pointer list-none items-center rounded-md border border-[#D7DEE8] bg-white px-3 text-sm font-semibold text-navy shadow-sm transition hover:bg-[#F8FAFD] focus:outline-none focus:ring-2 focus:ring-primary/25 [&::-webkit-details-marker]:hidden"
-                aria-label="Open account menu"
+                className="flex min-h-9 max-w-[220px] cursor-pointer list-none items-center rounded-md border border-[#D7DEE8] bg-white px-3 text-sm font-semibold text-navy transition hover:bg-[#F8FAFD] focus:outline-none focus:ring-2 focus:ring-primary/25 [&::-webkit-details-marker]:hidden"
+                aria-label={translate(language, "openAccountMenu")}
                 title={accountName}
               >
                 <span className="truncate">{accountName}</span>
               </summary>
-              <div className="absolute right-0 z-40 mt-2 w-64 rounded-md border border-[#D7DEE8] bg-white p-3 text-sm text-slate shadow-lg">
+              <div className="absolute right-0 z-40 mt-2 w-64 rounded-md border border-[#D7DEE8] bg-white p-3 text-sm text-slate shadow-[0_10px_28px_rgba(11,19,43,0.08)]">
                 <div className="mb-2 flex items-center justify-between gap-3">
-                  <span className="text-xs font-medium text-slate">Role</span>
-                  <span className="rounded-md bg-lightgray px-2 py-1 text-xs font-semibold uppercase text-slate">{profile ? ROLE_LABELS[profile.role] : "Viewer"}</span>
+                  <span className="text-xs font-medium text-slate">{translate(language, "role")}</span>
+                  <span className="rounded-md bg-lightgray px-2 py-1 text-xs font-semibold uppercase text-slate">{profile ? roleLabel(language, profile.role) : translate(language, "viewer")}</span>
                 </div>
                 <div className="mb-3 rounded-md bg-[#F8FAFD] px-3 py-2">
                   <p className="truncate font-semibold text-navy">{accountName}</p>

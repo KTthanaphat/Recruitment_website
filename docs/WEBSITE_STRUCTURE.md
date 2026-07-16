@@ -329,7 +329,7 @@ The UI uses a restrained operational Swiss hierarchy:
 
 - Deep Navy `#0B132B`: page titles, section titles, record names, Doc IDs, candidate names, and primary metric values.
 - Slate/Cool neutrals: labels, metadata, helper copy, timestamps, inactive controls, borders, grids, and empty states.
-- Primary Blue `#0A3CDC`: active navigation, primary actions, selected filter/tab states, focus treatment, one dominant visualization data fill, and all success/passed/in-SLA states.
+- Assigned-site accent: active navigation, primary actions, selected filter/tab states, focus treatment, and allowed visualization fills use the signed-in user's `profile.site` color. `HQ` uses waterfall replacement teal `#0AA0C3`, `KT1` uses waterfall replacement blue `#146EFA`, `KT2` uses waterfall replacement purple `#411EDC`, and users with no/unknown site fall back to current blue `#0A3CDC`.
 - Orange/amber and scarlet: warning/risk only. Pair color with text or icon cues.
 - Electric blue, teal, and purple should not be used as general UI accents. Use only when a specific visualization requires extra series separation.
 
@@ -337,9 +337,11 @@ Shared UI behavior:
 
 - Prompt font usage.
 - Calm dense internal-operations direction with a playful modern Swiss tone: crisp grids, compact surfaces, strong typography, and low color noise.
-- Prefer neutral-first cards and panels. Use color only for selected state, primary action, or factual status/risk.
-- Summary cards and operational metrics should use navy values by default; avoid coloring every metric.
-- Vacancy Waterfall and Pipeline Funnel use one dominant blue data fill with subdued neutral grid/table structure.
+- Prefer neutral-first cards, tables, panels, and menus. Use typography, weight, spacing, and borders before adding color.
+- Summary cards and operational metrics use navy values by default; tone may affect a small border/accent or risk text only.
+- Tags use bright semantic fills with white text; primary/success tags inherit a contrast-safe assigned-site accent mix.
+- Vacancy Waterfall chart colors are frozen by `snapshotColor`; preserve the chart, legend, connectors, callouts, and print CSS unless the user explicitly changes the chart.
+- Pipeline Funnel uses one dominant assigned-site data fill with subdued neutral grid/table structure.
 - Magnifying-glass icon buttons for record View actions.
 - Requisitions, Candidates, and Offers tables include explicit magnifying-glass detail buttons on desktop rows and mobile cards while keeping record names/IDs clickable for compatibility.
 - Workspace uses the `LampDesk` icon in the sidebar.
@@ -351,6 +353,20 @@ Shared UI behavior:
 - Keyboard-accessible pipeline stage update actions.
 - URL query params for shareable site, person in charge, language, and Dashboard date/detail state.
 - Use the local `internal-ops-ui` skill for future internal-tool UX/UI polish. Keep `gpt-taste` for marketing or Awwwards-style pages, not recruitment operations screens.
+
+## Language System
+
+- English and Thai UI text is controlled by `src/lib/i18n/dictionary.ts`; keep this as the single source for app labels, aria text, placeholders, empty states, table controls, modal labels, and shared domain labels.
+- Language is `Language = "en" | "th"` and persists through `localStorage["recruitment_lang"]` plus the `lang` URL parameter in authenticated navigation.
+- Login is outside `AppShell` but still reads and writes `recruitment_lang`; check `/login` after language, theme, Tailwind, Button, Field, or Tag changes.
+- Translate UI/application text only. Do not translate stored HR data, names, emails, URLs, IDs, site codes (`HQ`, `KT1`, `KT2`), Doc IDs, Group IDs, or database free text.
+- Use helper labels for roles, request types, requisition statuses, process stages, results, and repeated timeline phrases. Keep Thai short, recruiter-friendly, and compact for tables/cards.
+
+Login/theme check:
+
+- `/login` is outside authenticated `AppShell`, so it must define the fallback site accent itself and must not depend on `profile.site`.
+- After changes to `tailwind.config.ts`, `src/app/globals.css`, `src/lib/site-theme.ts`, `Button`, `Field`, or `Tag`, restart the local Next dev server and verify `/login`; Tailwind/theme config changes can leave the dev server serving stale page HTML with missing or outdated CSS.
+- If `/login` renders in browser-default styles, check `/_next/static/css/app/layout.css`. A `404` usually means `pnpm build` or another Next process rewrote `.next` while `pnpm dev` was still serving. Stop the dev server, clear the generated `.next` output, restart `pnpm dev`, then reload `/login`.
 
 ## Verification Commands
 

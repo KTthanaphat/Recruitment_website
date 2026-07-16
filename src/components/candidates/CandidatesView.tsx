@@ -46,13 +46,13 @@ export function CandidatesView({
   const tableInitialized = useRef(false);
   const columns: TableColumn<EnrichedCandidate>[] = [
     { key: "candidate_id", label: "ID", value: (row) => row.candidate_id },
-    { key: "name", label: "Name", value: (row) => row.name },
-    { key: "group", label: "Group", value: (row) => row.group_position ?? "-", filterValue: (row) => [row.group_position, ...row.doc_ids].filter(Boolean).join(" ") },
-    { key: "site", label: "Site", value: (row) => row.site ?? "-" },
+    { key: "name", label: translate(language, "name"), value: (row) => row.name },
+    { key: "group", label: translate(language, "group"), value: (row) => row.group_position ?? "-", filterValue: (row) => [row.group_position, ...row.doc_ids].filter(Boolean).join(" ") },
+    { key: "site", label: translate(language, "site"), value: (row) => row.site ?? "-" },
     { key: "owner", label: translate(language, "owner"), value: (row) => row.person_in_charge ?? "-" },
-    { key: "latest_process", label: translate(language, "latestProcess"), value: (row) => processLabel(row.latest_process) },
-    { key: "result", label: translate(language, "result"), value: (row) => resultText(row.latest_result) },
-    { key: "last_touch", label: "Last Touch", value: (row) => ageLabel(row), sortValue: (row) => candidateTouchAgeDays(row) ?? Number.POSITIVE_INFINITY }
+    { key: "latest_process", label: translate(language, "latestProcess"), value: (row) => processLabel(row.latest_process, language) },
+    { key: "result", label: translate(language, "result"), value: (row) => resultText(row.latest_result, language) },
+    { key: "last_touch", label: translate(language, "lastTouch"), value: (row) => ageLabel(row), sortValue: (row) => candidateTouchAgeDays(row) ?? Number.POSITIVE_INFINITY }
   ];
   const triagedRows = useMemo(() => filterCandidatesByTriage(rows, triageFilter), [rows, triageFilter]);
   const table = useTableControls(triagedRows, columns, initialTableState);
@@ -87,7 +87,7 @@ export function CandidatesView({
         action={
           canWrite ? (
             <>
-              <Button type="button" size="sm" icon={<Plus size={16} />} onClick={onNew}>New</Button>
+              <Button type="button" size="sm" icon={<Plus size={16} />} onClick={onNew}>{translate(language, "newCandidate")}</Button>
               <Button type="button" size="sm" variant="secondary" icon={<Workflow size={16} />} onClick={onProcess}>{translate(language, "processUpdate")}</Button>
             </>
           ) : null
@@ -99,6 +99,7 @@ export function CandidatesView({
         <>
         <TableToolbar
           advancedFiltersOpen={advancedFiltersOpen}
+          language={language}
           onAdvancedFiltersToggle={() => setAdvancedFiltersOpen((open) => !open)}
           onSearch={table.setSearch}
           resultCount={table.controlledRows.length}
@@ -114,13 +115,13 @@ export function CandidatesView({
               aria-pressed={triageFilter === option.value}
               onClick={() => setTriageFilter(option.value)}
             >
-              {option.label}
+              {translate(language, option.labelKey)}
             </button>
           ))}
         </div>
         <div className="grid gap-3 md:hidden">
           {visibleRows.map((row) => (
-            <article key={row.candidate_id} className="rounded-md border border-[#D7DEE8] bg-white p-3 text-left shadow-[0_6px_16px_rgba(11,19,43,0.025)]">
+            <article key={row.candidate_id} className="rounded-md border border-[#D7DEE8] bg-white p-3 text-left shadow-[0_3px_10px_rgba(11,19,43,0.02)]">
               <div className="mb-2 flex items-center justify-between gap-2">
                 <button
                   type="button"
@@ -131,20 +132,20 @@ export function CandidatesView({
                 </button>
                 <div className="flex items-center gap-2">
                   <DetailButton
-                    ariaLabel={`View candidate detail for ${row.name}`}
+                    ariaLabel={translate(language, "viewCandidateDetailFor", { name: row.name })}
                     onClick={() => onOpen(row.candidate_id)}
                   />
-                  <Tag tone={statusTone(resultText(row.latest_result).toLowerCase()) as never}>{resultText(row.latest_result)}</Tag>
+                  <Tag tone={statusTone(resultText(row.latest_result).toLowerCase()) as never}>{resultText(row.latest_result, language)}</Tag>
                 </div>
               </div>
               <p className="text-sm font-semibold text-navy">{row.candidate_id}</p>
               <p className="text-sm font-medium text-slate">{row.group_position ?? "-"} - {row.site ?? "-"}</p>
-              <p className="text-sm font-medium text-slate">{processLabel(row.latest_process)} - {row.person_in_charge ?? "-"}</p>
-              <p className="text-sm font-medium text-slate">Last touch: {ageLabel(row)}</p>
+              <p className="text-sm font-medium text-slate">{processLabel(row.latest_process, language)} - {row.person_in_charge ?? "-"}</p>
+              <p className="text-sm font-medium text-slate">{translate(language, "lastTouchValue", { value: ageLabel(row) })}</p>
               <div className="mt-3">
                 <RecordActionGroup
                   label={row.name}
-                  items={candidateActions(row)}
+                  items={candidateActions(row, language)}
                 />
               </div>
             </article>
@@ -156,7 +157,7 @@ export function CandidatesView({
               <tr>
                 <th scope="col" className="px-3 py-3">
                   <input
-                    aria-label="Select visible candidates"
+                    aria-label={translate(language, "selectVisibleCandidates")}
                     type="checkbox"
                     checked={visibleRows.length > 0 && visibleRows.every((row) => selectedIds.includes(row.candidate_id))}
                     onChange={(event) => setSelectedIds(event.target.checked ? Array.from(new Set([...selectedIds, ...visibleRows.map((row) => row.candidate_id)])) : selectedIds.filter((id) => !visibleRows.some((row) => row.candidate_id === id)))}
@@ -167,6 +168,7 @@ export function CandidatesView({
                     <SortableFilterHeader
                       columnKey={column.key}
                       filterValue={table.filters[column.key] ?? ""}
+                      language={language}
                       label={column.label}
                       onFilter={table.setFilter}
                       onSort={table.toggleSort}
@@ -176,7 +178,7 @@ export function CandidatesView({
                     />
                   </th>
                 ))}
-                <th scope="col" className="px-3 py-3"><span className="sr-only">Actions</span></th>
+                <th scope="col" className="px-3 py-3"><span className="sr-only">{translate(language, "actions")}</span></th>
               </tr>
             </thead>
             <tbody>
@@ -184,7 +186,7 @@ export function CandidatesView({
                 <tr key={row.candidate_id} className="border-b border-[#D7DEE8] last:border-0">
                   <td className="px-3 py-3">
                     <input
-                      aria-label={`Select candidate ${row.candidate_id}`}
+                      aria-label={translate(language, "selectCandidate", { id: row.candidate_id })}
                       type="checkbox"
                       checked={selectedIds.includes(row.candidate_id)}
                       onChange={(event) => setSelectedIds((current) => event.target.checked ? [...current, row.candidate_id] : current.filter((id) => id !== row.candidate_id))}
@@ -203,18 +205,18 @@ export function CandidatesView({
                   <td className="px-3 py-3 text-slate">{row.group_position ?? "-"}</td>
                   <td className="px-3 py-3 text-slate">{row.site ?? "-"}</td>
                   <td className="px-3 py-3 text-slate">{row.person_in_charge ?? "-"}</td>
-                  <td className="px-3 py-3"><Tag tone={row.latest_process === "No activity" ? "muted" : "teal"}>{processLabel(row.latest_process)}</Tag></td>
-                  <td className="px-3 py-3"><Tag tone={statusTone(resultText(row.latest_result).toLowerCase()) as never}>{resultText(row.latest_result)}</Tag></td>
+                  <td className="px-3 py-3"><Tag tone={row.latest_process === "No activity" ? "muted" : "teal"}>{processLabel(row.latest_process, language)}</Tag></td>
+                  <td className="px-3 py-3"><Tag tone={statusTone(resultText(row.latest_result).toLowerCase()) as never}>{resultText(row.latest_result, language)}</Tag></td>
                   <td className="px-3 py-3 text-slate">{ageLabel(row)}</td>
                   <td className="px-3 py-3">
                     <div className="flex items-center justify-end gap-2">
                       <DetailButton
-                        ariaLabel={`View candidate detail for ${row.name}`}
+                        ariaLabel={translate(language, "viewCandidateDetailFor", { name: row.name })}
                         onClick={() => onOpen(row.candidate_id)}
                       />
                       <RecordActionGroup
                         label={row.name}
-                        items={candidateActions(row)}
+                        items={candidateActions(row, language)}
                       />
                     </div>
                   </td>
@@ -226,21 +228,23 @@ export function CandidatesView({
         <Pagination language={language} page={paginated.page} pageSize={pageSize} totalRows={table.controlledRows.length} onPageChange={setPage} onPageSizeChange={setPageSize} />
         <BulkActionToolbar
           disabledReason={bulkDisabledReason}
-          entityLabel="candidates"
+          entityLabel={translate(language, "candidatesUnit")}
+          language={language}
           selectedCount={selectedIds.length}
           onClear={() => {
             setSelectedIds([]);
             setBulkResult(null);
           }}
-          onExport={() => exportCandidates(selectedRows)}
+          onExport={() => exportCandidates(selectedRows, language)}
           onOpenReview={() => {
             setBulkResult(null);
             setBulkReviewOpen(true);
           }}
         />
         <BulkReviewModal
-          actionLabel="Mark selected candidates for process review. Candidate stage movement stays one-by-one in this pass."
+          actionLabel={translate(language, "bulkCandidateReviewAction")}
           ids={selectedIds}
+          language={language}
           open={bulkReviewOpen}
           result={bulkResult}
           onClose={() => setBulkReviewOpen(false)}
@@ -252,21 +256,21 @@ export function CandidatesView({
   );
 }
 
-function exportCandidates(rows: EnrichedCandidate[]) {
+function exportCandidates(rows: EnrichedCandidate[], language: Language) {
   downloadCsv("selected-candidates.csv", rows.map((row) => ({
     candidate_id: row.candidate_id,
     name: row.name,
     site: row.site ?? "",
     owner: row.person_in_charge ?? "",
-    latest_process: processLabel(row.latest_process)
+    latest_process: processLabel(row.latest_process, language)
   })));
 }
 
-function candidateActions(row: EnrichedCandidate) {
+function candidateActions(row: EnrichedCandidate, language: Language) {
   return [
-    { id: "workspace", label: "Workspace", href: `/workspace?type=${row.group_id ? "group" : "requisition"}&id=${encodeURIComponent(row.group_id ?? row.doc_ids[0] ?? "")}` },
-    ...row.doc_ids.map((docId) => ({ id: `requisition-${docId}`, label: `Requisition ${docId}`, href: `/requisitions?detailType=requisition&detailId=${encodeURIComponent(docId)}` })),
-    { id: "offers", label: "Related offers", href: `/offers?offerSearch=${encodeURIComponent(row.candidate_id)}` }
+    { id: "workspace", label: translate(language, "workspace"), href: `/workspace?type=${row.group_id ? "group" : "requisition"}&id=${encodeURIComponent(row.group_id ?? row.doc_ids[0] ?? "")}` },
+    ...row.doc_ids.map((docId) => ({ id: `requisition-${docId}`, label: `${translate(language, "requisition")} ${docId}`, href: `/requisitions?detailType=requisition&detailId=${encodeURIComponent(docId)}` })),
+    { id: "offers", label: translate(language, "workspaceRelatedOffers"), href: `/offers?offerSearch=${encodeURIComponent(row.candidate_id)}` }
   ];
 }
 
@@ -297,14 +301,14 @@ function downloadCsv(filename: string, rows: Array<Record<string, string | numbe
   URL.revokeObjectURL(url);
 }
 
-const candidateTriageOptions: Array<{ value: CandidateTriageFilter; label: string }> = [
-  { value: "all", label: "All" },
-  { value: "no_activity", label: "No activity" },
-  { value: "aging", label: "Aging" },
-  { value: "active", label: "Active" },
-  { value: "failed", label: "Failed" },
-  { value: "offer_pending", label: "Offer pending" },
-  { value: "offer_accepted", label: "Offer accepted" }
+const candidateTriageOptions: Array<{ value: CandidateTriageFilter; labelKey: string }> = [
+  { value: "all", labelKey: "candidateTriageAll" },
+  { value: "no_activity", labelKey: "candidateTriageNoActivity" },
+  { value: "aging", labelKey: "candidateTriageAging" },
+  { value: "active", labelKey: "candidateTriageActive" },
+  { value: "failed", labelKey: "candidateTriageFailed" },
+  { value: "offer_pending", labelKey: "candidateTriageOfferPending" },
+  { value: "offer_accepted", labelKey: "candidateTriageOfferAccepted" }
 ];
 
 function filterCandidatesByTriage(rows: EnrichedCandidate[], filter: CandidateTriageFilter) {

@@ -7,10 +7,10 @@ type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 };
 
 const variants = {
-  primary: "bg-primary text-white shadow-sm hover:bg-[#082BB0] active:bg-[#072596]",
-  secondary: "bg-white text-navy ring-1 ring-inset ring-[#C9D5E6] hover:bg-[#F6F8FC] active:bg-[#EAF0FA]",
+  primary: "bg-primary text-white hover:bg-primary/90 active:bg-primary/95",
+  secondary: "bg-white text-navy ring-1 ring-inset ring-[#D7DEE8] hover:bg-[#F8FAFD] active:bg-[#EEF2F7]",
   ghost: "bg-transparent text-slate hover:bg-[#F6F8FC] active:bg-lightgray",
-  danger: "bg-scarlet text-white shadow-sm hover:bg-[#D72F25] active:bg-[#B92720]"
+  danger: "bg-scarlet text-white hover:bg-[#D72F25] active:bg-[#B92720]"
 };
 
 const sizes = {

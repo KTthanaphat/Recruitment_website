@@ -3,6 +3,11 @@
 @tailwind utilities;
 
 :root {
+  --app-primary: #0A3CDC;
+  --app-primary-hover: #082BB0;
+  --app-primary-rgb: 10 60 220;
+  --app-primary-strong: #082BB0;
+  --app-primary-strong-rgb: 8 43 176;
   color-scheme: light;
   background: #fafafc;
 }
@@ -40,7 +45,7 @@ a:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline: 3px solid rgba(20, 110, 250, 0.35);
+  outline: 3px solid rgb(var(--app-primary-rgb) / 0.35);
   outline-offset: 2px;
 }
 
@@ -223,7 +228,7 @@ dialog::backdrop {
   }
 
   .print-detail-table .sla-dot-ok {
-    background: #0a3cdc !important;
+    background: rgb(var(--app-primary-rgb)) !important;
   }
 
   .print-detail-table .sla-dot-overdue {

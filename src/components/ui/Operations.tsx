@@ -108,7 +108,7 @@ export function RecordActionGroup({ label, primary, items }: RecordActionGroupPr
               ref={menuRef}
               role="menu"
               aria-label={`Actions for ${label}`}
-              className="absolute right-0 top-full z-50 mt-2 grid w-[min(20rem,calc(100vw-2rem))] gap-1 rounded-md border border-[#D7DEE8] bg-white p-1.5 shadow-lg"
+              className="absolute right-0 top-full z-50 mt-2 grid w-[min(20rem,calc(100vw-2rem))] gap-1 rounded-md border border-[#D7DEE8] bg-white p-1.5 shadow-[0_10px_28px_rgba(11,19,43,0.08)]"
               onKeyDown={onMenuKeyDown}
             >
               {items.map((action) => <RecordActionControl key={action.id} action={withContext(action)} menuItem onComplete={() => closeMenu(false)} />)}
@@ -154,7 +154,7 @@ function RecordActionControl({
         role={menuItem ? "menuitem" : undefined}
         aria-label={iconOnly ? action.label : undefined}
         title={iconOnly ? action.label : undefined}
-        className={`${className} ${prominent ? "bg-primary text-white hover:bg-[#082BB0]" : menuItem ? actionMenuClass(action.tone) : actionClass(action.tone)}`}
+        className={`${className} ${prominent ? "bg-primary text-white hover:bg-primary/90" : menuItem ? actionMenuClass(action.tone) : actionClass(action.tone)}`}
         href={action.href}
         target={action.external ? "_blank" : undefined}
         rel={action.external ? "noreferrer" : undefined}
@@ -171,7 +171,7 @@ function RecordActionControl({
       type="button"
       aria-label={iconOnly ? action.label : undefined}
       title={blocked ? action.disabledReason?.detail : iconOnly ? action.label : undefined}
-      className={`${className} ${prominent ? "bg-primary text-white hover:bg-[#082BB0]" : menuItem ? actionMenuClass(action.tone) : actionClass(action.tone)}`}
+      className={`${className} ${prominent ? "bg-primary text-white hover:bg-primary/90" : menuItem ? actionMenuClass(action.tone) : actionClass(action.tone)}`}
       disabled={blocked}
       onClick={() => {
         action.onSelect?.();
@@ -189,7 +189,7 @@ export function OperationalSummaryStrip({ items }: { items: OperationalSummaryIt
       {items.map((item) => (
         <div key={item.label} className={`rounded-md border p-3 ${summaryCardClass(item.tone)}`}>
           <p className="text-xs font-medium text-slate">{item.label}</p>
-          <p className={`mt-1 text-xl font-semibold tabular-nums ${toneTextClass(item.tone)}`}>{item.value}</p>
+          <p className={`mt-1 text-xl font-semibold tabular-nums ${summaryValueClass(item.tone)}`}>{item.value}</p>
           {item.helper ? <p className="mt-1 text-xs font-medium text-cool">{item.helper}</p> : null}
         </div>
       ))}
@@ -199,7 +199,7 @@ export function OperationalSummaryStrip({ items }: { items: OperationalSummaryIt
 
 export function AgeSlaIndicator({ age, label, overdue }: { age: number | null; label: string; overdue?: boolean }) {
   return (
-    <span className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-semibold ${overdue ? "bg-[#FFF1F0] text-scarlet" : "bg-lightgray text-slate"}`}>
+    <span className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-semibold ring-1 ring-inset ${overdue ? "bg-[#FFF8F7] text-scarlet ring-[#F4B4AE]" : "bg-white text-slate ring-[#D7DEE8]"}`}>
       {age === null ? "-" : `${age}d`} - {label}
     </span>
   );
@@ -266,7 +266,7 @@ export function RecordActionList({
             <button
               key={item.id}
               type="button"
-              className={`grid gap-2 rounded-md border border-[#D7DEE8] bg-white p-3 text-left shadow-[0_6px_16px_rgba(11,19,43,0.025)] transition-colors hover:border-primary/40 hover:bg-[#F8FAFD] sm:grid-cols-[1fr_auto] sm:items-center ${itemClass}`}
+              className={`grid gap-2 rounded-md border border-[#D7DEE8] bg-white p-3 text-left shadow-[0_3px_10px_rgba(11,19,43,0.02)] transition-colors hover:border-[#C9D5E6] hover:bg-[#F8FAFD] sm:grid-cols-[1fr_auto] sm:items-center ${itemClass}`}
               onClick={buttonAction}
             >
               {content}
@@ -277,7 +277,7 @@ export function RecordActionList({
         return (
           <Link
             key={item.id}
-            className={`grid gap-2 rounded-md border border-[#D7DEE8] bg-white p-3 shadow-[0_6px_16px_rgba(11,19,43,0.025)] transition-colors hover:border-primary/40 hover:bg-[#F8FAFD] sm:grid-cols-[1fr_auto] sm:items-center ${itemClass}`}
+            className={`grid gap-2 rounded-md border border-[#D7DEE8] bg-white p-3 shadow-[0_3px_10px_rgba(11,19,43,0.02)] transition-colors hover:border-[#C9D5E6] hover:bg-[#F8FAFD] sm:grid-cols-[1fr_auto] sm:items-center ${itemClass}`}
             href={item.type === "sourcing" ? `/workspace?type=group&id=${encodeURIComponent(item.recordId)}` : "/sourcing"}
           >
             {content}
@@ -288,36 +288,33 @@ export function RecordActionList({
   );
 }
 
-function toneTextClass(tone: NextActionTone = "primary") {
+function summaryValueClass(tone: NextActionTone = "primary") {
   if (tone === "danger") return "text-scarlet";
-  if (tone === "warning") return "text-orange";
-  if (tone === "success") return "text-primary";
   if (tone === "muted") return "text-slate";
   return "text-navy";
 }
 
 function summaryCardClass(tone: NextActionTone = "primary") {
   if (tone === "danger") return "border-[#F4B4AE] bg-[#FFF8F7]";
-  if (tone === "warning") return "border-[#F3D3A2] bg-[#FFFDF5]";
-  if (tone === "success") return "border-[#C9D5E6] bg-[#F8FAFD]";
-  return "border-[#D7DEE8] bg-[#F8FAFD]";
+  if (tone === "warning") return "border-[#F3D3A2] bg-white";
+  return "border-[#D7DEE8] bg-white";
 }
 
 function linkClass(tone: NextActionTone = "primary") {
   if (tone === "danger") return "bg-[#FFF1F0] text-scarlet ring-[#F4B4AE] hover:bg-[#FFE1E1]";
   if (tone === "warning") return "bg-[#FFF7E8] text-orange ring-[#F3D3A2] hover:bg-[#FFEED2]";
-  if (tone === "success") return "bg-white text-primary ring-[#C9D5E6] hover:bg-[#F8FAFD]";
+  if (tone === "success") return "bg-white text-navy ring-[#C9D5E6] hover:bg-[#F8FAFD]";
   return "bg-white text-navy ring-[#C9D5E6] hover:bg-[#F8FAFD]";
 }
 
 function actionClass(tone: RecordAction["tone"] = "secondary") {
   if (tone === "danger") return "bg-[#FFF1F0] text-scarlet hover:bg-[#FFE1E1]";
-  if (tone === "primary") return "bg-white text-primary ring-1 ring-inset ring-[#C9D5E6] hover:bg-[#F8FAFD]";
+  if (tone === "primary") return "bg-white text-navy ring-1 ring-inset ring-[#C9D5E6] hover:bg-[#F8FAFD]";
   return "bg-lightgray text-navy hover:bg-[#E6EDF7]";
 }
 
 function actionMenuClass(tone: RecordAction["tone"] = "secondary") {
   if (tone === "danger") return "bg-[#FFF1F0] text-scarlet hover:bg-[#FFE1E1]";
-  if (tone === "primary") return "bg-primary text-white hover:bg-[#082BB0]";
+  if (tone === "primary") return "bg-primary text-white hover:bg-primary/90";
   return "text-navy hover:bg-lightgray";
 }

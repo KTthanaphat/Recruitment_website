@@ -1,4 +1,5 @@
-import type { ProcessStage, Profile, RequisitionStatus, Role, ViewId } from "@/types/recruitment";
+import { processStageLabel } from "@/lib/i18n/dictionary";
+import type { Language, ProcessStage, Profile, RequisitionStatus, Role, ViewId } from "@/types/recruitment";
 
 export const VIEWS: ViewId[] = [
   "home",
@@ -120,17 +121,17 @@ export function processIndex(stage: ProcessStage | "No activity" | null | undefi
   return index === -1 ? -1 : index;
 }
 
-export function processLabel(stage: ProcessStage | "No activity" | null | undefined) {
-  if (!stage || stage === "No activity") return "No activity";
-  return PROCESS_LABELS[stage] ?? stage;
+export function processLabel(stage: ProcessStage | "No activity" | null | undefined, language: Language = "en") {
+  if (!stage || stage === "No activity") return processStageLabel(language, "No activity");
+  return processStageLabel(language, stage) ?? PROCESS_LABELS[stage] ?? stage;
 }
 
 export function isDerivedResumeScreeningStage(stage: PipelineDisplayStage | string | null | undefined): stage is typeof DERIVED_RESUME_SCREENING_STAGE {
   return stage === DERIVED_RESUME_SCREENING_STAGE;
 }
 
-export function pipelineDisplayLabel(stage: PipelineDisplayStage | "No activity" | null | undefined) {
-  if (!stage || stage === "No activity") return "No activity";
-  if (isDerivedResumeScreeningStage(stage)) return DERIVED_RESUME_SCREENING_STAGE;
-  return processLabel(stage);
+export function pipelineDisplayLabel(stage: PipelineDisplayStage | "No activity" | null | undefined, language: Language = "en") {
+  if (!stage || stage === "No activity") return processStageLabel(language, "No activity");
+  if (isDerivedResumeScreeningStage(stage)) return processStageLabel(language, DERIVED_RESUME_SCREENING_STAGE);
+  return processLabel(stage, language);
 }

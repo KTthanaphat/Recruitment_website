@@ -2,6 +2,9 @@
 
 import { ArrowDown, ArrowDownUp, ArrowUp, Search, SlidersHorizontal } from "lucide-react";
 import { useMemo, useState } from "react";
+import { formatNumber } from "@/lib/format";
+import { translate } from "@/lib/i18n/dictionary";
+import type { Language } from "@/types/recruitment";
 
 export type SortDirection = "asc" | "desc" | null;
 
@@ -88,6 +91,7 @@ export function useTableControls<T>(rows: T[], columns: TableColumn<T>[], initia
 
 export function TableToolbar({
   advancedFiltersOpen,
+  language,
   onAdvancedFiltersToggle,
   onSearch,
   resultCount,
@@ -95,6 +99,7 @@ export function TableToolbar({
   totalCount
 }: {
   advancedFiltersOpen: boolean;
+  language: Language;
   onAdvancedFiltersToggle: () => void;
   onSearch: (value: string) => void;
   resultCount: number;
@@ -102,30 +107,30 @@ export function TableToolbar({
   totalCount: number;
 }) {
   return (
-    <div className="mb-3 flex flex-col gap-2 rounded-md border border-[#D7DEE8] bg-[#F8FAFD] p-2.5 sm:flex-row sm:items-center sm:justify-between">
+    <div className="mb-3 flex flex-col gap-2 rounded-md border border-[#D7DEE8] bg-white p-2.5 sm:flex-row sm:items-center sm:justify-between">
       <label className="relative min-w-0 flex-1">
-        <span className="sr-only">Search table</span>
+        <span className="sr-only">{translate(language, "searchTable")}</span>
         <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate" size={15} aria-hidden="true" />
         <input
-          className="min-h-9 w-full rounded-md border border-[#C9D5E6] bg-white py-1.5 pl-9 pr-3 text-sm font-medium text-navy placeholder:text-cool focus:border-primary focus:outline-none"
+          className="min-h-9 w-full rounded-md border border-[#D7DEE8] bg-white py-1.5 pl-9 pr-3 text-sm font-medium text-navy placeholder:text-cool focus:border-primary focus:outline-none"
           value={searchValue}
           onChange={(event) => onSearch(event.target.value)}
-          placeholder="Search records"
+          placeholder={translate(language, "searchRecords")}
           type="search"
         />
       </label>
       <div className="flex flex-wrap items-center justify-between gap-2 sm:justify-end">
-        <span className="text-xs font-medium text-slate">{resultCount} of {totalCount} records</span>
+        <span className="text-xs font-medium text-slate">{translate(language, "recordsCount", { result: formatNumber(resultCount, language), total: formatNumber(totalCount, language) })}</span>
         <button
           type="button"
           className={`inline-flex min-h-9 items-center justify-center gap-2 rounded-md px-3 text-sm font-semibold transition-colors ${
-            advancedFiltersOpen ? "bg-primary text-white hover:bg-[#082BB0]" : "bg-white text-navy ring-1 ring-inset ring-[#C9D5E6] hover:bg-[#F8FAFD]"
+            advancedFiltersOpen ? "bg-primary text-white hover:bg-primary/90" : "bg-white text-navy ring-1 ring-inset ring-[#D7DEE8] hover:bg-[#F8FAFD]"
           }`}
           aria-pressed={advancedFiltersOpen}
           onClick={onAdvancedFiltersToggle}
         >
           <SlidersHorizontal size={15} aria-hidden="true" />
-          Advanced Filters
+          {translate(language, "advancedFilters")}
         </button>
       </div>
     </div>
@@ -135,6 +140,7 @@ export function TableToolbar({
 export function SortableFilterHeader({
   columnKey,
   filterValue,
+  language,
   label,
   onFilter,
   onSort,
@@ -144,6 +150,7 @@ export function SortableFilterHeader({
 }: {
   columnKey: string;
   filterValue: string;
+  language: Language;
   label: string;
   onFilter: (key: string, value: string) => void;
   onSort: (key: string) => void;
@@ -158,20 +165,20 @@ export function SortableFilterHeader({
     <div className="grid min-w-28 gap-1">
       <button
         type="button"
-        className="flex items-center justify-between gap-2 text-left font-semibold text-slate transition-colors hover:text-primary"
+        className="flex items-center justify-between gap-2 text-left font-semibold text-slate transition-colors hover:text-navy"
         onClick={() => onSort(columnKey)}
-        aria-label={`Sort ${label}`}
+        aria-label={translate(language, "sortLabel", { label })}
       >
         <span>{label}</span>
         <Icon size={13} aria-hidden="true" />
       </button>
       {showFilter ? (
         <input
-          className="min-h-8 rounded border border-[#C9D5E6] bg-white px-2 py-1 text-xs font-medium normal-case text-navy placeholder:text-cool focus:border-primary focus:outline-none"
+          className="min-h-8 rounded border border-[#D7DEE8] bg-white px-2 py-1 text-xs font-medium normal-case text-navy placeholder:text-cool focus:border-primary focus:outline-none"
           value={filterValue}
           onChange={(event) => onFilter(columnKey, event.target.value)}
-          placeholder="Filter"
-          aria-label={`Filter ${label}`}
+          placeholder={translate(language, "filter")}
+          aria-label={translate(language, "filterLabel", { label })}
         />
       ) : null}
     </div>

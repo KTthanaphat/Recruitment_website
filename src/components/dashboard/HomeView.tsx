@@ -12,7 +12,7 @@ import { Tag } from "@/components/ui/Tag";
 import { BottleneckSummaryPanel, DataQualityPanel } from "@/components/ui/Workflow";
 import { ACTIVE_PIPELINE_STAGES, processLabel } from "@/lib/constants";
 import { formatDateTime, formatNumber, statusTone, toTitle } from "@/lib/format";
-import { translate } from "@/lib/i18n/dictionary";
+import { actionToneLabel, translate } from "@/lib/i18n/dictionary";
 import { derivePipelineBottlenecks, deriveWorkQueue, isCandidateAging, type DataQualityIssue } from "@/lib/operations";
 import { getRequisitionSlaState } from "@/lib/sla";
 import type { ChangeLog, EnrichedCandidate, EnrichedOffer, EnrichedRequisition, EnrichedSourcingGroup, Language, Profile, RecruitmentLog } from "@/types/recruitment";
@@ -78,7 +78,7 @@ export function HomeView({
         <StatCard label={translate(language, "SourcingUpdates")} value={summaryValue(formatNumber(staleSourcingGroups.length, language), translate(language, "groupIdUnit"))} icon={<CalendarClock size={22} />} />
       </div>
 
-      {bottleneckSummary ? <BottleneckSummaryPanel summary={bottleneckSummary} /> : null}
+      {bottleneckSummary ? <BottleneckSummaryPanel language={language} summary={bottleneckSummary} /> : null}
 
       <Panel variant="section">
         <SectionTitle
@@ -103,12 +103,12 @@ export function HomeView({
         />
       </Panel>
 
-      <DataQualityPanel compact issues={dataQualityIssues} scrollThreshold={3} title="Data Quality" />
+      <DataQualityPanel compact issues={dataQualityIssues} language={language} scrollThreshold={3} title={translate(language, "dataQuality")} />
 
       <Panel variant="section">
         <SectionTitle
           title={translate(language, "candidatePipeline")}
-          action={<Link className="text-sm font-semibold text-primary hover:text-[#082BB0]" href="/pipeline">{translate(language, "fullPipeline")}</Link>}
+          action={<Link className="text-sm font-semibold text-primary hover:text-primary/80" href="/pipeline">{translate(language, "fullPipeline")}</Link>}
         />
         <HomeListFrame count={pipelinePreview.length} threshold={4} ariaLabel="Candidate Pipeline" gridClassName="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           {pipelinePreview.length === 0 ? (
@@ -126,7 +126,7 @@ export function HomeView({
       <Panel>
         <SectionTitle
           title={translate(language, "SourcingUpdates")}
-          action={<Link className="text-sm font-semibold text-primary hover:text-[#082BB0]" href="/sourcing">{translate(language, "sourcing")}</Link>}
+          action={<Link className="text-sm font-semibold text-primary hover:text-primary/80" href="/sourcing">{translate(language, "sourcing")}</Link>}
         />
         <HomeListFrame count={staleSourcingGroups.length} threshold={3} ariaLabel="Sourcing Updates">
           {staleSourcingGroups.length === 0 ? (
@@ -135,12 +135,12 @@ export function HomeView({
             staleSourcingGroups.map((group) => (
               <Link
                 key={group.group_id}
-                className={`grid touch-manipulation gap-1 rounded-md border border-[#D7DEE8] bg-white p-3 text-left shadow-[0_6px_16px_rgba(11,19,43,0.025)] transition-colors motion-safe:transition-transform motion-safe:hover:-translate-y-0.5 hover:border-primary/40 hover:bg-[#F8FAFD] ${staleSourcingGroups.length > 3 ? homeScrollItemClass : ""}`}
+                className={`grid touch-manipulation gap-1 rounded-md border border-[#D7DEE8] bg-white p-3 text-left shadow-[0_3px_10px_rgba(11,19,43,0.02)] transition-colors motion-safe:transition-transform motion-safe:hover:-translate-y-0.5 hover:border-[#C9D5E6] hover:bg-[#F8FAFD] ${staleSourcingGroups.length > 3 ? homeScrollItemClass : ""}`}
                 href="/sourcing"
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <strong className="text-navy">{group.group_id} - {group.group_position}</strong>
-                  <Tag tone="warning">{group.open_headcount} {translate(language, "open")}</Tag>
+                  <Tag tone="warning">{translate(language, "openCount", { count: group.open_headcount })}</Tag>
                 </div>
                 <p className="text-sm font-medium text-slate">
                   Docs: {group.doc_ids.join(", ")} - Sites: {group.sites.join(", ")} - Owners: {group.owners.join(", ") || translate(language, "unassigned")}
@@ -157,7 +157,7 @@ export function HomeView({
       <Panel>
         <SectionTitle
           title="Open Headcount"
-          action={<Link className="text-sm font-semibold text-primary hover:text-[#082BB0]" href="/requisitions">{translate(language, "openList")}</Link>}
+          action={<Link className="text-sm font-semibold text-primary hover:text-primary/80" href="/requisitions">{translate(language, "openList")}</Link>}
         />
         <HomeListFrame count={needsAction.length} threshold={3} ariaLabel="Open Headcount">
           {needsAction.length === 0 ? (
@@ -180,7 +180,7 @@ export function HomeView({
         <Panel variant="subtle">
           <SectionTitle
             title={translate(language, "recentActivity")}
-            action={<Link className="text-sm font-semibold text-primary hover:text-[#082BB0]" href="/audit">{translate(language, "audit")}</Link>}
+            action={<Link className="text-sm font-semibold text-primary hover:text-primary/80" href="/audit">{translate(language, "audit")}</Link>}
           />
           <HomeListFrame count={changeLogs.length} threshold={3} ariaLabel="Recent Activity">
             {changeLogs.length === 0 ? (
@@ -190,7 +190,7 @@ export function HomeView({
                 <div key={log.log_id} className={`rounded-md border border-[#D7DEE8] bg-[#F8FAFD] p-3 shadow-none ${changeLogs.length > 3 ? homeScrollItemClass : ""}`}>
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <strong className="text-sm text-navy">{toTitle(log.entity)} - {log.entity_id}</strong>
-                    <Tag tone={statusTone(log.action) as never}>{log.action}</Tag>
+                    <Tag tone={statusTone(log.action) as never}>{actionToneLabel(language, log.action)}</Tag>
                   </div>
                   <p className="mt-1 text-sm font-medium text-slate">{log.changed_by_email ?? translate(language, "system")} - {formatDateTime(log.changed_at)}</p>
                 </div>
@@ -247,12 +247,12 @@ function NeedActionCard({
   return (
     <button
       type="button"
-      className={`grid touch-manipulation gap-1 rounded-md border border-[#D7DEE8] bg-white p-3 text-left shadow-[0_6px_16px_rgba(11,19,43,0.025)] transition-colors motion-safe:transition-transform motion-safe:hover:-translate-y-0.5 hover:border-primary/40 hover:bg-[#F8FAFD] ${scrolling ? homeScrollItemClass : ""}`}
+      className={`grid touch-manipulation gap-1 rounded-md border border-[#D7DEE8] bg-white p-3 text-left shadow-[0_3px_10px_rgba(11,19,43,0.02)] transition-colors motion-safe:transition-transform motion-safe:hover:-translate-y-0.5 hover:border-[#C9D5E6] hover:bg-[#F8FAFD] ${scrolling ? homeScrollItemClass : ""}`}
       onClick={() => onOpenRequisition(row.doc_id)}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <strong className={slaState.isOverdue ? "text-scarlet" : "text-navy"}>{row.doc_id} - {row.position}</strong>
-        <Tag tone="warning">{row.open_headcount} {translate(language, "open")}</Tag>
+        <Tag tone="warning">{translate(language, "openCount", { count: row.open_headcount })}</Tag>
       </div>
       <p className="text-sm font-medium text-slate">{row.department} - {row.site} - {row.person_in_charge ?? translate(language, "unassigned")}</p>
       <p className="text-xs font-medium text-slate">Age: {slaState.ageDays === null ? "-" : `${slaState.ageDays}d`} - SLA: {slaState.label}</p>
@@ -293,7 +293,7 @@ function CandidateActionCard({
   return (
     <button
       type="button"
-      className={`grid touch-manipulation gap-2 rounded-md border border-[#D7DEE8] bg-white p-3 text-left shadow-[0_6px_16px_rgba(11,19,43,0.025)] transition-colors motion-safe:transition-transform motion-safe:hover:-translate-y-0.5 hover:border-primary/40 hover:bg-[#F8FAFD] ${scrolling ? homeScrollItemClass : ""}`}
+      className={`grid touch-manipulation gap-2 rounded-md border border-[#D7DEE8] bg-white p-3 text-left shadow-[0_3px_10px_rgba(11,19,43,0.02)] transition-colors motion-safe:transition-transform motion-safe:hover:-translate-y-0.5 hover:border-[#C9D5E6] hover:bg-[#F8FAFD] ${scrolling ? homeScrollItemClass : ""}`}
       onClick={() => onOpenCandidate(candidate.candidate_id)}
     >
       <div className="flex items-start justify-between gap-2">
@@ -302,12 +302,12 @@ function CandidateActionCard({
           <p className="text-xs font-medium text-slate">{candidate.candidate_id} - {candidate.group_position ?? "-"}</p>
         </div>
         <Tag tone={needsOfferFinalization ? "warning" : "teal"}>
-          {needsOfferFinalization ? "Offer pending" : processLabel(candidate.latest_process)}
+          {needsOfferFinalization ? translate(language, "offerPending") : processLabel(candidate.latest_process, language)}
         </Tag>
       </div>
-      <StageRail compact currentStage={candidate.latest_process} currentResult={candidate.latest_result} />
+      <StageRail compact language={language} currentStage={candidate.latest_process} currentResult={candidate.latest_result} />
       <p className="text-xs font-medium text-slate">{candidate.site ?? "-"} - {candidate.person_in_charge ?? translate(language, "unassigned")}</p>
-      <span className="text-xs font-semibold text-primary">Open</span>
+      <span className="text-xs font-semibold text-navy">{translate(language, "open")}</span>
     </button>
   );
 }
