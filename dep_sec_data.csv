@@ -1,0 +1,116 @@
+﻿dep_sec_id,site,dep,sec,dep_en,sec_en
+1060200,HQ,ฝ่ายการเงิน,แผนกการเงินโครงการ,Finance Department,Finance Project Division
+1070100,HQ,ฝ่ายบัญชี,แผนกบัญชี,Accounting Department,Accounting Division
+1050300,HQ,ฝ่ายบริหารบุคคลกลาง,แผนกยานพาหนะ,Personnel Administration Department,Vehicle Division
+1060100,HQ,ฝ่ายการเงิน,แผนกการเงิน ,Finance Department,Finance Disivion
+1140000,HQ,ฝ่ายขายอาหารสัตว์น้ำ,,Aquatic Animal Feed Sales Department,
+1130000,HQ,ฝ่ายขายอาหารสัตว์บก,,Land Animal Feed Sales Department,
+1130100,HQ,ฝ่ายขายอาหารสัตว์บก,แผนกสำนักงานขาย,Land Animal Feed Sales Department,Sales Office Division
+1060300,HQ,ฝ่ายการเงิน,แผนกเอกสารการเงิน,Finance Department,Financial Document Division
+1110000,HQ,ฝ่ายสินเชื่อ,,Credit Department,
+1120000,HQ,ฝ่ายพันธุ์สัตว์,,Breeder Department,
+1050100,HQ,ฝ่ายบริหารบุคคลกลาง,แผนกบุคคล,Personnel Administration Department,Personnel Administration Division
+1040100,HQ,ฝ่ายจัดซื้อในประเทศ,แผนกจัดซื้อวัตถุดิบ,Domestic Purchasing Department,Raw Material Purchasing Division
+1010300,HQ,ฝ่ายกรรมการบริษัท,แผนกเลขานุการบริหาร,Board of Committee,Secretary Executive Division
+1070200,HQ,ฝ่ายบัญชี,แผนกบัญชีวัตถุดิบ,Accounting Department,Raw Material Accounting Division
+1030000,HQ,ฝ่ายนำเข้าสินค้าและจัดซื้อเคมีภัณฑ์,,Import and Chemical Purchasing Department,
+1040200,HQ,ฝ่ายจัดซื้อในประเทศ,แผนกจัดซื้อทั่วไป,Domestic Purchasing Department,General Purchasing Division
+1050200,HQ,ฝ่ายบริหารบุคคลกลาง,แผนกธุรการ,Personnel Administration Department,Administration Division
+1020000,HQ,ฝ่ายกฎหมาย,,Law Department,
+1090000,HQ,ฝ่ายการตลาด,,Marketing Department,
+1130200,HQ,ฝ่ายขายอาหารสัตว์บก,แผนกขายสาขาโคราช,Land Animal Feed Sales Department,Korat Branch
+1040300,HQ,ฝ่ายจัดซื้อในประเทศ,แผนกจัดซื้อส่วนผสม,Domestic Purchasing Department,Ingredient Purchasing Division
+1050201,HQ,ฝ่ายบริหารบุคคลกลาง,แผนกธุรการ,Personnel Administration Department,Administration Division
+1140100,HQ,ฝ่ายขายอาหารสัตว์น้ำ,แผนกขายสาขาตราด,Aquatic Animal Feed Sales Department,Trat Branch
+1050202,HQ,ฝ่ายบริหารบุคคลกลาง,แผนกธุรการ,Personnel Administration Department,Administration Division
+1130300,HQ,ฝ่ายขายอาหารสัตว์บก,แผนกขายสาขาลำพูน,Land Animal Feed Sales Department,Lamphun Branch
+1080100,HQ,ฝ่ายสารสนเทศ,แผนก AS400,Information Technology Department,AS400 Division
+1080200,HQ,ฝ่ายสารสนเทศ,แผนกพัฒนาระบบ ,Information Technology Department,System Developer Division
+1140300,HQ,ฝ่ายขายอาหารสัตว์น้ำ,แผนกขายสาขาชุมพร,Aquatic Animal Feed Sales Department,Chumphon Branch
+1140700,HQ,ฝ่ายขายอาหารสัตว์น้ำ,แผนกขายสาขาตรัง,Aquatic Animal Feed Sales Department,Trang Branch
+1140800,HQ,ฝ่ายขายอาหารสัตว์น้ำ,แผนกขายสาขาสงขลา,Aquatic Animal Feed Sales Department,Songkhla Branch
+1050203,HQ,ฝ่ายบริหารบุคคลกลาง,แผนกธุรการ,Personnel Administration Department,Administration Division
+1140200,HQ,ฝ่ายขายอาหารสัตว์น้ำ,แผนกขายสาขาประจวบฯ,Aquatic Animal Feed Sales Department,Prachuap Khiri Khan Branch
+1140400,HQ,ฝ่ายขายอาหารสัตว์น้ำ,แผนกขายสาขาสุราษฎร์,Aquatic Animal Feed Sales Department,Surat Thani Branch
+1141000,HQ,ฝ่ายขายอาหารสัตว์น้ำ,แผนกขายสาขากระบี่,Aquatic Animal Feed Sales Department,
+1140600,HQ,ฝ่ายขายอาหารสัตว์น้ำ,แผนกขายสาขาพังงา,Aquatic Animal Feed Sales Department,Phangnga Branch
+1010400,HQ,ฝ่ายกรรมการบริษัท,แผนกวิชาการ,Board of Committee,
+1140500,HQ,ฝ่ายขายอาหารสัตว์น้ำ,แผนกขายสาขานครศรีธรรมราช,Aquatic Animal Feed Sales Department,Nakhon Si Thammarat Branch
+1140900,HQ,ฝ่ายขายอาหารสัตว์น้ำ,แผนกขายสาขาจันทบุรี,Aquatic Animal Feed Sales Department,
+2010100,KT1,ฝ่ายคลังสินค้าอาหารสำเร็จรูป,แผนกคลังสินค้าอาหารสำเร็จรูป,Finished Goods Department,Finished Goods Division
+2000300,KT1,ฝ่ายคลังสินค้าวัตถุดิบ,แผนกสต๊อควัตถุดิบ,Raw Material Department,Raw Material Division
+2030200,KT1,ฝ่ายบัญชีและควบคุม,แผนกบัญชีและการเงิน,Accounting & Control Department,Accounting & Finance Division
+2130400,KT1,ฝ่ายวิศวกรรมซ่อมบำรุง,แผนกวิจัยพัฒนาและปรับปรุงกระบวนการ,Maintenance Engineering Department,Research & Process Improvement Division
+2050300,KT1,ฝ่ายผลิตสัตว์น้ำ,แผนกเอ็กทรูเดอร์,Aquatic Feed Department,Extrude Division
+2060100,KT1,ฝ่ายผลิตสัตว์บก,แผนกผสมอาหารสัตว์บก,Land Animals Feed Department,Packing - Land Animals Division
+2000100,KT1,ฝ่ายคลังสินค้าวัตถุดิบ,แผนกไซโล ,Raw Material Department,Silo Division
+2050200,KT1,ฝ่ายผลิตสัตว์น้ำ,แผนกออกอาหารสัตว์น้ำ,Aquatic Feed Department,Packing - Aquatic Division
+2070100,KT1,ฝ่ายผลิตอาหารกุ้ง,แผนกผสมอาหารกุ้ง,Shrimp Feed Department,Mixing - Shrimp Division
+2020100,KT1,ฝ่ายจัดส่ง,แผนกจัดส่งภายนอก,Transportation Department,External Transportation Division
+2120300,KT1,ฝ่ายวิศวกรรมเครื่องกล,แผนกโครงการ,Mechanical Engineering Department,Project Division
+2030100,KT1,ฝ่ายบัญชีและควบคุม,แผนกตรวจสอบน้ำหนัก,Accounting & Control Department,Check Weight Division
+2060300,KT1,ฝ่ายผลิตสัตว์บก,แผนกอัดเม็ดสัตว์บก,Land Animals Feed Department,Pellet Mill - Land Animals Division
+2060400,KT1,ฝ่ายผลิตสัตว์บก,แผนกเตรียมพรีมิกซ์,Land Animals Feed Department,Premix Division
+2150100,KT1,ฝ่ายธุรการโรงงาน,แผนกธุรการโรงงาน,,Administration Division
+2010200,KT1,ฝ่ายคลังสินค้าอาหารสำเร็จรูป,แผนกพัสดุอะไหล่,Finished Goods Department,Spare Parts Division
+2080300,KT1,ฝ่ายผลิตอาหารกุ้ง,แผนกอัดเม็ดอาหารกุ้ง,Shrimp Feed Department,Pellet Mill- Shrimp Division
+2110200,KT1,ฝ่ายโภชนาการ KT1,แผนกโภชนาการ,Nutrition Department KT1,Nutrition Division
+2090300,KT1,ฝ่ายพัฒนาคุณภาพ,แผนกประกันคุณภาพRM,Quality Development Department,Quality Assurance RM Division
+2130100,KT1,ฝ่ายวิศวกรรมซ่อมบำรุง,แผนกซ่อมบำรุงเครื่องจักร,Maintenance Engineering Department,Machine Maintenance Division
+2040400,KT1,ฝ่ายบุคคล,แผนกสรรหาและค่าจ้าง,Human Resource & Administration Department,Recruitment Division
+2130200,KT1,ฝ่ายวิศวกรรมซ่อมบำรุง,แผนกซ่อมบำรุงไฟฟ้า,Maintenance Engineering Department,Electric Maintenance Division
+2020200,KT1,ฝ่ายจัดส่ง,แผนกจัดส่งภายใน,Transportation Department,Internal Transportation Division
+2070200,KT1,ฝ่ายผลิตอาหารกุ้ง,แผนกออกอาหารกุ้ง,Shrimp Feed Department,Packing - Shrimp Division
+2120200,KT1,ฝ่ายวิศวกรรมเครื่องกล,แผนกเครื่องกล,Mechanical Engineering Department,Mechanical Division
+2050100,KT1,ฝ่ายผลิตสัตว์น้ำ,แผนกผสมอาหารสัตว์น้ำ,Aquatic Feed Department,Mixing - Aquatic Division
+2140100,KT1,ฝ่ายวางแผนและสถิติ,แผนกวางแผนและสถิติ,,Planing Division
+2130300,KT1,ฝ่ายวิศวกรรมซ่อมบำรุง,แผนกซ่อมบำรุงยานพาหนะ,Maintenance Engineering Department,Vehicle Maintenance Division
+2100400,KT1,ฝ่ายพัฒนาองค์กร,แผนกส่งเสริม Productivity,Organization Development Department,Productivity Division
+2060200,KT1,ฝ่ายผลิตสัตว์บก,แผนกออกอาหารสัตว์บก,Land Animals Feed Department,Mixing - Land Animals Division
+2090400,KT1,ฝ่ายพัฒนาคุณภาพ,แผนกวิเคราะห์คุณภาพ,Quality Development Department,Quality Control Division
+2180100,KT1,ฝ่ายคุณภาพและความปลอดภัยอาหาร,แผนกคุณภาพและความปลอดภัยอาหาร,,Quality & Food Safety Division
+2090100,KT1,ฝ่ายพัฒนาคุณภาพ,แผนกประกันคุณภาพFG,Quality Development Department,Quality Assurance FG Division
+2160000,KT1,ฝ่ายความปลอดภัย อาชีวอนามัย และสิ่งแวดล้อม,แผนกความปลอดภัย อาชีวอนามัย และสิ่งแวดล้อม,,Safety & Environment Division
+2090200,KT1,ฝ่ายพัฒนาคุณภาพ,แผนกประกันคุณภาพIL,Quality Development Department,Quality Assurance IL Division
+2040200,KT1,ฝ่ายบุคคล,แผนกพัฒนาบุคลากร,Human Resource & Administration Department,Trainning & Development Division
+2040300,KT1,ฝ่ายบุคคล,แผนกแรงงานสัมพันธ์และสวัสดิการ,Human Resource & Administration Department,Labor Relations Division
+2191000,KT1,ฝ่ายสารสนเทศ,แผนกสารสนเทศ,,Information Technology Division
+3140100,KT2,ฝ่ายโครงสร้าง,แผนกโครงสร้าง,Construction Department,Construction Division
+3040200,KT2,ฝ่ายจัดส่ง,แผนกธุรการขายจัดส่งKT2,Logistic Department,Sale Administration Division
+3040100,KT2,ฝ่ายจัดส่ง,แผนกธุรการยานพาหนะKT2,Logistic Department,Vehicle Administration Division
+3110200,KT2,ฝ่ายวิจัย พัฒนา และปรับปรุงกระบวนการ,แผนกวิจัย พัฒนา โครงการติดตั้ง,Research and Development Department,Research and Development Installation Project Division
+3010200,KT2,ฝ่ายผลิต,แผนกอัดเม็ด,Production Department,Pellet Mill Division
+3020200,KT2,ฝ่ายวิศวกรรมซ่อมบำรุง,แผนกซ่อมบำรุงเครื่องจักร,Maintenance Engineer Department,Machine Maintenance Division
+3010500,KT2,ฝ่ายผลิต,แผนกผสมอาหาร KT2 & KT3,Production Department,
+3130200,KT2,ฝ่ายธุรการโรงงาน,แผนกธุรการโรงงาน KT2 รวม,Factory Administrative Department ,Factory Administration Division
+3030400,KT2,ฝ่ายคลังสินค้าวัตถุดิบ,แผนกไซโล KT2 รวม,Warehouse and Material Stock Department,Silo Division
+3020500,KT2,ฝ่ายวิศวกรรมซ่อมบำรุง,แผนก UTILITY KT2 รวม,Maintenance Engineer Department,Utility Division
+3010300,KT2,ฝ่ายผลิต,แผนกผสมอาหาร KT3,Production Department,Mixing Division
+3030500,KT2,ฝ่ายคลังสินค้าวัตถุดิบ,แผนกสต๊อควัตถุดิบ KT2 รวม,Warehouse and Material Stock Department,Raw Material Division
+3110300,KT2,ฝ่ายวิจัย พัฒนา และปรับปรุงกระบวนการ,แผนกวิจัย พัฒนา โครงการเพิ่มประสิทธิภาพ,Research and Development Department,Research and Development Productivity Project Division
+3050200,KT2,ฝ่ายพัฒนาคุณภาพ,แผนกประกันคุณภาพ,Quality Development Department,Quality Assurance Division
+3060400,KT2,ฝ่ายบัญชีและควบคุม,แผนกตรวจสอบน้ำหนัก KT2 รวม,Accounting and Control Department,Weight Control Division
+3030100,KT2,ฝ่ายคลังสินค้าวัตถุดิบ,แผนกพัสดุอะไหล่,Warehouse and Material Stock Department,Spare Parts Division
+3010600,KT2,ฝ่ายผลิต,แผนกอัดเม็ด KT2 & KT3,Production Department,Pellet Mill Division
+3010400,KT2,ฝ่ายผลิต,แผนกอัดเม็ด KT3,Production Department,Pellet Mill Division
+3110100,KT2,ฝ่ายวิจัย พัฒนา และปรับปรุงกระบวนการ,แผนกวิจัย พัฒนา โครงการไฟฟ้า,Research and Development Department,Research and Development Electrical Project Division
+3050400,KT2,ฝ่ายพัฒนาคุณภาพ,แผนกวิเคราะห์คุณภาพ KT2 รวม,Quality Development Department,Quality Control Division
+3100100,KT2,ฝ่ายความปลอดภัย อาชีวอนามัยและสิ่งแวดล้อม,แผนกความปลอดภัยและอาชีวอนามัย,Safety Occupational Health and Environment Department,Safety and Occupational Health Division
+3080200,KT2,ฝ่ายบริหารระบบคุณภาพและความยั่งยืน,แผนกคุณภาพและความปลอดภัยอาหาร,Quality System Management and Sustainable Department,Quality and Food Safety Division
+3020100,KT2,ฝ่ายวิศวกรรมซ่อมบำรุง,แผนกซ่อมบำรุงไฟฟ้า,Maintenance Engineer Department,Electric Maintenance Division
+3070100,KT2,ฝ่ายบุคคล,แผนกสรรหาและค่าจ้าง,Human Resource Department,Recruitment and Compensation Division
+3020300,KT2,ฝ่ายวิศวกรรมซ่อมบำรุง,แผนกซ่อมบำรุงยานพาหนะ,Maintenance Engineer Department,Vehicle Maintenance Division
+3080100,KT2,ฝ่ายสารสนเทศ,แผนกสารสนเทศ,Information Technology Department,Information Technology Division
+3050300,KT2,ฝ่ายคลังสินค้าวัตถุดิบ,แผนกเตรียมพรีมิกซ์,Warehouse and Material Stock Department,Quality Premix Division
+3070300,KT2,ฝ่ายบุคคล,แผนกพัฒนาบุคลากร,Human Resource Department,Human Resource Development Division
+3080400,KT2,ฝ่ายวางแผนและสถิติ,แผนกวางแผนและสถิติ,Planning and Statistic,Planning and Supply Chain Division
+3010800,KT2,ฝ่ายผลิต,แผนก Productivity KT2&KT3,Production Department,Productivity KT2&KT3
+3060100,KT2,ฝ่ายบัญชีและควบคุม,แผนกบัญชีและสต๊อก,Accounting and Control Department,Accounting and Stock Division
+3010100,KT2,ฝ่ายผลิต,แผนกผสมอาหาร,Production Department,Mixing Division
+3010700,KT2,ฝ่ายผลิต,แผนก In Process Control KT2&KT3,Production Department,In Process Control KT2&KT3
+3100200,KT2,ฝ่ายความปลอดภัย อาชีวอนามัยและสิ่งแวดล้อม,แผนกสิ่งแวดล้อม,Safety Occupational Health and Environment Department,Environmental Division
+3070200,KT2,ฝ่ายบุคคล,แผนกแรงงานสัมพันธ์,Human Resource Department,Labor Relations Division
+3060200,KT2,ฝ่ายบัญชีและควบคุม,แผนกบัญชีและการเงิน,Accounting and Control Department,Accounting and Finance Division
+3160100,KT2,ฝ่ายบริหารระบบคุณภาพและความยั่งยืน,แผนกพัฒนาความยั่งยืน,Quality System Management and Sustainable Department,Sustainable Development Division
+3090100,KT2,ฝ่ายโภชนาการ KT2,แผนกโภชนาการ,Nutrition Department KT2,Nutrition Division
+3130100,KT2,ฝ่ายธุรการโรงงาน,แผนกธุรการโรงงาน,Factory Administrative Department ,Factory Administration Division

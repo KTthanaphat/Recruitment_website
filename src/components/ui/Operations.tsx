@@ -27,6 +27,31 @@ export type RecordActionGroupProps = {
   items: RecordAction[];
 };
 
+export type RecordQuickAction = RecordAction & {
+  iconOnly?: boolean;
+};
+
+export function RecordQuickActions({ actions, label }: { actions: RecordQuickAction[]; label: string }) {
+  const searchParams = useSearchParams();
+  const withContext = (action: RecordQuickAction) => action.href?.startsWith("/") && !action.external
+    ? {
+      ...action,
+      href: buildContextualHref(action.href, {
+        language: searchParams.get("lang"),
+        site: searchParams.get("site"),
+        owner: searchParams.get("pic"),
+        sourcingWeek: searchParams.get("sourcingWeek")
+      })
+    }
+    : action;
+
+  return (
+    <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5" aria-label={label}>
+      {actions.map((action) => <RecordActionControl key={action.id} action={withContext(action)} onComplete={() => undefined} />)}
+    </div>
+  );
+}
+
 export function RecordActionGroup({ label, primary, items }: RecordActionGroupProps) {
   const searchParams = useSearchParams();
   const [open, setOpen] = useState(false);
@@ -108,7 +133,7 @@ export function RecordActionGroup({ label, primary, items }: RecordActionGroupPr
               ref={menuRef}
               role="menu"
               aria-label={`Actions for ${label}`}
-              className="absolute right-0 top-full z-50 mt-2 grid w-[min(20rem,calc(100vw-2rem))] gap-1 rounded-md border border-[#D7DEE8] bg-white p-1.5 shadow-[0_10px_28px_rgba(11,19,43,0.08)]"
+              className="absolute right-0 top-full z-50 mt-2 grid w-[min(20rem,calc(100vw-2rem))] gap-1 rounded-2xl border border-[#E4E9F2] bg-white p-1.5 shadow-[0_8px_24px_rgba(11,19,43,0.08)]"
               onKeyDown={onMenuKeyDown}
             >
               {items.map((action) => <RecordActionControl key={action.id} action={withContext(action)} menuItem onComplete={() => closeMenu(false)} />)}
@@ -136,8 +161,8 @@ function RecordActionControl({
   const className = menuItem
     ? "grid min-h-10 w-full grid-cols-[auto_1fr] items-center gap-x-2 rounded px-3 py-2 text-left text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-primary/25 disabled:cursor-not-allowed disabled:text-cool"
     : iconOnly
-      ? "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-primary/25"
-    : "inline-flex min-h-9 items-center justify-center gap-2 rounded-md px-3 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-primary/25";
+      ? "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-primary/25"
+    : "inline-flex min-h-9 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-primary/25";
   const content = (
     <>
       {action.icon ?? (iconOnly ? <LampDesk size={16} aria-hidden="true" /> : null)}
@@ -183,13 +208,13 @@ function RecordActionControl({
   );
 }
 
-export function OperationalSummaryStrip({ items }: { items: OperationalSummaryItem[] }) {
+export function OperationalSummaryStrip({ items, density = "default" }: { items: OperationalSummaryItem[]; density?: "default" | "compact" }) {
   return (
-    <div className="grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(150px,1fr))]">
+    <div className={`grid gap-2 ${density === "compact" ? "[grid-template-columns:repeat(auto-fit,minmax(130px,1fr))]" : "[grid-template-columns:repeat(auto-fit,minmax(150px,1fr))]"}`}>
       {items.map((item) => (
-        <div key={item.label} className={`rounded-md border p-3 ${summaryCardClass(item.tone)}`}>
+        <div key={item.label} className={`rounded-xl border ${density === "compact" ? "px-3 py-2" : "p-3"} ${summaryCardClass(item.tone)}`}>
           <p className="text-xs font-medium text-slate">{item.label}</p>
-          <p className={`mt-1 text-xl font-semibold tabular-nums ${summaryValueClass(item.tone)}`}>{item.value}</p>
+          <p className={`mt-1 font-semibold tabular-nums ${density === "compact" ? "text-lg" : "text-xl"} ${summaryValueClass(item.tone)}`}>{item.value}</p>
           {item.helper ? <p className="mt-1 text-xs font-medium text-cool">{item.helper}</p> : null}
         </div>
       ))}
@@ -236,7 +261,7 @@ export function RecordActionList({
   onOpenRequisition?: (docId: string) => void;
 }) {
   if (items.length === 0) {
-    return <p className="rounded-md border border-[#D7DEE8] bg-[#F8FAFD] p-3 text-sm font-normal text-slate">{emptyMessage}</p>;
+    return <p className="rounded-xl border border-[#E4E9F2] bg-[#F8FAFD] p-3 text-sm font-medium text-slate">{emptyMessage}</p>;
   }
 
   const horizontal = layout === "horizontal";
@@ -266,7 +291,7 @@ export function RecordActionList({
             <button
               key={item.id}
               type="button"
-              className={`grid gap-2 rounded-md border border-[#D7DEE8] bg-white p-3 text-left shadow-[0_3px_10px_rgba(11,19,43,0.02)] transition-colors hover:border-[#C9D5E6] hover:bg-[#F8FAFD] sm:grid-cols-[1fr_auto] sm:items-center ${itemClass}`}
+              className={`ats-card grid gap-2 p-3 text-left sm:grid-cols-[1fr_auto] sm:items-center ${itemClass}`}
               onClick={buttonAction}
             >
               {content}
@@ -277,7 +302,7 @@ export function RecordActionList({
         return (
           <Link
             key={item.id}
-            className={`grid gap-2 rounded-md border border-[#D7DEE8] bg-white p-3 shadow-[0_3px_10px_rgba(11,19,43,0.02)] transition-colors hover:border-[#C9D5E6] hover:bg-[#F8FAFD] sm:grid-cols-[1fr_auto] sm:items-center ${itemClass}`}
+            className={`ats-card grid gap-2 p-3 sm:grid-cols-[1fr_auto] sm:items-center ${itemClass}`}
             href={item.type === "sourcing" ? `/workspace?type=group&id=${encodeURIComponent(item.recordId)}` : "/sourcing"}
           >
             {content}
@@ -297,7 +322,7 @@ function summaryValueClass(tone: NextActionTone = "primary") {
 function summaryCardClass(tone: NextActionTone = "primary") {
   if (tone === "danger") return "border-[#F4B4AE] bg-[#FFF8F7]";
   if (tone === "warning") return "border-[#F3D3A2] bg-white";
-  return "border-[#D7DEE8] bg-white";
+  return "border-[#E4E9F2] bg-white";
 }
 
 function linkClass(tone: NextActionTone = "primary") {

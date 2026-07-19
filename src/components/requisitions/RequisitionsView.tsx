@@ -6,7 +6,7 @@ import { PAGE_SIZE_OPTIONS, Pagination, paginateRows } from "@/components/ui/Pag
 import { Panel, SectionTitle } from "@/components/ui/Panel";
 import { SortableFilterHeader, TableToolbar, type TableColumn, useTableControls } from "@/components/ui/TableControls";
 import { Tag } from "@/components/ui/Tag";
-import { RecordActionGroup } from "@/components/ui/Operations";
+import { RecordQuickActions, type RecordQuickAction } from "@/components/ui/Operations";
 import { BulkActionToolbar, BulkReviewModal } from "@/components/ui/Workflow";
 import { formatDate, statusTone } from "@/lib/format";
 import { fillReadinessLabel, requisitionStatusLabel, requestTypeLabel, translate } from "@/lib/i18n/dictionary";
@@ -44,22 +44,22 @@ export function RequisitionsView({
   const [bulkResult, setBulkResult] = useState<BulkActionResult | null>(null);
   const tableInitialized = useRef(false);
   const columns: TableColumn<EnrichedRequisition>[] = [
-    { key: "doc_id", label: "Doc ID", value: (row) => row.doc_id },
-    { key: "position", label: "Position", value: (row) => row.position },
-    { key: "department", label: "Department", value: (row) => row.department },
+    { key: "doc_id", label: translate(language, "docId"), value: (row) => row.doc_id },
+    { key: "position", label: translate(language, "position"), value: (row) => row.position },
+    { key: "department", label: translate(language, "department"), value: (row) => row.department },
     { key: "request_type", label: translate(language, "requestType"), value: (row) => requestTypeLabel(language, row.request_type) },
-    { key: "section", label: "Section", value: (row) => row.section ?? "-" },
+    { key: "section", label: translate(language, "section"), value: (row) => row.section ?? "-" },
     { key: "owner", label: translate(language, "owner"), value: (row) => row.person_in_charge ?? "-" },
     { key: "status", label: translate(language, "status"), value: (row) => requisitionStatusLabel(language, row.status) },
-    { key: "head_count", label: "HC", value: (row) => row.head_count },
+    { key: "head_count", label: translate(language, "headcount"), value: (row) => row.head_count },
     { key: "accepted_count", label: translate(language, "accepted"), value: (row) => row.accepted_count },
-    { key: "open_headcount", label: "Open HC", value: (row) => row.open_headcount },
-    { key: "candidate_count", label: "Candidates", value: (row) => row.candidate_count },
+    { key: "open_headcount", label: translate(language, "openHeadcountShort"), value: (row) => row.open_headcount },
+    { key: "candidate_count", label: translate(language, "candidates"), value: (row) => row.candidate_count },
     { key: "readiness", label: translate(language, "fillReadiness"), value: (row) => fillReadinessLabel(language, requisitionFillReadiness(row, candidates).label) },
-    { key: "req_date", label: "Req Date", value: (row) => row.pr_approved_date ?? "-", sortValue: (row) => row.pr_approved_date ?? "" },
-    { key: "age", label: "Age", value: (row) => ageLabel(row), sortValue: (row) => getRequisitionSlaState(row, { openOnly: true }).ageDays ?? Number.POSITIVE_INFINITY },
-    { key: "sla", label: "SLA", value: (row) => getRequisitionSlaState(row, { openOnly: true }).label },
-    { key: "updated_at", label: "Updated", value: (row) => formatDate(row.updated_at), sortValue: (row) => row.updated_at }
+    { key: "req_date", label: translate(language, "requisitionDate"), value: (row) => row.pr_approved_date ? formatDate(row.pr_approved_date, language) : "-", sortValue: (row) => row.pr_approved_date ?? "" },
+    { key: "age", label: translate(language, "ageLabel"), value: (row) => ageLabel(row), sortValue: (row) => getRequisitionSlaState(row, { openOnly: true }).ageDays ?? Number.POSITIVE_INFINITY },
+    { key: "sla", label: translate(language, "slaLabel"), value: (row) => getRequisitionSlaState(row, { openOnly: true }).label },
+    { key: "updated_at", label: translate(language, "updated"), value: (row) => formatDate(row.updated_at, language), sortValue: (row) => row.updated_at }
   ];
   const table = useTableControls(rows, columns, initialTableState);
   const paginated = paginateRows(table.controlledRows, page, pageSize);
@@ -94,7 +94,7 @@ export function RequisitionsView({
           canWrite ? (
             <>
               <Button type="button" size="sm" icon={<Plus size={16} />} onClick={onNew}>{translate(language, "newRequisition")}</Button>
-              <Button type="button" size="sm" variant="secondary" icon={<RotateCw size={16} />} onClick={onStatus}>Status</Button>
+              <Button type="button" size="sm" variant="secondary" icon={<RotateCw size={16} />} onClick={onStatus}>{translate(language, "status")}</Button>
             </>
           ) : null
         }
@@ -114,36 +114,23 @@ export function RequisitionsView({
         />
         <div className="grid gap-3 md:hidden">
           {visibleRows.map((row) => (
-            <article key={row.doc_id} className="rounded-md border border-[#D7DEE8] bg-white p-3 text-left shadow-[0_3px_10px_rgba(11,19,43,0.02)]">
+            <article key={row.doc_id} className="ats-card p-3 text-left">
               <div className="mb-2 flex items-center justify-between gap-2">
                 <div className="min-w-0">
-                  <button
-                    type="button"
-                    className={`rounded-sm text-left font-semibold focus:outline-none focus:ring-2 focus:ring-primary/25 ${getRequisitionSlaState(row, { openOnly: true }).isOverdue ? "text-scarlet" : "text-navy"}`}
-                    onClick={() => onOpen(row.doc_id)}
-                  >
+                  <strong className={`font-semibold ${getRequisitionSlaState(row, { openOnly: true }).isOverdue ? "text-scarlet" : "text-navy"}`}>
                     {row.doc_id}
-                  </button>
+                  </strong>
                 </div>
-                <div className="flex items-center gap-2">
-                  <DetailButton
-                    ariaLabel={`View requisition detail for ${row.doc_id}`}
-                    onClick={() => onOpen(row.doc_id)}
-                  />
-                  <Tag tone={statusTone(row.status) as never}>{requisitionStatusLabel(language, row.status)}</Tag>
-                </div>
+                <Tag tone={statusTone(row.status) as never}>{requisitionStatusLabel(language, row.status)}</Tag>
               </div>
               <p className="font-semibold text-navy">{row.position}</p>
               <p className="text-sm font-medium text-slate">{row.department} - {row.site}</p>
               <p className="text-sm font-medium text-slate">{translate(language, "requestType")}: {requestTypeLabel(language, row.request_type)}</p>
               <p className="text-sm font-medium text-slate">{row.person_in_charge ?? "-"} - {translate(language, "openCount", { count: row.open_headcount })} - {translate(language, "candidatesCount", { count: row.candidate_count })}</p>
-              <p className="text-sm font-medium text-slate">{translate(language, "readiness")}: {fillReadinessLabel(language, requisitionFillReadiness(row, candidates).label)}</p>
-              <p className="text-sm font-medium text-slate">{translate(language, "age")}: {ageLabel(row)} - SLA: {getRequisitionSlaState(row, { openOnly: true }).label}</p>
+              <p className="text-sm font-medium text-slate">{translate(language, "readiness")}: <ReadinessText row={row} candidates={candidates} language={language} /></p>
+              <p className="text-sm font-medium text-slate">{translate(language, "ageLabel")}: {ageLabel(row)} - {translate(language, "slaLabel")}: {getRequisitionSlaState(row, { openOnly: true }).label}</p>
               <div className="mt-3">
-                <RecordActionGroup
-                  label={row.doc_id}
-                  items={requisitionActions(row.doc_id)}
-                />
+                <RecordQuickActions label={translate(language, "recordActionsFor", { label: row.doc_id })} actions={requisitionActions(row.doc_id, language, onOpen)} />
               </div>
             </article>
           ))}
@@ -190,13 +177,9 @@ export function RequisitionsView({
                     />
                   </td>
                   <td className="px-3 py-3">
-                    <button
-                      type="button"
-                      className={`rounded-sm text-left font-semibold focus:outline-none focus:ring-2 focus:ring-primary/25 ${getRequisitionSlaState(row, { openOnly: true }).isOverdue ? "text-scarlet" : "text-navy"}`}
-                      onClick={() => onOpen(row.doc_id)}
-                    >
+                    <span className={`font-semibold ${getRequisitionSlaState(row, { openOnly: true }).isOverdue ? "text-scarlet" : "text-navy"}`}>
                       {row.doc_id}
-                    </button>
+                    </span>
                   </td>
                   <td className="px-3 py-3 font-semibold text-navy">{row.position}</td>
                   <td className="px-3 py-3 text-slate">{row.department}</td>
@@ -208,21 +191,14 @@ export function RequisitionsView({
                   <td className="px-3 py-3 text-slate">{row.accepted_count}</td>
                   <td className="px-3 py-3 text-slate">{row.open_headcount}</td>
                   <td className="px-3 py-3 text-slate">{row.candidate_count}</td>
-                  <td className="px-3 py-3"><Tag tone={requisitionFillReadiness(row, candidates).tone}>{fillReadinessLabel(language, requisitionFillReadiness(row, candidates).label)}</Tag></td>
+                  <td className="px-3 py-3"><ReadinessText row={row} candidates={candidates} language={language} /></td>
                   <td className="px-3 py-3 text-slate">{formatDate(row.pr_approved_date, language)}</td>
                   <td className="px-3 py-3 text-slate">{ageLabel(row)}</td>
                   <td className="px-3 py-3 text-slate">{getRequisitionSlaState(row, { openOnly: true }).label}</td>
                   <td className="px-3 py-3 text-slate">{formatDate(row.updated_at)}</td>
                   <td className="px-3 py-3">
                     <div className="flex items-center justify-end gap-2">
-                      <DetailButton
-                        ariaLabel={`View requisition detail for ${row.doc_id}`}
-                        onClick={() => onOpen(row.doc_id)}
-                      />
-                      <RecordActionGroup
-                        label={row.doc_id}
-                        items={requisitionActions(row.doc_id)}
-                      />
+                      <RecordQuickActions label={translate(language, "recordActionsFor", { label: row.doc_id })} actions={requisitionActions(row.doc_id, language, onOpen)} />
                     </div>
                   </td>
                 </tr>
@@ -272,12 +248,22 @@ function exportRequisitions(rows: EnrichedRequisition[]) {
   })));
 }
 
-function requisitionActions(docId: string) {
+function requisitionActions(docId: string, language: Language, onOpen: (docId: string) => void): RecordQuickAction[] {
   return [
-    { id: "workspace", label: "Workspace", href: `/workspace?type=requisition&id=${encodeURIComponent(docId)}` },
-    { id: "candidates", label: "Related candidates", href: `/candidates?candSearch=${encodeURIComponent(docId)}` },
-    { id: "offers", label: "Related offers", href: `/offers?offerSearch=${encodeURIComponent(docId)}` }
+    { id: "view", label: translate(language, "viewRequisitionDetailFor", { id: docId }), icon: <Search size={16} aria-hidden="true" />, iconOnly: true, onSelect: () => onOpen(docId) }
   ];
+}
+
+function ReadinessText({ candidates, language, row }: { candidates: EnrichedCandidate[]; language: Language; row: EnrichedRequisition }) {
+  const readiness = requisitionFillReadiness(row, candidates);
+  const className = readiness.tone === "danger"
+    ? "text-scarlet"
+    : readiness.tone === "warning"
+      ? "text-orange"
+      : readiness.tone === "success"
+        ? "text-primary"
+        : "text-slate";
+  return <span className={`font-semibold ${className}`}>{fillReadinessLabel(language, readiness.label)}</span>;
 }
 
 function DetailButton({ ariaLabel, onClick }: { ariaLabel: string; onClick: () => void }) {

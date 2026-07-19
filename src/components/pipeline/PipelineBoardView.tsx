@@ -7,7 +7,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { OperationalSummaryStrip } from "@/components/ui/Operations";
 import { Panel, SectionTitle } from "@/components/ui/Panel";
 import { Tag } from "@/components/ui/Tag";
-import { DisabledReasonHint, StageHealthHeader } from "@/components/ui/Workflow";
+import { DisabledReasonHint } from "@/components/ui/Workflow";
 import { ACTIVE_PIPELINE_STAGES, processIndex, processLabel } from "@/lib/constants";
 import { formatDate } from "@/lib/format";
 import { translate } from "@/lib/i18n/dictionary";
@@ -30,6 +30,7 @@ export function PipelineBoardView({
   onAddUpdate,
   onOpen,
   onMove,
+  onFailCurrentStage,
   onMaintainTest,
   onStartProcess,
   onUpdateOffer
@@ -46,6 +47,7 @@ export function PipelineBoardView({
   onAddUpdate?: () => void;
   onOpen: (candidateId: string) => void;
   onMove: (candidate: EnrichedCandidate, nextStage: ProcessStage) => void;
+  onFailCurrentStage: (candidate: EnrichedCandidate) => void;
   onMaintainTest: (candidate: EnrichedCandidate) => void;
   onStartProcess: (candidate: EnrichedCandidate) => void;
   onUpdateOffer: (candidate: EnrichedCandidate) => void;
@@ -134,8 +136,8 @@ export function PipelineBoardView({
   }, [activeRows, failedGroups, focusedCandidateId, passedOfferRows]);
 
   return (
-    <div className="grid gap-4">
-      <Panel className={embedded ? "border-[#D7DEE8] bg-white p-4 shadow-none" : ""}>
+    <div className="grid gap-5">
+      <Panel variant={embedded ? "workspace" : "primary"} className={embedded ? "shadow-none" : ""}>
         {!embedded ? (
           <SectionTitle
             title={translate(language, "candidatePipeline")}
@@ -151,6 +153,7 @@ export function PipelineBoardView({
         ) : null}
         <div className="mb-3 grid gap-3">
           <OperationalSummaryStrip
+            density="compact"
             items={[
               { label: translate(language, "activeCandidates"), value: activeRows.length, tone: "primary", helper: translate(language, "visibleOnBoard") },
               { label: translate(language, "aging"), value: agingRows.length, tone: agingRows.length > 0 ? "danger" : "success", helper: translate(language, "daysSinceTouch") },
@@ -166,7 +169,7 @@ export function PipelineBoardView({
                 <button
                   key={option.value}
                   type="button"
-                  className={`min-h-8 rounded-md px-3 text-xs font-semibold ring-1 ring-inset transition-colors ${groupBy === option.value ? "bg-primary text-white ring-primary" : "bg-white text-navy ring-[#C9D5E6] hover:bg-[#F8FAFD]"}`}
+                  className={`min-h-8 rounded-lg px-3 text-xs font-semibold ring-1 ring-inset transition-colors ${groupBy === option.value ? "bg-primary text-white ring-primary" : "bg-white text-navy ring-[#C9D5E6] hover:bg-[#F8FAFD]"}`}
                   aria-pressed={groupBy === option.value}
                   onClick={() => setGroupBy(option.value)}
                 >
@@ -178,7 +181,7 @@ export function PipelineBoardView({
               <button
                 ref={filterTriggerRef}
                 type="button"
-                className={`relative inline-flex h-9 w-9 items-center justify-center rounded-md ring-1 ring-inset transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 ${activeFilterCount > 0 ? "bg-primary text-white ring-primary" : "bg-white text-slate ring-[#C9D5E6] hover:bg-[#F8FAFD]"}`}
+                className={`relative inline-flex h-9 w-9 items-center justify-center rounded-lg ring-1 ring-inset transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 ${activeFilterCount > 0 ? "bg-primary text-white ring-primary" : "bg-white text-slate ring-[#C9D5E6] hover:bg-[#F8FAFD]"}`}
                 aria-label={activeFilterCount > 0 ? translate(language, "pipelineFiltersActive", { count: activeFilterCount }) : translate(language, "pipelineFilters")}
                 aria-expanded={filterOpen}
                 aria-controls="pipeline-filter-popover"
@@ -189,7 +192,7 @@ export function PipelineBoardView({
                 {activeFilterCount > 0 ? <span className="absolute -right-1 -top-1 inline-flex min-h-4 min-w-4 items-center justify-center rounded-full bg-navy px-1 text-[10px] font-bold leading-none text-white" aria-hidden="true">{activeFilterCount}</span> : null}
               </button>
               {filterOpen ? (
-                <div id="pipeline-filter-popover" role="dialog" aria-label={translate(language, "pipelineFilters")} className="absolute right-0 top-10 z-30 grid w-[min(22rem,calc(100vw-2rem))] gap-3 rounded-md border border-[#D7DEE8] bg-white p-3 shadow-[0_10px_28px_rgba(11,19,43,0.08)]">
+                <div id="pipeline-filter-popover" role="dialog" aria-label={translate(language, "pipelineFilters")} className="absolute right-0 top-10 z-30 grid w-[min(22rem,calc(100vw-2rem))] gap-3 rounded-2xl border border-[#E4E9F2] bg-white p-3 shadow-[0_8px_24px_rgba(11,19,43,0.08)]">
                   <div className="flex items-center justify-between gap-3">
                     <strong className="text-sm text-navy">{translate(language, "pipelineFilters")}</strong>
                     {activeFilterCount > 0 ? <button type="button" className="text-xs font-semibold text-primary hover:underline focus:outline-none focus:ring-2 focus:ring-primary/30" onClick={() => { setBoardFilter("all"); setPipelineSearch(""); }}>{translate(language, "clear")}</button> : null}
@@ -201,7 +204,7 @@ export function PipelineBoardView({
                         <button
                           key={option.value}
                           type="button"
-                          className={`min-h-8 rounded-md px-3 text-xs font-semibold ring-1 ring-inset transition-colors ${boardFilter === option.value ? "bg-primary text-white ring-primary" : "bg-white text-navy ring-[#C9D5E6] hover:bg-[#F8FAFD]"}`}
+                          className={`min-h-8 rounded-lg px-3 text-xs font-semibold ring-1 ring-inset transition-colors ${boardFilter === option.value ? "bg-primary text-white ring-primary" : "bg-white text-navy ring-[#C9D5E6] hover:bg-[#F8FAFD]"}`}
                           aria-pressed={boardFilter === option.value}
                           onClick={() => setBoardFilter(option.value)}
                         >
@@ -217,7 +220,7 @@ export function PipelineBoardView({
                       type="search"
                       value={pipelineSearch}
                       onChange={(event) => setPipelineSearch(event.target.value)}
-                      className="min-h-9 w-full rounded-md border border-[#C9D5E6] bg-white px-3 text-sm font-medium text-navy outline-none transition-colors placeholder:text-cool focus:border-primary focus:ring-2 focus:ring-primary/20"
+                      className="min-h-10 w-full rounded-xl border border-[#C9D5E6] bg-white px-3 text-sm font-medium text-navy outline-none transition-colors placeholder:text-cool focus:border-primary focus:ring-2 focus:ring-primary/20"
                       placeholder={translate(language, "pipelineSearchPlaceholder")}
                     />
                   </label>
@@ -226,7 +229,7 @@ export function PipelineBoardView({
             </div>
           </div>
         </div>
-        <div className="grid grid-flow-col gap-3 overflow-x-auto pb-2" style={{ gridAutoColumns: "minmax(240px, 1fr)" }}>
+        <div className="flex gap-3 overflow-x-auto rounded-2xl border border-[#E4E9F2] bg-white p-3" aria-label={translate(language, "candidatePipeline")}>
           {displayStages.map((stage) => {
             const stageRows = sortByLastUpdateAsc(activeRows.filter((row) => row.latest_process === stage));
             const isBlocked = blockedStage === stage;
@@ -236,7 +239,7 @@ export function PipelineBoardView({
             return (
               <section
                 key={stage}
-                className={`min-h-72 rounded-lg border border-[#D7DEE8] bg-[#F8FAFD] p-2.5 transition-colors ${
+                className={`min-h-80 w-[min(17rem,82vw)] shrink-0 rounded-2xl border border-[#E4E9F2] bg-[#F8FAFD] p-2.5 transition-colors ${
                   isBlocked ? "border-scarlet bg-[#FFF1F0]" : ""
                 }`}
                 onDragOver={(event) => {
@@ -265,9 +268,15 @@ export function PipelineBoardView({
                   setDragged(null);
                 }}
               >
-                <div className="mb-3 grid gap-2">
-                  <StageHealthHeader health={metrics} language={language} />
+                <div className="mb-3 flex min-w-0 items-center justify-between gap-2">
+                  <h3 className={`break-words text-sm font-semibold ${metrics.overSlaCount > 0 ? "text-scarlet" : "text-navy"}`}>
+                    {processLabel(stage, language)}
+                  </h3>
+                  <Tag tone={metrics.overSlaCount > 0 ? "danger" : "muted"}>{stageRows.length}</Tag>
                 </div>
+                {stageRows.length === 0 ? (
+                  <EmptyState variant="board" message={translate(language, "noData")} />
+                ) : (
                 <div className="grid gap-2">
                   {groupedRows.map((group) => (
                     <div key={group.label} className="grid gap-2">
@@ -290,6 +299,7 @@ export function PipelineBoardView({
                         menuOpen={openStageMenu === candidate.candidate_id}
                         onOpen={onOpen}
                         onMove={onMove}
+                        onFailCurrentStage={onFailCurrentStage}
                         onMaintainTest={onMaintainTest}
                         onStartProcess={onStartProcess}
                         onUpdateOffer={onUpdateOffer}
@@ -306,6 +316,7 @@ export function PipelineBoardView({
                     </div>
                   ))}
                 </div>
+                )}
               </section>
             );
           })}
@@ -313,14 +324,14 @@ export function PipelineBoardView({
       </Panel>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <Panel>
+        <Panel variant="secondary">
           <SectionTitle title={translate(language, "failedCandidatesLast7Days")} />
           {failedGroups.every((group) => group.rows.length === 0) ? (
-            <EmptyState message={translate(language, "noFailedCandidatesLast7Days")} />
+            <EmptyState variant="quiet" message={translate(language, "noFailedCandidatesLast7Days")} />
           ) : (
             <div className="grid grid-flow-col gap-3 overflow-x-auto pb-2" style={{ gridAutoColumns: "minmax(240px, 1fr)" }}>
               {failedGroups.map((group) => (
-                <section key={group.stage} className="min-h-48 rounded-lg border border-[#F4B4AE] bg-[#FFF8F7] p-2.5">
+                <section key={group.stage} className="min-h-48 rounded-2xl border border-[#F4B4AE] bg-[#FFF8F7] p-2.5">
                   <div className="mb-2 flex items-center justify-between gap-2">
                     <strong className="text-sm text-scarlet">{processLabel(group.stage, language)}</strong>
                     <Tag tone="danger">{group.rows.length}</Tag>
@@ -344,10 +355,10 @@ export function PipelineBoardView({
           )}
         </Panel>
 
-        <Panel>
+        <Panel variant="secondary">
           <SectionTitle title={translate(language, "passedOfferLast7Days")} />
           {passedOfferRows.length === 0 ? (
-            <EmptyState message={translate(language, "noOfferPassLast7Days")} />
+            <EmptyState variant="quiet" message={translate(language, "noOfferPassLast7Days")} />
           ) : (
             <div className="grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(240px,1fr))]">
               {passedOfferRows.map((candidate) => (
@@ -413,6 +424,7 @@ function PipelineCandidateCard({
   tone = "default",
   onOpen,
   onMove,
+  onFailCurrentStage,
   onMaintainTest,
   onStartProcess,
   onUpdateOffer,
@@ -434,6 +446,7 @@ function PipelineCandidateCard({
   tone?: "default" | "failed" | "passed";
   onOpen: (candidateId: string) => void;
   onMove?: (candidate: EnrichedCandidate, nextStage: ProcessStage) => void;
+  onFailCurrentStage?: (candidate: EnrichedCandidate) => void;
   onMaintainTest?: (candidate: EnrichedCandidate) => void;
   onStartProcess?: (candidate: EnrichedCandidate) => void;
   onUpdateOffer?: (candidate: EnrichedCandidate) => void;
@@ -443,7 +456,8 @@ function PipelineCandidateCard({
   onDragEnd?: () => void;
 }) {
   const lastUpdate = candidateLastUpdate(candidate);
-  const hasCardAction = updateStages.length > 0 || candidate.latest_process === "Offer" || candidate.latest_process === "No activity";
+  const canFailCurrentStage = ACTIVE_PIPELINE_STAGES.includes(candidate.latest_process as ProcessStage) && candidate.latest_result === null;
+  const hasCardAction = updateStages.length > 0 || canFailCurrentStage || candidate.latest_process === "Offer" || candidate.latest_process === "No activity";
   const baseDisabledReason = candidateProcessDisabledReason(candidate, recruitmentLogs ?? [], profile ?? null);
   const stageMenuId = `stage-menu-${candidate.candidate_id}`;
   const actionsButtonRef = useRef<HTMLButtonElement>(null);
@@ -474,7 +488,7 @@ function PipelineCandidateCard({
       onDragEnd={onDragEnd}
       id={`pipeline-candidate-${candidate.candidate_id}`}
       tabIndex={focused ? -1 : undefined}
-      className={`relative min-w-0 rounded-md border border-[#D7DEE8] bg-white p-3 shadow-[0_3px_10px_rgba(11,19,43,0.02)] transition-colors duration-150 motion-safe:hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-primary/30 ${focused ? "border-primary ring-2 ring-primary/25" : ""} ${toneClass}`}
+      className={`ats-card relative min-w-0 p-3 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-primary/30 ${focused ? "border-primary ring-2 ring-primary/25" : ""} ${toneClass}`}
     >
       <div className="flex items-start justify-between gap-2">
         <button
@@ -492,7 +506,7 @@ function PipelineCandidateCard({
           <button
             ref={actionsButtonRef}
             type="button"
-            className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md ring-1 ring-inset transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:cursor-not-allowed disabled:bg-lightgray disabled:text-cool ${isCandidateAging(candidate) ? "text-scarlet ring-[#F4B4AE] hover:bg-[#FFF1F0] hover:text-scarlet" : "text-slate ring-[#C9D5E6] hover:bg-[#F8FAFD] hover:text-primary"}`}
+            className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:cursor-not-allowed disabled:bg-lightgray disabled:text-cool ${isCandidateAging(candidate) ? "text-scarlet ring-[#F4B4AE] hover:bg-[#FFF1F0] hover:text-scarlet" : "text-slate ring-[#C9D5E6] hover:bg-[#F8FAFD] hover:text-primary"}`}
             aria-haspopup="menu"
             aria-expanded={menuOpen}
             aria-controls={stageMenuId}
@@ -518,7 +532,7 @@ function PipelineCandidateCard({
           id={stageMenuId}
           role="menu"
           aria-label={translate(language, "candidateActionsFor", { name: candidate.name })}
-          className="absolute right-3 top-12 z-20 grid w-[min(20rem,calc(100vw-2rem))] gap-1 rounded-md border border-[#D7DEE8] bg-white p-2 shadow-[0_10px_28px_rgba(11,19,43,0.08)]"
+          className="absolute right-3 top-12 z-20 grid w-[min(20rem,calc(100vw-2rem))] gap-1 rounded-2xl border border-[#E4E9F2] bg-white p-2 shadow-[0_8px_24px_rgba(11,19,43,0.08)]"
           onClick={(event) => event.stopPropagation()}
           onKeyDown={(event) => handlePipelineMenuKeyDown(event, menuRef.current, actionsButtonRef.current, onMenuClose)}
         >
@@ -553,6 +567,24 @@ function PipelineCandidateCard({
               }}
             >
               {translate(language, "updateOffer")}
+            </button>
+          ) : null}
+          {canFailCurrentStage ? (
+            <button
+              type="button"
+              role="menuitem"
+              className="rounded px-2 py-1 text-left text-xs font-medium text-scarlet transition-colors hover:bg-[#FFF1F0] focus:bg-[#FFF1F0] focus:text-scarlet"
+              disabled={baseDisabledReason.blocked}
+              aria-label={translate(language, "failCurrentStageFor", { name: candidate.name })}
+              title={baseDisabledReason.detail}
+              onClick={(event) => {
+                event.stopPropagation();
+                if (baseDisabledReason.blocked) return;
+                onMenuClose?.();
+                onFailCurrentStage?.(candidate);
+              }}
+            >
+              {translate(language, "failCurrentStage")}
             </button>
           ) : null}
           {candidate.latest_process === "Test" ? (

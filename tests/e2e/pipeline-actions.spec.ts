@@ -49,6 +49,29 @@ test("moving a candidate forward uses pipeline pass RPC payload", async ({ page 
   });
 });
 
+test("pipeline menu can fail the current pending stage", async ({ page }) => {
+  const mock = await installMockSupabase(page, { role: "admin_recruiter" });
+  await page.goto("/pipeline");
+  await expectWorkspaceReady(page);
+
+  await page.getByRole("button", { name: "Candidate actions for Pat Phone" }).click();
+  await page.getByRole("menuitem", { name: "Fail current stage" }).click();
+  const dialog = page.getByRole("dialog", { name: "Process Update" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByLabel("Candidate")).toHaveValue("C-PHONE");
+  await expect(dialog.getByLabel("Process")).toHaveValue("Phone Screen");
+  await expect(dialog.getByLabel("Result")).toHaveValue("0");
+
+  await page.getByRole("button", { name: "Review changes" }).click();
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect.poll(() => mock.rpcCalls.at(-1)?.endpoint).toBe("app_insert_recruitment_log");
+  expect(mock.rpcCalls.at(-1)?.payload).toMatchObject({
+    candidate_id: "C-PHONE",
+    recruitment_process: "Phone Screen",
+    result: "0"
+  });
+});
+
 test("test-stage maintenance and test exit use special workflows", async ({ page }) => {
   const mock = await installMockSupabase(page, { role: "admin_recruiter" });
   await page.goto("/pipeline");
@@ -76,15 +99,13 @@ test("failed and completed candidates cannot be updated", async ({ page }) => {
   await page.goto("/pipeline");
   await expectWorkspaceReady(page);
 
-  await page.getByRole("button", { name: /Finn Failed/ }).click();
+  await page.locator("#pipeline-candidate-C-FAILED").getByRole("button", { name: /Finn Failed/ }).click();
   const failedDialog = page.getByRole("dialog", { name: /C-FAILED/ });
   await expect(failedDialog).toBeVisible();
-  await expect(failedDialog.getByText("Pipeline update unavailable because this candidate has a failed stage.")).toBeVisible();
-  await expect(failedDialog.getByRole("button", { name: /Update process/ })).toBeDisabled();
+  await expect(failedDialog.getByRole("button", { name: /Update process/ })).toHaveCount(0);
   await page.keyboard.press("Escape");
 
-  await page.getByRole("button", { name: /Olivia Offer Pass/ }).click();
+  await page.locator("#pipeline-candidate-C-OFFER-PASS").getByRole("button", { name: /Olivia Offer Pass/ }).click();
   const completedDialog = page.getByRole("dialog", { name: /C-OFFER-PASS/ });
-  await expect(completedDialog.getByText("Pipeline update unavailable because this candidate completed all stages.")).toBeVisible();
-  await expect(completedDialog.getByRole("button", { name: /Update process/ })).toBeDisabled();
+  await expect(completedDialog.getByRole("button", { name: /Update process/ })).toHaveCount(0);
 });

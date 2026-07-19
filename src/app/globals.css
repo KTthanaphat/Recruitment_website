@@ -8,8 +8,32 @@
   --app-primary-rgb: 10 60 220;
   --app-primary-strong: #082BB0;
   --app-primary-strong-rgb: 8 43 176;
+  --ats-blue-950: #06133F;
+  --ats-blue-900: #071B61;
+  --ats-blue-800: #082A9E;
+  --ats-blue-700: #0A3CDC;
+  --ats-blue-600: #146EFA;
+  --ats-blue-300: #93B9FF;
+  --ats-blue-200: #C4D8FF;
+  --ats-blue-100: #E8F0FF;
+  --ats-blue-50: #F4F7FF;
+  --ats-text-primary: #0B132B;
+  --ats-text-secondary: #5B6780;
+  --ats-text-muted: #98A3B8;
+  --ats-border: #E4E9F2;
+  --ats-border-strong: #C9D5E6;
+  --ats-surface-muted: #F1F5F9;
+  --ats-background: #FAFAFC;
+  --ats-surface: #FFFFFF;
+  --ats-radius-sm: 8px;
+  --ats-radius-md: 12px;
+  --ats-radius-lg: 16px;
+  --ats-shadow-sm: 0 2px 8px rgba(11, 19, 43, 0.05);
+  --ats-shadow-md: 0 8px 24px rgba(11, 19, 43, 0.08);
+  --ats-shadow-panel: 0 14px 34px rgba(11, 19, 43, 0.06);
+  --ats-ease-standard: cubic-bezier(0.2, 0, 0, 1);
   color-scheme: light;
-  background: #fafafc;
+  background: var(--ats-background);
 }
 
 * {
@@ -23,8 +47,10 @@ html {
 body {
   min-height: 100%;
   margin: 0;
-  background: #fafafc;
-  color: #0b132b;
+  background:
+    linear-gradient(180deg, rgba(232, 240, 255, 0.45) 0, rgba(250, 250, 252, 0) 18rem),
+    var(--ats-background);
+  color: var(--ats-text-primary);
   font-family: var(--font-prompt), Prompt, Arial, "Noto Sans Thai", sans-serif;
 }
 
@@ -45,8 +71,55 @@ a:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline: 3px solid rgb(var(--app-primary-rgb) / 0.35);
+  outline: 3px solid rgb(var(--app-primary-rgb) / 0.28);
   outline-offset: 2px;
+}
+
+.ats-card {
+  border: 1px solid var(--ats-border);
+  border-radius: var(--ats-radius-md);
+  background: var(--ats-surface);
+  box-shadow: var(--ats-shadow-sm);
+  transition:
+    border-color 160ms var(--ats-ease-standard),
+    background-color 160ms var(--ats-ease-standard),
+    transform 160ms var(--ats-ease-standard),
+    box-shadow 160ms var(--ats-ease-standard);
+}
+
+.ats-card:hover {
+  border-color: var(--ats-border-strong);
+  background: #fbfdff;
+  box-shadow: 0 4px 14px rgba(11, 19, 43, 0.06);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .ats-card:hover {
+    transform: translateY(-1px);
+  }
+}
+
+.ats-card-subtle {
+  border: 1px solid var(--ats-border);
+  border-radius: var(--ats-radius-md);
+  background: #f8fafd;
+}
+
+.ats-input {
+  min-height: 2.5rem;
+  border: 1px solid var(--ats-border-strong);
+  border-radius: var(--ats-radius-md);
+  background: var(--ats-surface);
+  color: var(--ats-text-primary);
+  transition:
+    border-color 160ms var(--ats-ease-standard),
+    box-shadow 160ms var(--ats-ease-standard);
+}
+
+.ats-input:focus {
+  border-color: rgb(var(--app-primary-rgb));
+  box-shadow: 0 0 0 3px rgb(var(--app-primary-rgb) / 0.16);
+  outline: none;
 }
 
 dialog::backdrop {
@@ -54,12 +127,34 @@ dialog::backdrop {
 }
 
 .table-scroll {
+  max-height: min(64dvh, 46rem);
   max-width: 100%;
-  overflow-x: auto;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--ats-border);
+  border-radius: var(--ats-radius-lg);
+  background: var(--ats-surface);
+  box-shadow: var(--ats-shadow-sm);
 }
 
 .table-scroll table {
   min-width: 980px;
+}
+
+.table-scroll thead {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: #F4F7FF;
+  box-shadow: 0 1px 0 var(--ats-border-strong);
+}
+
+.table-scroll tbody tr {
+  background: var(--ats-surface);
+}
+
+.table-scroll tbody tr:hover {
+  background: #f8fafd;
 }
 
 .dashboard-detail-scroll {

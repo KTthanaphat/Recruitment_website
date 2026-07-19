@@ -19,3 +19,16 @@ test("requisition table search and advanced filters persist in URL", async ({ pa
   await expect(page.getByPlaceholder("Search records")).toHaveValue("Engineer");
   await expect(page.getByLabel("Filter Owner")).toHaveValue("Alice");
 });
+
+test("record tables use a shared scroll viewport with frozen desktop headers", async ({ page }) => {
+  await installMockSupabase(page, { role: "admin_recruiter" });
+  await page.setViewportSize({ width: 1280, height: 600 });
+
+  for (const route of ["/requisitions", "/candidates", "/offers"]) {
+    await page.goto(route);
+    await expectWorkspaceReady(page);
+    const viewport = page.locator(".table-scroll");
+    await expect(viewport).toHaveCSS("overflow-y", "auto");
+    await expect(viewport.locator("thead")).toHaveCSS("position", "sticky");
+  }
+});

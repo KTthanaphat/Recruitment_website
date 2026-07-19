@@ -15,6 +15,7 @@ Browser UI
 
 The Home page is the first screen after opening or signing in. Dashboard is now a dedicated Vacancy Waterfall reporting page.
 Sidebar navigation preserves the current `lang`, `site`, `pic`, and `sourcingWeek` query parameters when moving between routes.
+Authenticated route headers show only the route title plus the compact top-right command row. Site and Person in Charge filters live in that row before language, refresh, and account controls, using the same blue command-control treatment; their visible stacked labels and Clear button are intentionally removed while accessible labels remain. There is no separate page subtitle or sticky filter card.
 
 The core product surface is the five-section Hiring Workspace:
 
@@ -102,6 +103,8 @@ Hiring Workspace behavior:
 - When no workspace is selected, `/workspace` renders the searchable workspace picker directly instead of a redundant empty workspace header.
 - `section=offer` is the canonical workspace URL for offer creation and follow-up. Legacy `section=outcome` links are replaced with `section=offer` without adding browser history.
 - Workspace targets are active open work only: requisitions must be ongoing with remaining open headcount, and groups must include at least one such requisition. Filtered-out direct URLs show the invalid-target picker state.
+- The selected workspace context is a sticky command header. It shows breadcrumbs, group/requisition title, meta, readiness/SLA, actions, and summary metrics; after page scroll, the summary collapses into compact metric chips while the selected case stays visible.
+- Workspace section navigation uses connected browser-style tabs attached to the selected content panel. The selected tab visually merges with the content underneath; URL `section` state remains unchanged.
 
 Sidebar order:
 
@@ -121,23 +124,21 @@ Home is the operational landing page.
 
 Current order:
 
-1. Four responsive summary cards:
-   - Open requisition: `x requisitions`
-   - Filled vacancy: `x/y vacancies`
-   - Ongoing candidate: `x candidates`
-   - Weekly sourcing update: `x Group ID`
-2. Today's Work / Workspace Watchlist.
-3. Data Quality.
-4. Candidate Pipeline preview.
-5. Weekly Sourcing Updates for open groups not updated for more than 6 days, including never-updated groups.
-6. Open Headcount.
-7. Recent Activity, shown only to `system_admin` and `admin_recruiter`.
+1. Today's Work / Workspace Watchlist with one compact four-metric strip for open requisitions, urgent items, aging candidates, and sourcing gaps.
+2. Recruitment Records tabs in this fixed order:
+   - Open Headcount
+   - Candidate Pipeline
+   - Sourcing Updates
+   - Data Quality
+   - Recent Activity, shown only to `system_admin` and `admin_recruiter`
+
+The selected Home tab contains all applicable records in a vertically scrollable card grid. Desktop uses two columns from the `md` breakpoint; smartphones use one column. Home record tabs use the same connected browser-tab treatment as Workspace: muted rail, selected tab attached to the white content panel, compact count badges, horizontal scrolling on narrow screens, and Arrow/Home/End keyboard support. Home does not use URL state for the selected tab.
 
 Home-only recruiter bottleneck:
 
 - The recruiter work queue and bottleneck triage live on Home, not inside the workspace sections.
 - Home owns the compact work queue, aging counts, sourcing-gap counts, and factual issue labels.
-- Home list sections render all available items. Today's Work, Data Quality, Sourcing Updates, Open Headcount, and Recent Activity become contained horizontal scroll rows when they exceed three items; Candidate Pipeline becomes a contained horizontal scroll row when it exceeds four items. Do not reintroduce kebab/reveal controls for these Home lists.
+- Today's Work remains a compact work queue. The tabbed Recruitment Records surface replaces the former standalone Home Data Quality, Candidate Pipeline, Sourcing Updates, Open Headcount, Recent Activity, and recruiter bottleneck panels.
 - Workspace sections may show diagnostics and commands for the selected hiring case, but Home remains the only page that aggregates recruiter bottlenecks across all assigned work.
 - Recommendation and next-action language is removed. Use factual risk labels and explicit commands such as Open, Edit, Save, or Create Offer.
 
@@ -146,7 +147,10 @@ The Welcome Back popup appears once per browser session/login. It summarizes act
 Welcome Back message logic:
 
 - Ratio is accepted offers in the last 7 calendar days for responsible requisitions divided by total responsible non-cancelled vacancy headcount.
-- Buckets are floor-based: `0`, `25`, `50`, `75`, and `100`.
+- Message text comes from `recruitment_daily_messages_th_en.csv`, mirrored at runtime in `src/lib/daily-messages.ts` to avoid runtime CSV parsing.
+- Select the current local weekday row with the highest `Filled%_min` less than or equal to the filled vacancy ratio.
+- Use `Current_Thai_Version` in Thai and `English_Version` in English; replace `{name}` with nickname, full name, email, or system fallback.
+- If no CSV row matches, fall back to the legacy dictionary ratio message.
 - The popup shows the selected message, ratio percentage, and `{filled}/{total}` vacancy helper without backend connector changes.
 
 ## Dashboard Page
@@ -184,10 +188,12 @@ Requisitions:
 - SLA thresholds are L0-L3: 30 days, L4-L9: 45 days, and L10-L14: 60 days.
 - Operational overdue styling applies only to open requisitions with open headcount, valid PR approved date, valid level threshold, and age greater than SLA.
 - Requisition list and Home Needs Action show age/SLA context; overdue open Doc IDs render red.
+- Requisition Fill Readiness is tone-colored text in records and detail drawers, not a boxed tag.
 - Replacement requisitions require at least one replacement name.
 - Multiple replacement names are stored as newline-delimited text in `replacement_names`.
 - New Position requisitions submit `replacement_names` as null.
 - After a new requisition is saved, the guided sourcing flow starts automatically.
+- Department and Section are dropdowns sourced from `dep_sec_data.csv` through `/api/department-sections`. Department options are filtered by selected Site, Section is disabled until Department is selected, and existing legacy saved values remain selectable when editing.
 
 Guided flow:
 
@@ -214,10 +220,13 @@ Candidates:
 
 - Candidates remain linked by `doc_group_id`; the UI resolves that to group-level context.
 - Candidate channel is a dropdown filtered by the selected group’s marked sourcing channels.
+- Candidate required fields are Name, Phone, Group ID, Channel, and First Contact Date. Candidate ID remains optional in New mode because it is generated.
+- Reference Name is visible and required only when Channel is `Referral`; changing to another channel omits `ref_name` from the submitted candidate payload.
+- First Contact Date cannot be before the oldest non-null PR Approved Date among requisitions linked to the selected group. If no linked requisition has a PR Approved Date, only the required-date check applies.
 - Candidate folder URL is stored in `candidate_folder_url` and shown as an external link in candidate detail.
 - Candidate detail shows a pipeline journey above the timeline.
 - Candidate Pipeline Journey includes a derived first `Resume Screening` dot. It is shown as passed for recorded candidates, but it is not stored in `recruitment_logs` and is not an active Pipeline board column.
-- Candidate detail keeps stage/result in tags instead of duplicate summary boxes. The Update process action only appears when the candidate is updateable; secondary navigation actions live under the kebab menu.
+- Candidate detail keeps stage/result in tags instead of duplicate summary boxes. The Update process action only appears when the candidate is updateable; secondary navigation remains in the detail drawer action menu. Record tables/cards expose only the magnifying-glass View detail action.
 
 Group doc URL context:
 
@@ -236,15 +245,15 @@ Pipeline:
 - Pipeline is group-based and resolves grouped doc IDs, sites, persons in charge, and group position.
 - Active cards show candidate name, `{site}-{position} ({PIC})`, next-step icon, and last updated date.
 - Active cards are sorted by latest update ascending in each stage so the oldest update appears first.
-- Stage headers show a red warning icon before the stage name when any candidate in the stage has not been updated for more than 7 days; the stage name also turns red only while that warning icon is present.
+- Stage headers show only the stage label and count. If any candidate in the stage has not been updated for more than 7 days, the stage label turns red.
 - Aging candidate cards keep neutral card styling except the candidate action arrow turns red when that candidate has exceeded 7 days in the stage.
 - Board filter and pipeline search live in a filter-icon popover at the right side of the board controls row, with the visible Group cards controls kept on the left. The popover supports Escape, outside-click dismissal, and active filter count.
-- Stage metric text is compact and light; do not reintroduce bulky stage detail rows.
+- Do not show SLA/pass/fail/latest metric text under Pipeline stage names.
 - Empty active Pipeline stage columns and empty Failed Candidates stage columns keep their body blank; only the all-empty Failed Candidates panel shows an empty message.
 - Test is a multi-round stage. A Test card can be maintained in Test to create the next pending Test round, or moved to Reference Check through the passed-stage confirmation flow.
 - Maintaining Test saves the current pending Test round as Pass and creates the next Test round as Pending in one database transaction.
 - When leaving Test, the latest Test round is used as the passed round. The confirmation modal can add extra pending Test rounds first, while the pass round remains locked to the original latest round, then creates Reference Check as pending.
-- Offer-stage cards expose Update Offer through the candidate action menu, opening the Process Update modal for Offer.
+- Pending active-stage cards expose Fail current stage through the candidate action menu, opening Process Update prefilled to the current stage with result Fail. Offer-stage cards expose Update Offer through the same menu, opening Process Update for Offer.
 - Failed Candidates use the same stage-column layout as the active pipeline for the current last-7-days window.
 - Failed candidates remain workflow state. They should stay visible in Pipeline failed-candidate sections, but a failed candidate in an active stage is not a Data Quality issue.
 - Passed Offer uses the same compact card arrangement, without the update arrow, in responsive multi-column layouts.
@@ -317,6 +326,7 @@ Protected RPC functions handle all recruitment writes:
 - Roles: `system_admin`, `admin_recruiter`, `site_recruiter`, `viewer`.
 - `system_admin`: full recruitment-data access and user administration.
 - `admin_recruiter`: full recruitment-data editor, setup/group/match editor, but not user administrator.
+- `admin_recruiter` can select and assign any eligible recruiter as `person_in_charge` when creating or changing a requisition. `site_recruiter` submissions are forced to the signed-in recruiter's assigned site and nickname.
 - `site_recruiter`: recruitment writer for assigned scope, including group and match creation.
 - `viewer`: limited read access to the workspace and related records.
 - System admins can create app accounts and update nickname/site/role mappings through `/api/admin/users`.
@@ -325,7 +335,7 @@ Protected RPC functions handle all recruitment writes:
 
 ## Visual System
 
-The UI uses a restrained operational Swiss hierarchy:
+The UI uses `docs/design.md` as the visual source of truth, adapted to the GFPT recruitment workspace as a restrained operational Swiss hierarchy:
 
 - Deep Navy `#0B132B`: page titles, section titles, record names, Doc IDs, candidate names, and primary metric values.
 - Slate/Cool neutrals: labels, metadata, helper copy, timestamps, inactive controls, borders, grids, and empty states.
@@ -337,17 +347,25 @@ Shared UI behavior:
 
 - Prompt font usage.
 - Calm dense internal-operations direction with a playful modern Swiss tone: crisp grids, compact surfaces, strong typography, and low color noise.
+- Shared tokens in `src/app/globals.css` define the ATS blue scale, neutral scale, 12-16px radius system, focus rings, shadows, `ats-card`, `ats-card-subtle`, `ats-input`, and the sticky table viewport.
+- `Button`, `Panel`, `StatCard`, `EmptyState`, `StatusBanner`, `TableControls`, `Operations`, and route card surfaces should carry the visual system before adding route-specific classes.
+- App shell uses a blue rail with white active-route surfaces; the selected icon/action color remains assigned-site accent through `--app-primary`.
+- Home keeps Today’s Work as the dominant panel, with Recruitment Records as a single tabbed work surface. Tab selection, counts, and record card hover/focus states use the ATS shared primitives.
+- Dashboard keeps Vacancy Waterfall as the dominant report surface; opened requisitions and Pipeline Funnel are secondary reveal panels around the unchanged report logic.
+- Workspace selected-case context is a sticky command header; section tabs use compact selected surfaces and route to the existing embedded work surfaces.
 - Prefer neutral-first cards, tables, panels, and menus. Use typography, weight, spacing, and borders before adding color.
 - Summary cards and operational metrics use navy values by default; tone may affect a small border/accent or risk text only.
 - Tags use bright semantic fills with white text; primary/success tags inherit a contrast-safe assigned-site accent mix.
 - Vacancy Waterfall chart colors are frozen by `snapshotColor`; preserve the chart, legend, connectors, callouts, and print CSS unless the user explicitly changes the chart.
 - Pipeline Funnel uses one dominant assigned-site data fill with subdued neutral grid/table structure.
 - Magnifying-glass icon buttons for record View actions.
-- Requisitions, Candidates, and Offers tables include explicit magnifying-glass detail buttons on desktop rows and mobile cards while keeping record names/IDs clickable for compatibility.
+- Requisitions, Candidates, and Offers tables/cards expose only the magnifying-glass View detail action. Workspace, related-record navigation, and write actions do not appear in table/card rows.
+- Detail drawers keep the 3-dot action menu for secondary actions. Write roles see `Change record` in that menu, which opens the existing change modal for the current requisition or candidate; viewers do not see it. Menu options remain neutral text rows, not blue highlighted options.
 - Workspace uses the `LampDesk` icon in the sidebar.
-- Record detail drawer headers show only a 3-dot actions menu and the compact Close button. The primary `Open workspace` action is an icon-only `LampDesk` button with tooltip and `aria-label`; related links and process updates live in the drawer body.
+- Record detail drawer headers may keep a compact action menu for secondary drawer navigation. The primary `Open workspace` action remains an icon-only `LampDesk` button with tooltip and `aria-label`; related links and process updates live in the drawer body.
 - Compact pagination footer: `< Page X of Y >`.
 - Data tables use shared sortable/filterable headers with sort cycling, filled filter inputs, and filtered rows applied before pagination.
+- Requisitions, Candidates, and Offers desktop tables use the shared `table-scroll` viewport with horizontal and vertical overflow plus a sticky table header. Sourcing is card-based; Pipeline keeps its own stage headers. Mobile record cards remain non-sticky.
 - Desktop sidebar can collapse to an icon-only `72px` rail with persisted `localStorage` preference; expanded width remains about `248px`.
 - Accessible StageRail semantics.
 - Keyboard-accessible pipeline stage update actions.

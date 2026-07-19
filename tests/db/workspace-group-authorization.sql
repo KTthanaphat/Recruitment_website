@@ -118,6 +118,13 @@ select pg_temp.assert_true(
 );
 
 select pg_temp.assert_true(
+  (public.app_upsert_requisition(
+    '{"mode":"new","doc_id":"__authz_test_site_assignment","site":"other-site","position":"Site assignment","department":"Test","person_in_charge":"Other Owner","status":"ongoing"}'::jsonb
+  ) ->> 'ok')::boolean,
+  'a site recruiter can create a requisition'
+);
+
+select pg_temp.assert_true(
   (public.app_upsert_position_group(
     '{"mode":"change","group_id":"__authz_test_owned_group","group_position":"Owned group updated"}'::jsonb
   ) ->> 'ok')::boolean,
@@ -172,6 +179,11 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub', 'a1100000-0000-0000-0000-000000000002', true);
 
 select pg_temp.assert_true(
+  exists (select 1 from public.profiles where role = 'site_recruiter'),
+  'an admin recruiter can read site recruiter profiles for requisition assignment'
+);
+
+select pg_temp.assert_true(
   (public.app_upsert_position_group(
     '{"mode":"change","group_id":"__authz_test_foreign_group","group_position":"Admin linked update"}'::jsonb
   ) ->> 'ok')::boolean,
@@ -185,9 +197,21 @@ select pg_temp.assert_true(
   'an admin recruiter can change an unlinked group'
 );
 
+select pg_temp.assert_true(
+  (public.app_upsert_requisition(
+    '{"mode":"new","doc_id":"__authz_test_admin_assignment","site":"__authz_test_site","position":"Admin assignment","department":"Test","person_in_charge":"Scope Owner","status":"ongoing"}'::jsonb
+  ) ->> 'ok')::boolean,
+  'an admin recruiter can assign a different recruiter as person in charge'
+);
+
 reset role;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', 'a1100000-0000-0000-0000-000000000003', true);
+
+select pg_temp.assert_true(
+  (select count(*) from public.profiles) = 1,
+  'a viewer can read only their own profile'
+);
 
 select pg_temp.expect_error(
   $sql$
@@ -216,6 +240,15 @@ select pg_temp.assert_true(
 select pg_temp.assert_true(
   (select group_position from public.position_groups where group_id = '__authz_test_unlinked_group') = 'Admin unlinked update',
   'the global recruiter updated the unlinked group while the invalid mode remained blocked'
+);
+select pg_temp.assert_true(
+  (select site from public.requisitions where doc_id = '__authz_test_site_assignment') = '__authz_test_site'
+    and (select person_in_charge from public.requisitions where doc_id = '__authz_test_site_assignment') = 'Scope Owner',
+  'a site recruiter requisition is forced to the recruiter assigned site and nickname'
+);
+select pg_temp.assert_true(
+  (select person_in_charge from public.requisitions where doc_id = '__authz_test_admin_assignment') = 'Scope Owner',
+  'an admin recruiter can persist another eligible recruiter as person in charge'
 );
 
 select 'workspace group authorization tests passed' as result;

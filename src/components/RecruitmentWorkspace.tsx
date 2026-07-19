@@ -22,6 +22,7 @@ import { OperationalSummaryStrip, RecordActionGroup } from "@/components/ui/Oper
 import { Panel } from "@/components/ui/Panel";
 import { PipelineFunnel, type PipelineFunnelRow } from "@/components/ui/PipelineFunnel";
 import { StageRail } from "@/components/ui/StageRail";
+import { StatusBanner } from "@/components/ui/StatusBanner";
 import { Tag } from "@/components/ui/Tag";
 import { DisabledReasonHint, InlineDataQualityIssues } from "@/components/ui/Workflow";
 import {
@@ -41,6 +42,8 @@ import {
   type PipelineDisplayStage
 } from "@/lib/constants";
 import { currentLocalWeekStart, formatLocalDateInput } from "@/lib/dates";
+import { dailyWelcomeMessage } from "@/lib/daily-messages";
+import { appendLegacyOption, departmentOptions, sectionOptionsForDepartment, type DepartmentSectionRow } from "@/lib/department-section-data";
 import {
   emptyDashboardData,
   enrichCandidates,
@@ -196,7 +199,7 @@ const rpcByModal: Record<Exclude<ModalName, null | "user">, string> = {
 export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const router = useRouter();
   const workspaceUrlState = useWorkspaceUrlState();
-  const [language, setLanguage] = useState<Language>("en");
+  const [language, setLanguage] = useState<Language>("th");
   const [data, setData] = useState<DashboardData>(emptyDashboardData);
   const [workspaceLoadState, setWorkspaceLoadState] = useState<WorkspaceLoadState>("checking_session");
   const [loading, setLoading] = useState(true);
@@ -272,7 +275,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     const savedLanguage = localStorage.getItem("recruitment_lang") as Language | null;
     const savedFilters = localStorage.getItem("recruitment_filters");
     const storedFilters = parseStoredFilters(savedFilters);
-    setLanguage(urlState.language ?? savedLanguage ?? "en");
+    setLanguage(urlState.language ?? savedLanguage ?? "th");
     if (urlState.hasFilterParams) {
       setFilters({ site: urlState.site ?? "", owner: urlState.owner ?? "" });
     } else if (storedFilters) {
@@ -416,7 +419,6 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
 
   const siteOptions = SITE_OPTIONS;
   const ownerOptions = recruiterNicknameOptions(data.profiles);
-
   useEffect(() => {
     if (initialView !== "home" || loading || !data.profile) return;
     const key = welcomeStorageKey(data.profile.id ?? data.profile.email ?? "unknown");
@@ -493,6 +495,26 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     setActiveModal("pipeline_pass");
   }
 
+  function openFailCurrentStage(candidate: EnrichedCandidate) {
+    if (!ACTIVE_PIPELINE_STAGES.includes(candidate.latest_process as ProcessStage) || candidate.latest_result !== null) return;
+    const logs = latestLogsForCandidate(data, candidate.candidate_id);
+    const blockedReason = processUpdateBlockReason(logs);
+    if (blockedReason) {
+      setStatus(blockedReason);
+      return;
+    }
+    const currentStage = candidate.latest_process as ProcessStage;
+    setProcessDefaults({
+      candidate_id: candidate.candidate_id,
+      recruitment_process: currentStage,
+      round: latestRoundForStage(logs, currentStage) || 1,
+      result: "0",
+      source: "manual",
+      remark: "Failed from pipeline current-stage action"
+    });
+    setActiveModal("process");
+  }
+
   function openMaintainTest(candidate: EnrichedCandidate) {
     const logs = latestLogsForCandidate(data, candidate.candidate_id);
     const blockedReason = processUpdateBlockReason(logs);
@@ -551,6 +573,16 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     });
     setActiveModal("process");
   }, [data]);
+
+  const openDetailRequisitionChange = useCallback((docId: string) => {
+    setModalDefaults({ mode: "change", selectedId: docId });
+    setActiveModal("requisition");
+  }, []);
+
+  const openDetailCandidateChange = useCallback((candidateId: string) => {
+    setModalDefaults({ mode: "change", selectedId: candidateId });
+    setActiveModal("candidate");
+  }, []);
 
   function dispatchWorkspaceAction(request: WorkspaceActionRequest) {
     if (request.kind === "record.open") {
@@ -650,6 +682,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     const formData = new FormData(form);
     const payload = buildPayload(modal, formData);
     const actionPayload = payload as Record<string, unknown>;
+    if (modal === "candidate") validateCandidatePayload(data, payload, language);
     if (modal === "process") validateProcessUpdatePayload(data, payload);
     const summary = buildSummary(modal, payload);
     const isPipelineTestExit = modal === "pipeline_pass"
@@ -814,8 +847,8 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     [filters.owner, filters.site, language, sourcingWeek]
   );
   const detailBody = useMemo(
-    () => buildDetailBodyV2(detail, data, language, canWrite, openProcessFromDetail, navigationContext),
-    [canWrite, detail, data, language, navigationContext, openProcessFromDetail]
+    () => buildDetailBodyV2(detail, data, language, canWrite, openProcessFromDetail, navigationContext, openDetailRequisitionChange, openDetailCandidateChange),
+    [canWrite, detail, data, language, navigationContext, openDetailCandidateChange, openDetailRequisitionChange, openProcessFromDetail]
   );
 
   if (!hasSupabaseConfig) {
@@ -864,9 +897,38 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     );
   }
 
+  const loadedStatus = translate(language, "recruitmentRecordsLoaded");
+  const showOperationalStatus = !loading && !busy && !error && status !== "Recruitment records loaded." && status !== loadedStatus;
+
   return (
     <AppShell
       activeView={initialView}
+      headerControls={(
+        <>
+          <div className="w-full min-w-[8.5rem] sm:w-36">
+            <select
+              aria-label={translate(language, "site")}
+              className="min-h-9 w-full rounded-lg bg-[#E8F0FF] px-3 text-sm font-semibold text-primary ring-1 ring-inset ring-[#C4D8FF] transition hover:bg-[#DDEAFF] focus:outline-none focus:ring-2 focus:ring-primary/35"
+              value={filters.site}
+              onChange={(event) => setFilters((old) => ({ ...old, site: event.target.value }))}
+            >
+              <option value="">{translate(language, "allSites")}</option>
+              {siteOptions.map((value) => <option key={value} value={value}>{value}</option>)}
+            </select>
+          </div>
+          <div className="w-full min-w-[11rem] sm:w-48">
+            <select
+              aria-label={translate(language, "personInCharge")}
+              className="min-h-9 w-full rounded-lg bg-[#E8F0FF] px-3 text-sm font-semibold text-primary ring-1 ring-inset ring-[#C4D8FF] transition hover:bg-[#DDEAFF] focus:outline-none focus:ring-2 focus:ring-primary/35"
+              value={filters.owner}
+              onChange={(event) => setFilters((old) => ({ ...old, owner: event.target.value }))}
+            >
+              <option value="">{translate(language, "allOwners")}</option>
+              {ownerOptions.map((value) => <option key={value} value={value}>{value}</option>)}
+            </select>
+          </div>
+        </>
+      )}
       language={language}
       navigationContext={navigationContext}
       profile={data.profile}
@@ -874,28 +936,16 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       onRefresh={loadData}
       onSignOut={signOut}
     >
-      <div className="mb-4 grid gap-3 rounded-lg border border-[#D7DEE8] bg-white p-4 shadow-[0_8px_20px_rgba(11,19,43,0.035)] md:grid-cols-[1fr_1fr_auto]">
-        <Field label={translate(language, "site")}>
-          <SelectInput value={filters.site} onChange={(event) => setFilters((old) => ({ ...old, site: event.target.value }))}>
-            <option value="">{translate(language, "allSites")}</option>
-            {siteOptions.map((value) => <option key={value} value={value}>{value}</option>)}
-          </SelectInput>
-        </Field>
-        <Field label={translate(language, "personInCharge")}>
-          <SelectInput value={filters.owner} onChange={(event) => setFilters((old) => ({ ...old, owner: event.target.value }))}>
-            <option value="">{translate(language, "allOwners")}</option>
-            {ownerOptions.map((value) => <option key={value} value={value}>{value}</option>)}
-          </SelectInput>
-        </Field>
-        <div className="flex items-end">
-          <Button type="button" variant="secondary" onClick={() => setFilters({ site: "", owner: "" })}>{translate(language, "clear")}</Button>
-        </div>
-      </div>
-
-      <p role="status" aria-live="polite" aria-busy={loading || busy} className={`mb-4 min-h-6 text-sm font-bold ${error ? "text-orange" : "text-slate"}`}>{loading ? translate(language, "loadingRecruitmentRecordsEllipsis") : error ?? status}</p>
+      {loading || busy || error || showOperationalStatus ? (
+        <StatusBanner
+          busy={loading || busy}
+          tone={error ? "error" : loading || busy ? "loading" : "info"}
+          message={loading ? translate(language, "loadingRecruitmentRecordsEllipsis") : error ?? status}
+        />
+      ) : null}
 
       {initialView === "home" ? (
-        <HomeView language={language} profile={data.profile} requisitions={filteredRequisitions} candidates={filteredCandidates} offers={filteredOffers} staleSourcingGroups={staleSourcingGroups} changeLogs={filteredChangeLogs} recruitmentLogs={data.recruitment_logs} dataQualityIssues={dataQualityIssues} canViewRecentActivity={role === "system_admin" || role === "admin_recruiter"} onOpenRequisition={(id) => setDetail({ type: "requisition", id })} onOpenCandidate={(id) => setDetail({ type: "candidate", id })} />
+        <HomeView language={language} profile={data.profile} requisitions={filteredRequisitions} candidates={filteredCandidates} offers={filteredOffers} staleSourcingGroups={staleSourcingGroups} changeLogs={filteredChangeLogs} dataQualityIssues={dataQualityIssues} canViewRecentActivity={role === "system_admin" || role === "admin_recruiter"} onOpenRequisition={(id) => setDetail({ type: "requisition", id })} onOpenCandidate={(id) => setDetail({ type: "candidate", id })} />
       ) : null}
 
       {initialView === "dashboard" ? (
@@ -933,6 +983,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
               onNewCandidate={workspaceScope.docGroupId ? () => dispatchWorkspaceAction({ kind: "candidate.create", docGroupId: workspaceScope.docGroupId! }) : undefined}
               onOpen={(id) => setDetail({ type: "candidate", id })}
               onMove={openProcessForMove}
+              onFailCurrentStage={openFailCurrentStage}
               onMaintainTest={openMaintainTest}
               onStartProcess={openInitialProcessUpdate}
               onUpdateOffer={openOfferUpdate}
@@ -972,10 +1023,10 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       ) : null}
 
       {initialView === "pipeline" ? (
-        <PipelineBoardView language={language} rows={filteredCandidates} recruitmentLogs={data.recruitment_logs} profile={data.profile} dataQualityIssues={dataQualityIssues} canWrite={canWrite} onNewCandidate={() => setActiveModal("candidate")} onAddUpdate={() => setActiveModal("process")} onOpen={(id) => setDetail({ type: "candidate", id })} onMove={openProcessForMove} onMaintainTest={openMaintainTest} onStartProcess={openInitialProcessUpdate} onUpdateOffer={openOfferUpdate} />
+        <PipelineBoardView language={language} rows={filteredCandidates} recruitmentLogs={data.recruitment_logs} profile={data.profile} dataQualityIssues={dataQualityIssues} canWrite={canWrite} onNewCandidate={() => setActiveModal("candidate")} onAddUpdate={() => setActiveModal("process")} onOpen={(id) => setDetail({ type: "candidate", id })} onMove={openProcessForMove} onFailCurrentStage={openFailCurrentStage} onMaintainTest={openMaintainTest} onStartProcess={openInitialProcessUpdate} onUpdateOffer={openOfferUpdate} />
       ) : null}
 
-      {initialView === "offers" ? <OffersView language={language} rows={filteredOffers} allOffers={data.offers} requisitions={filteredRequisitions} profile={data.profile} canWrite={canWrite} onNew={() => setActiveModal("offer")} onOpenCandidate={(id) => setDetail({ type: "candidate", id })} onOpenRequisition={(id) => setDetail({ type: "requisition", id })} /> : null}
+      {initialView === "offers" ? <OffersView language={language} rows={filteredOffers} allOffers={data.offers} requisitions={filteredRequisitions} profile={data.profile} canWrite={canWrite} onNew={() => setActiveModal("offer")} onOpenCandidate={(id) => setDetail({ type: "candidate", id })} /> : null}
 
       {initialView === "sourcing" ? (
         <SourcingView
@@ -1093,18 +1144,18 @@ function buildPayload(modal: Exclude<ModalName, null>, formData: FormData) {
   }
 
   if (modal === "candidate") {
+    const channel = emptyToNull(formData.get("channel"));
     const payload = {
       mode: String(formData.get("mode") ?? "new"),
       candidate_id: emptyToNull(formData.get("candidate_id")),
       name: emptyToNull(formData.get("name")),
       phone_no: emptyToNull(formData.get("phone_no")),
       doc_group_id: emptyToNull(formData.get("doc_group_id")),
-      channel: emptyToNull(formData.get("channel")),
-      ref_name: emptyToNull(formData.get("ref_name")),
+      channel,
+      ref_name: channel === "Referral" ? emptyToNull(formData.get("ref_name")) : null,
       first_contact_date: emptyToNull(formData.get("first_contact_date")),
       candidate_folder_url: emptyToNull(formData.get("candidate_folder_url"))
     };
-    requireFields(payload, ["name", "doc_group_id"]);
     return payload;
   }
 
@@ -1253,6 +1304,70 @@ function replacementNamesPayload(formData: FormData) {
     .map((value) => String(value).trim())
     .filter(Boolean);
   return names.length > 0 ? names.join("\n") : null;
+}
+
+function validateCandidatePayload(data: DashboardData, payload: Record<string, unknown>, language: Language) {
+  const requiredFields = [
+    ...(valueAsString(payload.mode) === "change" ? ["candidate_id"] : []),
+    "name",
+    "phone_no",
+    "doc_group_id",
+    "channel",
+    "first_contact_date",
+    ...(valueAsString(payload.channel) === "Referral" ? ["ref_name"] : [])
+  ];
+  const missing = requiredFields.filter((field) => !valueAsString(payload[field]));
+  if (missing.length > 0) {
+    throw new Error(translate(language, "candidateRequiredFieldsMissing", {
+      fields: missing.map((field) => candidateRequiredFieldLabel(language, field)).join(", ")
+    }));
+  }
+
+  const firstContactDate = valueAsString(payload.first_contact_date);
+  if (!isIsoDateInput(firstContactDate)) {
+    throw new Error(translate(language, "candidateFirstContactDateInvalid"));
+  }
+
+  const oldestPrApprovedDate = oldestPrApprovedDateForDocGroup(data, valueAsString(payload.doc_group_id));
+  if (oldestPrApprovedDate && firstContactDate < oldestPrApprovedDate) {
+    throw new Error(translate(language, "candidateFirstContactBeforePrApproved", {
+      date: formatDate(oldestPrApprovedDate, language)
+    }));
+  }
+}
+
+function candidateRequiredFieldLabel(language: Language, field: string) {
+  const labels: Record<string, string> = {
+    candidate_id: translate(language, "candidateId"),
+    name: translate(language, "name"),
+    phone_no: translate(language, "phoneNo"),
+    doc_group_id: translate(language, "groupId"),
+    channel: translate(language, "channel"),
+    first_contact_date: translate(language, "firstContactDate"),
+    ref_name: translate(language, "referenceName")
+  };
+  return labels[field] ?? field;
+}
+
+function oldestPrApprovedDateForDocGroup(data: DashboardData, docGroupId: string) {
+  const selectedGroup = data.document_groups.find((row) => row.doc_group_id === docGroupId);
+  if (!selectedGroup) return null;
+
+  const docIds = selectedGroup.group_id
+    ? data.document_groups
+        .filter((row) => row.group_id === selectedGroup.group_id)
+        .map((row) => row.doc_id)
+    : [selectedGroup.doc_id];
+  const docIdSet = new Set(docIds);
+  const dates = data.requisitions
+    .filter((row) => docIdSet.has(row.doc_id) && isIsoDateInput(row.pr_approved_date))
+    .map((row) => row.pr_approved_date as string)
+    .sort();
+  return dates[0] ?? null;
+}
+
+function isIsoDateInput(value: string | null | undefined): value is string {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
 function validateProcessUpdatePayload(data: DashboardData, payload: Record<string, unknown>) {
@@ -1462,13 +1577,44 @@ function RequisitionFields({
   const personOptions = recruiterNicknameOptions(data.profiles);
   const siteValue = isSiteRecruiter ? assignedSite : selected?.site;
   const ownerValue = isSiteRecruiter ? nickname : selected?.person_in_charge;
+  const initialSiteValue = siteValue ?? "";
   const [requestType, setRequestType] = useState<RequisitionRequestType>(selected?.request_type ?? "New");
   const [replacementNames, setReplacementNames] = useState(splitReplacementNames(selected?.replacement_names));
+  const [selectedSite, setSelectedSite] = useState(initialSiteValue);
+  const [departmentValue, setDepartmentValue] = useState(selected?.department ?? "");
+  const [sectionValue, setSectionValue] = useState(selected?.section ?? "");
+  const [departmentSectionRows, setDepartmentSectionRows] = useState<DepartmentSectionRow[]>([]);
+  const departmentSelectOptions = useMemo(
+    () => appendLegacyOption(departmentOptions(departmentSectionRows, language, selectedSite), selected?.department),
+    [departmentSectionRows, language, selected?.department, selectedSite]
+  );
+  const sectionSelectOptions = useMemo(
+    () => appendLegacyOption(sectionOptionsForDepartment(departmentSectionRows, language, selectedSite, departmentValue), selected?.section),
+    [departmentSectionRows, departmentValue, language, selected?.section, selectedSite]
+  );
 
   useEffect(() => {
     setRequestType(selected?.request_type ?? "New");
     setReplacementNames(splitReplacementNames(selected?.replacement_names));
-  }, [selected?.doc_id, selected?.replacement_names, selected?.request_type]);
+    setSelectedSite(initialSiteValue);
+    setDepartmentValue(selected?.department ?? "");
+    setSectionValue(selected?.section ?? "");
+  }, [initialSiteValue, selected?.department, selected?.doc_id, selected?.replacement_names, selected?.request_type, selected?.section]);
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/department-sections")
+      .then((response) => response.ok ? response.json() : [])
+      .then((rows: DepartmentSectionRow[]) => {
+        if (active) setDepartmentSectionRows(Array.isArray(rows) ? rows : []);
+      })
+      .catch(() => {
+        if (active) setDepartmentSectionRows([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
@@ -1491,13 +1637,47 @@ function RequisitionFields({
       </Field>
       <Field label={translate(language, "site")}>
         {isSiteRecruiter ? <input type="hidden" name="site" value={assignedSite} /> : null}
-        <SelectInput name={isSiteRecruiter ? undefined : "site"} required defaultValue={siteValue ?? ""} disabled={isSiteRecruiter}>
+        <SelectInput
+          name={isSiteRecruiter ? undefined : "site"}
+          required
+          value={selectedSite}
+          disabled={isSiteRecruiter}
+          onChange={(event) => {
+            setSelectedSite(event.target.value);
+            setDepartmentValue("");
+            setSectionValue("");
+          }}
+        >
           <option value="">{translate(language, "selectSite")}</option>
           {SITE_OPTIONS.map((site) => <option key={site} value={site}>{site}</option>)}
         </SelectInput>
       </Field>
-      <Field label={translate(language, "department")}><TextInput name="department" list="department-options" required defaultValue={selected?.department ?? ""} /></Field>
-      <Field label={translate(language, "section")}><TextInput name="section" list="section-options" defaultValue={selected?.section ?? ""} /></Field>
+      <Field label={translate(language, "department")}>
+        <SelectInput
+          name="department"
+          required
+          value={departmentValue}
+          disabled={!selectedSite || departmentSelectOptions.length === 0}
+          onChange={(event) => {
+            setDepartmentValue(event.target.value);
+            setSectionValue("");
+          }}
+        >
+          <option value="">{selectedSite ? translate(language, "selectDepartment") : translate(language, "selectSite")}</option>
+          {departmentSelectOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </SelectInput>
+      </Field>
+      <Field label={translate(language, "section")}>
+        <SelectInput
+          name="section"
+          value={sectionValue}
+          onChange={(event) => setSectionValue(event.target.value)}
+          disabled={!departmentValue || sectionSelectOptions.length === 0}
+        >
+          <option value="">{departmentValue ? translate(language, "selectSection") : translate(language, "selectDepartmentFirst")}</option>
+          {sectionSelectOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </SelectInput>
+      </Field>
       <Field label={translate(language, "position")}><TextInput name="position" list="position-options" required defaultValue={selected?.position ?? ""} /></Field>
       <Field label={translate(language, "levelL")}>
         <SelectInput name="level" defaultValue={selected?.level ?? ""}>
@@ -1641,6 +1821,7 @@ function CandidatePrefillFields({
   const [selectedDocGroupId, setSelectedDocGroupId] = useState(docGroupValue);
   const [selectedChannel, setSelectedChannel] = useState(selected?.channel ?? "");
   const availableChannels = useMemo(() => sourcingChannelsForDocGroup(data, selectedDocGroupId), [data, selectedDocGroupId]);
+  const showReferenceName = selectedChannel === "Referral";
 
   useEffect(() => {
     setSelectedDocGroupId(docGroupValue);
@@ -1666,7 +1847,7 @@ function CandidatePrefillFields({
         )}
       </Field>
       <Field label={translate(language, "name")}><TextInput name="name" required defaultValue={selected?.name ?? ""} /></Field>
-      <Field label={translate(language, "phoneNo")}><TextInput name="phone_no" defaultValue={selected?.phone_no ?? ""} /></Field>
+      <Field label={translate(language, "phoneNo")}><TextInput name="phone_no" required defaultValue={selected?.phone_no ?? ""} /></Field>
       <Field label={translate(language, "groupId")}>
         <SelectInput name="doc_group_id" required value={selectedDocGroupId} onChange={(event) => setSelectedDocGroupId(event.target.value)}>
           <option value="">{translate(language, "selectGroup")}</option>
@@ -1674,13 +1855,15 @@ function CandidatePrefillFields({
         </SelectInput>
       </Field>
       <Field label={translate(language, "channel")}>
-        <SelectInput name="channel" value={selectedChannel} onChange={(event) => setSelectedChannel(event.target.value)} disabled={!selectedDocGroupId || availableChannels.length === 0}>
+        <SelectInput name="channel" required value={selectedChannel} onChange={(event) => setSelectedChannel(event.target.value)} disabled={!selectedDocGroupId || availableChannels.length === 0}>
           <option value="">{availableChannels.length === 0 ? translate(language, "noSourcingChannelsForGroup") : translate(language, "selectChannel")}</option>
           {availableChannels.map((channel) => <option key={channel.enabled} value={channel.label}>{channel.label}</option>)}
         </SelectInput>
       </Field>
-      <Field label={translate(language, "referenceName")}><TextInput name="ref_name" list="ref-options" defaultValue={selected?.ref_name ?? ""} /></Field>
-      <Field label={translate(language, "firstContactDate")}><TextInput name="first_contact_date" type="date" defaultValue={firstContactDate} /></Field>
+      {showReferenceName ? (
+        <Field label={translate(language, "referenceName")}><TextInput name="ref_name" required list="ref-options" defaultValue={selected?.ref_name ?? ""} /></Field>
+      ) : null}
+      <Field label={translate(language, "firstContactDate")}><TextInput name="first_contact_date" required type="date" defaultValue={firstContactDate} /></Field>
       <Field label={translate(language, "candidateFolderLink")} className="md:col-span-2"><TextInput name="candidate_folder_url" type="url" defaultValue={selected?.candidate_folder_url ?? ""} /></Field>
       <DataLists data={data} />
     </div>
@@ -2154,7 +2337,13 @@ function WelcomeBackPrompt({
   onPipeline: () => void;
 }) {
   const name = profile?.nickname ?? profile?.full_name ?? profile?.email ?? translate(language, "system");
-  const message = translate(language, welcomeRatioMessageKey(summary.filledResponsibleVacancyBucket)).replace("{name}", name);
+  const fallbackMessage = translate(language, welcomeRatioMessageKey(summary.filledResponsibleVacancyBucket));
+  const message = dailyWelcomeMessage({
+    language,
+    ratio: summary.filledResponsibleVacancyRatio,
+    name,
+    fallback: fallbackMessage
+  });
   const progressWidth = `${Math.min(summary.filledResponsibleVacancyRatio, 100)}%`;
 
   return (
@@ -2415,7 +2604,9 @@ function buildDetailBodyV2(
   language: Language,
   canWrite: boolean,
   onUpdateCandidate: (candidateId: string) => void,
-  navigationContext: { language: Language; site: string; owner: string; sourcingWeek: string }
+  navigationContext: { language: Language; site: string; owner: string; sourcingWeek: string },
+  onChangeRequisition: (docId: string) => void,
+  onChangeCandidate: (candidateId: string) => void
 ): DetailBodyResult {
   if (!detail) return { title: "Detail", body: null };
   const href = (path: string) => buildContextualHref(path, navigationContext);
@@ -2445,41 +2636,42 @@ function buildDetailBodyV2(
       headerMeta: (
         <>
           <Tag tone={statusTone(requisition.status)}>{requisitionStatusLabel(language, requisition.status)}</Tag>
-          <Tag tone={readiness.tone}>{fillReadinessLabel(language, readiness.label)}</Tag>
+          <span className={`text-sm font-semibold ${readinessTextClass(readiness.tone)}`}>{fillReadinessLabel(language, readiness.label)}</span>
         </>
       ),
       headerActions: (
         <RecordActionGroup
           label={requisition.doc_id}
-          primary={{ id: "workspace", label: "Open workspace", href: href(`/workspace?type=requisition&id=${encodeURIComponent(requisition.doc_id)}&section=overview`), tone: "primary", iconOnly: true }}
+          primary={{ id: "workspace", label: translate(language, "workspaceOpen"), href: href(`/workspace?type=requisition&id=${encodeURIComponent(requisition.doc_id)}&section=overview`), tone: "primary", iconOnly: true }}
           items={[
-            { id: "sourcing", href: href(`/sourcing?reqSearch=${encodeURIComponent(requisition.doc_id)}`), label: "Open sourcing", tone: "primary" },
-            { id: "candidates", href: href(`/candidates?candSearch=${encodeURIComponent(requisition.doc_id)}`), label: "Related candidates" },
-            { id: "offers", href: href(`/offers?offerSearch=${encodeURIComponent(requisition.doc_id)}`), label: "Related offers" }
+            ...(canWrite ? [{ id: "change-record", label: translate(language, "changeRecord"), onSelect: () => onChangeRequisition(requisition.doc_id) }] : []),
+            { id: "sourcing", href: href(`/sourcing?reqSearch=${encodeURIComponent(requisition.doc_id)}`), label: translate(language, "workspaceOpenSourcing") },
+            { id: "candidates", href: href(`/candidates?candSearch=${encodeURIComponent(requisition.doc_id)}`), label: translate(language, "workspaceRelatedCandidates") },
+            { id: "offers", href: href(`/offers?offerSearch=${encodeURIComponent(requisition.doc_id)}`), label: translate(language, "workspaceRelatedOffers") }
           ]}
         />
       ),
       body: (
         <div className="grid min-w-0 gap-4">
           <OperationalSummaryStrip items={[
-            { label: "Open HC", value: requisition.open_headcount, tone: requisition.open_headcount > 0 ? "warning" : "success", helper: "Remaining demand" },
-            { label: "Readiness", value: fillReadinessLabel(language, readiness.label), tone: readiness.tone, helper: readiness.reason },
-            { label: "SLA", value: sla?.label ?? "-", tone: sla?.isOverdue ? "danger" : "muted", helper: "Requisition age" }
+            { label: translate(language, "openHeadcountShort"), value: requisition.open_headcount, tone: requisition.open_headcount > 0 ? "warning" : "success", helper: translate(language, "remainingDemand") },
+            { label: translate(language, "fillReadiness"), value: fillReadinessLabel(language, readiness.label), tone: readiness.tone, helper: readiness.reason },
+            { label: translate(language, "slaLabel"), value: sla?.label ?? "-", tone: sla?.isOverdue ? "danger" : "muted", helper: translate(language, "ageLabel") }
           ]} />
           <InlineDataQualityIssues issues={issues} language={language} />
           <DetailGrid rows={[
-            ["Site", requisition.site],
-            ["Department", requisition.department],
-            ["Section", requisition.section ?? "-"],
-            ["Request Type", requisition.request_type],
-            ["Replacement Names", requisition.request_type === "Replacement" ? replacementNamesDisplay(requisition.replacement_names) : "-"],
-            ["Owner", requisition.person_in_charge ?? "-"],
-            ["Line Manager", requisition.line_manager ?? "-"],
-            ["Headcount", String(requisition.head_count)],
-            ["Accepted", String(requisition.accepted_count)],
-            ["Open", String(requisition.open_headcount)]
+            [translate(language, "site"), requisition.site],
+            [translate(language, "department"), requisition.department],
+            [translate(language, "section"), requisition.section ?? "-"],
+            [translate(language, "requestType"), requisition.request_type],
+            [translate(language, "replacementNames"), requisition.request_type === "Replacement" ? replacementNamesDisplay(requisition.replacement_names) : "-"],
+            [translate(language, "owner"), requisition.person_in_charge ?? "-"],
+            [translate(language, "lineManager"), requisition.line_manager ?? "-"],
+            [translate(language, "headcount"), String(requisition.head_count)],
+            [translate(language, "accepted"), String(requisition.accepted_count)],
+            [translate(language, "open"), String(requisition.open_headcount)]
           ]} />
-          <DetailDisclosure title="Workflow" summary={`${candidates.length} candidates / ${offers.length} offers`}>
+          <DetailDisclosure title={translate(language, "workspaceJourney")} summary={`${candidates.length} ${translate(language, "candidatesUnit")} / ${offers.length} ${translate(language, "offersDetail")}`}>
             <PipelineFunnel
               language={language}
               rows={funnelRows}
@@ -2520,7 +2712,8 @@ function buildDetailBodyV2(
           label={candidate.name}
           primary={{ id: "workspace", label: "Open workspace", href: href(`/workspace?type=${candidate.group_id ? "group" : "requisition"}&id=${encodeURIComponent(candidate.group_id ?? candidate.doc_ids[0] ?? "")}&section=overview`), tone: "primary", iconOnly: true }}
           items={[
-            ...(candidate.doc_ids[0] ? [{ id: "requisition", href: href(`/requisitions?detailType=requisition&detailId=${encodeURIComponent(candidate.doc_ids[0])}`), label: "View requisition", tone: "primary" as const }] : []),
+            ...(canWrite ? [{ id: "change-record", label: translate(language, "changeRecord"), onSelect: () => onChangeCandidate(candidate.candidate_id) }] : []),
+            ...(candidate.doc_ids[0] ? [{ id: "requisition", href: href(`/requisitions?detailType=requisition&detailId=${encodeURIComponent(candidate.doc_ids[0])}`), label: "View requisition" }] : []),
             { id: "same-group", href: href(`/candidates?candSearch=${encodeURIComponent(candidate.group_position ?? candidate.doc_group_id)}`), label: "Same group" },
             { id: "pipeline", href: href(`/pipeline?pipelineSearch=${encodeURIComponent(candidate.candidate_id)}&detailType=candidate&detailId=${encodeURIComponent(candidate.candidate_id)}`), label: "Open in pipeline" }
         ]}
@@ -2587,6 +2780,13 @@ function buildDetailBodyV2(
       </div>
     )
   };
+}
+
+function readinessTextClass(tone: string) {
+  if (tone === "danger") return "text-scarlet";
+  if (tone === "warning") return "text-orange";
+  if (tone === "success") return "text-primary";
+  return "text-slate";
 }
 
 function buildDetailBody(detail: { type: "requisition" | "candidate"; id: string } | null, data: DashboardData, language: Language, canWrite: boolean, onUpdateCandidate: (candidateId: string) => void) {

@@ -18,38 +18,19 @@ test("grouped sidebar gates admin and preserves global navigation context", asyn
   await expect(navigation.getByRole("link", { name: "Pipeline" })).toBeVisible();
   await expect(navigation.getByRole("link", { name: "Sourcing" })).toBeVisible();
   await expect(navigation.getByRole("link", { name: "Administration" })).toHaveCount(0);
-  await expect(navigation.locator("[data-records-subnav-glow]")).toBeVisible();
   await expect(navigation.locator("[data-records-subnav]")).toBeVisible();
-
-  const glowStyles = await navigation.locator("[data-records-subnav-glow]").evaluate((element) => {
-    const styles = getComputedStyle(element);
-    return {
-      backgroundImage: styles.backgroundImage,
-      borderRadius: styles.borderRadius,
-      height: styles.height
-    };
-  });
-  expect(glowStyles.backgroundImage).toContain("linear-gradient");
-  expect(glowStyles.backgroundImage).toContain("255, 255, 255");
-  expect(glowStyles.borderRadius).not.toBe("0px");
-  expect(Number.parseFloat(glowStyles.height)).toBeGreaterThan(1);
 
   const homeBox = await navigation.getByRole("link", { name: "Home" }).boundingBox();
   const recordsBox = await recordsButton.boundingBox();
-  const glowBox = await navigation.locator("[data-records-subnav-glow]").boundingBox();
   expect(homeBox).not.toBeNull();
   expect(recordsBox).not.toBeNull();
-  expect(glowBox).not.toBeNull();
   expect(Math.abs(homeBox!.width - recordsBox!.width)).toBeLessThanOrEqual(1);
-  expect(Math.abs(recordsBox!.width - glowBox!.width)).toBeLessThanOrEqual(1);
-  expect(Math.abs((recordsBox!.y + recordsBox!.height) - glowBox!.y)).toBeLessThanOrEqual(1);
 
   const expandedSubnavStyles = await navigation.locator("[data-records-subnav]").evaluate((element) => {
     const styles = getComputedStyle(element);
-    return { backgroundColor: styles.backgroundColor, borderWidth: styles.borderTopWidth };
+    return { display: styles.display };
   });
-  expect(expandedSubnavStyles.borderWidth).toBe("0px");
-  expect(expandedSubnavStyles.backgroundColor).toBe("rgba(0, 0, 0, 0)");
+  expect(expandedSubnavStyles.display).not.toBe("none");
 
   const workspaceLink = navigation.getByRole("link", { name: "Workspace" });
   await expect(workspaceLink).toHaveAttribute("href", /lang=en/);
@@ -69,7 +50,7 @@ test("grouped sidebar gates admin and preserves global navigation context", asyn
   await expect(navigation.getByRole("link", { name: "Pipeline" })).toBeVisible();
   await expect(navigation.getByRole("link", { name: "Pipeline" }).locator('[data-nav-label="pipeline"]')).toHaveClass(/lg:sr-only/);
   await expect(navigation.getByRole("link", { name: "Sourcing" }).locator('[data-nav-label="sourcing"]')).toHaveClass(/lg:sr-only/);
-  await expect(navigation.locator("[data-records-subnav-glow]")).toBeVisible();
+  await expect(navigation.locator("[data-records-subnav]")).toBeVisible();
 
   const collapsedRecordsBox = await recordsButton.boundingBox();
   const collapsedSourcingBox = await navigation.getByRole("link", { name: "Sourcing" }).boundingBox();
@@ -98,7 +79,7 @@ test("workspace section tabs persist in URL history and render one section", asy
 
   await tabs.getByRole("tab", { name: "Sourcing" }).click();
   await expect(page).toHaveURL(/section=sourcing/);
-  await expect(page.getByRole("tabpanel")).toContainText("Sourcing Coverage");
+  await expect(page.getByRole("tabpanel")).toContainText("Sourcing coverage");
   await page.goBack();
   await expect(page).toHaveURL(/section=pipeline/);
   await expect(tabs.getByRole("tab", { name: "Pipeline" })).toHaveAttribute("aria-selected", "true");
@@ -140,28 +121,47 @@ test("candidate document search filters linked records", async ({ page }) => {
   await page.goto("/candidates?candSearch=REQ-HQ-1");
   await expectWorkspaceReady(page);
   const table = page.locator("table");
-  await expect(table.getByRole("button", { name: "Pat Phone", exact: true })).toBeVisible();
-  await expect(table.getByRole("button", { name: "Avery Aging", exact: true })).toBeVisible();
-  await expect(table.getByRole("button", { name: "Liam Line", exact: true })).toHaveCount(0);
+  await expect(table.getByText("Pat Phone", { exact: true })).toBeVisible();
+  await expect(table.getByText("Avery Aging", { exact: true })).toBeVisible();
+  await expect(table.getByText("Liam Line", { exact: true })).toHaveCount(0);
 });
 
-test("record tables expose magnifying-glass detail controls", async ({ page }) => {
+test("record tables expose only magnifying-glass detail controls and drawer change actions", async ({ page }) => {
   await installMockSupabase(page, { role: "admin_recruiter" });
 
   await page.goto("/requisitions");
   await expectWorkspaceReady(page);
+  await expect(page.locator("table").getByRole("button", { name: /More actions/ })).toHaveCount(0);
+  await expect(page.locator("table").getByRole("button", { name: "Edit REQ-HQ-1" })).toHaveCount(0);
+  await expect(page.locator("table").getByRole("link", { name: "Workspace" })).toHaveCount(0);
   await page.getByRole("button", { name: "View requisition detail for REQ-HQ-1" }).click();
-  await expect(page.getByRole("dialog", { name: /REQ-HQ-1/ })).toBeVisible();
+  const requisitionDrawer = page.getByRole("dialog", { name: /REQ-HQ-1/ });
+  await expect(requisitionDrawer).toBeVisible();
+  await requisitionDrawer.getByRole("button", { name: "More actions for REQ-HQ-1" }).click();
+  await requisitionDrawer.getByRole("menuitem", { name: "Change record" }).click();
+  await expect(page.getByRole("dialog", { name: "Edit Requisition" })).toBeVisible();
+  await page.keyboard.press("Escape");
   await page.keyboard.press("Escape");
 
   await page.goto("/candidates");
   await expectWorkspaceReady(page);
+  await expect(page.locator("table").getByRole("button", { name: /More actions/ })).toHaveCount(0);
+  await expect(page.locator("table").getByRole("button", { name: "Edit Pat Phone" })).toHaveCount(0);
+  await expect(page.locator("table").getByRole("link", { name: "Workspace" })).toHaveCount(0);
   await page.getByRole("button", { name: "View candidate detail for Pat Phone" }).click();
-  await expect(page.getByRole("dialog", { name: /C-PHONE \/ Pat Phone/ })).toBeVisible();
+  const candidateDrawer = page.getByRole("dialog", { name: /C-PHONE \/ Pat Phone/ });
+  await expect(candidateDrawer).toBeVisible();
+  await candidateDrawer.getByRole("button", { name: "More actions for Pat Phone" }).click();
+  await candidateDrawer.getByRole("menuitem", { name: "Change record" }).click();
+  await expect(page.getByRole("dialog", { name: "Edit Candidate" })).toBeVisible();
+  await page.keyboard.press("Escape");
   await page.keyboard.press("Escape");
 
   await page.goto("/offers");
   await expectWorkspaceReady(page);
+  await expect(page.locator("table").getByRole("button", { name: /More actions/ })).toHaveCount(0);
+  await expect(page.locator("table").getByRole("button", { name: "Edit Owen Offer" })).toHaveCount(0);
+  await expect(page.locator("table").getByRole("link", { name: "Workspace" })).toHaveCount(0);
   await page.getByRole("button", { name: "View offer candidate detail for Owen Offer" }).click();
   await expect(page.getByRole("dialog", { name: /C-OFFER \/ Owen Offer/ })).toBeVisible();
 });
@@ -197,7 +197,7 @@ test("candidate drawer has one action hierarchy and modal becomes topmost", asyn
   await page.goto("/candidates");
   await expectWorkspaceReady(page);
 
-  await page.locator("table").getByRole("button", { name: "Pat Phone", exact: true }).click();
+  await page.getByRole("button", { name: "View candidate detail for Pat Phone" }).click();
   const drawer = page.getByRole("dialog", { name: /C-PHONE \/ Pat Phone/ });
   await expect(drawer.getByText("Current stage")).toHaveCount(0);
   await expect(drawer.getByText("Result", { exact: true })).toHaveCount(0);
@@ -206,6 +206,9 @@ test("candidate drawer has one action hierarchy and modal becomes topmost", asyn
   await drawer.getByRole("button", { name: "More actions for Pat Phone" }).click();
   const menu = drawer.getByRole("menu", { name: "Actions for Pat Phone" });
   await expect(drawer.getByRole("link", { name: "Open workspace" })).toHaveCount(1);
+  const changeRecord = menu.getByRole("menuitem", { name: "Change record" });
+  await expect(changeRecord).toBeVisible();
+  await expect(changeRecord).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   await expect(menu.getByRole("menuitem", { name: "View requisition" })).toBeVisible();
   await expect(menu.getByRole("menuitem", { name: "Same group" })).toBeVisible();
   await expect(menu.getByRole("menuitem", { name: "Open in pipeline" })).toBeVisible();

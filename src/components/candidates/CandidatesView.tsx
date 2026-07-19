@@ -6,7 +6,7 @@ import { PAGE_SIZE_OPTIONS, Pagination, paginateRows } from "@/components/ui/Pag
 import { Panel, SectionTitle } from "@/components/ui/Panel";
 import { SortableFilterHeader, TableToolbar, type TableColumn, useTableControls } from "@/components/ui/TableControls";
 import { Tag } from "@/components/ui/Tag";
-import { RecordActionGroup } from "@/components/ui/Operations";
+import { RecordQuickActions, type RecordQuickAction } from "@/components/ui/Operations";
 import { BulkActionToolbar, BulkReviewModal } from "@/components/ui/Workflow";
 import { processLabel } from "@/lib/constants";
 import { resultText, statusTone } from "@/lib/format";
@@ -111,7 +111,7 @@ export function CandidatesView({
             <button
               key={option.value}
               type="button"
-              className={`min-h-8 rounded-md px-3 text-xs font-semibold ring-1 ring-inset transition-colors ${triageFilter === option.value ? "bg-primary text-white ring-primary" : "bg-white text-navy ring-[#C9D5E6] hover:bg-[#F8FAFD]"}`}
+              className={`min-h-8 rounded-lg px-3 text-xs font-semibold ring-1 ring-inset transition-colors ${triageFilter === option.value ? "bg-primary text-white ring-primary" : "bg-white text-navy ring-[#C9D5E6] hover:bg-[#F8FAFD]"}`}
               aria-pressed={triageFilter === option.value}
               onClick={() => setTriageFilter(option.value)}
             >
@@ -121,32 +121,19 @@ export function CandidatesView({
         </div>
         <div className="grid gap-3 md:hidden">
           {visibleRows.map((row) => (
-            <article key={row.candidate_id} className="rounded-md border border-[#D7DEE8] bg-white p-3 text-left shadow-[0_3px_10px_rgba(11,19,43,0.02)]">
+            <article key={row.candidate_id} className="ats-card p-3 text-left">
               <div className="mb-2 flex items-center justify-between gap-2">
-                <button
-                  type="button"
-                  className="rounded-sm text-left font-bold text-navy focus:outline-none focus:ring-2 focus:ring-primary/25"
-                  onClick={() => onOpen(row.candidate_id)}
-                >
+                <strong className="font-bold text-navy">
                   {row.name}
-                </button>
-                <div className="flex items-center gap-2">
-                  <DetailButton
-                    ariaLabel={translate(language, "viewCandidateDetailFor", { name: row.name })}
-                    onClick={() => onOpen(row.candidate_id)}
-                  />
-                  <Tag tone={statusTone(resultText(row.latest_result).toLowerCase()) as never}>{resultText(row.latest_result, language)}</Tag>
-                </div>
+                </strong>
+                <Tag tone={statusTone(resultText(row.latest_result).toLowerCase()) as never}>{resultText(row.latest_result, language)}</Tag>
               </div>
               <p className="text-sm font-semibold text-navy">{row.candidate_id}</p>
               <p className="text-sm font-medium text-slate">{row.group_position ?? "-"} - {row.site ?? "-"}</p>
               <p className="text-sm font-medium text-slate">{processLabel(row.latest_process, language)} - {row.person_in_charge ?? "-"}</p>
               <p className="text-sm font-medium text-slate">{translate(language, "lastTouchValue", { value: ageLabel(row) })}</p>
               <div className="mt-3">
-                <RecordActionGroup
-                  label={row.name}
-                  items={candidateActions(row, language)}
-                />
+                <RecordQuickActions label={translate(language, "recordActionsFor", { label: row.name })} actions={candidateActions(row, language, onOpen)} />
               </div>
             </article>
           ))}
@@ -194,13 +181,9 @@ export function CandidatesView({
                   </td>
                   <td className="px-3 py-3 font-semibold text-navy">{row.candidate_id}</td>
                   <td className="px-3 py-3">
-                    <button
-                      type="button"
-                      className="rounded-sm text-left font-bold text-navy focus:outline-none focus:ring-2 focus:ring-primary/25"
-                      onClick={() => onOpen(row.candidate_id)}
-                    >
+                    <span className="font-bold text-navy">
                       {row.name}
-                    </button>
+                    </span>
                   </td>
                   <td className="px-3 py-3 text-slate">{row.group_position ?? "-"}</td>
                   <td className="px-3 py-3 text-slate">{row.site ?? "-"}</td>
@@ -210,14 +193,7 @@ export function CandidatesView({
                   <td className="px-3 py-3 text-slate">{ageLabel(row)}</td>
                   <td className="px-3 py-3">
                     <div className="flex items-center justify-end gap-2">
-                      <DetailButton
-                        ariaLabel={translate(language, "viewCandidateDetailFor", { name: row.name })}
-                        onClick={() => onOpen(row.candidate_id)}
-                      />
-                      <RecordActionGroup
-                        label={row.name}
-                        items={candidateActions(row, language)}
-                      />
+                      <RecordQuickActions label={translate(language, "recordActionsFor", { label: row.name })} actions={candidateActions(row, language, onOpen)} />
                     </div>
                   </td>
                 </tr>
@@ -266,11 +242,9 @@ function exportCandidates(rows: EnrichedCandidate[], language: Language) {
   })));
 }
 
-function candidateActions(row: EnrichedCandidate, language: Language) {
+function candidateActions(row: EnrichedCandidate, language: Language, onOpen: (candidateId: string) => void): RecordQuickAction[] {
   return [
-    { id: "workspace", label: translate(language, "workspace"), href: `/workspace?type=${row.group_id ? "group" : "requisition"}&id=${encodeURIComponent(row.group_id ?? row.doc_ids[0] ?? "")}` },
-    ...row.doc_ids.map((docId) => ({ id: `requisition-${docId}`, label: `${translate(language, "requisition")} ${docId}`, href: `/requisitions?detailType=requisition&detailId=${encodeURIComponent(docId)}` })),
-    { id: "offers", label: translate(language, "workspaceRelatedOffers"), href: `/offers?offerSearch=${encodeURIComponent(row.candidate_id)}` }
+    { id: "view", label: translate(language, "viewCandidateDetailFor", { name: row.name }), icon: <Search size={16} aria-hidden="true" />, iconOnly: true, onSelect: () => onOpen(row.candidate_id) }
   ];
 }
 

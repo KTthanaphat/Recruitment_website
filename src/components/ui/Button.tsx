@@ -7,9 +7,9 @@ type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 };
 
 const variants = {
-  primary: "bg-primary text-white hover:bg-primary/90 active:bg-primary/95",
-  secondary: "bg-white text-navy ring-1 ring-inset ring-[#D7DEE8] hover:bg-[#F8FAFD] active:bg-[#EEF2F7]",
-  ghost: "bg-transparent text-slate hover:bg-[#F6F8FC] active:bg-lightgray",
+  primary: "bg-primary text-white shadow-[0_2px_8px_rgba(11,19,43,0.08)] hover:bg-[color:var(--app-primary-hover)] active:bg-primary/95",
+  secondary: "bg-[#E8F0FF] text-primary ring-1 ring-inset ring-[#C4D8FF] hover:bg-[#DDEAFF] active:bg-[#D2E2FF]",
+  ghost: "bg-transparent text-slate hover:bg-[#F6F8FC] hover:text-navy active:bg-lightgray",
   danger: "bg-scarlet text-white hover:bg-[#D72F25] active:bg-[#B92720]"
 };
 
@@ -23,7 +23,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   return (
     <button
       ref={ref}
-      className={`inline-flex touch-manipulation items-center justify-center gap-2 rounded-md border-0 font-semibold transition-colors duration-150 motion-safe:active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-lightgray disabled:text-cool disabled:shadow-none disabled:ring-0 ${variants[variant]} ${sizes[size]} ${className}`}
+    className={`inline-flex touch-manipulation items-center justify-center gap-2 rounded-lg border-0 font-semibold transition-colors duration-150 motion-safe:active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-lightgray disabled:text-cool disabled:shadow-none disabled:ring-0 ${variants[variant]} ${sizes[size]} ${className}`}
       {...props}
     >
       {icon}

@@ -6,7 +6,7 @@ import { PAGE_SIZE_OPTIONS, Pagination, paginateRows } from "@/components/ui/Pag
 import { Panel, SectionTitle } from "@/components/ui/Panel";
 import { SortableFilterHeader, TableToolbar, type TableColumn, useTableControls } from "@/components/ui/TableControls";
 import { Tag } from "@/components/ui/Tag";
-import { RecordActionGroup } from "@/components/ui/Operations";
+import { RecordQuickActions, type RecordQuickAction } from "@/components/ui/Operations";
 import { BulkActionToolbar, BulkReviewModal } from "@/components/ui/Workflow";
 import { formatDate } from "@/lib/format";
 import { offerStatusLabel, translate } from "@/lib/i18n/dictionary";
@@ -23,7 +23,6 @@ export function OffersView({
   allOffers,
   onNew,
   onOpenCandidate,
-  onOpenRequisition,
   requisitions
 }: {
   language: Language;
@@ -33,7 +32,6 @@ export function OffersView({
   allOffers: Offer[];
   onNew: () => void;
   onOpenCandidate: (candidateId: string) => void;
-  onOpenRequisition: (docId: string) => void;
   requisitions: EnrichedRequisition[];
 }) {
   const initialTableState = useMemo(() => readTableUrlState("offer"), []);
@@ -100,31 +98,18 @@ export function OffersView({
         />
         <div className="grid gap-3 md:hidden">
           {visibleRows.map((row) => (
-            <article key={row.offer_id} className="rounded-md border border-[#D7DEE8] bg-white p-3 shadow-[0_3px_10px_rgba(11,19,43,0.02)]">
+            <article key={row.offer_id} className="ats-card p-3">
               <div className="mb-2 flex items-center justify-between gap-2">
-                <button
-                  type="button"
-                  className="rounded-sm text-left font-bold text-navy focus:outline-none focus:ring-2 focus:ring-primary/25"
-                  onClick={() => onOpenCandidate(row.candidate_id)}
-                >
+                <strong className="font-bold text-navy">
                   {row.candidate_name ?? row.candidate_id}
-                </button>
-                <div className="flex items-center gap-2">
-                  <DetailButton
-                    ariaLabel={`View offer candidate detail for ${row.candidate_name ?? row.candidate_id}`}
-                    onClick={() => onOpenCandidate(row.candidate_id)}
-                  />
-                  {row.accepted_date ? <Tag tone="success">{formatDate(row.accepted_date, language)}</Tag> : <Tag tone="muted">{translate(language, "pending")}</Tag>}
-                </div>
+                </strong>
+                {row.accepted_date ? <Tag tone="success">{formatDate(row.accepted_date, language)}</Tag> : <Tag tone="muted">{translate(language, "pending")}</Tag>}
               </div>
               <p className="text-sm font-semibold text-navy">{row.doc_id}</p>
               <p className="text-sm font-medium text-slate">{row.position ?? "-"} - {translate(language, "startLower")} {formatDate(row.first_working_date, language)}</p>
               <p className="text-sm font-medium text-slate">{offerImpact(row, allOffers, requisitions)} - {translate(language, "age")} {ageLabel(row)}</p>
               <div className="mt-3">
-                <RecordActionGroup
-                  label={row.candidate_name ?? row.candidate_id}
-                  items={offerActions(row.doc_id, onOpenRequisition)}
-                />
+                <RecordQuickActions label={translate(language, "recordActionsFor", { label: row.candidate_name ?? row.candidate_id })} actions={offerActions(row, language, onOpenCandidate)} />
               </div>
             </article>
           ))}
@@ -171,13 +156,9 @@ export function OffersView({
                     />
                   </td>
                   <td className="px-3 py-3">
-                    <button
-                      type="button"
-                      className="rounded-sm text-left font-bold text-navy focus:outline-none focus:ring-2 focus:ring-primary/25"
-                      onClick={() => onOpenCandidate(row.candidate_id)}
-                    >
+                    <span className="font-bold text-navy">
                       {row.candidate_name ?? row.candidate_id}
-                    </button>
+                    </span>
                   </td>
                   <td className="px-3 py-3 font-semibold text-navy">{row.doc_id}</td>
                   <td className="px-3 py-3 text-slate">{row.position ?? "-"}</td>
@@ -188,14 +169,7 @@ export function OffersView({
                   <td className="px-3 py-3 text-slate">{ageLabel(row)}</td>
                   <td className="px-3 py-3">
                     <div className="flex items-center justify-end gap-2">
-                      <DetailButton
-                        ariaLabel={`View offer candidate detail for ${row.candidate_name ?? row.candidate_id}`}
-                        onClick={() => onOpenCandidate(row.candidate_id)}
-                      />
-                      <RecordActionGroup
-                        label={row.candidate_name ?? row.candidate_id}
-                        items={offerActions(row.doc_id, onOpenRequisition)}
-                      />
+                      <RecordQuickActions label={translate(language, "recordActionsFor", { label: row.candidate_name ?? row.candidate_id })} actions={offerActions(row, language, onOpenCandidate)} />
                     </div>
                   </td>
                 </tr>
@@ -246,11 +220,9 @@ function exportOffers(rows: EnrichedOffer[], allOffers: Offer[], requisitions: E
   })));
 }
 
-function offerActions(docId: string, onOpenRequisition: (docId: string) => void) {
+function offerActions(row: EnrichedOffer, language: Language, onOpenCandidate: (candidateId: string) => void): RecordQuickAction[] {
   return [
-    { id: "requisition", label: "Requisition", onSelect: () => onOpenRequisition(docId) },
-    { id: "workspace", label: "Workspace", href: `/workspace?type=requisition&id=${encodeURIComponent(docId)}` },
-    { id: "candidates", label: "Related candidates", href: `/candidates?candSearch=${encodeURIComponent(docId)}` }
+    { id: "view", label: translate(language, "viewOfferCandidateDetailFor", { name: row.candidate_name ?? row.candidate_id }), icon: <Search size={16} aria-hidden="true" />, iconOnly: true, onSelect: () => onOpenCandidate(row.candidate_id) }
   ];
 }
 

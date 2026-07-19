@@ -12,7 +12,7 @@ import type { Language } from "@/types/recruitment";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [language, setLanguage] = useState<Language>("en");
+  const [language, setLanguage] = useState<Language>("th");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [statusKey, setStatusKey] = useState("loginHelp");

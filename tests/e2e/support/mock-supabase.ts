@@ -1,11 +1,12 @@
 import { expect, type Page, type Route } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
-import type { DashboardData, Role } from "../../../src/types/recruitment";
+import type { DashboardData, Language, Role } from "../../../src/types/recruitment";
 
 type MockUserRole = Role;
 
 type MockSupabaseOptions = {
+  language?: Language | null;
   role?: MockUserRole;
 };
 
@@ -28,6 +29,7 @@ const roleUserIds: Record<MockUserRole, string> = {
 
 export async function installMockSupabase(page: Page, options: MockSupabaseOptions = {}): Promise<MockSupabaseContext> {
   const role = options.role ?? "admin_recruiter";
+  const language = options.language === undefined ? "en" : options.language;
   const data = createRecruitmentDataset(role);
   const rpcCalls: MockRpcCall[] = [];
   const supabaseUrl = readPublicSupabaseUrl();
@@ -36,7 +38,7 @@ export async function installMockSupabase(page: Page, options: MockSupabaseOptio
   const userEmail = `${role.replace("_", ".")}@qa.example.com`;
 
   await page.addInitScript(
-    ({ key, id, email }) => {
+    ({ key, id, email, language: savedLanguage }) => {
       window.localStorage.setItem(key, JSON.stringify({
         access_token: "qa-access-token",
         token_type: "bearer",
@@ -52,8 +54,9 @@ export async function installMockSupabase(page: Page, options: MockSupabaseOptio
           user_metadata: {}
         }
       }));
+      if (savedLanguage) window.localStorage.setItem("recruitment_lang", savedLanguage);
     },
-    { key: storageKey, id: userId, email: userEmail }
+    { key: storageKey, id: userId, email: userEmail, language }
   );
 
   await page.route("**/auth/v1/user", async (route) => {
@@ -88,8 +91,11 @@ export async function installMockSupabase(page: Page, options: MockSupabaseOptio
 }
 
 export async function expectWorkspaceReady(page: Page) {
+  const header = page.locator("[data-app-header-actions]");
   await expect(page.getByRole("button", { name: "Refresh" })).toBeVisible();
-  await expect(page.getByText("Recruitment records loaded.")).toBeVisible();
+  await expect(header.getByLabel("Site", { exact: true })).toBeVisible();
+  await expect(header.getByLabel("Person in Charge", { exact: true })).toBeVisible();
+  await expect(page.getByText("Loading recruitment records...")).toHaveCount(0);
 }
 
 function createRecruitmentDataset(activeRole: MockUserRole): DashboardData {
@@ -150,18 +156,18 @@ function createRecruitmentDataset(activeRole: MockUserRole): DashboardData {
       log(11, "C-OFFER", "Reference Check", 1, 1, "2026-07-05"),
       log(12, "C-OFFER", "Offer", null, 1, "2026-07-09"),
       log(13, "C-FAILED", "Phone Screen", 1, 1, "2026-07-04"),
-      log(14, "C-FAILED", "HR Interview", 0, 1, "2026-07-10"),
+      log(14, "C-FAILED", "HR Interview", 0, 1, "2026-07-17"),
       log(15, "C-OFFER-PASS", "Phone Screen", 1, 1, "2026-07-01"),
       log(16, "C-OFFER-PASS", "HR Interview", 1, 1, "2026-07-02"),
       log(17, "C-OFFER-PASS", "Line Interview", 1, 1, "2026-07-03"),
       log(18, "C-OFFER-PASS", "Test", 1, 1, "2026-07-04"),
       log(19, "C-OFFER-PASS", "Reference Check", 1, 1, "2026-07-05"),
-      log(20, "C-OFFER-PASS", "Offer", 1, 1, "2026-07-10"),
+      log(20, "C-OFFER-PASS", "Offer", 1, 1, "2026-07-17"),
       log(21, "C-OFFER-READY", "Offer", null, 1, "2026-07-11")
     ],
     offers: [
       offer(1, "C-OFFER", "REQ-KT2-1", null, null),
-      offer(2, "C-OFFER-PASS", "REQ-KT1-1", "2026-07-10", "2026-07-20")
+      offer(2, "C-OFFER-PASS", "REQ-KT1-1", "2026-07-17", "2026-07-20")
     ],
     sourcing_weekly_updates: [
       sourcingUpdate("GRP-ENG", "2026-06-29", 8),

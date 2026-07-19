@@ -67,7 +67,7 @@ export function DataQualityPanel({
         <div className={horizontal ? "flex snap-x gap-3 overflow-x-auto overscroll-x-contain pb-2" : "grid gap-2"} data-home-scroll-section={horizontal ? resolvedTitle : undefined}>
           {visible.map((issue) => (
             <div key={issue.id} className={horizontal ? "w-[min(22rem,82vw)] shrink-0 snap-start" : ""}>
-              <IssueRow disabledReason={disabledReasonForIssue?.(issue)} issue={issue} language={language} onResolve={onResolve} />
+              <DataQualityIssueCard disabledReason={disabledReasonForIssue?.(issue)} issue={issue} language={language} onResolve={onResolve} />
             </div>
           ))}
           {expandable && visibleLimit && issues.length > visibleLimit && !expanded ? (
@@ -93,12 +93,12 @@ export function InlineDataQualityIssues({ issues, language = "en" }: { issues: D
   if (issues.length === 0) return null;
   return (
     <div className="grid gap-2">
-      {issues.slice(0, 3).map((issue) => <IssueRow key={issue.id} issue={issue} compact language={language} />)}
+      {issues.slice(0, 3).map((issue) => <DataQualityIssueCard key={issue.id} issue={issue} compact language={language} />)}
     </div>
   );
 }
 
-function IssueRow({ compact = false, disabledReason, issue, language = "en", onResolve }: { compact?: boolean; disabledReason?: DisabledReason; issue: DataQualityIssue; language?: Language; onResolve?: (issue: DataQualityIssue) => void }) {
+export function DataQualityIssueCard({ compact = false, disabledReason, issue, language = "en", onResolve }: { compact?: boolean; disabledReason?: DisabledReason; issue: DataQualityIssue; language?: Language; onResolve?: (issue: DataQualityIssue) => void }) {
   const Icon = issue.severity === "blocking" ? ShieldAlert : issue.severity === "warning" ? AlertTriangle : Info;
   return (
     <div className={`grid gap-2 rounded-md border p-3 ${issueClass(issue.severity)} ${compact ? "text-xs" : "text-sm"} sm:grid-cols-[auto_1fr_auto] sm:items-start`}>

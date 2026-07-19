@@ -114,6 +114,7 @@ export function HiringWorkspaceView({
   const [urlState, setUrlState] = useState(() => readWorkspaceSelection(target, selectedGroupDocId));
   const [pickerOpen, setPickerOpen] = useState(() => !readWorkspaceSelection(target, selectedGroupDocId).target.type);
   const [pickerMode, setPickerMode] = useState<PickerMode>(() => readWorkspaceSelection(target, selectedGroupDocId).target.type === "group" ? "groups" : "requisitions");
+  const [contextCompact, setContextCompact] = useState(false);
 
   const requisitions = useMemo(() => enrichRequisitions(data), [data]);
   const candidates = useMemo(() => enrichCandidates(data), [data]);
@@ -181,6 +182,22 @@ export function HiringWorkspaceView({
     issues: contextIssues
   } : null;
   const journey = hiringContext ? deriveHiringJourney(hiringContext) : [];
+  const summaryItems = context ? [
+    { label: translate(language, "openHeadcountShort"), value: context.openHeadcount, tone: context.openHeadcount > 0 ? "warning" as const : "success" as const, helper: translate(language, "remainingDemand") },
+    { label: translate(language, "active"), value: `${activeCandidates.length}/${context.candidates.length}`, tone: "teal" as const, helper: translate(language, "activeTotal") },
+    { label: translate(language, "agingCandidates"), value: agingCandidates.length, tone: agingCandidates.length > 0 ? "danger" as const : "success" as const, helper: translate(language, "lastTouchOlderThan7Days") },
+    { label: translate(language, "offersSummaryLabel"), value: `${pendingOffers.length}/${acceptedOffers.length}`, tone: pendingOffers.length > 0 ? "warning" as const : "success" as const, helper: translate(language, "pendingAccepted") }
+  ] : [];
+
+  useEffect(() => {
+    function onScroll() {
+      setContextCompact(window.scrollY > 80);
+    }
+
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   function selectTarget(nextTarget: SelectedWorkspaceTarget) {
     const next = { target: nextTarget, section: "overview" as WorkspaceSection, docId: null };
@@ -225,8 +242,8 @@ export function HiringWorkspaceView({
     ];
 
   return (
-    <div className="grid min-w-0 gap-4">
-      {pickerOpen || !context ? null : <section className="sticky top-3 z-30 min-w-0 rounded-lg border border-[#D7DEE8] bg-white/95 p-3 shadow-[0_6px_18px_rgba(11,19,43,0.04)] backdrop-blur">
+    <div className="grid min-w-0 gap-5">
+      {pickerOpen || !context ? null : <section className={`sticky top-3 z-30 min-w-0 rounded-2xl border border-[#C9D5E6] bg-white/95 shadow-[0_8px_24px_rgba(11,19,43,0.07)] backdrop-blur transition-all duration-200 ${contextCompact ? "p-2.5" : "p-3"}`}>
         <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
           <div className="min-w-0">
             {context ? <WorkspaceBreadcrumbs
@@ -235,48 +252,64 @@ export function HiringWorkspaceView({
               group={context.groups[0] ? { label: context.groups[0].group_id, href: contextualHref(`/workspace?type=group&id=${encodeURIComponent(context.groups[0].group_id)}&section=overview`), current: !context.primaryRequisition, onSelect: () => showGroup(context.groups[0].group_id) } : undefined}
               requisition={context.primaryRequisition ? { label: context.primaryRequisition.doc_id, href: context.groups[0] ? contextualHref(`/workspace?type=group&id=${encodeURIComponent(context.groups[0].group_id)}&doc=${encodeURIComponent(context.primaryRequisition.doc_id)}&section=overview`) : contextualHref(`/workspace?type=requisition&id=${encodeURIComponent(context.primaryRequisition.doc_id)}&section=overview`), current: true } : undefined}
             /> : null}
-            <p className="text-xs font-medium uppercase tracking-normal text-slate">{translate(language, "workspace")}</p>
-            <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2">
-              <h1 className="min-w-0 break-words text-xl font-semibold text-navy">{context?.title ?? translate(language, "workspaceSelectTitle")}</h1>
+            <div className={`${contextCompact ? "mt-0.5" : "mt-1"} flex min-w-0 flex-wrap items-center gap-2`}>
+              <h1 className={`min-w-0 break-words font-semibold text-navy transition-all ${contextCompact ? "text-base leading-6" : "text-xl"}`}>{context?.title ?? translate(language, "workspaceSelectTitle")}</h1>
               {readiness ? <Tag tone={readiness.tone}>{fillReadinessLabel(language, readiness.label)}</Tag> : null}
               {sla ? <Tag tone={sla.isOverdue ? "danger" : "muted"}>{sla.label}</Tag> : null}
             </div>
-            <p className="mt-1 break-words text-sm font-medium text-slate">{context?.meta ?? "Choose a requisition or sourcing group to focus the workspace."}</p>
+            {!contextCompact ? <p className="mt-1 break-words text-sm font-medium text-slate">{context?.meta ?? translate(language, "chooseWorkspacePrompt")}</p> : null}
           </div>
           <RecordActionGroup label={translate(language, "workspace")} primary={primaryAction} items={secondaryActions} />
         </div>
 
         {context ? (
           <div className="mt-3 min-w-0">
-            <OperationalSummaryStrip
-              items={[
-                { label: "Open HC", value: context.openHeadcount, tone: context.openHeadcount > 0 ? "warning" : "success", helper: "Remaining demand" },
-                { label: "Active", value: `${activeCandidates.length}/${context.candidates.length}`, tone: "teal", helper: "Active / total" },
-                { label: "Aging", value: agingCandidates.length, tone: agingCandidates.length > 0 ? "danger" : "success", helper: ">7 days since touch" },
-                { label: "Offers", value: `${pendingOffers.length}/${acceptedOffers.length}`, tone: pendingOffers.length > 0 ? "warning" : "success", helper: "Pending / accepted" }
-              ]}
-            />
-          </div>
-        ) : null}
-
-        {context && !pickerOpen ? (
-          <div role="tablist" aria-label={translate(language, "hiringWorkspaceSections")} className="mt-3 flex min-w-0 gap-1 overflow-x-auto border-t border-[#D7DEE8] pt-3">
-            {workspaceSections.map((section) => {
-              const active = urlState.section === section;
-              return (
-                <button key={section} id={`workspace-tab-${section}`} type="button" role="tab" aria-selected={active} aria-controls={`workspace-panel-${section}`} className={`min-h-9 shrink-0 border-b-2 px-3 text-sm font-semibold transition-colors ${active ? "border-primary text-primary" : "border-transparent text-slate hover:border-[#C9D5E6] hover:text-navy"}`} onClick={() => selectSection(section)}>
-                  {workspaceSectionLabel(language, section)}
-                </button>
-              );
-            })}
+            {contextCompact ? (
+              <div className="flex min-w-0 flex-wrap gap-2">
+                {summaryItems.map((item) => (
+                  <span key={item.label} className="inline-flex min-h-7 items-center gap-1.5 rounded-lg border border-[#E4E9F2] bg-[#F8FAFD] px-2.5 text-xs font-semibold text-slate">
+                    {item.label}
+                    <strong className="text-navy">{item.value}</strong>
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <OperationalSummaryStrip items={summaryItems} />
+            )}
           </div>
         ) : null}
       </section>}
 
+      {context && !pickerOpen ? (
+        <div role="tablist" aria-label={translate(language, "hiringWorkspaceSections")} className="-mb-5 flex min-w-0 gap-0 overflow-x-auto rounded-t-2xl border-b border-[#C9D5E6] bg-[#EEF3F8] px-1 pt-1">
+          {workspaceSections.map((section) => {
+            const active = urlState.section === section;
+            return (
+              <button
+                key={section}
+                id={`workspace-tab-${section}`}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                aria-controls={`workspace-panel-${section}`}
+                className={`min-h-10 shrink-0 rounded-t-xl border px-4 text-sm font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-primary/25 ${
+                  active
+                    ? "relative z-10 border-[#C9D5E6] border-b-white bg-white text-navy shadow-[0_-3px_12px_rgba(11,19,43,0.05)]"
+                    : "border-transparent bg-transparent text-slate hover:bg-white/80 hover:text-navy"
+                }`}
+                onClick={() => selectSection(section)}
+              >
+                {workspaceSectionLabel(language, section)}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+
       {pickerOpen || !context ? (
         <WorkspacePicker candidates={candidates} canCreate={canWrite && Boolean(onDispatchAction)} groups={activeOpenGroups} invalidTarget={Boolean(selectedTarget.type && selectedTarget.id && !context)} language={language} mode={pickerMode} onCreate={() => onDispatchAction?.({ kind: "requisition.create" })} onModeChange={setPickerMode} onSelect={selectTarget} requisitions={activeOpenRequisitions} />
       ) : (
-        <div id={`workspace-panel-${urlState.section}`} role="tabpanel" aria-labelledby={`workspace-tab-${urlState.section}`} className="min-w-0">
+        <div id={`workspace-panel-${urlState.section}`} role="tabpanel" aria-labelledby={`workspace-tab-${urlState.section}`} className="min-w-0 rounded-b-2xl rounded-tr-2xl border border-[#C9D5E6] border-t-0 bg-white p-4 shadow-[0_8px_24px_rgba(11,19,43,0.05)]">
           {hasMultipleGroupDocuments ? <GroupDocumentSelector language={language} requisitions={context.requisitions} selectedDocId={context.primaryRequisition?.doc_id ?? null} onSelect={selectGroupDocument} /> : null}
           {urlState.section === "overview" ? <OverviewSection canWrite={canWrite} context={context} contextIssues={contextIssues} journey={journey} language={language} onDispatchAction={onDispatchAction} /> : null}
           {urlState.section === "pipeline" ? pipelineSlot : null}
@@ -293,11 +326,11 @@ function OverviewSection({ canWrite, context, contextIssues, journey, language, 
   const requisition = context.primaryRequisition;
   const actionDisabled = !requisition || !canWrite || !onDispatchAction;
   const actionTitle = !requisition
-    ? "Select a requisition before editing it."
+    ? translate(language, "selectRequisitionBeforeEditing")
     : !canWrite
-      ? "Your role can monitor this hiring case but cannot update it."
+      ? translate(language, "roleCannotUpdateWorkspace")
       : !onDispatchAction
-        ? "This workspace action is not connected in the current screen."
+        ? translate(language, "workspaceActionNotConnected")
         : undefined;
 
   return (
@@ -309,8 +342,8 @@ function OverviewSection({ canWrite, context, contextIssues, journey, language, 
             eyebrow={translate(language, "workspaceCurrentPath")}
             action={requisition ? (
               <div className="flex flex-wrap gap-2">
-                <Button type="button" size="sm" variant="secondary" disabled={actionDisabled} title={actionTitle} onClick={() => onDispatchAction?.({ kind: "requisition.edit", docId: requisition.doc_id })}>Edit</Button>
-                <Button type="button" size="sm" variant="secondary" disabled={actionDisabled} title={actionTitle} onClick={() => onDispatchAction?.({ kind: "requisition.status", docId: requisition.doc_id })}>Change Status</Button>
+                <Button type="button" size="sm" variant="secondary" disabled={actionDisabled} title={actionTitle} onClick={() => onDispatchAction?.({ kind: "requisition.edit", docId: requisition.doc_id })}>{translate(language, "edit")}</Button>
+                <Button type="button" size="sm" variant="secondary" disabled={actionDisabled} title={actionTitle} onClick={() => onDispatchAction?.({ kind: "requisition.status", docId: requisition.doc_id })}>{translate(language, "changeStatus")}</Button>
               </div>
             ) : null}
           />
@@ -398,10 +431,10 @@ function isActiveOpenRequisition(row: EnrichedRequisition) {
 
 function GroupDocumentSelector({ language, requisitions, selectedDocId, onSelect }: { language: Language; requisitions: EnrichedRequisition[]; selectedDocId: string | null; onSelect: (docId: string) => void }) {
   return (
-    <Panel variant="subtle" className="mb-4">
+        <Panel variant="subtle" className="mb-4">
       <SectionTitle title={translate(language, "workspaceRequisitionContext")} eyebrow={translate(language, "workspaceRequisitionContextHelp")} />
       <div className="flex min-w-0 gap-2 overflow-x-auto pb-1">
-        {requisitions.map((requisition) => <button key={requisition.doc_id} type="button" aria-pressed={selectedDocId === requisition.doc_id} className={`min-h-9 shrink-0 rounded-md px-3 text-sm font-semibold ring-1 ring-inset transition-colors ${selectedDocId === requisition.doc_id ? "bg-primary text-white ring-primary" : "bg-white text-navy ring-[#C9D5E6] hover:bg-[#F8FAFD]"}`} onClick={() => onSelect(requisition.doc_id)}>{requisition.doc_id} - {requisition.position}</button>)}
+        {requisitions.map((requisition) => <button key={requisition.doc_id} type="button" aria-pressed={selectedDocId === requisition.doc_id} className={`min-h-9 shrink-0 rounded-lg px-3 text-sm font-semibold ring-1 ring-inset transition-colors ${selectedDocId === requisition.doc_id ? "bg-primary text-white ring-primary" : "bg-white text-navy ring-[#C9D5E6] hover:bg-[#F8FAFD]"}`} onClick={() => onSelect(requisition.doc_id)}>{requisition.doc_id} - {requisition.position}</button>)}
       </div>
     </Panel>
   );
@@ -415,14 +448,14 @@ function WorkspacePicker({ candidates, canCreate, groups, invalidTarget, languag
   const rows = mode === "requisitions" ? filteredRequisitions.slice(0, 12) : filteredGroups.slice(0, 12);
   return (
     <Panel className="min-w-0">
-      <div className="mb-4 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-xs font-medium uppercase tracking-normal text-slate">{translate(language, "workspacePicker")}</p><h2 className="mt-1 text-lg font-semibold text-navy">{translate(language, "workspaceSelectTitle")}</h2>{invalidTarget ? <p className="mt-1 text-sm font-medium text-orange">{translate(language, "workspaceUrlNotFound")}</p> : null}</div><div className="flex flex-wrap items-center gap-2">{canCreate ? <Button type="button" size="sm" onClick={onCreate}>{translate(language, "newRequisition")}</Button> : null}<div className="inline-flex w-fit rounded-md border border-[#C9D5E6] bg-[#F8FAFD] p-1" aria-label={translate(language, "workspaceRecordType")}>{(["requisitions", "groups"] as PickerMode[]).map((item) => <button key={item} type="button" className={`min-h-8 rounded px-3 text-sm font-semibold transition-colors ${mode === item ? "bg-white text-primary shadow-sm" : "text-slate hover:text-navy"}`} aria-pressed={mode === item} onClick={() => onModeChange(item)}>{item === "requisitions" ? translate(language, "requisitions") : translate(language, "workspaceGroups")}</button>)}</div></div></div>
-      <label className="grid gap-1 text-sm font-semibold text-navy">{translate(language, "workspaceSearch")}<input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={translate(language, "workspaceSearchPlaceholder")} className="min-h-10 w-full min-w-0 rounded-md border border-[#C9D5E6] bg-white px-3 text-sm font-medium text-navy outline-none placeholder:text-cool focus:border-primary focus:ring-2 focus:ring-primary/20" /></label>
+      <div className="mb-4 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-xs font-medium uppercase tracking-normal text-slate">{translate(language, "workspacePicker")}</p><h2 className="mt-1 text-lg font-semibold text-navy">{translate(language, "workspaceSelectTitle")}</h2>{invalidTarget ? <p className="mt-1 text-sm font-medium text-orange">{translate(language, "workspaceUrlNotFound")}</p> : null}</div><div className="flex flex-wrap items-center gap-2">{canCreate ? <Button type="button" size="sm" onClick={onCreate}>{translate(language, "newRequisition")}</Button> : null}<div className="inline-flex w-fit rounded-xl border border-[#C9D5E6] bg-[#F8FAFD] p-1" aria-label={translate(language, "workspaceRecordType")}>{(["requisitions", "groups"] as PickerMode[]).map((item) => <button key={item} type="button" className={`min-h-8 rounded-lg px-3 text-sm font-semibold transition-colors ${mode === item ? "bg-white text-primary shadow-sm" : "text-slate hover:text-navy"}`} aria-pressed={mode === item} onClick={() => onModeChange(item)}>{item === "requisitions" ? translate(language, "requisitions") : translate(language, "workspaceGroups")}</button>)}</div></div></div>
+      <label className="grid gap-1 text-sm font-semibold text-navy">{translate(language, "workspaceSearch")}<input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={translate(language, "workspaceSearchPlaceholder")} className="min-h-10 w-full min-w-0 rounded-xl border border-[#C9D5E6] bg-white px-3 text-sm font-medium text-navy outline-none placeholder:text-cool focus:border-primary focus:ring-2 focus:ring-primary/20" /></label>
       <div className="mt-3 grid min-w-0 gap-2 sm:grid-cols-2 xl:grid-cols-3">
         {rows.length === 0 ? <EmptyState message={translate(language, "noMatchingWorkspaces")} /> : null}
         {mode === "requisitions" ? (rows as EnrichedRequisition[]).map((row) => {
           const candidateCount = candidates.filter((candidate) => candidate.doc_ids.includes(row.doc_id)).length;
-          return <button key={row.doc_id} type="button" className="grid min-w-0 gap-2 rounded-md border border-[#D7DEE8] bg-white p-3 text-left shadow-[0_3px_10px_rgba(11,19,43,0.02)] transition hover:border-[#C9D5E6] hover:bg-[#F8FAFD]" onClick={() => onSelect({ type: "requisition", id: row.doc_id })}><div className="flex min-w-0 items-start justify-between gap-2"><strong className="break-words text-navy">{row.doc_id}</strong><Tag tone={row.open_headcount > 0 ? "warning" : "success"}>{translate(language, "openCount", { count: row.open_headcount })}</Tag></div><p className="break-words font-medium text-slate">{row.position}</p><p className="text-xs font-medium text-cool">{row.site} - {row.person_in_charge ?? "-"} - {translate(language, "candidatesCount", { count: candidateCount })}</p></button>;
-        }) : (rows as EnrichedSourcingGroup[]).map((group) => <button key={group.group_id} type="button" className="grid min-w-0 gap-2 rounded-md border border-[#D7DEE8] bg-white p-3 text-left shadow-[0_3px_10px_rgba(11,19,43,0.02)] transition hover:border-[#C9D5E6] hover:bg-[#F8FAFD]" onClick={() => onSelect({ type: "group", id: group.group_id })}><div className="flex min-w-0 items-start justify-between gap-2"><strong className="break-words text-navy">{group.group_id}</strong><Tag tone="muted">{translate(language, "candidatesCount", { count: group.candidate_count })}</Tag></div><p className="break-words font-medium text-slate">{group.group_position}</p><p className="text-xs font-medium text-cool">{group.sites.join(", ")} - {group.owners.join(", ") || "-"}</p></button>)}
+          return <button key={row.doc_id} type="button" className="ats-card grid min-w-0 gap-2 p-3 text-left" onClick={() => onSelect({ type: "requisition", id: row.doc_id })}><div className="flex min-w-0 items-start justify-between gap-2"><strong className="break-words text-navy">{row.doc_id}</strong><Tag tone={row.open_headcount > 0 ? "warning" : "success"}>{translate(language, "openCount", { count: row.open_headcount })}</Tag></div><p className="break-words font-medium text-slate">{row.position}</p><p className="text-xs font-medium text-cool">{row.site} - {row.person_in_charge ?? "-"} - {translate(language, "candidatesCount", { count: candidateCount })}</p></button>;
+        }) : (rows as EnrichedSourcingGroup[]).map((group) => <button key={group.group_id} type="button" className="ats-card grid min-w-0 gap-2 p-3 text-left" onClick={() => onSelect({ type: "group", id: group.group_id })}><div className="flex min-w-0 items-start justify-between gap-2"><strong className="break-words text-navy">{group.group_id}</strong><Tag tone="muted">{translate(language, "candidatesCount", { count: group.candidate_count })}</Tag></div><p className="break-words font-medium text-slate">{group.group_position}</p><p className="text-xs font-medium text-cool">{group.sites.join(", ")} - {group.owners.join(", ") || "-"}</p></button>)}
       </div>
     </Panel>
   );

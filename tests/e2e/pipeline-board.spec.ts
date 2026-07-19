@@ -6,20 +6,16 @@ test("pipeline board renders active, failed, passed, aging, and filtered candida
   await page.goto("/pipeline");
   await expectWorkspaceReady(page);
 
-  await expect(page.getByRole("heading", { name: "Phone Screen", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Phone Screening", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "No activity", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "HR Interview", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Line Interview", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Test", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Reference Check", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Offer", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Phone Screen", exact: true })).toHaveCSS("color", "rgb(255, 59, 48)");
+  await expect(page.getByRole("heading", { name: "Phone Screening", exact: true })).toHaveCSS("color", "rgb(255, 59, 48)");
   await expect(page.getByRole("heading", { name: "No activity", exact: true })).toHaveCSS("color", "rgb(11, 19, 43)");
-  const agingWarning = page.getByRole("button", { name: "1 aging candidate in Phone Screen" });
-  await agingWarning.focus();
-  await expect(page.getByRole("tooltip", { name: "1 candidates have exceeded 7 days in this stage" })).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("tooltip", { name: "1 candidates have exceeded 7 days in this stage" })).toHaveCount(0);
+  await expect(page.getByText("SLA 2 - Oldest 24d - Average 17d")).toHaveCount(0);
 
   await expect(page.getByText("Pat Phone")).toBeVisible();
   await expect(page.getByText("Nora No Activity")).toBeVisible();
@@ -32,7 +28,7 @@ test("pipeline board renders active, failed, passed, aging, and filtered candida
   await expect(page.getByText("Passed Offer - Last 7 Days")).toBeVisible();
   await expect(page.getByText("Olivia Offer Pass")).toBeVisible();
   await expect(page.locator("#pipeline-candidate-C-AGING").getByRole("button", { name: "Candidate actions for Avery Aging" })).toHaveCSS("color", "rgb(255, 59, 48)");
-  await expect(page.locator("#pipeline-candidate-C-PHONE").getByRole("button", { name: "Candidate actions for Pat Phone" })).not.toHaveCSS("color", "rgb(255, 59, 48)");
+  await expect(page.locator("#pipeline-candidate-C-PHONE").getByRole("button", { name: "Candidate actions for Pat Phone" })).toHaveCSS("color", "rgb(255, 59, 48)");
 
   const filterButton = page.getByRole("button", { name: "Pipeline filters" });
   const siteGroupButton = page.getByRole("button", { name: "Site" });
@@ -53,7 +49,7 @@ test("pipeline board renders active, failed, passed, aging, and filtered candida
   await expect(page.getByText("Tina Test")).toBeVisible();
   await expect(page.getByText("Pat Phone")).toHaveCount(0);
 
-  await page.getByLabel("Site").selectOption("KT1");
+  await page.locator("[data-app-header-actions]").getByLabel("Site", { exact: true }).selectOption("KT1");
   await expect(page.getByText("Tina Test")).toBeVisible();
   await expect(page.getByText("Pat Phone")).toHaveCount(0);
 });
