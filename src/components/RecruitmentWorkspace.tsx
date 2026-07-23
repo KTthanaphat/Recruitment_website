@@ -103,6 +103,13 @@ type PendingAction = {
   route?: "rpc" | "api";
 };
 
+type DestructiveAction = {
+  title: string;
+  summary: string;
+  endpoint: string;
+  payload: Record<string, unknown>;
+};
+
 type ProcessDefaults = {
   candidate_id?: string;
   recruitment_process?: string;
@@ -209,6 +216,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const [sourcingWeek, setSourcingWeek] = useState(currentWeekStart());
   const [activeModal, setActiveModal] = useState<ModalName>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [destructiveAction, setDestructiveAction] = useState<DestructiveAction | null>(null);
   const [offerPassHandoff, setOfferPassHandoff] = useState<OfferPassHandoff | null>(null);
   const [processDefaults, setProcessDefaults] = useState<ProcessDefaults>({});
   const [modalDefaults, setModalDefaults] = useState<ModalDefaults>({});
@@ -339,10 +347,12 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const canWrite = canWriteRole(role);
   const canManageSetup = canManageSetupRole(role);
   const canManageUsers = canManageUsersRole(role);
+  const canDeleteRecords = role === "system_admin";
 
   const enrichedRequisitions = useMemo(() => enrichRequisitions(data), [data]);
   const enrichedCandidates = useMemo(() => enrichCandidates(data), [data]);
   const enrichedOffers = useMemo(() => enrichOffers(data), [data]);
+  const offeredCandidateIds = useMemo(() => new Set(data.offers.map((offer) => offer.candidate_id)), [data.offers]);
   const enrichedSourcingGroups = useMemo(() => enrichSourcingGroups(data, sourcingWeek), [data, sourcingWeek]);
   const staleSourcingGroups = useMemo(() => staleOpenSourcingGroups(data), [data]);
   const dataQualityIssues = useMemo(() => deriveDataQualityIssues(data), [data]);
@@ -482,6 +492,10 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     const currentIndex = ACTIVE_PIPELINE_STAGES.indexOf(candidate.latest_process as ProcessStage);
     const targetIndex = ACTIVE_PIPELINE_STAGES.indexOf(nextStage);
     if (currentIndex === -1 || targetIndex <= currentIndex) return;
+    if (candidate.latest_result !== null) {
+      setStatus("Pipeline movement requires a pending current stage. Create the next pending stage before moving forward.");
+      return;
+    }
     const passedStages = ACTIVE_PIPELINE_STAGES.slice(currentIndex, targetIndex);
     const currentRound = latestRoundForStage(logs, candidate.latest_process as ProcessStage);
     setProcessDefaults({
@@ -688,6 +702,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     const isPipelineTestExit = modal === "pipeline_pass"
       && actionPayload.target_stage === "Reference Check"
       && Array.isArray(actionPayload.stages)
+      && actionPayload.stages.length === 1
       && actionPayload.stages.some((stage) => typeof stage === "object" && stage !== null && "stage" in stage && stage.stage === "Test");
     const endpoint = modal === "user"
       ? "/api/admin/users"
@@ -756,6 +771,38 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       }
     } catch (saveError) {
       setStatus(saveError instanceof Error ? saveError.message : "Save failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmDestructiveAction() {
+    if (!destructiveAction || !supabase) return;
+
+    const savedAction = destructiveAction;
+    setBusy(true);
+    setStatus(translate(language, "destructiveActionRunning"));
+    try {
+      const { data: rpcResult, error: rpcError } = await supabase.rpc(savedAction.endpoint, { payload: savedAction.payload });
+      if (rpcError) throw new Error(rpcError.message);
+      const result = (rpcResult ?? { ok: true }) as RpcResult;
+      if (result.error) throw new Error(result.error);
+
+      setDestructiveAction(null);
+      const entity = valueAsString(savedAction.payload.entity);
+      const id = valueAsString(savedAction.payload.id);
+      if ((entity === "requisition" && detail?.type === "requisition" && detail.id === id)
+        || (entity === "candidate" && detail?.type === "candidate" && detail.id === id)) {
+        setDetail(null);
+      }
+      if (entity === "position_group" && workspaceTarget.type === "group" && workspaceTarget.id === id) {
+        setWorkspaceTarget({ type: null, id: null });
+        pushWorkspaceUrlState({ type: null, id: null, doc: null, section: "overview", focusType: null, focusId: null });
+      }
+      await loadData();
+      setStatus(translate(language, "destructiveActionSucceeded"));
+    } catch (saveError) {
+      setStatus(saveError instanceof Error ? saveError.message : translate(language, "destructiveActionFailed"));
     } finally {
       setBusy(false);
     }
@@ -846,9 +893,17 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     () => ({ language, site: filters.site, owner: filters.owner, sourcingWeek }),
     [filters.owner, filters.site, language, sourcingWeek]
   );
+  const prepareDestructiveRpcAction = useCallback((endpoint: string, payload: Record<string, unknown>, summary: string) => {
+    setDestructiveAction({
+      title: translate(language, "confirmDestructiveAction"),
+      summary,
+      endpoint,
+      payload
+    });
+  }, [language]);
   const detailBody = useMemo(
-    () => buildDetailBodyV2(detail, data, language, canWrite, openProcessFromDetail, navigationContext, openDetailRequisitionChange, openDetailCandidateChange),
-    [canWrite, detail, data, language, navigationContext, openDetailCandidateChange, openDetailRequisitionChange, openProcessFromDetail]
+    () => buildDetailBodyV2(detail, data, language, canWrite, canDeleteRecords, openProcessFromDetail, navigationContext, openDetailRequisitionChange, openDetailCandidateChange, prepareDestructiveRpcAction),
+    [canDeleteRecords, canWrite, detail, data, language, navigationContext, openDetailCandidateChange, openDetailRequisitionChange, openProcessFromDetail, prepareDestructiveRpcAction]
   );
 
   if (!hasSupabaseConfig) {
@@ -980,12 +1035,14 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
               profile={data.profile}
               recruitmentLogs={data.recruitment_logs}
               rows={workspaceScope.candidates}
+              offeredCandidateIds={offeredCandidateIds}
               onNewCandidate={workspaceScope.docGroupId ? () => dispatchWorkspaceAction({ kind: "candidate.create", docGroupId: workspaceScope.docGroupId! }) : undefined}
               onOpen={(id) => setDetail({ type: "candidate", id })}
               onMove={openProcessForMove}
               onFailCurrentStage={openFailCurrentStage}
               onMaintainTest={openMaintainTest}
               onStartProcess={openInitialProcessUpdate}
+              onCreateOffer={(candidate) => dispatchWorkspaceAction({ kind: "offer.upsert", candidateId: candidate.candidate_id })}
               onUpdateOffer={openOfferUpdate}
             />
           )}
@@ -1002,7 +1059,10 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
               profile={data.profile}
               weekStart={sourcingWeek}
               onGroup={() => dispatchWorkspaceAction({ kind: "group.create", docId: workspaceScope.requisitions[0]?.doc_id ?? undefined })}
-              onMatch={workspaceScope.requisitions[0] ? () => dispatchWorkspaceAction({ kind: "group.match", docId: workspaceScope.requisitions[0].doc_id, groupId: workspaceScope.groupIds[0] }) : undefined}
+              onMatch={workspaceScope.requisitions[0] ? (defaults) => dispatchWorkspaceAction({ kind: "group.match", docId: defaults?.doc_id ?? workspaceScope.requisitions[0].doc_id, groupId: defaults?.group_id ?? workspaceScope.groupIds[0] }) : undefined}
+              onUnmatch={(payload, summary) => prepareDestructiveRpcAction("app_unmatch_group_requisition", payload, summary)}
+              onDeleteRecord={(payload, summary) => prepareDestructiveRpcAction("app_delete_recruitment_record", payload, summary)}
+              canDeleteRecords={canDeleteRecords}
               onSaveSourcing={(payload, summary) => prepareRpcAction("app_upsert_sourcing_weekly_update", payload, summary)}
               onWeekChange={setSourcingWeek}
             />
@@ -1023,7 +1083,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       ) : null}
 
       {initialView === "pipeline" ? (
-        <PipelineBoardView language={language} rows={filteredCandidates} recruitmentLogs={data.recruitment_logs} profile={data.profile} dataQualityIssues={dataQualityIssues} canWrite={canWrite} onNewCandidate={() => setActiveModal("candidate")} onAddUpdate={() => setActiveModal("process")} onOpen={(id) => setDetail({ type: "candidate", id })} onMove={openProcessForMove} onFailCurrentStage={openFailCurrentStage} onMaintainTest={openMaintainTest} onStartProcess={openInitialProcessUpdate} onUpdateOffer={openOfferUpdate} />
+        <PipelineBoardView language={language} rows={filteredCandidates} recruitmentLogs={data.recruitment_logs} profile={data.profile} dataQualityIssues={dataQualityIssues} canWrite={canWrite} offeredCandidateIds={offeredCandidateIds} onNewCandidate={() => setActiveModal("candidate")} onAddUpdate={() => setActiveModal("process")} onOpen={(id) => setDetail({ type: "candidate", id })} onMove={openProcessForMove} onFailCurrentStage={openFailCurrentStage} onMaintainTest={openMaintainTest} onStartProcess={openInitialProcessUpdate} onCreateOffer={(candidate) => dispatchWorkspaceAction({ kind: "offer.upsert", candidateId: candidate.candidate_id })} onUpdateOffer={openOfferUpdate} />
       ) : null}
 
       {initialView === "offers" ? <OffersView language={language} rows={filteredOffers} allOffers={data.offers} requisitions={filteredRequisitions} profile={data.profile} canWrite={canWrite} onNew={() => setActiveModal("offer")} onOpenCandidate={(id) => setDetail({ type: "candidate", id })} /> : null}
@@ -1039,7 +1099,13 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
           onWeekChange={setSourcingWeek}
           onSaveSourcing={(payload, summary) => prepareRpcAction("app_upsert_sourcing_weekly_update", payload, summary)}
           onGroup={() => setActiveModal("group")}
-          onMatch={() => setActiveModal("match")}
+          onMatch={(defaults) => {
+            setModalDefaults(defaults ?? {});
+            setActiveModal("match");
+          }}
+          onUnmatch={(payload, summary) => prepareDestructiveRpcAction("app_unmatch_group_requisition", payload, summary)}
+          onDeleteRecord={(payload, summary) => prepareDestructiveRpcAction("app_delete_recruitment_record", payload, summary)}
+          canDeleteRecords={canDeleteRecords}
         />
       ) : null}
 
@@ -1086,6 +1152,14 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
         onConfirm={confirmPendingAction}
       />
 
+      <DestructiveConfirmModal
+        language={language}
+        action={destructiveAction}
+        busy={busy}
+        onClose={() => setDestructiveAction(null)}
+        onConfirm={confirmDestructiveAction}
+      />
+
       <OfferPassHandoffPrompt
         handoff={offerPassHandoff}
         onCreateOffer={openOfferFromHandoff}
@@ -1098,7 +1172,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
         title={detailBody.title}
         headerMeta={detailBody.headerMeta}
         headerActions={detailBody.headerActions}
-        inactive={Boolean(activeModal || pendingAction || offerPassHandoff)}
+        inactive={Boolean(activeModal || pendingAction || destructiveAction || offerPassHandoff)}
         onClose={() => setDetail(null)}
       >
         {detailBody.body}
@@ -1199,12 +1273,13 @@ function buildPayload(modal: Exclude<ModalName, null>, formData: FormData) {
     const payload = {
       candidate_id: candidateId,
       target_stage: emptyToNull(formData.get("target_stage")),
+      audit_mode: "pending_then_pass",
       stages,
       extra_test_rounds: extraTestRounds
     };
     requireFields(payload, ["candidate_id", "target_stage"]);
-    if (stages.length === 0 || stages.some((stage) => !stage.stage || !stage.log_date)) {
-      throw new Error("Every passed stage needs a stage and date.");
+    if (stages.length === 0 || stages.some((stage) => !stage.stage || !stage.log_date || !stage.round)) {
+      throw new Error("Every crossed stage needs a stage, result date, and round.");
     }
     if (extraTestRounds.some((round) => !round.log_date)) {
       throw new Error("Every additional Test round needs a date.");
@@ -1373,6 +1448,7 @@ function isIsoDateInput(value: string | null | undefined): value is string {
 function validateProcessUpdatePayload(data: DashboardData, payload: Record<string, unknown>) {
   const candidateId = valueAsString(payload.candidate_id);
   const selectedStage = valueAsString(payload.recruitment_process) as ProcessStage;
+  const selectedResult = valueAsString(payload.result) || null;
   const logs = latestLogsForCandidate(data, candidateId);
   const blockedReason = processUpdateBlockReason(logs);
   if (blockedReason) throw new Error(blockedReason);
@@ -1380,6 +1456,22 @@ function validateProcessUpdatePayload(data: DashboardData, payload: Record<strin
   const allowedStages = availableProcessUpdateStages(logs);
   if (!allowedStages.includes(selectedStage)) {
     throw new Error("Cannot update to a previous pipeline stage.");
+  }
+  const latest = logs[0];
+  if (!latest) {
+    if (selectedStage !== "Phone Screen" || selectedResult !== null) {
+      throw new Error("A candidate with no activity must start with Phone Screen as a pending stage.");
+    }
+    return;
+  }
+  if (latest.result === null) {
+    if (selectedStage !== latest.recruitment_process || selectedResult === null) {
+      throw new Error("Complete the current pending stage with a result before opening a later stage.");
+    }
+    return;
+  }
+  if (latest.result === 1 && selectedResult !== null) {
+    throw new Error("Open the next stage as pending before recording its result.");
   }
 }
 
@@ -1389,12 +1481,15 @@ function processUpdateBlockReason(logs: RecruitmentLog[]) {
   return "";
 }
 
-function availableProcessUpdateStages(logs: RecruitmentLog[]) {
+function availableProcessUpdateStages(logs: RecruitmentLog[]): ProcessStage[] {
   const blockedReason = processUpdateBlockReason(logs);
   if (blockedReason) return [];
   const latest = logs[0];
-  const latestIndex = PROCESS_UPDATE_STAGES.indexOf(latest?.recruitment_process as ProcessStage);
-  return PROCESS_UPDATE_STAGES.filter((stage) => latestIndex === -1 || PROCESS_UPDATE_STAGES.indexOf(stage) >= latestIndex);
+  if (!latest) return ["Phone Screen"];
+  if (latest.result === null) return [latest.recruitment_process];
+  const latestIndex = PROCESS_UPDATE_STAGES.indexOf(latest.recruitment_process);
+  const nextStage = PROCESS_UPDATE_STAGES[latestIndex + 1];
+  return nextStage ? [nextStage] : [];
 }
 
 function latestRoundForStage(logs: RecruitmentLog[], stage: ProcessStage) {
@@ -2567,6 +2662,35 @@ function ConfirmModal({
   );
 }
 
+function DestructiveConfirmModal({
+  language,
+  action,
+  busy,
+  onClose,
+  onConfirm
+}: {
+  language: Language;
+  action: DestructiveAction | null;
+  busy: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Modal open={Boolean(action)} title={action?.title ?? translate(language, "confirmDestructiveAction")} onClose={onClose} width="max-w-lg">
+      <div className="grid gap-4">
+        <div className="rounded-md border border-[#F4B4AE] bg-[#FFF8F7] p-3">
+          <p className="text-sm font-bold text-scarlet">{translate(language, "destructiveActionWarning")}</p>
+          <p className="mt-1 text-sm font-medium text-slate">{action?.summary}</p>
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={onClose}>{translate(language, "cancel")}</Button>
+          <Button type="button" variant="danger" disabled={busy} onClick={onConfirm}>{translate(language, "confirmDestructiveButton")}</Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function OfferPassHandoffPrompt({
   handoff,
   onCreateOffer,
@@ -2603,10 +2727,12 @@ function buildDetailBodyV2(
   data: DashboardData,
   language: Language,
   canWrite: boolean,
+  canDeleteRecords: boolean,
   onUpdateCandidate: (candidateId: string) => void,
   navigationContext: { language: Language; site: string; owner: string; sourcingWeek: string },
   onChangeRequisition: (docId: string) => void,
-  onChangeCandidate: (candidateId: string) => void
+  onChangeCandidate: (candidateId: string) => void,
+  onDeleteRecord: (endpoint: string, payload: Record<string, unknown>, summary: string) => void
 ): DetailBodyResult {
   if (!detail) return { title: "Detail", body: null };
   const href = (path: string) => buildContextualHref(path, navigationContext);
@@ -2645,6 +2771,12 @@ function buildDetailBodyV2(
           primary={{ id: "workspace", label: translate(language, "workspaceOpen"), href: href(`/workspace?type=requisition&id=${encodeURIComponent(requisition.doc_id)}&section=overview`), tone: "primary", iconOnly: true }}
           items={[
             ...(canWrite ? [{ id: "change-record", label: translate(language, "changeRecord"), onSelect: () => onChangeRequisition(requisition.doc_id) }] : []),
+            ...(canDeleteRecords ? [{
+              id: "delete-record",
+              label: translate(language, "deleteRecord"),
+              tone: "danger" as const,
+              onSelect: () => onDeleteRecord("app_delete_recruitment_record", { entity: "requisition", id: requisition.doc_id }, translate(language, "deleteRecordSummary", { entity: translate(language, "requisition"), id: requisition.doc_id }))
+            }] : []),
             { id: "sourcing", href: href(`/sourcing?reqSearch=${encodeURIComponent(requisition.doc_id)}`), label: translate(language, "workspaceOpenSourcing") },
             { id: "candidates", href: href(`/candidates?candSearch=${encodeURIComponent(requisition.doc_id)}`), label: translate(language, "workspaceRelatedCandidates") },
             { id: "offers", href: href(`/offers?offerSearch=${encodeURIComponent(requisition.doc_id)}`), label: translate(language, "workspaceRelatedOffers") }
@@ -2713,6 +2845,12 @@ function buildDetailBodyV2(
           primary={{ id: "workspace", label: "Open workspace", href: href(`/workspace?type=${candidate.group_id ? "group" : "requisition"}&id=${encodeURIComponent(candidate.group_id ?? candidate.doc_ids[0] ?? "")}&section=overview`), tone: "primary", iconOnly: true }}
           items={[
             ...(canWrite ? [{ id: "change-record", label: translate(language, "changeRecord"), onSelect: () => onChangeCandidate(candidate.candidate_id) }] : []),
+            ...(canDeleteRecords ? [{
+              id: "delete-record",
+              label: translate(language, "deleteRecord"),
+              tone: "danger" as const,
+              onSelect: () => onDeleteRecord("app_delete_recruitment_record", { entity: "candidate", id: candidate.candidate_id }, translate(language, "deleteRecordSummary", { entity: translate(language, "candidate"), id: candidate.candidate_id }))
+            }] : []),
             ...(candidate.doc_ids[0] ? [{ id: "requisition", href: href(`/requisitions?detailType=requisition&detailId=${encodeURIComponent(candidate.doc_ids[0])}`), label: "View requisition" }] : []),
             { id: "same-group", href: href(`/candidates?candSearch=${encodeURIComponent(candidate.group_position ?? candidate.doc_group_id)}`), label: "Same group" },
             { id: "pipeline", href: href(`/pipeline?pipelineSearch=${encodeURIComponent(candidate.candidate_id)}&detailType=candidate&detailId=${encodeURIComponent(candidate.candidate_id)}`), label: "Open in pipeline" }

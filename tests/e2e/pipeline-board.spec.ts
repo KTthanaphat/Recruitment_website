@@ -27,6 +27,9 @@ test("pipeline board renders active, failed, passed, aging, and filtered candida
   await expect(page.getByText("Finn Failed")).toBeVisible();
   await expect(page.getByText("Passed Offer - Last 7 Days")).toBeVisible();
   await expect(page.getByText("Olivia Offer Pass")).toBeVisible();
+  await expect(page.getByText("Oscar Offer Needed")).toBeVisible();
+  await expect(page.locator("#pipeline-candidate-C-OFFER-NO-OFFER").getByRole("button", { name: "Create offer" })).toBeVisible();
+  await expect(page.locator("#pipeline-candidate-C-OFFER-PASS").getByRole("button", { name: "Create offer" })).toHaveCount(0);
   await expect(page.locator("#pipeline-candidate-C-AGING").getByRole("button", { name: "Candidate actions for Avery Aging" })).toHaveCSS("color", "rgb(255, 59, 48)");
   await expect(page.locator("#pipeline-candidate-C-PHONE").getByRole("button", { name: "Candidate actions for Pat Phone" })).toHaveCSS("color", "rgb(255, 59, 48)");
 
@@ -52,6 +55,18 @@ test("pipeline board renders active, failed, passed, aging, and filtered candida
   await page.locator("[data-app-header-actions]").getByLabel("Site", { exact: true }).selectOption("KT1");
   await expect(page.getByText("Tina Test")).toBeVisible();
   await expect(page.getByText("Pat Phone")).toHaveCount(0);
+});
+
+test("passed Offer card without an offer opens offer creation flow", async ({ page }) => {
+  await installMockSupabase(page, { role: "admin_recruiter" });
+  await page.goto("/pipeline");
+  await expectWorkspaceReady(page);
+
+  await page.locator("#pipeline-candidate-C-OFFER-NO-OFFER").getByRole("button", { name: "Create offer" }).click();
+  const dialog = page.getByRole("dialog", { name: /Offer/ });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByLabel("Candidate")).toHaveValue("C-OFFER-NO-OFFER");
+  await expect(dialog.getByLabel("Accepted Date")).toHaveValue("2026-07-18");
 });
 
 test("failed candidates remain pipeline workflow state, not data quality issues", async ({ page }) => {

@@ -176,6 +176,57 @@ test("sourcing contextual filters focus the matching group", async ({ page }) =>
   await expect(page.locator("#sourcing-group-GRP-ENG")).toHaveCount(0);
 });
 
+test("sourcing shows unmatched groups with match action and no weekly save fields", async ({ page }) => {
+  await installMockSupabase(page, { role: "admin_recruiter" });
+  await page.goto("/sourcing?sourcingWeek=2026-07-06");
+  await expectWorkspaceReady(page);
+
+  await expect(page.getByRole("heading", { name: "Unmatched sourcing groups" })).toBeVisible();
+  const unmatchedGroup = page.getByText("GRP-BUY").locator("xpath=ancestor::div[contains(@class,'rounded-lg')][1]");
+  await expect(unmatchedGroup).toBeVisible();
+  await expect(page.locator("#sourcing-group-GRP-BUY")).toHaveCount(0);
+  await expect(unmatchedGroup.getByRole("button", { name: "Delete record" })).toHaveCount(0);
+
+  await unmatchedGroup.getByRole("button", { name: "Match requisition" }).click();
+  const matchDialog = page.getByRole("dialog", { name: "Match Requisition and Group" });
+  await expect(matchDialog).toBeVisible();
+  await expect(matchDialog.getByLabel("Group ID")).toHaveValue("GRP-BUY");
+  await expect(matchDialog.getByLabel("Doc ID")).toContainText("REQ-UNMATCHED-1");
+});
+
+test("sourcing unmatch uses destructive confirmation and RPC", async ({ page }) => {
+  const mock = await installMockSupabase(page, { role: "admin_recruiter" });
+  await page.goto("/sourcing?sourcingWeek=2026-07-06");
+  await expectWorkspaceReady(page);
+
+  const group = page.locator("#sourcing-group-GRP-ENG");
+  await group.getByRole("button", { name: "More actions for sourcing group GRP-ENG" }).click();
+  await group.getByRole("menuitem", { name: "Unmatch REQ-HQ-1" }).click();
+  const confirmDialog = page.getByRole("dialog", { name: "Confirm destructive action" });
+  await expect(confirmDialog).toBeVisible();
+  await expect(confirmDialog.getByText("Unmatch sourcing group GRP-ENG from requisition REQ-HQ-1")).toBeVisible();
+  await confirmDialog.getByRole("button", { name: "Delete / Unmatch" }).click();
+
+  await expect.poll(() => mock.rpcCalls.at(-1)?.endpoint).toBe("app_unmatch_group_requisition");
+  expect(mock.rpcCalls.at(-1)?.payload).toMatchObject({
+    doc_group_id: "DG-HQ-ENG",
+    doc_id: "REQ-HQ-1",
+    group_id: "GRP-ENG"
+  });
+});
+
+test("system admin sees unmatched group delete action and confirmation", async ({ page }) => {
+  await installMockSupabase(page, { role: "system_admin" });
+  await page.goto("/sourcing?sourcingWeek=2026-07-06");
+  await expectWorkspaceReady(page);
+
+  const unmatchedGroup = page.getByText("GRP-BUY").locator("xpath=ancestor::div[contains(@class,'rounded-lg')][1]");
+  await unmatchedGroup.getByRole("button", { name: "Delete record" }).click();
+  const confirmDialog = page.getByRole("dialog", { name: "Confirm destructive action" });
+  await expect(confirmDialog).toBeVisible();
+  await expect(confirmDialog.getByText("Delete sourcing group GRP-BUY")).toBeVisible();
+});
+
 test("pipeline URL search focuses a candidate and Actions is keyboard dismissible", async ({ page }) => {
   await installMockSupabase(page, { role: "admin_recruiter" });
   await page.goto("/pipeline?pipelineSearch=C-PHONE");

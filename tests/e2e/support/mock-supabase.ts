@@ -114,13 +114,15 @@ function createRecruitmentDataset(activeRole: MockUserRole): DashboardData {
       requisition("REQ-HQ-2", "HQ", "Engineer", "Operations", "Alice", 1, "2026-06-10"),
       requisition("REQ-KT1-1", "KT1", "Technician", "Production", "Bob", 3, "2026-06-03"),
       requisition("REQ-KT2-1", "KT2", "Analyst", "Planning", "Alice", 2, "2026-06-05"),
+      requisition("REQ-UNMATCHED-1", "HQ", "Buyer", "Procurement", "Alice", 1, "2026-07-08"),
       requisition("REQ-CLOSED-1", "HQ", "Closed Role", "Operations", "Alice", 1, "2026-06-07", "filled")
     ],
     requisition_logs: [],
     position_groups: [
       positionGroup("GRP-ENG", "Engineer"),
       positionGroup("GRP-TECH", "Technician"),
-      positionGroup("GRP-ANL", "Analyst")
+      positionGroup("GRP-ANL", "Analyst"),
+      positionGroup("GRP-BUY", "Buyer")
     ],
     document_groups: [
       documentGroup("DG-HQ-ENG", "REQ-HQ-1", "GRP-ENG", "Engineer"),
@@ -140,6 +142,7 @@ function createRecruitmentDataset(activeRole: MockUserRole): DashboardData {
       candidate("C-OFFER-READY", "Nina Offer Ready", "DG-HQ-ENG", "Referral", "2026-07-01"),
       candidate("C-FAILED", "Finn Failed", "DG-HQ-ENG", "Facebook", "2026-06-26"),
       candidate("C-OFFER-PASS", "Olivia Offer Pass", "DG-KT1-TECH", "Referral", "2026-06-27"),
+      candidate("C-OFFER-NO-OFFER", "Oscar Offer Needed", "DG-HQ-ENG", "Referral", "2026-07-02"),
       candidate("C-NO-ACTIVITY", "Nora No Activity", "DG-KT2-ANL", "Others", "2026-06-28")
     ],
     recruitment_logs: [
@@ -163,7 +166,13 @@ function createRecruitmentDataset(activeRole: MockUserRole): DashboardData {
       log(18, "C-OFFER-PASS", "Test", 1, 1, "2026-07-04"),
       log(19, "C-OFFER-PASS", "Reference Check", 1, 1, "2026-07-05"),
       log(20, "C-OFFER-PASS", "Offer", 1, 1, "2026-07-17"),
-      log(21, "C-OFFER-READY", "Offer", null, 1, "2026-07-11")
+      log(21, "C-OFFER-READY", "Offer", null, 1, "2026-07-11"),
+      log(22, "C-OFFER-NO-OFFER", "Phone Screen", 1, 1, "2026-07-12"),
+      log(23, "C-OFFER-NO-OFFER", "HR Interview", 1, 1, "2026-07-13"),
+      log(24, "C-OFFER-NO-OFFER", "Line Interview", 1, 1, "2026-07-14"),
+      log(25, "C-OFFER-NO-OFFER", "Test", 1, 1, "2026-07-15"),
+      log(26, "C-OFFER-NO-OFFER", "Reference Check", 1, 1, "2026-07-16"),
+      log(27, "C-OFFER-NO-OFFER", "Offer", 1, 1, "2026-07-18")
     ],
     offers: [
       offer(1, "C-OFFER", "REQ-KT2-1", null, null),
@@ -194,17 +203,64 @@ function createRecruitmentDataset(activeRole: MockUserRole): DashboardData {
 }
 
 function applyRpcMutation(data: DashboardData, endpoint: string, payload: Record<string, unknown>) {
+  if (endpoint === "app_unmatch_group_requisition") {
+    const docGroupId = String(payload.doc_group_id ?? "");
+    const docId = String(payload.doc_id ?? "");
+    const groupId = String(payload.group_id ?? "");
+    data.document_groups = data.document_groups.filter((match) => (
+      docGroupId
+        ? match.doc_group_id !== docGroupId
+        : !(match.doc_id === docId && match.group_id === groupId)
+    ));
+  }
+  if (endpoint === "app_delete_recruitment_record") {
+    const entity = String(payload.entity ?? "");
+    const id = String(payload.id ?? "");
+    if (entity === "requisition") data.requisitions = data.requisitions.filter((row) => row.doc_id !== id);
+    if (entity === "position_group") data.position_groups = data.position_groups.filter((row) => row.group_id !== id);
+    if (entity === "document_group") data.document_groups = data.document_groups.filter((row) => row.doc_group_id !== id);
+    if (entity === "candidate") data.candidates = data.candidates.filter((row) => row.candidate_id !== id);
+    if (entity === "offer") data.offers = data.offers.filter((row) => String(row.offer_id) !== id);
+    if (entity === "recruitment_log") data.recruitment_logs = data.recruitment_logs.filter((row) => String(row.log_id) !== id);
+    if (entity === "requisition_log") data.requisition_logs = data.requisition_logs.filter((row) => String(row.log_id) !== id);
+    if (entity === "sourcing_weekly_update") {
+      const weekStart = String(payload.week_start ?? "");
+      data.sourcing_weekly_updates = data.sourcing_weekly_updates.filter((row) => !(row.group_id === id && row.week_start === weekStart));
+    }
+    if (entity === "vacancy_weekly_snapshot") data.vacancy_weekly_snapshots = data.vacancy_weekly_snapshots.filter((row) => String(row.snapshot_id) !== id);
+  }
   if (endpoint === "app_insert_pipeline_passes" || endpoint === "app_insert_pipeline_test_exit") {
     const candidateId = String(payload.candidate_id ?? "");
     const stages = Array.isArray(payload.stages) ? payload.stages as Array<Record<string, unknown>> : [];
     for (const stage of stages) {
+      const stageName = String(stage.stage) as never;
+      const round = Number(stage.round ?? 1);
+      const date = String(stage.log_date ?? "2026-07-11");
+      const hasPending = data.recruitment_logs.some((row) => (
+        row.candidate_id === candidateId
+        && row.recruitment_process === stageName
+        && row.round === round
+        && row.result === null
+      ));
+      if (!hasPending) data.recruitment_logs.push(log(nextLogId(data), candidateId, stageName, null, round, date));
       data.recruitment_logs.push(log(
         nextLogId(data),
         candidateId,
-        String(stage.stage) as never,
+        stageName,
         1,
-        Number(stage.round ?? 1),
-        String(stage.log_date ?? "2026-07-11")
+        round,
+        date
+      ));
+    }
+    const targetStage = String(payload.target_stage ?? "") as never;
+    if (targetStage) {
+      data.recruitment_logs.push(log(
+        nextLogId(data),
+        candidateId,
+        targetStage,
+        null,
+        1,
+        String(stages.at(-1)?.log_date ?? "2026-07-11")
       ));
     }
   }

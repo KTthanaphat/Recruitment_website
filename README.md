@@ -78,7 +78,11 @@ set role = 'system_admin'
 where email = 'your-admin-email@example.com';
 ```
 
-5. Add the Supabase URL, anon key, and service role key to `.env.local` or Vercel.
+5. Add the Supabase URL, anon key, and service role key to `.env.local` or Vercel/Render.
+
+Future database changes should start in `supabase/schemas/`. Generate a reviewed
+migration from those declarative schema files instead of manually stacking
+override SQL in the SQL editor.
 
 Roles:
 

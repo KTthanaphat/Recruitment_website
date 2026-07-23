@@ -1,0 +1,12 @@
+project_id = "recruitment-tracking"
+
+[db.migrations]
+schema_paths = [
+  "./schemas/00_extensions.sql",
+  "./schemas/10_tables.sql",
+  "./schemas/20_indexes.sql",
+  "./schemas/30_triggers_audit.sql",
+  "./schemas/40_rls_policies.sql",
+  "./schemas/50_rpc_functions.sql",
+  "./schemas/90_grants.sql"
+]

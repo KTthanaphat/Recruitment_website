@@ -44,8 +44,9 @@ http://localhost:3000
 1. Create a Supabase project.
 2. Open SQL Editor.
 3. Run the SQL files in `supabase/migrations/` in filename order.
-   - For a brand-new reset prototype, you can instead run `supabase/restructured/00_fresh_schema.sql`.
-   - For an existing migrated database, back up the database first, then run `supabase/restructured/01_existing_db_optimization.sql`.
+   - `supabase/schemas/` is the declarative source of truth for future schema/RPC changes.
+   - Edit `supabase/schemas/` first, then generate and review one migration with `supabase db diff -f describe_change`.
+   - Do not edit the remote database directly in Supabase Studio for schema/RPC changes.
 4. Disable public signup unless the company explicitly wants self-registration.
 5. Create the first Auth user manually.
 6. Promote the first user:
@@ -218,6 +219,7 @@ with no ahead/behind marker.
 - Never use `git push --force` for normal product work.
 - Never commit `.env.local`, Supabase service keys, database dumps, exported candidate files, or candidate documents.
 - Keep migrations and app code in the same commit when the app depends on schema/RPC changes.
+- Keep declarative schema files and generated migration files in the same commit.
 - Re-run `pnpm typecheck` after resolving conflicts.
 - If `pnpm build` hangs after the Next.js banner, capture where it hangs and report it separately; do not assume the build passed.
 - If Git reports `.git/index.lock`, first make sure no Git command, editor Git operation, or Codex commit task is running. Only then delete the stale lock file and rerun `git status --short --branch`.

@@ -1,4 +1,4 @@
-import { Link2, Plus, Save } from "lucide-react";
+import { AlertTriangle, Link2, Plus, Save, Trash2, Unlink } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -8,11 +8,11 @@ import { Panel, SectionTitle } from "@/components/ui/Panel";
 import { Tag } from "@/components/ui/Tag";
 import { BulkActionToolbar, BulkReviewModal, DisabledReasonHint, SourcingConversionPanel } from "@/components/ui/Workflow";
 import { SOURCING_CHANNELS } from "@/lib/constants";
-import { enrichSourcingGroups } from "@/lib/data";
+import { enrichSourcingGroups, enrichUnmatchedSourcingGroups } from "@/lib/data";
 import { formatDate } from "@/lib/format";
 import { translate } from "@/lib/i18n/dictionary";
 import { ageDays, bulkActionDisabledReason, deriveSourcingConversionMetrics, sourcingApplicants, sourcingPreviousUpdate, sourcingUpdateDisabledReason, type BulkActionResult } from "@/lib/operations";
-import type { DashboardData, EnrichedSourcingGroup, Language, Profile } from "@/types/recruitment";
+import type { DashboardData, EnrichedSourcingGroup, EnrichedUnmatchedSourcingGroup, Language, Profile } from "@/types/recruitment";
 
 export type SourcingViewProps = {
   language: Language;
@@ -24,7 +24,10 @@ export type SourcingViewProps = {
   onWeekChange: (value: string) => void;
   onSaveSourcing: (payload: Record<string, unknown>, summary: string) => void;
   onGroup?: () => void;
-  onMatch?: () => void;
+  onMatch?: (defaults?: { doc_id?: string; group_id?: string }) => void;
+  onUnmatch?: (payload: Record<string, unknown>, summary: string) => void;
+  onDeleteRecord?: (payload: Record<string, unknown>, summary: string) => void;
+  canDeleteRecords?: boolean;
   /** Restricts the editor to groups related to an embedded workspace context. */
   groupIds?: readonly string[];
   /** Fallback scope for workspace contexts where the related group should resolve through selected requisitions. */
@@ -44,6 +47,9 @@ export function SourcingView({
   onSaveSourcing,
   onGroup,
   onMatch,
+  onUnmatch,
+  onDeleteRecord,
+  canDeleteRecords = false,
   groupIds,
   docIds,
   embedded = false
@@ -52,6 +58,7 @@ export function SourcingView({
   const scopedGroups = scopeSourcingGroups(enrichSourcingGroups(data, weekStart), groupIds, docIds);
   const allGroups = visibleSourcingGroups(scopedGroups, profile);
   const groups = filterSourcingGroups(allGroups, urlFilters);
+  const unmatchedGroups = !embedded && canManageSetup ? filterUnmatchedGroups(enrichUnmatchedSourcingGroups(data), urlFilters) : [];
   const groupScopeKey = groups.map((group) => group.group_id).join("|");
   const focusedGroupId = urlFilters.sourceSearch || urlFilters.reqSearch ? groups[0]?.group_id ?? null : null;
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
@@ -118,10 +125,59 @@ export function SourcingView({
             action={
               <>
                 {onGroup ? <Button type="button" size="sm" icon={<Plus size={16} />} onClick={onGroup}>New Group</Button> : null}
-                {onMatch ? <Button type="button" size="sm" variant="secondary" icon={<Link2 size={16} />} onClick={onMatch}>{translate(language, "addMatch")}</Button> : null}
+                {onMatch ? <Button type="button" size="sm" variant="secondary" icon={<Link2 size={16} />} onClick={() => onMatch()}>{translate(language, "addMatch")}</Button> : null}
               </>
             }
           />
+        </Panel>
+      ) : null}
+
+      {unmatchedGroups.length > 0 ? (
+        <Panel className="border-[#F3D3A2] bg-[#FFFDF8]">
+          <SectionTitle
+            title={translate(language, "unmatchedSourcingGroups")}
+            eyebrow={translate(language, "setupAttention")}
+          />
+          <p className="mb-3 flex items-start gap-2 text-sm font-medium text-slate" role="status">
+            <AlertTriangle className="mt-0.5 shrink-0 text-orange" size={17} aria-hidden="true" />
+            <span>{translate(language, "unmatchedSourcingGroupsWarning")}</span>
+          </p>
+          <div className="grid gap-2">
+            {unmatchedGroups.map((group) => {
+              const markedChannels = SOURCING_CHANNELS.filter((channel) => group[channel.enabled]);
+              return (
+                <div key={group.group_id} className="grid gap-3 rounded-lg border border-[#F3D3A2] bg-white p-3 sm:grid-cols-[1fr_auto] sm:items-center">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <strong className="text-base text-navy">{group.group_id}</strong>
+                      <Tag tone="warning">{group.group_position}</Tag>
+                    </div>
+                    <p className="mt-1 text-xs font-medium text-cool">
+                      {translate(language, "enabledChannels")}: {markedChannels.length > 0 ? markedChannels.map((channel) => channel.label).join(", ") : translate(language, "none")}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap justify-start gap-2 sm:justify-end">
+                    {onMatch ? (
+                      <Button type="button" size="sm" icon={<Link2 size={16} />} onClick={() => onMatch({ group_id: group.group_id })}>
+                        {translate(language, "matchRequisition")}
+                      </Button>
+                    ) : null}
+                    {canDeleteRecords && onDeleteRecord ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="danger"
+                        icon={<Trash2 size={16} />}
+                        onClick={() => onDeleteRecord({ entity: "position_group", id: group.group_id }, translate(language, "deleteRecordSummary", { entity: translate(language, "sourcingGroup"), id: group.group_id }))}
+                      >
+                        {translate(language, "deleteRecord")}
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </Panel>
       ) : null}
 
@@ -147,6 +203,9 @@ export function SourcingView({
             {groups.map((group) => {
               const markedChannels = SOURCING_CHANNELS.filter((channel) => group[channel.enabled]);
               const latestSavedUpdate = latestSourcingUpdateForGroup(data, group.group_id);
+              const groupMatches = data.document_groups
+                .filter((match) => match.group_id === group.group_id && group.doc_ids.includes(match.doc_id))
+                .sort((a, b) => a.doc_id.localeCompare(b.doc_id));
               return (
               <form id={`sourcing-group-${group.group_id}`} key={group.group_id} tabIndex={focusedGroupId === group.group_id ? -1 : undefined} className={`rounded-lg border bg-white p-4 shadow-[0_4px_14px_rgba(11,19,43,0.025)] focus:outline-none focus:ring-2 focus:ring-primary/30 ${focusedGroupId === group.group_id ? "border-primary ring-2 ring-primary/25" : "border-[#D7DEE8]"}`} onSubmit={(event) => saveGroup(event, group)}>
                 {(() => {
@@ -198,6 +257,16 @@ export function SourcingView({
                       label={`${translate(language, "sourcingGroup")} ${group.group_id}`}
                       items={[
                         ...(canWrite ? [{ id: "copy-previous", label: "Copy Previous Week", onSelect: () => copyPreviousWeek(document.getElementById(`sourcing-group-${group.group_id}`) as HTMLFormElement | null, previousUpdate), disabledReason: { blocked: !previousUpdate || disabledReason.blocked, label: "Copy unavailable", detail: disabledReason.blocked ? disabledReason.detail : "No previous week update is available." } }] : []),
+                        ...(canManageSetup && onUnmatch ? groupMatches.map((match) => ({
+                          id: `unmatch-${match.doc_group_id}`,
+                          label: translate(language, "unmatchRequisition", { id: match.doc_id }),
+                          icon: <Unlink size={16} />,
+                          tone: "danger" as const,
+                          onSelect: () => onUnmatch(
+                            { doc_group_id: match.doc_group_id, doc_id: match.doc_id, group_id: group.group_id },
+                            translate(language, "unmatchRecordSummary", { group: group.group_id, requisition: match.doc_id })
+                          )
+                        })) : []),
                         { id: "requisitions", href: `/requisitions?reqSearch=${encodeURIComponent(group.doc_ids.join(" "))}`, label: "Matching requisitions" },
                         { id: "candidates", href: `/candidates?candSearch=${encodeURIComponent(group.group_position)}`, label: "Related candidates" },
                         { id: "workspace", href: `/workspace?type=group&id=${encodeURIComponent(group.group_id)}`, label: "Open workspace" }
@@ -345,6 +414,16 @@ function filterSourcingGroups(groups: EnrichedSourcingGroup[], filters: { source
     const matchesRequisition = requisitionTerms.length === 0 || group.doc_ids.some((docId) => requisitionTerms.some((term) => docId.toLocaleLowerCase().includes(term)));
     return matchesSource && matchesRequisition;
   });
+}
+
+function filterUnmatchedGroups(groups: EnrichedUnmatchedSourcingGroup[], filters: { sourceSearch: string; reqSearch: string }) {
+  if (filters.reqSearch.trim()) return [];
+  const sourceSearch = filters.sourceSearch.trim().toLocaleLowerCase();
+  if (!sourceSearch) return groups;
+  return groups.filter((group) => [
+    group.group_id,
+    group.group_position
+  ].some((value) => value.toLocaleLowerCase().includes(sourceSearch)));
 }
 
 function numericValue(value: FormDataEntryValue | null) {

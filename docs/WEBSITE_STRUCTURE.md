@@ -210,11 +210,13 @@ Sourcing:
 
 - Supported channels: Facebook, JobThai, JobTopGun, JobDB, LinkedIn, Walk-in, Referral, Others.
 - Workspace > Sourcing reuses the embedded weekly sourcing editor, so recruiters can update applicant counts for the related group or requisition without leaving `/workspace`.
+- Records > Sourcing shows unmatched sourcing groups in a separate warning section above weekly update cards. Users must match these groups to a requisition before weekly sourcing updates are available.
 - Weekly sourcing updates only show channels marked on the group or match snapshot.
 - Weekly sourcing saves applicant counts only. It does not clear or change channel booleans; channel marking is changed through sourcing setup. Unsaved weeks prefill applicant inputs from the latest saved group update.
 - The Sourcing Conversion Quality panel is collapsible in Records > Sourcing and collapsed by default there.
 - Add Match shows only requisitions that do not already have any `document_groups` match.
 - Doc ID options include position context, for example `DOC-001 - Accountant`.
+- Unmatch removes one `document_groups` link between a requisition and a sourcing group. It is blocked when candidates reference that match.
 
 Candidates:
 
@@ -239,10 +241,12 @@ Process update validation:
 - Users cannot update to a stage before the current stage.
 - Update is unavailable if the candidate failed at any historical stage.
 - Update is unavailable if the candidate completed all active stages.
+- Manual Process Update cannot open a future stage while the latest stage is still pending. No-activity candidates can create Phone Screen as Pending; active candidates must complete the current pending stage with a result before the next pending stage is opened.
 
 Pipeline:
 
 - Pipeline is group-based and resolves grouped doc IDs, sites, persons in charge, and group position.
+- Active stage panels use the current assigned-site accent as a tinted panel background; candidate cards remain neutral for scan speed.
 - Active cards show candidate name, `{site}-{position} ({PIC})`, next-step icon, and last updated date.
 - Active cards are sorted by latest update ascending in each stage so the oldest update appears first.
 - Stage headers show only the stage label and count. If any candidate in the stage has not been updated for more than 7 days, the stage label turns red.
@@ -250,13 +254,14 @@ Pipeline:
 - Board filter and pipeline search live in a filter-icon popover at the right side of the board controls row, with the visible Group cards controls kept on the left. The popover supports Escape, outside-click dismissal, and active filter count.
 - Do not show SLA/pass/fail/latest metric text under Pipeline stage names.
 - Empty active Pipeline stage columns and empty Failed Candidates stage columns keep their body blank; only the all-empty Failed Candidates panel shows an empty message.
+- Forward jumps from drag/drop or card actions are allowed only through the passed-stage confirmation flow. The flow must confirm every crossed stage in order; the database writes Pending then Pass for each crossed stage that does not already have a matching pending row, then creates the target stage as Pending.
 - Test is a multi-round stage. A Test card can be maintained in Test to create the next pending Test round, or moved to Reference Check through the passed-stage confirmation flow.
 - Maintaining Test saves the current pending Test round as Pass and creates the next Test round as Pending in one database transaction.
 - When leaving Test, the latest Test round is used as the passed round. The confirmation modal can add extra pending Test rounds first, while the pass round remains locked to the original latest round, then creates Reference Check as pending.
 - Pending active-stage cards expose Fail current stage through the candidate action menu, opening Process Update prefilled to the current stage with result Fail. Offer-stage cards expose Update Offer through the same menu, opening Process Update for Offer.
 - Failed Candidates use the same stage-column layout as the active pipeline for the current last-7-days window.
 - Failed candidates remain workflow state. They should stay visible in Pipeline failed-candidate sections, but a failed candidate in an active stage is not a Data Quality issue.
-- Passed Offer uses the same compact card arrangement, without the update arrow, in responsive multi-column layouts.
+- Passed Offer uses the same compact card arrangement in responsive multi-column layouts. Write roles see `Create offer` on passed-Offer cards only when no offer record exists for that candidate.
 
 Command dispatcher:
 
@@ -265,6 +270,7 @@ Command dispatcher:
 - The dispatcher should preserve current workspace context and open the corresponding embedded modal or drawer rather than sending users to a blank page.
 - Offer-pass handoff is confirmed through the dispatcher. When a candidate passes Offer, the handoff into offer creation/update must preserve the candidate identity and requisition context until the user finishes or cancels the offer flow.
 - Confirmation invariant: the pass confirmation and the resulting offer action must refer to the same candidate and resolved requisition context. Users should not confirm Offer pass for one candidate and land in another candidate or unrelated requisition Offer flow.
+- Candidate Pipeline Journey connector segments color from the previous/current stage only. A future segment must not become colored because the next stage is pending or failed.
 
 Offers:
 
@@ -313,6 +319,8 @@ Protected RPC functions handle all recruitment writes:
 - `app_insert_requisition_log`
 - `app_upsert_position_group`
 - `app_create_group_match`
+- `app_unmatch_group_requisition`
+- `app_delete_recruitment_record`
 - `app_upsert_sourcing_weekly_update`
 - `app_upsert_candidate`
 - `app_insert_recruitment_log`
@@ -323,6 +331,8 @@ Protected RPC functions handle all recruitment writes:
 
 - Anonymous users cannot read or write recruitment data.
 - Authenticated users receive access by `profiles.role`.
+- System admins can delete recruitment records through explicit destructive confirmation. User profiles are excluded from this delete policy.
+- Delete/unmatch actions are guarded by RPC authorization and dependency checks; candidate-linked requisitions and matches are blocked instead of orphaning candidate history.
 - Roles: `system_admin`, `admin_recruiter`, `site_recruiter`, `viewer`.
 - `system_admin`: full recruitment-data access and user administration.
 - `admin_recruiter`: full recruitment-data editor, setup/group/match editor, but not user administrator.

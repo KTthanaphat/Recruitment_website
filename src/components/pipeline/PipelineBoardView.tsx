@@ -26,6 +26,7 @@ export function PipelineBoardView({
   dataQualityIssues = [],
   embedded = false,
   canWrite,
+  offeredCandidateIds,
   onNewCandidate,
   onAddUpdate,
   onOpen,
@@ -33,6 +34,7 @@ export function PipelineBoardView({
   onFailCurrentStage,
   onMaintainTest,
   onStartProcess,
+  onCreateOffer,
   onUpdateOffer
 }: {
   language: Language;
@@ -43,6 +45,7 @@ export function PipelineBoardView({
   /** Renders inside an existing workspace surface without standalone page chrome. */
   embedded?: boolean;
   canWrite: boolean;
+  offeredCandidateIds?: ReadonlySet<string>;
   onNewCandidate?: () => void;
   onAddUpdate?: () => void;
   onOpen: (candidateId: string) => void;
@@ -50,6 +53,7 @@ export function PipelineBoardView({
   onFailCurrentStage: (candidate: EnrichedCandidate) => void;
   onMaintainTest: (candidate: EnrichedCandidate) => void;
   onStartProcess: (candidate: EnrichedCandidate) => void;
+  onCreateOffer?: (candidate: EnrichedCandidate) => void;
   onUpdateOffer: (candidate: EnrichedCandidate) => void;
 }) {
   const [dragged, setDragged] = useState<EnrichedCandidate | null>(null);
@@ -239,7 +243,7 @@ export function PipelineBoardView({
             return (
               <section
                 key={stage}
-                className={`min-h-80 w-[min(17rem,82vw)] shrink-0 rounded-2xl border border-[#E4E9F2] bg-[#F8FAFD] p-2.5 transition-colors ${
+                className={`min-h-80 w-[min(17rem,82vw)] shrink-0 rounded-2xl border border-[rgb(var(--app-primary-rgb)/0.22)] bg-[rgb(var(--app-primary-rgb)/0.08)] p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] transition-colors ${
                   isBlocked ? "border-scarlet bg-[#FFF1F0]" : ""
                 }`}
                 onDragOver={(event) => {
@@ -368,8 +372,10 @@ export function PipelineBoardView({
                   language={language}
                   canWrite={false}
                   tone="passed"
+                  showCreateOffer={canWrite && !offeredCandidateIds?.has(candidate.candidate_id)}
                   focused={focusedCandidateId === candidate.candidate_id}
                   onOpen={onOpen}
+                  onCreateOffer={onCreateOffer}
                 />
               ))}
             </div>
@@ -422,11 +428,13 @@ function PipelineCandidateCard({
   menuOpen = false,
   focused = false,
   tone = "default",
+  showCreateOffer = false,
   onOpen,
   onMove,
   onFailCurrentStage,
   onMaintainTest,
   onStartProcess,
+  onCreateOffer,
   onUpdateOffer,
   onMenuToggle,
   onMenuClose,
@@ -444,11 +452,13 @@ function PipelineCandidateCard({
   menuOpen?: boolean;
   focused?: boolean;
   tone?: "default" | "failed" | "passed";
+  showCreateOffer?: boolean;
   onOpen: (candidateId: string) => void;
   onMove?: (candidate: EnrichedCandidate, nextStage: ProcessStage) => void;
   onFailCurrentStage?: (candidate: EnrichedCandidate) => void;
   onMaintainTest?: (candidate: EnrichedCandidate) => void;
   onStartProcess?: (candidate: EnrichedCandidate) => void;
+  onCreateOffer?: (candidate: EnrichedCandidate) => void;
   onUpdateOffer?: (candidate: EnrichedCandidate) => void;
   onMenuToggle?: () => void;
   onMenuClose?: () => void;
@@ -457,7 +467,7 @@ function PipelineCandidateCard({
 }) {
   const lastUpdate = candidateLastUpdate(candidate);
   const canFailCurrentStage = ACTIVE_PIPELINE_STAGES.includes(candidate.latest_process as ProcessStage) && candidate.latest_result === null;
-  const hasCardAction = updateStages.length > 0 || canFailCurrentStage || candidate.latest_process === "Offer" || candidate.latest_process === "No activity";
+  const hasCardAction = showCreateOffer || updateStages.length > 0 || canFailCurrentStage || candidate.latest_process === "Offer" || candidate.latest_process === "No activity";
   const baseDisabledReason = candidateProcessDisabledReason(candidate, recruitmentLogs ?? [], profile ?? null);
   const stageMenuId = `stage-menu-${candidate.candidate_id}`;
   const actionsButtonRef = useRef<HTMLButtonElement>(null);
@@ -526,6 +536,19 @@ function PipelineCandidateCard({
       <div className="mt-1 flex flex-wrap items-center gap-2">
         {issueCount ? <Tag tone="warning">{translate(language, "dataIssuesCount", { count: issueCount, plural: issueCount === 1 ? "" : "s" })}</Tag> : null}
       </div>
+      {showCreateOffer ? (
+        <Button
+          type="button"
+          size="sm"
+          className="mt-3 w-full justify-center"
+          onClick={(event) => {
+            event.stopPropagation();
+            onCreateOffer?.(candidate);
+          }}
+        >
+          {translate(language, "createOffer")}
+        </Button>
+      ) : null}
       {menuOpen ? (
         <div
           ref={menuRef}

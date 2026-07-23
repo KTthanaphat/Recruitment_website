@@ -1,16 +1,17 @@
 begin;
 
+-- Canonical declarative schema source. Edit this file set, not historical migrations.
+
 create extension if not exists pgcrypto;
 
-create or replace function public.set_updated_at()
-returns trigger
-language plpgsql
-as $$
-begin
-  new.updated_at = now();
-  return new;
-end;
-$$;
+create schema if not exists app_private;
+
+revoke all on schema app_private from public;
+revoke all on schema app_private from anon;
+grant usage on schema app_private to authenticated;
+
+
+-- Canonical declarative schema source. Edit this file set, not historical migrations.
 
 create table if not exists public.app_id_counters (
   entity text primary key,
@@ -187,12 +188,8 @@ create table if not exists public.change_logs (
   new_data jsonb
 );
 
-insert into public.app_id_counters (entity, next_value)
-values
-  ('position_groups', 1),
-  ('document_groups', 1),
-  ('candidates', 1)
-on conflict (entity) do nothing;
+
+-- Canonical declarative schema source. Edit this file set, not historical migrations.
 
 create index if not exists idx_profiles_role_site on public.profiles(role, site);
 create index if not exists idx_requisitions_status_site_owner on public.requisitions(status, site, person_in_charge);
@@ -210,40 +207,24 @@ create index if not exists idx_sourcing_weekly_updates_week on public.sourcing_w
 create index if not exists idx_vacancy_weekly_snapshots_week_site on public.vacancy_weekly_snapshots(week_start, site);
 create index if not exists idx_change_logs_entity on public.change_logs(entity, entity_id);
 create index if not exists idx_change_logs_changed_at on public.change_logs(changed_at desc);
+create index if not exists idx_sourcing_weekly_updates_updated_by on public.sourcing_weekly_updates(updated_by) where updated_by is not null;
+create index if not exists idx_vacancy_weekly_snapshots_updated_by on public.vacancy_weekly_snapshots(updated_by) where updated_by is not null;
+create index if not exists idx_change_logs_changed_by on public.change_logs(changed_by) where changed_by is not null;
 
-drop trigger if exists set_profiles_updated_at on public.profiles;
-create trigger set_profiles_updated_at before update on public.profiles
-for each row execute function public.set_updated_at();
 
-drop trigger if exists set_requisitions_updated_at on public.requisitions;
-create trigger set_requisitions_updated_at before update on public.requisitions
-for each row execute function public.set_updated_at();
+-- Canonical declarative schema source. Edit this file set, not historical migrations.
 
-drop trigger if exists set_position_groups_updated_at on public.position_groups;
-create trigger set_position_groups_updated_at before update on public.position_groups
-for each row execute function public.set_updated_at();
-
-drop trigger if exists set_document_groups_updated_at on public.document_groups;
-create trigger set_document_groups_updated_at before update on public.document_groups
-for each row execute function public.set_updated_at();
-
-drop trigger if exists set_candidates_updated_at on public.candidates;
-create trigger set_candidates_updated_at before update on public.candidates
-for each row execute function public.set_updated_at();
-
-drop trigger if exists set_offers_updated_at on public.offers;
-create trigger set_offers_updated_at before update on public.offers
-for each row execute function public.set_updated_at();
-
-drop trigger if exists set_sourcing_weekly_updates_updated_at on public.sourcing_weekly_updates;
-create trigger set_sourcing_weekly_updates_updated_at before update on public.sourcing_weekly_updates
-for each row execute function public.set_updated_at();
-
-drop trigger if exists set_vacancy_weekly_snapshots_updated_at on public.vacancy_weekly_snapshots;
-create trigger set_vacancy_weekly_snapshots_updated_at before update on public.vacancy_weekly_snapshots
-for each row execute function public.set_updated_at();
-
-create or replace function public.handle_new_auth_user()
+create or replace function app_private.set_updated_at()
+returns trigger
+language plpgsql
+set search_path = pg_catalog
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+create or replace function app_private.handle_new_auth_user()
 returns trigger
 language plpgsql
 security definer
@@ -273,12 +254,8 @@ begin
 end;
 $$;
 
-drop trigger if exists on_auth_user_created on auth.users;
-create trigger on_auth_user_created
-after insert on auth.users
-for each row execute function public.handle_new_auth_user();
 
-create or replace function public.current_app_role()
+create or replace function app_private.current_app_role()
 returns text
 language sql
 stable
@@ -288,7 +265,7 @@ as $$
   select coalesce((select role from public.profiles where id = auth.uid()), 'anon')
 $$;
 
-create or replace function public.current_profile_nickname()
+create or replace function app_private.current_profile_nickname()
 returns text
 language sql
 stable
@@ -298,7 +275,7 @@ as $$
   select nullif((select nickname from public.profiles where id = auth.uid()), '')
 $$;
 
-create or replace function public.current_profile_site()
+create or replace function app_private.current_profile_site()
 returns text
 language sql
 stable
@@ -308,47 +285,47 @@ as $$
   select nullif((select site from public.profiles where id = auth.uid()), '')
 $$;
 
-create or replace function public.is_system_admin()
+create or replace function app_private.is_system_admin()
 returns boolean
 language sql
 stable
 security definer
 set search_path = public
 as $$
-  select public.current_app_role() = 'system_admin'
+  select app_private.current_app_role() = 'system_admin'
 $$;
 
-create or replace function public.is_global_recruitment_reader()
+create or replace function app_private.is_global_recruitment_reader()
 returns boolean
 language sql
 stable
 security definer
 set search_path = public
 as $$
-  select public.current_app_role() in ('system_admin', 'admin_recruiter', 'viewer')
+  select app_private.current_app_role() in ('system_admin', 'admin_recruiter', 'viewer')
 $$;
 
-create or replace function public.is_recruitment_reader()
+create or replace function app_private.is_recruitment_reader()
 returns boolean
 language sql
 stable
 security definer
 set search_path = public
 as $$
-  select public.current_app_role() in ('system_admin', 'admin_recruiter', 'site_recruiter', 'viewer')
+  select app_private.current_app_role() in ('system_admin', 'admin_recruiter', 'site_recruiter', 'viewer')
 $$;
 
-create or replace function public.is_recruitment_writer()
+create or replace function app_private.is_recruitment_writer()
 returns boolean
 language sql
 stable
 security definer
 set search_path = public
 as $$
-  select public.current_app_role() in ('system_admin', 'admin_recruiter', 'site_recruiter')
+  select app_private.current_app_role() in ('system_admin', 'admin_recruiter', 'site_recruiter')
 $$;
 
-create or replace function public.assert_system_admin()
+create or replace function app_private.assert_system_admin()
 returns void
 language plpgsql
 stable
@@ -356,13 +333,13 @@ security definer
 set search_path = public
 as $$
 begin
-  if not public.is_system_admin() then
+  if not app_private.is_system_admin() then
     raise exception 'System admin role is required.';
   end if;
 end;
 $$;
 
-create or replace function public.assert_recruitment_writer()
+create or replace function app_private.assert_recruitment_writer()
 returns void
 language plpgsql
 stable
@@ -370,13 +347,13 @@ security definer
 set search_path = public
 as $$
 begin
-  if not public.is_recruitment_writer() then
+  if not app_private.is_recruitment_writer() then
     raise exception 'Recruitment write role is required.';
   end if;
 end;
 $$;
 
-create or replace function public.can_read_requisition(p_doc_id text)
+create or replace function app_private.can_read_requisition(p_doc_id text)
 returns boolean
 language sql
 stable
@@ -384,19 +361,19 @@ security definer
 set search_path = public
 as $$
   select
-    public.is_global_recruitment_reader()
+    app_private.is_global_recruitment_reader()
     or (
-      public.current_app_role() = 'site_recruiter'
+      app_private.current_app_role() = 'site_recruiter'
       and exists (
         select 1
         from public.requisitions r
         where r.doc_id = p_doc_id
-          and r.site = public.current_profile_site()
+          and r.site = app_private.current_profile_site()
       )
     )
 $$;
 
-create or replace function public.can_manage_requisition(p_doc_id text)
+create or replace function app_private.can_manage_requisition(p_doc_id text)
 returns boolean
 language sql
 stable
@@ -404,20 +381,20 @@ security definer
 set search_path = public
 as $$
   select
-    public.current_app_role() in ('system_admin', 'admin_recruiter')
+    app_private.current_app_role() in ('system_admin', 'admin_recruiter')
     or (
-      public.current_app_role() = 'site_recruiter'
+      app_private.current_app_role() = 'site_recruiter'
       and exists (
         select 1
         from public.requisitions r
         where r.doc_id = p_doc_id
-          and r.site = public.current_profile_site()
-          and r.person_in_charge = public.current_profile_nickname()
+          and r.site = app_private.current_profile_site()
+          and r.person_in_charge = app_private.current_profile_nickname()
       )
     )
 $$;
 
-create or replace function public.can_manage_doc_group(p_doc_group_id text)
+create or replace function app_private.can_manage_doc_group(p_doc_group_id text)
 returns boolean
 language sql
 stable
@@ -428,11 +405,11 @@ as $$
     select 1
     from public.document_groups dg
     where dg.doc_group_id = p_doc_group_id
-      and public.can_manage_requisition(dg.doc_id)
+      and app_private.can_manage_requisition(dg.doc_id)
   )
 $$;
 
-create or replace function public.can_manage_candidate(p_candidate_id text)
+create or replace function app_private.can_manage_candidate(p_candidate_id text)
 returns boolean
 language sql
 stable
@@ -444,11 +421,11 @@ as $$
     from public.candidates c
     join public.document_groups dg on dg.doc_group_id = c.doc_group_id
     where c.candidate_id = p_candidate_id
-      and public.can_manage_requisition(dg.doc_id)
+      and app_private.can_manage_requisition(dg.doc_id)
   )
 $$;
 
-create or replace function public.has_open_group_requisition(p_group_id text)
+create or replace function app_private.has_open_group_requisition(p_group_id text)
 returns boolean
 language sql
 stable
@@ -471,7 +448,7 @@ as $$
   )
 $$;
 
-create or replace function public.can_read_sourcing_group(p_group_id text)
+create or replace function app_private.can_read_sourcing_group(p_group_id text)
 returns boolean
 language sql
 stable
@@ -479,20 +456,20 @@ security definer
 set search_path = public
 as $$
   select
-    public.is_global_recruitment_reader()
+    app_private.is_global_recruitment_reader()
     or (
-      public.current_app_role() = 'site_recruiter'
+      app_private.current_app_role() = 'site_recruiter'
       and exists (
         select 1
         from public.document_groups dg
         join public.requisitions r on r.doc_id = dg.doc_id
         where dg.group_id = p_group_id
-          and r.person_in_charge = public.current_profile_nickname()
+          and r.person_in_charge = app_private.current_profile_nickname()
       )
     )
 $$;
 
-create or replace function public.can_manage_sourcing_group(p_group_id text)
+create or replace function app_private.can_manage_sourcing_group(p_group_id text)
 returns boolean
 language sql
 stable
@@ -500,9 +477,9 @@ security definer
 set search_path = public
 as $$
   select
-    public.current_app_role() in ('system_admin', 'admin_recruiter')
+    app_private.current_app_role() in ('system_admin', 'admin_recruiter')
     or (
-      public.current_app_role() = 'site_recruiter'
+      app_private.current_app_role() = 'site_recruiter'
       and exists (
         select 1
         from public.document_groups dg
@@ -515,13 +492,13 @@ as $$
         ) accepted on true
         where dg.group_id = p_group_id
           and r.status = 'ongoing'
-          and r.person_in_charge = public.current_profile_nickname()
+          and r.person_in_charge = app_private.current_profile_nickname()
           and greatest(r.head_count - coalesce(accepted.accepted_count, 0), 0) > 0
       )
     )
 $$;
 
-create or replace function public.next_app_id(p_entity text, p_prefix text)
+create or replace function app_private.next_app_id(p_entity text, p_prefix text)
 returns text
 language plpgsql
 security definer
@@ -547,16 +524,16 @@ begin
 end;
 $$;
 
-create or replace function public.next_prefixed_id(p_table text, p_column text, p_prefix text)
+create or replace function app_private.next_prefixed_id(p_table text, p_column text, p_prefix text)
 returns text
 language sql
 security definer
 set search_path = public
 as $$
-  select public.next_app_id(p_table, p_prefix)
+  select app_private.next_app_id(p_table, p_prefix)
 $$;
 
-create or replace function public.refresh_requisition_status(p_doc_id text)
+create or replace function app_private.refresh_requisition_status(p_doc_id text)
 returns void
 language plpgsql
 security definer
@@ -591,7 +568,7 @@ begin
 end;
 $$;
 
-create or replace function public.audit_row_change()
+create or replace function app_private.audit_row_change()
 returns trigger
 language plpgsql
 security definer
@@ -636,41 +613,81 @@ begin
 end;
 $$;
 
+drop trigger if exists set_profiles_updated_at on public.profiles;
+create trigger set_profiles_updated_at before update on public.profiles
+for each row execute function app_private.set_updated_at();
+
+drop trigger if exists set_requisitions_updated_at on public.requisitions;
+create trigger set_requisitions_updated_at before update on public.requisitions
+for each row execute function app_private.set_updated_at();
+
+drop trigger if exists set_position_groups_updated_at on public.position_groups;
+create trigger set_position_groups_updated_at before update on public.position_groups
+for each row execute function app_private.set_updated_at();
+
+drop trigger if exists set_document_groups_updated_at on public.document_groups;
+create trigger set_document_groups_updated_at before update on public.document_groups
+for each row execute function app_private.set_updated_at();
+
+drop trigger if exists set_candidates_updated_at on public.candidates;
+create trigger set_candidates_updated_at before update on public.candidates
+for each row execute function app_private.set_updated_at();
+
+drop trigger if exists set_offers_updated_at on public.offers;
+create trigger set_offers_updated_at before update on public.offers
+for each row execute function app_private.set_updated_at();
+
+drop trigger if exists set_sourcing_weekly_updates_updated_at on public.sourcing_weekly_updates;
+create trigger set_sourcing_weekly_updates_updated_at before update on public.sourcing_weekly_updates
+for each row execute function app_private.set_updated_at();
+
+drop trigger if exists set_vacancy_weekly_snapshots_updated_at on public.vacancy_weekly_snapshots;
+create trigger set_vacancy_weekly_snapshots_updated_at before update on public.vacancy_weekly_snapshots
+for each row execute function app_private.set_updated_at();
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+after insert on auth.users
+for each row execute function app_private.handle_new_auth_user();
 drop trigger if exists audit_requisitions on public.requisitions;
 create trigger audit_requisitions after insert or update or delete on public.requisitions
-for each row execute function public.audit_row_change();
+for each row execute function app_private.audit_row_change();
 
 drop trigger if exists audit_requisition_logs on public.requisition_logs;
 create trigger audit_requisition_logs after insert or update or delete on public.requisition_logs
-for each row execute function public.audit_row_change();
+for each row execute function app_private.audit_row_change();
 
 drop trigger if exists audit_position_groups on public.position_groups;
 create trigger audit_position_groups after insert or update or delete on public.position_groups
-for each row execute function public.audit_row_change();
+for each row execute function app_private.audit_row_change();
 
 drop trigger if exists audit_document_groups on public.document_groups;
 create trigger audit_document_groups after insert or update or delete on public.document_groups
-for each row execute function public.audit_row_change();
+for each row execute function app_private.audit_row_change();
 
 drop trigger if exists audit_candidates on public.candidates;
 create trigger audit_candidates after insert or update or delete on public.candidates
-for each row execute function public.audit_row_change();
+for each row execute function app_private.audit_row_change();
 
 drop trigger if exists audit_recruitment_logs on public.recruitment_logs;
 create trigger audit_recruitment_logs after insert or update or delete on public.recruitment_logs
-for each row execute function public.audit_row_change();
+for each row execute function app_private.audit_row_change();
 
 drop trigger if exists audit_offers on public.offers;
 create trigger audit_offers after insert or update or delete on public.offers
-for each row execute function public.audit_row_change();
+for each row execute function app_private.audit_row_change();
 
 drop trigger if exists audit_sourcing_weekly_updates on public.sourcing_weekly_updates;
 create trigger audit_sourcing_weekly_updates after insert or update or delete on public.sourcing_weekly_updates
-for each row execute function public.audit_row_change();
+for each row execute function app_private.audit_row_change();
 
 drop trigger if exists audit_vacancy_weekly_snapshots on public.vacancy_weekly_snapshots;
 create trigger audit_vacancy_weekly_snapshots after insert or update or delete on public.vacancy_weekly_snapshots
-for each row execute function public.audit_row_change();
+for each row execute function app_private.audit_row_change();
+
+
+
+-- Canonical declarative schema source. Edit this file set, not historical migrations.
 
 alter table public.profiles enable row level security;
 alter table public.requisitions enable row level security;
@@ -689,41 +706,41 @@ drop policy if exists profiles_select_self_or_recruiter_admin on public.profiles
 create policy profiles_select_self_or_recruiter_admin on public.profiles
 for select to authenticated
 using (
-  id = auth.uid()
-  or public.current_app_role() in ('system_admin', 'admin_recruiter')
+  id = (select auth.uid())
+  or app_private.current_app_role() in ('system_admin', 'admin_recruiter')
 );
 
 drop policy if exists profiles_admin_update on public.profiles;
 create policy profiles_admin_update on public.profiles
 for update to authenticated
-using (public.is_system_admin())
-with check (public.is_system_admin());
+using (app_private.is_system_admin())
+with check (app_private.is_system_admin());
 
 drop policy if exists requisitions_read on public.requisitions;
 create policy requisitions_read on public.requisitions
 for select to authenticated
 using (
-  public.is_global_recruitment_reader()
+  app_private.is_global_recruitment_reader()
   or (
-    public.current_app_role() = 'site_recruiter'
-    and site = public.current_profile_site()
+    app_private.current_app_role() = 'site_recruiter'
+    and site = app_private.current_profile_site()
   )
 );
 
 drop policy if exists requisition_logs_read on public.requisition_logs;
 create policy requisition_logs_read on public.requisition_logs
 for select to authenticated
-using (public.can_read_requisition(doc_id));
+using (app_private.can_read_requisition(doc_id));
 
 drop policy if exists position_groups_read on public.position_groups;
 create policy position_groups_read on public.position_groups
 for select to authenticated
-using (public.is_recruitment_reader());
+using (app_private.is_recruitment_reader());
 
 drop policy if exists document_groups_read on public.document_groups;
 create policy document_groups_read on public.document_groups
 for select to authenticated
-using (public.can_read_requisition(doc_id));
+using (app_private.can_read_requisition(doc_id));
 
 drop policy if exists candidates_read on public.candidates;
 create policy candidates_read on public.candidates
@@ -733,7 +750,7 @@ using (
     select 1
     from public.document_groups dg
     where dg.doc_group_id = candidates.doc_group_id
-      and public.can_read_requisition(dg.doc_id)
+      and app_private.can_read_requisition(dg.doc_id)
   )
 );
 
@@ -746,48 +763,39 @@ using (
     from public.candidates c
     join public.document_groups dg on dg.doc_group_id = c.doc_group_id
     where c.candidate_id = recruitment_logs.candidate_id
-      and public.can_read_requisition(dg.doc_id)
+      and app_private.can_read_requisition(dg.doc_id)
   )
 );
 
 drop policy if exists offers_read on public.offers;
 create policy offers_read on public.offers
 for select to authenticated
-using (public.can_read_requisition(doc_id));
+using (app_private.can_read_requisition(doc_id));
 
 drop policy if exists sourcing_weekly_updates_read on public.sourcing_weekly_updates;
 create policy sourcing_weekly_updates_read on public.sourcing_weekly_updates
 for select to authenticated
-using (public.can_read_sourcing_group(group_id));
+using (app_private.can_read_sourcing_group(group_id));
 
 drop policy if exists vacancy_weekly_snapshots_read on public.vacancy_weekly_snapshots;
 create policy vacancy_weekly_snapshots_read on public.vacancy_weekly_snapshots
 for select to authenticated
 using (
-  public.is_global_recruitment_reader()
+  app_private.is_global_recruitment_reader()
   or (
-    public.current_app_role() = 'site_recruiter'
-    and site = public.current_profile_site()
+    app_private.current_app_role() = 'site_recruiter'
+    and site = app_private.current_profile_site()
   )
 );
 
 drop policy if exists change_logs_read on public.change_logs;
 create policy change_logs_read on public.change_logs
 for select to authenticated
-using (public.is_global_recruitment_reader());
+using (app_private.is_global_recruitment_reader());
 
-grant usage on schema public to authenticated;
-grant select on public.profiles to authenticated;
-grant select on public.requisitions to authenticated;
-grant select on public.requisition_logs to authenticated;
-grant select on public.position_groups to authenticated;
-grant select on public.document_groups to authenticated;
-grant select on public.candidates to authenticated;
-grant select on public.recruitment_logs to authenticated;
-grant select on public.offers to authenticated;
-grant select on public.sourcing_weekly_updates to authenticated;
-grant select on public.vacancy_weekly_snapshots to authenticated;
-grant select on public.change_logs to authenticated;
+
+
+-- Canonical declarative schema source. Edit this file set, not historical migrations.
 
 create or replace function public.app_upsert_requisition(payload jsonb)
 returns jsonb
@@ -800,13 +808,13 @@ declare
   v_doc_id text := nullif(payload ->> 'doc_id', '');
   v_exists boolean;
   v_status text := coalesce(nullif(payload ->> 'status', ''), 'ongoing');
-  v_role text := public.current_app_role();
+  v_role text := app_private.current_app_role();
   v_site text := nullif(payload ->> 'site', '');
   v_person_in_charge text := nullif(payload ->> 'person_in_charge', '');
   v_request_type text := coalesce(nullif(payload ->> 'request_type', ''), 'New');
   v_replacement_names text := nullif(payload ->> 'replacement_names', '');
 begin
-  perform public.assert_recruitment_writer();
+  perform app_private.assert_recruitment_writer();
   if v_doc_id is null then raise exception 'Doc ID is required.'; end if;
   if v_mode not in ('new', 'change') then raise exception 'mode must be new or change'; end if;
   if v_status not in ('ongoing', 'cancel') then raise exception 'Requisition status can only be ongoing or cancel. Filled is automatic.'; end if;
@@ -815,8 +823,8 @@ begin
   if v_request_type = 'New' then v_replacement_names := null; end if;
 
   if v_role = 'site_recruiter' then
-    v_site := public.current_profile_site();
-    v_person_in_charge := public.current_profile_nickname();
+    v_site := app_private.current_profile_site();
+    v_person_in_charge := app_private.current_profile_nickname();
     if v_site is null or v_person_in_charge is null then
       raise exception 'Site recruiter accounts require assigned site and nickname.';
     end if;
@@ -825,7 +833,7 @@ begin
   select exists(select 1 from public.requisitions where doc_id = v_doc_id) into v_exists;
   if v_mode = 'new' and v_exists then raise exception 'Requisition Doc ID already exists. Switch to Change mode to edit it.'; end if;
   if v_mode = 'change' and not v_exists then raise exception 'Requisition Doc ID does not exist. Switch to New mode to create it.'; end if;
-  if v_mode = 'change' and not public.can_manage_requisition(v_doc_id) then raise exception 'You can edit only requisitions where you are person in charge.'; end if;
+  if v_mode = 'change' and not app_private.can_manage_requisition(v_doc_id) then raise exception 'You can edit only requisitions where you are person in charge.'; end if;
 
   perform set_config('app.action', 'requisition:' || v_mode, true);
 
@@ -863,7 +871,7 @@ begin
     status = excluded.status;
 
   perform set_config('app.action', 'auto-status', true);
-  perform public.refresh_requisition_status(v_doc_id);
+  perform app_private.refresh_requisition_status(v_doc_id);
   return jsonb_build_object('ok', true, 'id', v_doc_id);
 end;
 $$;
@@ -878,8 +886,8 @@ declare
   v_doc_id text := nullif(payload ->> 'doc_id', '');
   v_status text := nullif(payload ->> 'status', '');
 begin
-  perform public.assert_recruitment_writer();
-  if not public.can_manage_requisition(v_doc_id) then raise exception 'You can update status only for requisitions where you are person in charge.'; end if;
+  perform app_private.assert_recruitment_writer();
+  if not app_private.can_manage_requisition(v_doc_id) then raise exception 'You can update status only for requisitions where you are person in charge.'; end if;
   if v_status not in ('ongoing', 'filled', 'cancel') then raise exception 'Status must be ongoing, filled, or cancel.'; end if;
 
   perform set_config('app.action', 'requisition:status', true);
@@ -888,7 +896,7 @@ begin
 
   update public.requisitions set status = v_status where doc_id = v_doc_id;
   perform set_config('app.action', 'auto-status', true);
-  perform public.refresh_requisition_status(v_doc_id);
+  perform app_private.refresh_requisition_status(v_doc_id);
   return jsonb_build_object('ok', true);
 end;
 $$;
@@ -904,12 +912,12 @@ declare
   v_group_id text := nullif(payload ->> 'group_id', '');
   v_exists boolean;
 begin
-  perform public.assert_recruitment_writer();
+  perform app_private.assert_recruitment_writer();
   if v_mode not in ('new', 'change') then
     raise exception 'mode must be new or change';
   end if;
   if v_mode = 'new' then
-    v_group_id := public.next_app_id('position_groups', 'GRP');
+    v_group_id := app_private.next_app_id('position_groups', 'GRP');
   elsif v_group_id is null then
     raise exception 'Group ID is required in Change mode.';
   end if;
@@ -917,7 +925,7 @@ begin
   select exists(select 1 from public.position_groups where group_id = v_group_id) into v_exists;
   if v_mode = 'new' and v_exists then raise exception 'Group ID already exists. Switch to Change mode to edit it.'; end if;
   if v_mode = 'change' and not v_exists then raise exception 'Group ID does not exist. Switch to New mode to create it.'; end if;
-  if v_mode = 'change' and not public.can_manage_sourcing_group(v_group_id) then
+  if v_mode = 'change' and not app_private.can_manage_sourcing_group(v_group_id) then
     raise exception 'You can edit only sourcing groups linked to requisitions where you are responsible.';
   end if;
 
@@ -966,11 +974,11 @@ declare
   v_doc_group_id text;
   v_group public.position_groups%rowtype;
 begin
-  perform public.assert_recruitment_writer();
+  perform app_private.assert_recruitment_writer();
   if v_doc_id is null or not exists(select 1 from public.requisitions where doc_id = v_doc_id) then
     raise exception 'Requisition does not exist.';
   end if;
-  if not public.can_manage_requisition(v_doc_id) then
+  if not app_private.can_manage_requisition(v_doc_id) then
     raise exception 'You can match only requisitions where you are person in charge.';
   end if;
   select * into v_group from public.position_groups where group_id = v_group_id;
@@ -979,7 +987,7 @@ begin
     raise exception 'This requisition is already matched.';
   end if;
 
-  v_doc_group_id := public.next_app_id('document_groups', 'DGRP');
+  v_doc_group_id := app_private.next_app_id('document_groups', 'DGRP');
   perform set_config('app.action', 'document_group:new', true);
   insert into public.document_groups (
     doc_group_id, doc_id, group_id, group_position,
@@ -1007,11 +1015,11 @@ declare
   v_week_start date := nullif(payload ->> 'week_start', '')::date;
   v_group public.position_groups%rowtype;
 begin
-  perform public.assert_recruitment_writer();
+  perform app_private.assert_recruitment_writer();
   if v_group_id is null then raise exception 'Group ID is required.'; end if;
   if v_week_start is null then raise exception 'Week start is required.'; end if;
-  if not public.has_open_group_requisition(v_group_id) then raise exception 'Group has no unfilled active requisition.'; end if;
-  if not public.can_manage_sourcing_group(v_group_id) then raise exception 'You can update only sourcing groups where you are responsible.'; end if;
+  if not app_private.has_open_group_requisition(v_group_id) then raise exception 'Group has no unfilled active requisition.'; end if;
+  if not app_private.can_manage_sourcing_group(v_group_id) then raise exception 'You can update only sourcing groups where you are responsible.'; end if;
   select * into v_group from public.position_groups where group_id = v_group_id;
 
   perform set_config('app.action', 'sourcing_update:upsert', true);
@@ -1080,11 +1088,11 @@ declare
   v_exists boolean;
   v_initial_log_date date;
 begin
-  perform public.assert_recruitment_writer();
-  if not public.can_manage_doc_group(v_doc_group_id) then raise exception 'You can create candidates only for requisitions where you are person in charge.'; end if;
+  perform app_private.assert_recruitment_writer();
+  if not app_private.can_manage_doc_group(v_doc_group_id) then raise exception 'You can create candidates only for requisitions where you are person in charge.'; end if;
 
   if v_mode = 'new' then
-    v_candidate_id := public.next_app_id('candidates', 'CAN');
+    v_candidate_id := app_private.next_app_id('candidates', 'CAN');
   elsif v_candidate_id is null then
     raise exception 'Candidate ID is required in Change mode.';
   end if;
@@ -1092,7 +1100,7 @@ begin
   select exists(select 1 from public.candidates where candidate_id = v_candidate_id) into v_exists;
   if v_mode = 'new' and v_exists then raise exception 'Candidate ID already exists. Switch to Change mode to edit it.'; end if;
   if v_mode = 'change' and not v_exists then raise exception 'Candidate ID does not exist. Switch to New mode to create it.'; end if;
-  if v_mode = 'change' and not public.can_manage_candidate(v_candidate_id) then raise exception 'You can edit candidates only for requisitions where you are person in charge.'; end if;
+  if v_mode = 'change' and not app_private.can_manage_candidate(v_candidate_id) then raise exception 'You can edit candidates only for requisitions where you are person in charge.'; end if;
 
   perform set_config('app.action', 'candidate:' || v_mode, true);
   insert into public.candidates (candidate_id, name, phone_no, doc_group_id, channel, ref_name, first_contact_date, candidate_folder_url)
@@ -1151,8 +1159,8 @@ declare
   ];
   v_auto_next_stage text;
 begin
-  perform public.assert_recruitment_writer();
-  if not public.can_manage_candidate(v_candidate_id) then raise exception 'You can update process only for candidates where you are person in charge.'; end if;
+  perform app_private.assert_recruitment_writer();
+  if not app_private.can_manage_candidate(v_candidate_id) then raise exception 'You can update process only for candidates where you are person in charge.'; end if;
 
   select recruitment_process, result
     into v_current_stage, v_current_result
@@ -1229,15 +1237,12 @@ declare
   v_item jsonb;
   v_expected_stage text;
   v_log_id bigint;
-  v_pass_stage text;
-  v_pass_round integer;
-  v_pass_date date;
 begin
-  perform public.assert_recruitment_writer();
+  perform app_private.assert_recruitment_writer();
   if v_candidate_id is null then raise exception 'Candidate is required.'; end if;
   if v_target_stage is null then raise exception 'Target stage is required.'; end if;
   if v_stage_count = 0 then raise exception 'At least one passed stage is required.'; end if;
-  if not public.can_manage_candidate(v_candidate_id) then raise exception 'You can update process only for candidates where you are person in charge.'; end if;
+  if not app_private.can_manage_candidate(v_candidate_id) then raise exception 'You can update process only for candidates where you are person in charge.'; end if;
 
   select recruitment_process, result
     into v_current_stage, v_current_result
@@ -1267,45 +1272,12 @@ begin
   perform set_config('app.action', 'recruitment_log:pipeline-pass', true);
   for v_item in select value from jsonb_array_elements(v_stages)
   loop
-    v_pass_stage := nullif(v_item ->> 'stage', '');
-    v_pass_round := coalesce(nullif(v_item ->> 'round', '')::integer, 1);
-    v_pass_date := nullif(v_item ->> 'log_date', '')::date;
-    if v_pass_stage is null or v_pass_date is null then
-      raise exception 'Every crossed stage needs a stage and result date.';
-    end if;
-    if v_pass_round < 1 then
-      raise exception 'Every crossed stage needs a valid round.';
-    end if;
-
-    perform set_config('app.action', 'recruitment_log:pipeline-pending', true);
-    if not exists (
-      select 1
-      from public.recruitment_logs
-      where candidate_id = v_candidate_id
-        and recruitment_process = v_pass_stage
-        and round = v_pass_round
-        and result is null
-    ) then
-      insert into public.recruitment_logs (candidate_id, log_date, recruitment_process, round, interviewer, result, remark)
-      values (
-        v_candidate_id,
-        v_pass_date,
-        v_pass_stage,
-        v_pass_round,
-        nullif(v_item ->> 'interviewer', ''),
-        null,
-        coalesce(nullif(v_item ->> 'pending_remark', ''), 'Pending stage confirmed before pipeline pass')
-      )
-      returning log_id into v_log_id;
-    end if;
-
-    perform set_config('app.action', 'recruitment_log:pipeline-pass', true);
     insert into public.recruitment_logs (candidate_id, log_date, recruitment_process, round, interviewer, result, remark)
     values (
       v_candidate_id,
-      v_pass_date,
-      v_pass_stage,
-      v_pass_round,
+      nullif(v_item ->> 'log_date', '')::date,
+      nullif(v_item ->> 'stage', ''),
+      coalesce(nullif(v_item ->> 'round', '')::integer, 1),
       nullif(v_item ->> 'interviewer', ''),
       1,
       nullif(v_item ->> 'remark', '')
@@ -1347,9 +1319,9 @@ declare
   v_next_round integer := coalesce(nullif(v_next_test ->> 'round', '')::integer, v_current_round + 1);
   v_log_id bigint;
 begin
-  perform public.assert_recruitment_writer();
+  perform app_private.assert_recruitment_writer();
   if v_candidate_id is null then raise exception 'Candidate is required.'; end if;
-  if not public.can_manage_candidate(v_candidate_id) then raise exception 'You can update process only for candidates where you are person in charge.'; end if;
+  if not app_private.can_manage_candidate(v_candidate_id) then raise exception 'You can update process only for candidates where you are person in charge.'; end if;
 
   select recruitment_process, result, round
     into v_current_stage, v_current_result, v_latest_round
@@ -1419,11 +1391,11 @@ declare
   v_item jsonb;
   v_log_id bigint;
 begin
-  perform public.assert_recruitment_writer();
+  perform app_private.assert_recruitment_writer();
   if v_candidate_id is null then raise exception 'Candidate is required.'; end if;
   if v_target_stage <> 'Reference Check' then raise exception 'Test exit target must be Reference Check.'; end if;
   if v_stage_count <> 1 then raise exception 'Test exit must pass exactly one Test stage.'; end if;
-  if not public.can_manage_candidate(v_candidate_id) then raise exception 'You can update process only for candidates where you are person in charge.'; end if;
+  if not app_private.can_manage_candidate(v_candidate_id) then raise exception 'You can update process only for candidates where you are person in charge.'; end if;
 
   select recruitment_process, result, round
     into v_current_stage, v_current_result, v_latest_round
@@ -1507,8 +1479,8 @@ declare
   v_exists boolean;
   v_offer_id bigint;
 begin
-  perform public.assert_recruitment_writer();
-  if not public.can_manage_requisition(v_doc_id) or not public.can_manage_candidate(v_candidate_id) then
+  perform app_private.assert_recruitment_writer();
+  if not app_private.can_manage_requisition(v_doc_id) or not app_private.can_manage_candidate(v_candidate_id) then
     raise exception 'You can create offers only for requisitions where you are person in charge.';
   end if;
 
@@ -1532,7 +1504,7 @@ begin
   returning offer_id into v_offer_id;
 
   perform set_config('app.action', 'auto-status', true);
-  perform public.refresh_requisition_status(v_doc_id);
+  perform app_private.refresh_requisition_status(v_doc_id);
   return jsonb_build_object('ok', true, 'id', v_offer_id::text);
 end;
 $$;
@@ -1550,7 +1522,7 @@ declare
   v_request_type text := nullif(payload ->> 'request_type', '');
   v_snapshot_id bigint;
 begin
-  if public.current_app_role() not in ('system_admin', 'admin_recruiter') then
+  if app_private.current_app_role() not in ('system_admin', 'admin_recruiter') then
     raise exception 'System admin or admin recruiter role is required.';
   end if;
   if v_week_start is null then raise exception 'Week start is required.'; end if;
@@ -1579,20 +1551,103 @@ begin
 end;
 $$;
 
-revoke all on function public.app_upsert_position_group(jsonb) from public, anon;
-revoke all on function public.app_create_group_match(jsonb) from public, anon;
 
+-- Canonical declarative schema source. Edit this file set, not historical migrations.
+
+grant usage on schema public to authenticated;
+grant usage on schema app_private to authenticated;
+
+grant select on public.profiles to authenticated;
+grant select on public.requisitions to authenticated;
+grant select on public.requisition_logs to authenticated;
+grant select on public.position_groups to authenticated;
+grant select on public.document_groups to authenticated;
+grant select on public.candidates to authenticated;
+grant select on public.recruitment_logs to authenticated;
+grant select on public.offers to authenticated;
+grant select on public.sourcing_weekly_updates to authenticated;
+grant select on public.vacancy_weekly_snapshots to authenticated;
+grant select on public.change_logs to authenticated;
+
+revoke all on all functions in schema app_private from public, anon;
+grant execute on all functions in schema app_private to authenticated;
+
+revoke all on function public.app_upsert_requisition(jsonb) from public, anon, authenticated;
 grant execute on function public.app_upsert_requisition(jsonb) to authenticated;
+revoke all on function public.app_insert_requisition_log(jsonb) from public, anon, authenticated;
 grant execute on function public.app_insert_requisition_log(jsonb) to authenticated;
+revoke all on function public.app_upsert_position_group(jsonb) from public, anon, authenticated;
 grant execute on function public.app_upsert_position_group(jsonb) to authenticated;
+revoke all on function public.app_create_group_match(jsonb) from public, anon, authenticated;
 grant execute on function public.app_create_group_match(jsonb) to authenticated;
+revoke all on function public.app_upsert_sourcing_weekly_update(jsonb) from public, anon, authenticated;
 grant execute on function public.app_upsert_sourcing_weekly_update(jsonb) to authenticated;
+revoke all on function public.app_upsert_candidate(jsonb) from public, anon, authenticated;
 grant execute on function public.app_upsert_candidate(jsonb) to authenticated;
+revoke all on function public.app_insert_recruitment_log(jsonb) from public, anon, authenticated;
 grant execute on function public.app_insert_recruitment_log(jsonb) to authenticated;
+revoke all on function public.app_insert_pipeline_passes(jsonb) from public, anon, authenticated;
 grant execute on function public.app_insert_pipeline_passes(jsonb) to authenticated;
+revoke all on function public.app_insert_test_maintenance(jsonb) from public, anon, authenticated;
 grant execute on function public.app_insert_test_maintenance(jsonb) to authenticated;
+revoke all on function public.app_insert_pipeline_test_exit(jsonb) from public, anon, authenticated;
 grant execute on function public.app_insert_pipeline_test_exit(jsonb) to authenticated;
+revoke all on function public.app_upsert_offer(jsonb) from public, anon, authenticated;
 grant execute on function public.app_upsert_offer(jsonb) to authenticated;
+revoke all on function public.app_upsert_vacancy_weekly_snapshot(jsonb) from public, anon, authenticated;
 grant execute on function public.app_upsert_vacancy_weekly_snapshot(jsonb) to authenticated;
+
+
+-- Keep legacy public helper functions from being callable through exposed public RPC.
+-- They are retained only to avoid destructive drops on projects that may still have old references.
+create or replace function public.set_updated_at()
+returns trigger
+language plpgsql
+set search_path = pg_catalog
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+do $$
+declare
+  v_signature text;
+begin
+  for v_signature in
+    select signature
+    from (values
+    ('public.set_updated_at()'),
+    ('public.handle_new_auth_user()'),
+    ('public.current_app_role()'),
+    ('public.current_profile_nickname()'),
+    ('public.current_profile_site()'),
+    ('public.is_system_admin()'),
+    ('public.is_global_recruitment_reader()'),
+    ('public.is_recruitment_reader()'),
+    ('public.is_recruitment_writer()'),
+    ('public.assert_system_admin()'),
+    ('public.assert_recruitment_writer()'),
+    ('public.can_read_requisition(text)'),
+    ('public.can_manage_requisition(text)'),
+    ('public.can_manage_doc_group(text)'),
+    ('public.can_manage_candidate(text)'),
+    ('public.has_open_group_requisition(text)'),
+    ('public.can_read_sourcing_group(text)'),
+    ('public.can_manage_sourcing_group(text)'),
+    ('public.next_app_id(text, text)'),
+    ('public.next_prefixed_id(text, text, text)'),
+    ('public.refresh_requisition_status(text)'),
+    ('public.audit_row_change()'),
+    ('public.rls_auto_enable()')
+    ) as legacy(signature)
+  loop
+    if to_regprocedure(v_signature) is not null then
+      execute format('revoke all on function %s from public, anon, authenticated', v_signature);
+    end if;
+  end loop;
+end;
+$$;
 
 commit;

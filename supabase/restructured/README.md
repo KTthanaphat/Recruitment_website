@@ -1,27 +1,35 @@
-# Restructured Supabase SQL
+# Legacy Restructured Supabase SQL
 
-This folder contains a clean fresh-install SQL design for the recruitment website.
+This folder is retained for historical reference. The active database source of
+truth is now `supabase/schemas/`.
 
-Use `00_fresh_schema.sql` for a new Supabase project or a reset prototype database. It is not intended to be run on top of a database that already has the existing migration history applied.
+Use the declarative schema files for new database work:
 
-Use `01_existing_db_optimization.sql` only for an existing project that already has the current migrations applied. It keeps data in place and adds the safer ID counter design plus supporting indexes.
+```powershell
+supabase db diff -f describe_change
+supabase db reset
+supabase db push --dry-run
+```
 
-The existing files in `supabase/migrations/` are kept because Supabase migration history should not be rewritten after it has been applied. This folder is the optimized source of truth for rebuilding a new project from scratch.
+The existing files in `supabase/migrations/` are kept because Supabase migration
+history should not be rewritten after it has been applied. The one-time
+transition migration adds the declarative-schema structure and hardens function
+grants for the current project.
 
-## Design Goals
+## Current Design Goals
 
 - Keep the current app contract: table names, column names, and RPC names remain compatible with the Next.js app.
-- Put final v1 behavior into one readable SQL file instead of spread across multiple override migrations.
+- Put final behavior into modular declarative SQL files instead of spread across multiple override migrations.
 - Keep writes behind `security definer` RPC functions.
 - Keep RLS deny-by-default with role and responsibility based reads.
 - Use concurrency-safe prefixed ID counters instead of scanning tables for the next ID.
 - Preserve audit logging, automatic requisition fill status, candidate pipeline automation, sourcing updates, and account role mapping.
 
-## Install Order
+## Fresh Install Order
 
 1. Create a new Supabase project.
 2. Open Supabase SQL Editor.
-3. Run `00_fresh_schema.sql`.
+3. Apply migrations, or use the Supabase CLI against the declarative schema workflow.
 4. Create the first app user in Supabase Auth.
 5. Promote that user:
 
@@ -35,10 +43,11 @@ where email = 'your-admin-email@example.com';
 
 ## Existing Database Optimization
 
-For a current Supabase project that already has data:
+For a current Supabase project that already has data, use the transition
+migration in `supabase/migrations/`.
 
 1. Back up the database first.
-2. Run all existing migrations through `supabase/migrations/202606280004_requisition_request_type_live_waterfall.sql`.
-3. Run `01_existing_db_optimization.sql`.
+2. Review `20260720170548_declarative_schema_transition.sql`.
+3. Apply it through the Supabase CLI or deployment pipeline.
 
 Do not run `00_fresh_schema.sql` on an existing database unless you intentionally reset the project first.

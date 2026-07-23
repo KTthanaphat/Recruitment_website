@@ -284,6 +284,7 @@ Channels:
 Weekly sourcing update:
 
 - Only render update cards for marked channels.
+- Records > Sourcing shows unmatched `position_groups` separately with a warning and Match requisition action; unmatched groups do not render weekly applicant inputs.
 - Weekly update saves applicant counts only; it must not clear or change channel booleans.
 - Channel marking is controlled by sourcing setup/group matching. The RPC preserves omitted channel booleans and initializes new weekly rows from `position_groups`.
 - Unsaved selected weeks prefill applicant inputs from the latest saved group update.
@@ -293,6 +294,7 @@ Add Match:
 
 - Only show requisitions with no existing `document_groups` match at all.
 - Show doc option labels with position context, for example `DOC-001 - Accountant`.
+- Unmatch uses `app_unmatch_group_requisition` and is blocked when candidates reference the `doc_group_id`.
 
 ## Candidate Rules
 
@@ -355,6 +357,8 @@ Active stage cards show only:
 
 Active stage cards should not show extra tags, candidate ID/group ID metadata, or compact StageRail unless user requests it again.
 
+Stage panels use the active assigned-site accent as a tinted panel background. Candidate cards stay neutral so the board remains scannable.
+
 Sorting:
 
 - Sort active cards in each stage by last update ascending, oldest update first.
@@ -382,6 +386,8 @@ Command dispatcher behavior:
 
 - Pipeline next-step actions should dispatch to the relevant modal or update flow for the current stage.
 - `Fail current stage` opens Process Update prefilled to the candidate's current pending active stage with result Fail, and saves through `app_insert_recruitment_log`.
+- Full forward jumps are allowed from the Pipeline board, but the confirmation modal and `app_insert_pipeline_passes` must keep a complete audit sequence: current/crossed stages are saved as Pending then Pass in order, then the target stage is created as Pending.
+- Manual Process Update is stricter than Pipeline movement: it cannot create a future pending stage while the current stage is still pending without a result.
 - The dispatcher should preserve the current group scope and avoid resetting the surrounding workspace when advancing records.
 - Offer-pass handoff is confirmed through this dispatcher path. After a candidate passes Offer, the downstream offer flow must stay bound to the same candidate and resolved requisition context.
 - Confirmation invariant: the pass confirmation surface and the offer upsert surface must agree on candidate identity and requisition context. No silent re-targeting is acceptable.
@@ -404,8 +410,13 @@ Failed Candidates and Passed Offer:
 - Empty Failed Candidates stage columns stay blank; only the whole panel empty state is shown when no failed candidates exist in any stage.
 - Failed candidates remain workflow state. They should stay visible in Pipeline failed-candidate sections, but a failed candidate in an active stage is not a Data Quality issue.
 - Passed Offer uses the same compact card arrangement.
-- No next-step update arrow.
+- Write roles see `Create offer` on passed-Offer cards only when no offer record exists for that candidate.
+- No next-step update arrow for process movement.
 - Responsive multi-column layout.
+
+Candidate Pipeline Journey:
+
+- StageRail connector segments color from the previous/current stage only. Do not color a future connector because the next stage is pending or failed.
 
 ## Offer Rules
 
@@ -445,6 +456,7 @@ Important rule:
 - Do not give `admin_recruiter` user-management rights.
 - Recruitment-data RPCs should use recruitment-writer permission where appropriate.
 - User administration remains system-admin only.
+- System-admin delete uses a destructive confirmation plus `app_delete_recruitment_record`; it excludes user profiles and blocks candidate-linked requisitions/matches.
 
 ## Database And RPC Notes
 
@@ -473,6 +485,8 @@ Important RPCs:
 - `app_upsert_requisition`
 - `app_upsert_position_group`
 - `app_create_group_match`
+- `app_unmatch_group_requisition`
+- `app_delete_recruitment_record`
 - `app_upsert_sourcing_weekly_update`
 - `app_upsert_candidate`
 - `app_insert_recruitment_log`

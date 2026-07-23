@@ -240,6 +240,21 @@ export type EnrichedSourcingGroup = {
   latest_update: SourcingWeeklyUpdate | null;
 };
 
+export type EnrichedUnmatchedSourcingGroup = {
+  group_id: string;
+  group_position: string;
+  channel_fb: boolean;
+  channel_jobthai: boolean;
+  channel_jobtopgun: boolean;
+  channel_jobdb: boolean;
+  channel_linkedin: boolean;
+  channel_walkin: boolean;
+  channel_referral: boolean;
+  channel_others: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
 export type ViewId =
   | "home"
   | "dashboard"

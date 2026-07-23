@@ -45,8 +45,46 @@ test("moving a candidate forward uses pipeline pass RPC payload", async ({ page 
   await expect.poll(() => mock.rpcCalls.at(-1)?.endpoint).toBe("app_insert_pipeline_passes");
   expect(mock.rpcCalls.at(-1)?.payload).toMatchObject({
     candidate_id: "C-PHONE",
-    target_stage: "HR Interview"
+    target_stage: "HR Interview",
+    audit_mode: "pending_then_pass"
   });
+});
+
+test("multi-stage jump records pending then pass for crossed stages and final pending", async ({ page }) => {
+  const mock = await installMockSupabase(page, { role: "admin_recruiter" });
+  await page.goto("/pipeline");
+  await expectWorkspaceReady(page);
+
+  await page.getByRole("button", { name: "Candidate actions for Pat Phone" }).click();
+  await page.getByRole("menuitem", { name: "Line Interview" }).click();
+  const dialog = page.getByRole("dialog", { name: "Confirm Passed Stages" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText("Phone Screening", { exact: true }).first()).toBeVisible();
+  await expect(dialog.getByText("HR Interview", { exact: true }).first()).toBeVisible();
+
+  await page.getByRole("button", { name: "Review changes" }).click();
+  await page.getByRole("button", { name: "Save changes" }).click();
+
+  await expect.poll(() => mock.rpcCalls.at(-1)?.endpoint).toBe("app_insert_pipeline_passes");
+  expect(mock.rpcCalls.at(-1)?.payload).toMatchObject({
+    candidate_id: "C-PHONE",
+    target_stage: "Line Interview",
+    audit_mode: "pending_then_pass"
+  });
+  expect(mock.rpcCalls.at(-1)?.payload.stages).toMatchObject([
+    { stage: "Phone Screen", round: 1 },
+    { stage: "HR Interview", round: 1 }
+  ]);
+  const savedLogs = mock.data.recruitment_logs
+    .filter((log) => log.candidate_id === "C-PHONE")
+    .slice(-4)
+    .map((log) => [log.recruitment_process, log.result]);
+  expect(savedLogs).toEqual([
+    ["Phone Screen", 1],
+    ["HR Interview", null],
+    ["HR Interview", 1],
+    ["Line Interview", null]
+  ]);
 });
 
 test("pipeline menu can fail the current pending stage", async ({ page }) => {

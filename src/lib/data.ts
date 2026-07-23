@@ -8,6 +8,7 @@ import type {
   EnrichedOffer,
   EnrichedRequisition,
   EnrichedSourcingGroup,
+  EnrichedUnmatchedSourcingGroup,
   Offer,
   PositionGroup,
   Profile,
@@ -221,6 +222,27 @@ export function enrichSourcingGroups(data: DashboardData, weekStart: string): En
       };
     })
     .filter((group): group is EnrichedSourcingGroup => Boolean(group))
+    .sort((a, b) => a.group_position.localeCompare(b.group_position) || a.group_id.localeCompare(b.group_id));
+}
+
+export function enrichUnmatchedSourcingGroups(data: DashboardData): EnrichedUnmatchedSourcingGroup[] {
+  const matchedGroupIds = new Set(data.document_groups.map((match) => match.group_id).filter(Boolean));
+  return data.position_groups
+    .filter((group) => !matchedGroupIds.has(group.group_id))
+    .map((group) => ({
+      group_id: group.group_id,
+      group_position: group.group_position,
+      channel_fb: group.channel_fb,
+      channel_jobthai: group.channel_jobthai,
+      channel_jobtopgun: group.channel_jobtopgun,
+      channel_jobdb: group.channel_jobdb,
+      channel_linkedin: group.channel_linkedin,
+      channel_walkin: group.channel_walkin,
+      channel_referral: group.channel_referral,
+      channel_others: group.channel_others,
+      created_at: group.created_at,
+      updated_at: group.updated_at
+    }))
     .sort((a, b) => a.group_position.localeCompare(b.group_position) || a.group_id.localeCompare(b.group_id));
 }
 
