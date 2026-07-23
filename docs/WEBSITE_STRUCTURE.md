@@ -270,7 +270,7 @@ Command dispatcher:
 - The dispatcher should preserve current workspace context and open the corresponding embedded modal or drawer rather than sending users to a blank page.
 - Offer-pass handoff is confirmed through the dispatcher. When a candidate passes Offer, the handoff into offer creation/update must preserve the candidate identity and requisition context until the user finishes or cancels the offer flow.
 - Confirmation invariant: the pass confirmation and the resulting offer action must refer to the same candidate and resolved requisition context. Users should not confirm Offer pass for one candidate and land in another candidate or unrelated requisition Offer flow.
-- Candidate Pipeline Journey connector segments color from the previous/current stage only. A future segment must not become colored because the next stage is pending or failed.
+- Candidate Pipeline Journey connector segments color completed passed-to-passed history, and pending/failed current stages color only the incoming connector from the previous stage. The outgoing future segment remains neutral.
 
 Offers:
 

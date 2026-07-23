@@ -416,7 +416,7 @@ Failed Candidates and Passed Offer:
 
 Candidate Pipeline Journey:
 
-- StageRail connector segments color from the previous/current stage only. Do not color a future connector because the next stage is pending or failed.
+- StageRail connector segments color completed passed-to-passed history, and pending/failed current stages color only the incoming connector from the previous stage. The outgoing future segment remains neutral.
 
 ## Offer Rules
 
