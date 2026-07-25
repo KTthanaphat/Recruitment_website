@@ -4,6 +4,7 @@ import { X } from "lucide-react";
 import { useEffect, useId, useRef } from "react";
 import type { KeyboardEvent, ReactNode, RefObject } from "react";
 import { Button } from "@/components/ui/Button";
+import { useOverlayScrollLock } from "@/components/ui/overlay-scroll-lock";
 
 export function Modal({
   open,
@@ -56,17 +57,6 @@ export function Modal({
       </div>
     </div>
   );
-}
-
-function useOverlayScrollLock(open: boolean) {
-  useEffect(() => {
-    if (!open) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [open]);
 }
 
 function useDialogFocus(open: boolean, panelRef: RefObject<HTMLElement>, onClose: () => void) {

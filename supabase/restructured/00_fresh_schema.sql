@@ -376,6 +376,35 @@ begin
 end;
 $$;
 
+create or replace function public.assert_candidate_pipeline_open(p_candidate_id text)
+returns void
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+begin
+  if exists (
+    select 1
+    from public.recruitment_logs
+    where candidate_id = p_candidate_id
+      and result = 0
+  ) then
+    raise exception 'Pipeline update unavailable because this candidate has a failed stage.';
+  end if;
+
+  if (
+    select count(distinct recruitment_process)
+    from public.recruitment_logs
+    where candidate_id = p_candidate_id
+      and result = 1
+      and recruitment_process in ('Phone Screen', 'HR Interview', 'Line Interview', 'Test', 'Reference Check', 'Offer')
+  ) = 6 then
+    raise exception 'Pipeline update unavailable because this candidate completed all stages.';
+  end if;
+end;
+$$;
+
 create or replace function public.can_read_requisition(p_doc_id text)
 returns boolean
 language sql
@@ -1153,6 +1182,7 @@ declare
 begin
   perform public.assert_recruitment_writer();
   if not public.can_manage_candidate(v_candidate_id) then raise exception 'You can update process only for candidates where you are person in charge.'; end if;
+  perform public.assert_candidate_pipeline_open(v_candidate_id);
 
   select recruitment_process, result
     into v_current_stage, v_current_result
@@ -1238,6 +1268,7 @@ begin
   if v_target_stage is null then raise exception 'Target stage is required.'; end if;
   if v_stage_count = 0 then raise exception 'At least one passed stage is required.'; end if;
   if not public.can_manage_candidate(v_candidate_id) then raise exception 'You can update process only for candidates where you are person in charge.'; end if;
+  perform public.assert_candidate_pipeline_open(v_candidate_id);
 
   select recruitment_process, result
     into v_current_stage, v_current_result
@@ -1350,6 +1381,7 @@ begin
   perform public.assert_recruitment_writer();
   if v_candidate_id is null then raise exception 'Candidate is required.'; end if;
   if not public.can_manage_candidate(v_candidate_id) then raise exception 'You can update process only for candidates where you are person in charge.'; end if;
+  perform public.assert_candidate_pipeline_open(v_candidate_id);
 
   select recruitment_process, result, round
     into v_current_stage, v_current_result, v_latest_round
@@ -1424,6 +1456,7 @@ begin
   if v_target_stage <> 'Reference Check' then raise exception 'Test exit target must be Reference Check.'; end if;
   if v_stage_count <> 1 then raise exception 'Test exit must pass exactly one Test stage.'; end if;
   if not public.can_manage_candidate(v_candidate_id) then raise exception 'You can update process only for candidates where you are person in charge.'; end if;
+  perform public.assert_candidate_pipeline_open(v_candidate_id);
 
   select recruitment_process, result, round
     into v_current_stage, v_current_result, v_latest_round

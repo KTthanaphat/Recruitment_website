@@ -255,6 +255,8 @@ Pipeline:
 - Do not show SLA/pass/fail/latest metric text under Pipeline stage names.
 - Empty active Pipeline stage columns and empty Failed Candidates stage columns keep their body blank; only the all-empty Failed Candidates panel shows an empty message.
 - Forward jumps from drag/drop or card actions are allowed only through the passed-stage confirmation flow. The flow must confirm every crossed stage in order; the database writes Pending then Pass for each crossed stage that does not already have a matching pending row, then creates the target stage as Pending.
+- If a card's latest stage is already Pass, the board action can open only the immediate next stage as Pending through Process Update. Farther jumps require a current Pending stage first.
+- Pipeline write RPCs must also block candidates with any historical Fail or all active stages already passed, so direct calls cannot bypass UI restrictions.
 - Test is a multi-round stage. A Test card can be maintained in Test to create the next pending Test round, or moved to Reference Check through the passed-stage confirmation flow.
 - Maintaining Test saves the current pending Test round as Pass and creates the next Test round as Pending in one database transaction.
 - When leaving Test, the latest Test round is used as the passed round. The confirmation modal can add extra pending Test rounds first, while the pass round remains locked to the original latest round, then creates Reference Check as pending.

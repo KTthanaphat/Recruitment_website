@@ -9,6 +9,7 @@ import { Panel, SectionTitle } from "@/components/ui/Panel";
 import { Tag } from "@/components/ui/Tag";
 import { DisabledReasonHint } from "@/components/ui/Workflow";
 import { ACTIVE_PIPELINE_STAGES, processIndex, processLabel } from "@/lib/constants";
+import { formatLocalDateInput } from "@/lib/dates";
 import { formatDate } from "@/lib/format";
 import { translate } from "@/lib/i18n/dictionary";
 import { candidateProcessDisabledReason, deriveStageHealth, isCandidateAging, pipelineMoveDisabledReason, type DataQualityIssue } from "@/lib/operations";
@@ -387,14 +388,12 @@ export function PipelineBoardView({
 }
 
 function failedCandidatesByStage(rows: EnrichedCandidate[]) {
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - 7);
+  const cutoff = recentCutoffDate();
   const groups = new Map<ProcessStage, EnrichedCandidate[]>(ACTIVE_PIPELINE_STAGES.map((stage) => [stage, []]));
 
   for (const row of rows) {
     if (row.latest_result !== 0 || row.latest_process === "No activity" || !row.latest_log_date) continue;
-    const logDate = new Date(`${row.latest_log_date}T00:00:00`);
-    if (logDate < cutoff) continue;
+    if (row.latest_log_date < cutoff) continue;
     groups.set(row.latest_process, [...(groups.get(row.latest_process) ?? []), row]);
   }
 
@@ -405,15 +404,24 @@ function failedCandidatesByStage(rows: EnrichedCandidate[]) {
 }
 
 function passedOfferCandidates(rows: EnrichedCandidate[]) {
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - 7);
+  const cutoff = recentCutoffDate();
 
   return sortByLastUpdateDesc(rows
     .filter((row) => {
       if (row.latest_process !== "Offer" || row.latest_result !== 1 || !row.latest_log_date) return false;
-      const logDate = new Date(`${row.latest_log_date}T00:00:00`);
-      return logDate >= cutoff;
+      return row.latest_log_date >= cutoff;
     }));
+}
+
+function recentCutoffDate() {
+  const [year, month, day] = formatLocalDateInput().split("-").map(Number);
+  const cutoff = new Date(Date.UTC(year, month - 1, day));
+  cutoff.setUTCDate(cutoff.getUTCDate() - 7);
+  return [
+    cutoff.getUTCFullYear(),
+    String(cutoff.getUTCMonth() + 1).padStart(2, "0"),
+    String(cutoff.getUTCDate()).padStart(2, "0")
+  ].join("-");
 }
 
 function PipelineCandidateCard({

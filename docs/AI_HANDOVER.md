@@ -387,6 +387,8 @@ Command dispatcher behavior:
 - Pipeline next-step actions should dispatch to the relevant modal or update flow for the current stage.
 - `Fail current stage` opens Process Update prefilled to the candidate's current pending active stage with result Fail, and saves through `app_insert_recruitment_log`.
 - Full forward jumps are allowed from the Pipeline board, but the confirmation modal and `app_insert_pipeline_passes` must keep a complete audit sequence: current/crossed stages are saved as Pending then Pass in order, then the target stage is created as Pending.
+- If a card's latest stage is already Pass, the board action can only open the immediate next stage as Pending through normal Process Update. Farther jumps require a current Pending stage first.
+- Pipeline write RPCs call `assert_candidate_pipeline_open`; candidates with any historical Fail or all six active stages passed must be blocked even if the UI is bypassed.
 - Manual Process Update is stricter than Pipeline movement: it cannot create a future pending stage while the current stage is still pending without a result.
 - The dispatcher should preserve the current group scope and avoid resetting the surrounding workspace when advancing records.
 - Offer-pass handoff is confirmed through this dispatcher path. After a candidate passes Offer, the downstream offer flow must stay bound to the same candidate and resolved requisition context.

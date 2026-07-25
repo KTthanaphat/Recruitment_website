@@ -139,6 +139,35 @@ begin
 end;
 $$;
 
+create or replace function app_private.assert_candidate_pipeline_open(p_candidate_id text)
+returns void
+language plpgsql
+stable
+security definer
+set search_path = public, app_private
+as $$
+begin
+  if exists (
+    select 1
+    from public.recruitment_logs
+    where candidate_id = p_candidate_id
+      and result = 0
+  ) then
+    raise exception 'Pipeline update unavailable because this candidate has a failed stage.';
+  end if;
+
+  if (
+    select count(distinct recruitment_process)
+    from public.recruitment_logs
+    where candidate_id = p_candidate_id
+      and result = 1
+      and recruitment_process in ('Phone Screen', 'HR Interview', 'Line Interview', 'Test', 'Reference Check', 'Offer')
+  ) = 6 then
+    raise exception 'Pipeline update unavailable because this candidate completed all stages.';
+  end if;
+end;
+$$;
+
 create or replace function app_private.can_read_requisition(p_doc_id text)
 returns boolean
 language sql

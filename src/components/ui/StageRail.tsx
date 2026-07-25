@@ -64,6 +64,8 @@ export function StageRail({ logs, currentStage, currentResult, compact = false, 
             {stageItems.slice(0, -1).map((item, index) => (
               <span
                 key={`${item.stage}-connector`}
+                data-stage-connector={`${item.stage}->${stageItems[index + 1]?.stage}`}
+                data-stage-connector-state={stageConnectorState(item.state, stageItems[index + 1]?.state)}
                 className={`h-1 ${stageConnectorClass(item.state, stageItems[index + 1]?.state)}`}
               />
             ))}
@@ -91,8 +93,8 @@ export function StageRail({ logs, currentStage, currentResult, compact = false, 
             >
               {index < PIPELINE_JOURNEY_STAGES.length - 1 ? (
                 <>
-                  <span className={`absolute left-3 top-6 h-[calc(100%+1rem)] w-1 rounded-full md:hidden ${stageConnectorClass(state, nextState)}`} aria-hidden="true" />
-                  <span className={`absolute left-[calc(50%+0.75rem)] right-[calc(-50%+0.75rem)] top-3 z-0 hidden h-1 rounded-full md:block ${stageConnectorClass(state, nextState)}`} aria-hidden="true" />
+                  <span data-stage-connector={`${stage}->${stageItems[index + 1]?.stage}`} data-stage-connector-state={stageConnectorState(state, nextState)} className={`absolute left-3 top-6 h-[calc(100%+1rem)] w-1 rounded-full md:hidden ${stageConnectorClass(state, nextState)}`} aria-hidden="true" />
+                  <span data-stage-connector={`${stage}->${stageItems[index + 1]?.stage}`} data-stage-connector-state={stageConnectorState(state, nextState)} className={`absolute left-[calc(50%+0.75rem)] right-[calc(-50%+0.75rem)] top-3 z-0 hidden h-1 rounded-full md:block ${stageConnectorClass(state, nextState)}`} aria-hidden="true" />
                 </>
               ) : null}
               <span className={`relative z-[1] grid shrink-0 place-items-center rounded-full ring-4 md:mx-auto ${isCurrent ? "size-8" : "size-6"} ${stageDotClass(state, isCurrent)}`}>
@@ -138,12 +140,16 @@ function stageDotClass(state: StageRailState, current: boolean) {
   return "bg-[#DDEBFF] ring-[#F5FAFF] text-slate";
 }
 
-function stageConnectorClass(state: StageRailState, nextState?: StageRailState) {
-  const segmentState = nextState === "failed" || nextState === "pending"
+function stageConnectorState(state: StageRailState, nextState?: StageRailState) {
+  return nextState === "failed" || nextState === "pending"
     ? nextState
     : state === "passed" && nextState === "passed"
       ? "passed"
       : "unreached";
+}
+
+function stageConnectorClass(state: StageRailState, nextState?: StageRailState) {
+  const segmentState = stageConnectorState(state, nextState);
   if (segmentState === "failed") return "bg-scarlet";
   if (segmentState === "pending") return "bg-[#FFD43B]";
   if (segmentState === "passed") return "bg-primary";

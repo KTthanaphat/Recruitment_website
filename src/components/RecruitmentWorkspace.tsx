@@ -493,7 +493,18 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     const targetIndex = ACTIVE_PIPELINE_STAGES.indexOf(nextStage);
     if (currentIndex === -1 || targetIndex <= currentIndex) return;
     if (candidate.latest_result !== null) {
-      setStatus("Pipeline movement requires a pending current stage. Create the next pending stage before moving forward.");
+      if (candidate.latest_result === 1 && targetIndex === currentIndex + 1) {
+        setProcessDefaults({
+          candidate_id: candidate.candidate_id,
+          recruitment_process: nextStage,
+          result: "",
+          source: "pipeline",
+          remark: `Opened ${processLabel(nextStage)} from ${processLabel(candidate.latest_process)} pass`
+        });
+        setActiveModal("process");
+        return;
+      }
+      setStatus("Pipeline movement requires a pending current stage. Open the next pending stage before jumping farther.");
       return;
     }
     const passedStages = ACTIVE_PIPELINE_STAGES.slice(currentIndex, targetIndex);

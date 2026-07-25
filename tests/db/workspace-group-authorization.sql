@@ -52,7 +52,11 @@ select pg_temp.assert_true(
       'public.app_upsert_position_group(jsonb)'::regprocedure,
       'public.app_create_group_match(jsonb)'::regprocedure,
       'public.app_unmatch_group_requisition(jsonb)'::regprocedure,
-      'public.app_delete_recruitment_record(jsonb)'::regprocedure
+      'public.app_delete_recruitment_record(jsonb)'::regprocedure,
+      'public.app_insert_recruitment_log(jsonb)'::regprocedure,
+      'public.app_insert_pipeline_passes(jsonb)'::regprocedure,
+      'public.app_insert_test_maintenance(jsonb)'::regprocedure,
+      'public.app_insert_pipeline_test_exit(jsonb)'::regprocedure
     )
       and privilege.grantee = 0
       and privilege.privilege_type = 'EXECUTE'
@@ -63,14 +67,22 @@ select pg_temp.assert_true(
   not has_function_privilege('anon', 'public.app_upsert_position_group(jsonb)', 'EXECUTE')
     and not has_function_privilege('anon', 'public.app_create_group_match(jsonb)', 'EXECUTE')
     and not has_function_privilege('anon', 'public.app_unmatch_group_requisition(jsonb)', 'EXECUTE')
-    and not has_function_privilege('anon', 'public.app_delete_recruitment_record(jsonb)', 'EXECUTE'),
+    and not has_function_privilege('anon', 'public.app_delete_recruitment_record(jsonb)', 'EXECUTE')
+    and not has_function_privilege('anon', 'public.app_insert_recruitment_log(jsonb)', 'EXECUTE')
+    and not has_function_privilege('anon', 'public.app_insert_pipeline_passes(jsonb)', 'EXECUTE')
+    and not has_function_privilege('anon', 'public.app_insert_test_maintenance(jsonb)', 'EXECUTE')
+    and not has_function_privilege('anon', 'public.app_insert_pipeline_test_exit(jsonb)', 'EXECUTE'),
   'anon must not have EXECUTE on workspace group RPCs'
 );
 select pg_temp.assert_true(
   has_function_privilege('authenticated', 'public.app_upsert_position_group(jsonb)', 'EXECUTE')
     and has_function_privilege('authenticated', 'public.app_create_group_match(jsonb)', 'EXECUTE')
     and has_function_privilege('authenticated', 'public.app_unmatch_group_requisition(jsonb)', 'EXECUTE')
-    and has_function_privilege('authenticated', 'public.app_delete_recruitment_record(jsonb)', 'EXECUTE'),
+    and has_function_privilege('authenticated', 'public.app_delete_recruitment_record(jsonb)', 'EXECUTE')
+    and has_function_privilege('authenticated', 'public.app_insert_recruitment_log(jsonb)', 'EXECUTE')
+    and has_function_privilege('authenticated', 'public.app_insert_pipeline_passes(jsonb)', 'EXECUTE')
+    and has_function_privilege('authenticated', 'public.app_insert_test_maintenance(jsonb)', 'EXECUTE')
+    and has_function_privilege('authenticated', 'public.app_insert_pipeline_test_exit(jsonb)', 'EXECUTE'),
   'authenticated must have EXECUTE on workspace group RPCs'
 );
 
@@ -131,11 +143,22 @@ values
 insert into public.candidates (candidate_id, name, phone_no, doc_group_id, channel, first_contact_date)
 values
   ('__authz_test_blocking_candidate', 'Blocking Candidate', '0999999999', '__authz_test_unmatch_blocked_link', 'Facebook', current_date),
-  ('__authz_test_pipeline_candidate', 'Pipeline Candidate', '0999999998', '__authz_test_owned_link', 'Facebook', current_date);
+  ('__authz_test_pipeline_candidate', 'Pipeline Candidate', '0999999998', '__authz_test_owned_link', 'Facebook', current_date),
+  ('__authz_test_failed_pipeline_candidate', 'Failed Pipeline Candidate', '0999999997', '__authz_test_owned_link', 'Facebook', current_date),
+  ('__authz_test_completed_pipeline_candidate', 'Completed Pipeline Candidate', '0999999996', '__authz_test_owned_link', 'Facebook', current_date);
 
 insert into public.recruitment_logs (candidate_id, log_date, recruitment_process, round, interviewer, result, remark)
 values
-  ('__authz_test_pipeline_candidate', current_date, 'Phone Screen', 1, 'QA', null, 'Current pending stage');
+  ('__authz_test_pipeline_candidate', current_date, 'Phone Screen', 1, 'QA', null, 'Current pending stage'),
+  ('__authz_test_failed_pipeline_candidate', current_date - 3, 'Phone Screen', 1, 'QA', 1, 'Passed before fail'),
+  ('__authz_test_failed_pipeline_candidate', current_date - 2, 'HR Interview', 1, 'QA', 0, 'Historical failed stage'),
+  ('__authz_test_failed_pipeline_candidate', current_date - 1, 'Line Interview', 1, 'QA', null, 'Invalid pending after failed stage'),
+  ('__authz_test_completed_pipeline_candidate', current_date - 6, 'Phone Screen', 1, 'QA', 1, 'Completed'),
+  ('__authz_test_completed_pipeline_candidate', current_date - 5, 'HR Interview', 1, 'QA', 1, 'Completed'),
+  ('__authz_test_completed_pipeline_candidate', current_date - 4, 'Line Interview', 1, 'QA', 1, 'Completed'),
+  ('__authz_test_completed_pipeline_candidate', current_date - 3, 'Test', 1, 'QA', 1, 'Completed'),
+  ('__authz_test_completed_pipeline_candidate', current_date - 2, 'Reference Check', 1, 'QA', 1, 'Completed'),
+  ('__authz_test_completed_pipeline_candidate', current_date - 1, 'Offer', 1, 'QA', 1, 'Completed');
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub', 'a1100000-0000-0000-0000-000000000001', true);
@@ -211,6 +234,36 @@ select pg_temp.assert_true(
       and result is null
   ),
   'pipeline full jump must create pending-then-pass crossed stages and final pending stage'
+);
+
+select pg_temp.expect_error(
+  $sql$
+    select public.app_insert_pipeline_passes(
+      jsonb_build_object(
+        'candidate_id', '__authz_test_failed_pipeline_candidate',
+        'target_stage', 'Test',
+        'stages', jsonb_build_array(
+          jsonb_build_object('index', 0, 'stage', 'Line Interview', 'log_date', current_date::text, 'round', 1)
+        )
+      )
+    )
+  $sql$,
+  'Pipeline update unavailable because this candidate has a failed stage.'
+);
+
+select pg_temp.expect_error(
+  $sql$
+    select public.app_insert_recruitment_log(
+      jsonb_build_object(
+        'candidate_id', '__authz_test_completed_pipeline_candidate',
+        'log_date', current_date::text,
+        'recruitment_process', 'Offer',
+        'round', 1,
+        'result', null
+      )
+    )
+  $sql$,
+  'Pipeline update unavailable because this candidate completed all stages.'
 );
 
 select pg_temp.expect_error(
@@ -302,6 +355,21 @@ select pg_temp.expect_error(
     )
   $sql$,
   'System admin role is required.'
+);
+
+select pg_temp.expect_error(
+  $sql$
+    select public.app_insert_pipeline_passes(
+      jsonb_build_object(
+        'candidate_id', '__authz_test_pipeline_candidate',
+        'target_stage', 'Test',
+        'stages', jsonb_build_array(
+          jsonb_build_object('index', 0, 'stage', 'Line Interview', 'log_date', current_date::text, 'round', 1)
+        )
+      )
+    )
+  $sql$,
+  'Recruitment write role is required.'
 );
 
 reset role;

@@ -37,8 +37,8 @@ test("embedded sourcing saves through the intercepted RPC and embedded pipeline 
     .getByRole("tabpanel")
     .getByRole("heading", { name: "No activity", exact: true })
     .locator("xpath=ancestor::section[1]");
-  await expect(noActivityLane).toHaveCSS("background-color", "rgb(248, 250, 253)");
-  await expect(noActivityLane).toHaveCSS("border-top-color", "rgb(228, 233, 242)");
+  await expect(noActivityLane).toHaveCSS("background-color", "rgba(10, 60, 220, 0.08)");
+  await expect(noActivityLane).toHaveCSS("border-top-color", "rgba(10, 60, 220, 0.22)");
   const card = page.locator("#pipeline-candidate-C-PHONE");
   await card.getByRole("button", { name: "Candidate actions for Pat Phone" }).click();
   await expect(card.getByRole("menu", { name: "Actions for Pat Phone" })).toBeVisible();

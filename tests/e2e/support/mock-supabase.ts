@@ -20,6 +20,8 @@ export type MockSupabaseContext = {
   rpcCalls: MockRpcCall[];
 };
 
+const fixtureNow = new Date("2026-07-24T05:00:00.000Z");
+
 const roleUserIds: Record<MockUserRole, string> = {
   system_admin: "qa-system",
   admin_recruiter: "qa-admin",
@@ -36,6 +38,8 @@ export async function installMockSupabase(page: Page, options: MockSupabaseOptio
   const storageKey = supabaseStorageKey(supabaseUrl);
   const userId = roleUserIds[role];
   const userEmail = `${role.replace("_", ".")}@qa.example.com`;
+
+  await page.clock.setFixedTime(fixtureNow);
 
   await page.addInitScript(
     ({ key, id, email, language: savedLanguage }) => {
@@ -133,6 +137,7 @@ function createRecruitmentDataset(activeRole: MockUserRole): DashboardData {
     ],
     candidates: [
       candidate("C-PHONE", "Pat Phone", "DG-HQ-ENG", "Facebook", "2026-06-20"),
+      candidate("C-PHONE-PASS", "Penny Phone Pass", "DG-HQ-ENG", "Facebook", "2026-06-20"),
       candidate("C-AGING", "Avery Aging", "DG-HQ-ENG", "JobThai", "2026-06-01"),
       candidate("C-HR", "Hana HR", "DG-HQ-ENG", "Referral", "2026-06-21"),
       candidate("C-LINE", "Liam Line", "DG-KT1-TECH", "Walk-in", "2026-06-22"),
@@ -147,6 +152,7 @@ function createRecruitmentDataset(activeRole: MockUserRole): DashboardData {
     ],
     recruitment_logs: [
       log(1, "C-PHONE", "Phone Screen", null, 1, "2026-07-09"),
+      log(28, "C-PHONE-PASS", "Phone Screen", 1, 1, "2026-07-10"),
       log(2, "C-AGING", "Phone Screen", null, 1, "2026-06-25"),
       log(3, "C-HR", "Phone Screen", 1, 1, "2026-07-01"),
       log(4, "C-HR", "HR Interview", null, 1, "2026-07-09"),

@@ -11,8 +11,12 @@ test("stage menu is keyboard reachable and closes with Escape", async ({ page })
   await page.keyboard.press("Enter");
   await expect(page.getByRole("menu")).toBeVisible();
   await expect(page.getByRole("menuitem", { name: /HR Interview/ })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Fail current stage" })).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByRole("menuitem", { name: "HR Interview" })).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("menu")).toHaveCount(0);
+  await expect(updateButton).toBeFocused();
 });
 
 test("no-activity candidate can start process from pipeline menu", async ({ page }) => {
@@ -27,6 +31,8 @@ test("no-activity candidate can start process from pipeline menu", async ({ page
   await expect(dialog).toBeVisible();
   await expect(dialog.getByLabel("Candidate")).toHaveValue("C-NO-ACTIVITY");
   await expect(dialog.getByLabel("Process")).toHaveValue("Phone Screen");
+  await expect(dialog.getByLabel("Process").locator("option")).toHaveText(["Phone Screening"]);
+  await expect(dialog.getByLabel("Result")).toHaveValue("");
 });
 
 test("moving a candidate forward uses pipeline pass RPC payload", async ({ page }) => {
@@ -85,6 +91,65 @@ test("multi-stage jump records pending then pass for crossed stages and final pe
     ["HR Interview", 1],
     ["Line Interview", null]
   ]);
+});
+
+test("full-jump confirmation requires stage date and round before save review", async ({ page }) => {
+  await installMockSupabase(page, { role: "admin_recruiter" });
+  await page.goto("/pipeline");
+  await expectWorkspaceReady(page);
+
+  await page.getByRole("button", { name: "Candidate actions for Pat Phone" }).click();
+  await page.getByRole("menuitem", { name: "Line Interview" }).click();
+  const dialog = page.getByRole("dialog", { name: "Confirm Passed Stages" });
+  await expect(dialog).toBeVisible();
+
+  await dialog.getByLabel("Date").first().fill("");
+  await page.getByRole("button", { name: "Review changes" }).click();
+  await expect(page.getByRole("dialog", { name: "Confirm Save" })).toHaveCount(0);
+});
+
+test("passed latest stage opens the immediate next stage as pending", async ({ page }) => {
+  const mock = await installMockSupabase(page, { role: "admin_recruiter" });
+  await page.goto("/pipeline");
+  await expectWorkspaceReady(page);
+
+  await page.getByRole("button", { name: "Candidate actions for Penny Phone Pass" }).click();
+  await expect(page.getByRole("menuitem", { name: "Line Interview" })).toBeDisabled();
+  await page.getByRole("menuitem", { name: "HR Interview" }).click();
+  const dialog = page.getByRole("dialog", { name: "Process Update" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByLabel("Candidate")).toHaveValue("C-PHONE-PASS");
+  await expect(dialog.getByLabel("Process")).toHaveValue("HR Interview");
+  await expect(dialog.getByLabel("Result")).toHaveValue("");
+
+  await page.getByRole("button", { name: "Review changes" }).click();
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect.poll(() => mock.rpcCalls.at(-1)?.endpoint).toBe("app_insert_recruitment_log");
+  expect(mock.rpcCalls.at(-1)?.payload).toMatchObject({
+    candidate_id: "C-PHONE-PASS",
+    recruitment_process: "HR Interview",
+    result: null
+  });
+});
+
+test("manual process update exposes only valid next step for pending and passed candidates", async ({ page }) => {
+  await installMockSupabase(page, { role: "admin_recruiter" });
+  await page.goto("/pipeline");
+  await expectWorkspaceReady(page);
+
+  await page.getByRole("button", { name: "Add Update" }).click();
+  let dialog = page.getByRole("dialog", { name: "Process Update" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByLabel("Candidate").selectOption("C-PHONE");
+  await expect(dialog.getByLabel("Process").locator("option")).toHaveText(["Phone Screening"]);
+  await expect(dialog.getByLabel("Result")).toHaveValue("");
+  await page.keyboard.press("Escape");
+
+  await page.getByRole("button", { name: "Add Update" }).click();
+  dialog = page.getByRole("dialog", { name: "Process Update" });
+  await dialog.getByLabel("Candidate").selectOption("C-PHONE-PASS");
+  await expect(dialog.getByLabel("Process").locator("option")).toHaveText(["HR Interview"]);
+  await expect(dialog.getByLabel("Result")).toHaveValue("");
 });
 
 test("pipeline menu can fail the current pending stage", async ({ page }) => {

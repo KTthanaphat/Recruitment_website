@@ -391,6 +391,9 @@ export function pipelineMoveDisabledReason(candidate: EnrichedCandidate, targetS
   if (targetIndex <= currentIndex && !(targetStage === "Test" && candidate.latest_process === "Test")) {
     return disabled("invalid_stage_direction", "Forward only", "Pipeline movement can only move forward or maintain the Test stage.", "Choose a later stage.");
   }
+  if (candidate.latest_result !== null && targetIndex > currentIndex + 1) {
+    return disabled("invalid_stage_direction", "Pending stage required", "Open the next stage as Pending before jumping farther.", "Use the immediate next stage first.");
+  }
   return { blocked: false };
 }
 
