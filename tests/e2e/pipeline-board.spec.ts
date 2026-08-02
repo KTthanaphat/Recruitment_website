@@ -140,7 +140,9 @@ test("candidate card opens detail drawer and can be closed by Escape", async ({ 
 
   await page.getByRole("button", { name: /^Pat Phone/ }).click();
   await expect(page.getByRole("dialog", { name: /C-PHONE/ })).toBeVisible();
-  await expect(page.getByText("Current stage")).toHaveCount(0);
+  await expect(page.getByText("Current stage")).toBeVisible();
+  await expect(page.getByText("Pending details")).toBeVisible();
+  await expect(page.getByText("Awaiting outcome")).toBeVisible();
   await expect(page.getByText("Resume Screening")).toBeVisible();
   await expect(page.locator('[data-stage-connector="Resume Screening->Phone Screen"]').first()).toHaveAttribute("data-stage-connector-state", "pending");
   await expect(page.locator('[data-stage-connector="Phone Screen->HR Interview"]').first()).toHaveAttribute("data-stage-connector-state", "unreached");

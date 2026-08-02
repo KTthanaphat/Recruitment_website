@@ -4,6 +4,7 @@ import { formatLocalDateInput } from "@/lib/dates";
 import { getRequisitionSlaState } from "@/lib/sla";
 import type {
   ChangeLog,
+  ActiveProcessStage,
   DashboardData,
   EnrichedCandidate,
   EnrichedOffer,
@@ -12,6 +13,7 @@ import type {
   HiringJourneyStepId,
   HiringJourneyStepState,
   Offer,
+  PipelineStageRecord,
   ProcessStage,
   Profile,
   Requisition,
@@ -77,6 +79,12 @@ export type DisabledReason = {
   label?: string;
   detail?: string;
   recovery?: string;
+};
+
+export type CandidatePipelineCapability = DisabledReason & {
+  canRead: boolean;
+  canWrite: boolean;
+  canDrag: boolean;
 };
 
 export type DataQualitySeverity = "blocking" | "warning" | "info";
@@ -378,6 +386,106 @@ export function candidateProcessDisabledReason(candidate: EnrichedCandidate, log
   }
   if (!candidate.doc_group_id) return disabled("missing_required_data", "Missing group", "Candidate is not linked to a requisition group.", "Link the candidate to a group before updating the process.");
   return { blocked: false };
+}
+
+/** Mirrors the server's site-recruiter site + PIC guard before exposing board controls. */
+export function candidatePipelineCapability(candidate: EnrichedCandidate, logs: RecruitmentLog[], profile: Profile | null): CandidatePipelineCapability {
+  const base = candidateProcessDisabledReason(candidate, logs, profile);
+  if (base.blocked) return { ...base, canRead: true, canWrite: false, canDrag: false };
+  if (profile?.role === "system_admin") {
+    return { blocked: false, canRead: true, canWrite: true, canDrag: true };
+  }
+  if (profile?.role === "site_recruiter") {
+    const names = [profile.nickname, profile.full_name].filter(Boolean).map((value) => value!.trim().toLowerCase());
+    const ownsCandidate = candidate.site?.toLowerCase() === profile.site?.toLowerCase()
+      && names.some((name) => (candidate.person_in_charge ?? "").toLowerCase() === name);
+    if (!ownsCandidate) {
+      return {
+        blocked: true,
+        code: "permission_scope",
+        label: "Outside responsibility",
+        detail: "This candidate is readable for your site but can only be updated by its assigned recruiter.",
+        recovery: "Ask the assigned recruiter or an admin recruiter to update the process.",
+        canRead: true,
+        canWrite: false,
+        canDrag: false
+      };
+    }
+  }
+  return { blocked: false, canRead: true, canWrite: true, canDrag: true };
+}
+
+/** Groups legacy pending/outcome log pairs into the recruiter-facing stage record model. */
+export function pipelineStageRecords(logs: RecruitmentLog[], changeLogs: ChangeLog[] = []): PipelineStageRecord[] {
+  const canonical = logs.filter((log) => Boolean(log.stage_instance_id) && !log.superseded_at && !log.superseded_by_stage_instance_id);
+  if (canonical.length > 0) {
+    return canonical
+      .filter((log): log is RecruitmentLog & { recruitment_process: ActiveProcessStage; stage_instance_id: string } => isActiveProcessStage(log.recruitment_process))
+      .map((log): PipelineStageRecord => ({
+        logId: log.log_id,
+        stageInstanceId: log.stage_instance_id!,
+        candidateId: log.candidate_id,
+        stage: log.recruitment_process,
+        round: log.round,
+        pending: {
+          openedDate: log.log_date,
+          interviewer: log.interviewer,
+          remark: log.remark,
+          editedAt: log.pending_edited_at ?? null,
+          editedBy: log.pending_edited_by ?? null
+        },
+        outcome: log.result === null || log.result === undefined
+          ? null
+          : { result: log.result === 1 ? "pass" : "fail", date: log.outcome_date ?? log.log_date, interviewer: log.outcome_interviewer ?? log.interviewer, remark: log.outcome_remark ?? log.remark, recordedAt: log.outcome_recorded_at ?? log.updated_at ?? log.created_at },
+        origin: log.record_origin ?? "migration",
+        migrationNote: log.migration_note ?? null,
+        updatedAt: log.updated_at ?? log.created_at
+      }))
+      .sort((a, b) => a.logId - b.logId);
+  }
+  const groups = new Map<string, RecruitmentLog[]>();
+  for (const log of logs) {
+    if (!ACTIVE_PIPELINE_STAGES.includes(log.recruitment_process)) continue;
+    const key = `${log.recruitment_process}:${log.round}`;
+    groups.set(key, [...(groups.get(key) ?? []), log]);
+  }
+  const legacyRecords: PipelineStageRecord[] = [];
+  for (const rows of groups.values()) {
+    const ordered = [...rows].sort((a, b) => a.log_id - b.log_id);
+    const pending = ordered.find((row) => row.result === null);
+    const outcomeLog = [...ordered].reverse().find((row) => row.result === 0 || row.result === 1) ?? null;
+    const source = pending ?? outcomeLog;
+    if (!source || !isActiveProcessStage(source.recruitment_process)) continue;
+    const audit = pending ? changeLogs.find((row) => row.entity.toLowerCase().includes("recruitment_log") && Number(row.entity_id) === pending.log_id && row.action.toLowerCase() === "update") : undefined;
+    legacyRecords.push({
+      logId: pending?.log_id ?? outcomeLog!.log_id,
+      stageInstanceId: `${source.candidate_id}:${source.recruitment_process}:${source.round}`,
+      candidateId: source.candidate_id,
+      stage: source.recruitment_process,
+      round: source.round,
+      pending: {
+        openedDate: pending?.log_date ?? outcomeLog!.log_date,
+        interviewer: pending?.interviewer ?? null,
+        remark: pending?.remark ?? null,
+        editedAt: audit?.changed_at ?? null,
+        editedBy: audit?.changed_by_email ?? audit?.changed_by ?? null
+      },
+      outcome: outcomeLog ? { result: outcomeLog.result === 1 ? "pass" : "fail", date: outcomeLog.log_date, interviewer: outcomeLog.interviewer, remark: outcomeLog.remark, recordedAt: outcomeLog.created_at } : null,
+      origin: "migration" as const,
+      migrationNote: pending ? "Legacy pending/outcome pair" : "Outcome-only legacy record",
+      updatedAt: pending?.updated_at ?? outcomeLog?.updated_at ?? source.created_at
+    });
+  }
+  return legacyRecords.sort((a, b) => a.logId - b.logId);
+}
+
+function isActiveProcessStage(stage: ProcessStage): stage is ActiveProcessStage {
+  return ACTIVE_PIPELINE_STAGES.includes(stage);
+}
+
+export function activeProcessStage(logs: RecruitmentLog[]): { stage: ActiveProcessStage; round: number; pendingLogId: number; stageInstanceId: string; updatedAt: string } | null {
+  const pending = [...logs].sort((a, b) => b.log_id - a.log_id).find((row): row is RecruitmentLog & { recruitment_process: ActiveProcessStage } => row.result === null && isActiveProcessStage(row.recruitment_process));
+  return pending ? { stage: pending.recruitment_process, round: pending.round, pendingLogId: pending.log_id, stageInstanceId: pending.stage_instance_id ?? String(pending.log_id), updatedAt: pending.updated_at ?? pending.created_at } : null;
 }
 
 export function pipelineMoveDisabledReason(candidate: EnrichedCandidate, targetStage: ProcessStage | "No activity", logs: RecruitmentLog[], profile: Profile | null): DisabledReason {

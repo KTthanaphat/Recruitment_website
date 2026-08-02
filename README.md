@@ -5,6 +5,7 @@ Cloud prototype for end-to-end recruitment tracking.
 Current canonical documentation:
 
 - [Website structure](docs/WEBSITE_STRUCTURE.md)
+- [Candidate Pipeline audit and adjustment plan](docs/CANDIDATE_PIPELINE_ADJUSTMENT_PLAN.md)
 - [Deployment and develop-branch push workflow](docs/DEPLOYMENT.md)
 - [AI handover overview](docs/AI_HANDOVER.md)
 

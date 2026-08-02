@@ -1,6 +1,6 @@
 # AI Handover Overview
 
-Last updated: 2026-07-14
+Last updated: 2026-08-01
 
 ## Purpose
 
@@ -48,6 +48,7 @@ Stack:
 Canonical docs:
 
 - `docs/WEBSITE_STRUCTURE.md`
+- `docs/CANDIDATE_PIPELINE_ADJUSTMENT_PLAN.md`
 - `docs/DEPLOYMENT.md`
 - `docs/AI_HANDOVER.md`
 
@@ -342,83 +343,19 @@ Process update validation:
 
 ## Pipeline Rules
 
-Pipeline is group-based.
+Load these sources instead of expanding pipeline rules in this handover:
 
-The real active Pipeline board starts at Phone Screen. Do not add a Resume Screening board column unless the database/RPC model is intentionally changed.
+- Current product-wide behavior: `docs/WEBSITE_STRUCTURE.md`, Pipeline section.
+- Implemented paired-status contract, migration/RPC names, verification, and compact implementation map: `docs/CANDIDATE_PIPELINE_ADJUSTMENT_PLAN.md`.
+- File/RPC/test ownership only: `docs/FEATURE_FILE_MAP.md`.
 
-Cards use grouped values from all requisitions matched to the candidate's `group_id`.
+Minimum mental model:
 
-Active stage cards show only:
-
-- candidate name,
-- `{site}-{position} ({PIC})`,
-- next-step icon button,
-- `Updated {date}`.
-
-Active stage cards should not show extra tags, candidate ID/group ID metadata, or compact StageRail unless user requests it again.
-
-Stage panels use the active assigned-site accent as a tinted panel background. Candidate cards stay neutral so the board remains scannable.
-
-Sorting:
-
-- Sort active cards in each stage by last update ascending, oldest update first.
-- Use `latest_log_date ?? updated_at`.
-
-Aging:
-
-- Aging threshold is older than 7 days.
-- If any candidate in a stage is aging, show a red warning icon before the stage name.
-- If any candidate in a stage is aging, turn the stage name red.
-- Candidate card updated dates stay neutral; candidate card arrows turn red only for the aging candidate itself.
-- Board filter and pipeline search belong in the right-aligned filter-icon popover on the board controls row. Keep Group cards visible on the left.
-- Do not show a separate aging count row under the stage.
-- Empty active stage columns stay blank; do not render per-stage empty-state text.
-- Stage headers show only stage label and count. Do not show SLA/pass/fail/latest metric text under stage names.
-
-Record details:
-
-- Detail drawer headers show one 3-dot action menu plus the compact Close button.
-- `Open workspace` is the primary icon-only `LampDesk` action with tooltip and `aria-label`; secondary links and write changes live in the 3-dot menu.
-- Related record links and candidate process update controls belong in the drawer body.
-- Requisition, Candidate, and Offer tables/cards expose only the magnifying-glass View detail action; titles are text, not detail buttons. Secondary navigation and write actions belong in the detail drawer 3-dot menu, where write roles see `Change record` and viewers do not.
-
-Command dispatcher behavior:
-
-- Pipeline next-step actions should dispatch to the relevant modal or update flow for the current stage.
-- `Fail current stage` opens Process Update prefilled to the candidate's current pending active stage with result Fail, and saves through `app_insert_recruitment_log`.
-- Full forward jumps are allowed from the Pipeline board, but the confirmation modal and `app_insert_pipeline_passes` must keep a complete audit sequence: current/crossed stages are saved as Pending then Pass in order, then the target stage is created as Pending.
-- If a card's latest stage is already Pass, the board action can only open the immediate next stage as Pending through normal Process Update. Farther jumps require a current Pending stage first.
-- Pipeline write RPCs call `assert_candidate_pipeline_open`; candidates with any historical Fail or all six active stages passed must be blocked even if the UI is bypassed.
-- Manual Process Update is stricter than Pipeline movement: it cannot create a future pending stage while the current stage is still pending without a result.
-- The dispatcher should preserve the current group scope and avoid resetting the surrounding workspace when advancing records.
-- Offer-pass handoff is confirmed through this dispatcher path. After a candidate passes Offer, the downstream offer flow must stay bound to the same candidate and resolved requisition context.
-- Confirmation invariant: the pass confirmation surface and the offer upsert surface must agree on candidate identity and requisition context. No silent re-targeting is acceptable.
-
-Test stage:
-
-- Test supports multiple rounds.
-- From a Test card, `Maintain in Test` saves the current Test round as Pass and creates the next Test round as Pending.
-- Dragging a Test card onto the Test column also opens the Maintain in Test flow.
-- Moving a Test card to Reference Check uses the latest Test round as the pass round.
-- The Test exit confirmation can add extra pending Test rounds first, but the pass round stays locked to the original latest Test round.
-- Test maintenance uses `app_insert_test_maintenance`.
-- Test exit uses `app_insert_pipeline_test_exit`.
-- Non-Test pipeline movement still uses `app_insert_pipeline_passes`.
-- Pending Offer cards can use the next-step button to open Process Update prefilled for Offer.
-
-Failed Candidates and Passed Offer:
-
-- Failed Candidates use the same stage-column layout as the active pipeline for the current last-7-days window.
-- Empty Failed Candidates stage columns stay blank; only the whole panel empty state is shown when no failed candidates exist in any stage.
-- Failed candidates remain workflow state. They should stay visible in Pipeline failed-candidate sections, but a failed candidate in an active stage is not a Data Quality issue.
-- Passed Offer uses the same compact card arrangement.
-- Write roles see `Create offer` on passed-Offer cards only when no offer record exists for that candidate.
-- No next-step update arrow for process movement.
-- Responsive multi-column layout.
-
-Candidate Pipeline Journey:
-
-- StageRail connector segments color completed passed-to-passed history, and pending/failed current stages color only the incoming connector from the previous stage. The outgoing future segment remains neutral.
+- Pipeline is group-based. The six active stored stages are Phone Screen, HR Interview, Line Interview, Test, Reference Check, and Offer; Resume Screening is derived display/reporting state. Contactable candidate references are separate from sourcing `ref_name`; Available references need a saved final check before Reference Check can pass.
+- One canonical row per candidate/stage/round contains Pending fields and an optional Pass/Fail Outcome; superseded history is audit-only.
+- Current Pending edit, Pass/Fail completion, Pass-only jump, and System Admin Outcome-detail correction use the four v2 RPCs named in the implementation record.
+- Pass/Fail and jumps are atomic, use Bangkok chronology and optimistic timestamps, and every non-Offer Pass creates its required next Pending. Test next-round and Test exit are separate actions.
+- Viewer has no writes. Site Recruiter writes require both assigned Site and PIC ownership in the database and in UI capability checks.
 
 ## Offer Rules
 
@@ -491,8 +428,7 @@ Important RPCs:
 - `app_delete_recruitment_record`
 - `app_upsert_sourcing_weekly_update`
 - `app_upsert_candidate`
-- `app_insert_recruitment_log`
-- `app_insert_pipeline_passes`
+- `app_start_pipeline_stage_v2`
 - `app_upsert_offer`
 
 Schema/RPC changes require:

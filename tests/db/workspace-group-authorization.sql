@@ -53,10 +53,11 @@ select pg_temp.assert_true(
       'public.app_create_group_match(jsonb)'::regprocedure,
       'public.app_unmatch_group_requisition(jsonb)'::regprocedure,
       'public.app_delete_recruitment_record(jsonb)'::regprocedure,
-      'public.app_insert_recruitment_log(jsonb)'::regprocedure,
-      'public.app_insert_pipeline_passes(jsonb)'::regprocedure,
-      'public.app_insert_test_maintenance(jsonb)'::regprocedure,
-      'public.app_insert_pipeline_test_exit(jsonb)'::regprocedure
+      'public.app_start_pipeline_stage_v2(jsonb)'::regprocedure,
+      'public.app_update_pipeline_pending_v2(jsonb)'::regprocedure,
+      'public.app_complete_pipeline_stage_v2(jsonb)'::regprocedure,
+      'public.app_pass_pipeline_jump_v2(jsonb)'::regprocedure,
+      'public.app_correct_pipeline_outcome_v2(jsonb)'::regprocedure
     )
       and privilege.grantee = 0
       and privilege.privilege_type = 'EXECUTE'
@@ -68,10 +69,11 @@ select pg_temp.assert_true(
     and not has_function_privilege('anon', 'public.app_create_group_match(jsonb)', 'EXECUTE')
     and not has_function_privilege('anon', 'public.app_unmatch_group_requisition(jsonb)', 'EXECUTE')
     and not has_function_privilege('anon', 'public.app_delete_recruitment_record(jsonb)', 'EXECUTE')
-    and not has_function_privilege('anon', 'public.app_insert_recruitment_log(jsonb)', 'EXECUTE')
-    and not has_function_privilege('anon', 'public.app_insert_pipeline_passes(jsonb)', 'EXECUTE')
-    and not has_function_privilege('anon', 'public.app_insert_test_maintenance(jsonb)', 'EXECUTE')
-    and not has_function_privilege('anon', 'public.app_insert_pipeline_test_exit(jsonb)', 'EXECUTE'),
+    and not has_function_privilege('anon', 'public.app_start_pipeline_stage_v2(jsonb)', 'EXECUTE')
+    and not has_function_privilege('anon', 'public.app_update_pipeline_pending_v2(jsonb)', 'EXECUTE')
+    and not has_function_privilege('anon', 'public.app_complete_pipeline_stage_v2(jsonb)', 'EXECUTE')
+    and not has_function_privilege('anon', 'public.app_pass_pipeline_jump_v2(jsonb)', 'EXECUTE')
+    and not has_function_privilege('anon', 'public.app_correct_pipeline_outcome_v2(jsonb)', 'EXECUTE'),
   'anon must not have EXECUTE on workspace group RPCs'
 );
 select pg_temp.assert_true(
@@ -79,10 +81,11 @@ select pg_temp.assert_true(
     and has_function_privilege('authenticated', 'public.app_create_group_match(jsonb)', 'EXECUTE')
     and has_function_privilege('authenticated', 'public.app_unmatch_group_requisition(jsonb)', 'EXECUTE')
     and has_function_privilege('authenticated', 'public.app_delete_recruitment_record(jsonb)', 'EXECUTE')
-    and has_function_privilege('authenticated', 'public.app_insert_recruitment_log(jsonb)', 'EXECUTE')
-    and has_function_privilege('authenticated', 'public.app_insert_pipeline_passes(jsonb)', 'EXECUTE')
-    and has_function_privilege('authenticated', 'public.app_insert_test_maintenance(jsonb)', 'EXECUTE')
-    and has_function_privilege('authenticated', 'public.app_insert_pipeline_test_exit(jsonb)', 'EXECUTE'),
+    and has_function_privilege('authenticated', 'public.app_start_pipeline_stage_v2(jsonb)', 'EXECUTE')
+    and has_function_privilege('authenticated', 'public.app_update_pipeline_pending_v2(jsonb)', 'EXECUTE')
+    and has_function_privilege('authenticated', 'public.app_complete_pipeline_stage_v2(jsonb)', 'EXECUTE')
+    and has_function_privilege('authenticated', 'public.app_pass_pipeline_jump_v2(jsonb)', 'EXECUTE')
+    and has_function_privilege('authenticated', 'public.app_correct_pipeline_outcome_v2(jsonb)', 'EXECUTE'),
   'authenticated must have EXECUTE on workspace group RPCs'
 );
 
@@ -147,18 +150,21 @@ values
   ('__authz_test_failed_pipeline_candidate', 'Failed Pipeline Candidate', '0999999997', '__authz_test_owned_link', 'Facebook', current_date),
   ('__authz_test_completed_pipeline_candidate', 'Completed Pipeline Candidate', '0999999996', '__authz_test_owned_link', 'Facebook', current_date);
 
-insert into public.recruitment_logs (candidate_id, log_date, recruitment_process, round, interviewer, result, remark)
+insert into public.recruitment_logs (
+  candidate_id, log_date, recruitment_process, round, interviewer, result, remark,
+  outcome_date, outcome_interviewer, outcome_recorded_at
+)
 values
-  ('__authz_test_pipeline_candidate', current_date, 'Phone Screen', 1, 'QA', null, 'Current pending stage'),
-  ('__authz_test_failed_pipeline_candidate', current_date - 3, 'Phone Screen', 1, 'QA', 1, 'Passed before fail'),
-  ('__authz_test_failed_pipeline_candidate', current_date - 2, 'HR Interview', 1, 'QA', 0, 'Historical failed stage'),
-  ('__authz_test_failed_pipeline_candidate', current_date - 1, 'Line Interview', 1, 'QA', null, 'Invalid pending after failed stage'),
-  ('__authz_test_completed_pipeline_candidate', current_date - 6, 'Phone Screen', 1, 'QA', 1, 'Completed'),
-  ('__authz_test_completed_pipeline_candidate', current_date - 5, 'HR Interview', 1, 'QA', 1, 'Completed'),
-  ('__authz_test_completed_pipeline_candidate', current_date - 4, 'Line Interview', 1, 'QA', 1, 'Completed'),
-  ('__authz_test_completed_pipeline_candidate', current_date - 3, 'Test', 1, 'QA', 1, 'Completed'),
-  ('__authz_test_completed_pipeline_candidate', current_date - 2, 'Reference Check', 1, 'QA', 1, 'Completed'),
-  ('__authz_test_completed_pipeline_candidate', current_date - 1, 'Offer', 1, 'QA', 1, 'Completed');
+  ('__authz_test_pipeline_candidate', current_date, 'Phone Screen', 1, 'QA', null, 'Current pending stage', null, null, null),
+  ('__authz_test_failed_pipeline_candidate', current_date - 3, 'Phone Screen', 1, 'QA', 1, 'Passed before fail', current_date - 3, 'QA', now()),
+  ('__authz_test_failed_pipeline_candidate', current_date - 2, 'HR Interview', 1, 'QA', 0, 'Historical failed stage', current_date - 2, 'QA', now()),
+  ('__authz_test_failed_pipeline_candidate', current_date - 1, 'Line Interview', 1, 'QA', null, 'Invalid pending after failed stage', null, null, null),
+  ('__authz_test_completed_pipeline_candidate', current_date - 6, 'Phone Screen', 1, 'QA', 1, 'Completed', current_date - 6, 'QA', now()),
+  ('__authz_test_completed_pipeline_candidate', current_date - 5, 'HR Interview', 1, 'QA', 1, 'Completed', current_date - 5, 'QA', now()),
+  ('__authz_test_completed_pipeline_candidate', current_date - 4, 'Line Interview', 1, 'QA', 1, 'Completed', current_date - 4, 'QA', now()),
+  ('__authz_test_completed_pipeline_candidate', current_date - 3, 'Test', 1, 'QA', 1, 'Completed', current_date - 3, 'QA', now()),
+  ('__authz_test_completed_pipeline_candidate', current_date - 2, 'Reference Check', 1, 'QA', 1, 'Completed', current_date - 2, 'QA', now()),
+  ('__authz_test_completed_pipeline_candidate', current_date - 1, 'Offer', 1, 'QA', 1, 'Completed', current_date - 1, 'QA', now());
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub', 'a1100000-0000-0000-0000-000000000001', true);
@@ -199,14 +205,16 @@ select pg_temp.assert_true(
 );
 
 select pg_temp.assert_true(
-  (public.app_insert_pipeline_passes(
+  (public.app_pass_pipeline_jump_v2(
     jsonb_build_object(
       'candidate_id', '__authz_test_pipeline_candidate',
-      'target_stage', 'Line Interview',
-      'stages', jsonb_build_array(
-        jsonb_build_object('index', 0, 'stage', 'Phone Screen', 'log_date', current_date::text, 'round', 1),
-        jsonb_build_object('index', 1, 'stage', 'HR Interview', 'log_date', current_date::text, 'round', 1)
-      )
+      'current_stage_instance_id', (select stage_instance_id from public.recruitment_logs where candidate_id = '__authz_test_pipeline_candidate' and result is null and superseded_at is null),
+      'expected_updated_at', (select updated_at from public.recruitment_logs where candidate_id = '__authz_test_pipeline_candidate' and result is null and superseded_at is null),
+      'passed_stages', jsonb_build_array(
+        jsonb_build_object('stage', 'Phone Screen', 'round', 1, 'pending', jsonb_build_object('opened_date', current_date::text), 'outcome', jsonb_build_object('result', 'pass', 'date', current_date::text)),
+        jsonb_build_object('stage', 'HR Interview', 'round', 1, 'pending', jsonb_build_object('opened_date', current_date::text), 'outcome', jsonb_build_object('result', 'pass', 'date', current_date::text))
+      ),
+      'target_pending', jsonb_build_object('stage', 'Line Interview', 'round', 1, 'opened_date', current_date::text)
     )
   ) ->> 'ok')::boolean,
   'a site recruiter can full-jump a manageable candidate with complete crossed stages'
@@ -216,15 +224,9 @@ select pg_temp.assert_true(
   exists (
     select 1
     from public.recruitment_logs pending_hr
-    join public.recruitment_logs passed_hr
-      on passed_hr.candidate_id = pending_hr.candidate_id
-      and passed_hr.recruitment_process = pending_hr.recruitment_process
-      and passed_hr.round = pending_hr.round
-      and passed_hr.result = 1
-      and passed_hr.log_id > pending_hr.log_id
     where pending_hr.candidate_id = '__authz_test_pipeline_candidate'
       and pending_hr.recruitment_process = 'HR Interview'
-      and pending_hr.result is null
+      and pending_hr.result = 1
   )
   and exists (
     select 1
@@ -238,30 +240,14 @@ select pg_temp.assert_true(
 
 select pg_temp.expect_error(
   $sql$
-    select public.app_insert_pipeline_passes(
-      jsonb_build_object(
-        'candidate_id', '__authz_test_failed_pipeline_candidate',
-        'target_stage', 'Test',
-        'stages', jsonb_build_array(
-          jsonb_build_object('index', 0, 'stage', 'Line Interview', 'log_date', current_date::text, 'round', 1)
-        )
-      )
-    )
+    select public.app_start_pipeline_stage_v2(jsonb_build_object('candidate_id', '__authz_test_failed_pipeline_candidate', 'pending', jsonb_build_object('opened_date', current_date::text)))
   $sql$,
   'Pipeline update unavailable because this candidate has a failed stage.'
 );
 
 select pg_temp.expect_error(
   $sql$
-    select public.app_insert_recruitment_log(
-      jsonb_build_object(
-        'candidate_id', '__authz_test_completed_pipeline_candidate',
-        'log_date', current_date::text,
-        'recruitment_process', 'Offer',
-        'round', 1,
-        'result', null
-      )
-    )
+    select public.app_start_pipeline_stage_v2(jsonb_build_object('candidate_id', '__authz_test_completed_pipeline_candidate', 'pending', jsonb_build_object('opened_date', current_date::text)))
   $sql$,
   'Pipeline update unavailable because this candidate completed all stages.'
 );
@@ -359,15 +345,7 @@ select pg_temp.expect_error(
 
 select pg_temp.expect_error(
   $sql$
-    select public.app_insert_pipeline_passes(
-      jsonb_build_object(
-        'candidate_id', '__authz_test_pipeline_candidate',
-        'target_stage', 'Test',
-        'stages', jsonb_build_array(
-          jsonb_build_object('index', 0, 'stage', 'Line Interview', 'log_date', current_date::text, 'round', 1)
-        )
-      )
-    )
+    select public.app_start_pipeline_stage_v2(jsonb_build_object('candidate_id', '__authz_test_pipeline_candidate', 'pending', jsonb_build_object('opened_date', current_date::text)))
   $sql$,
   'Recruitment write role is required.'
 );

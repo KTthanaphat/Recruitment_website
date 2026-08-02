@@ -1,6 +1,6 @@
 import { Search } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Panel, SectionTitle } from "@/components/ui/Panel";
 import { Tag } from "@/components/ui/Tag";
@@ -11,6 +11,14 @@ import type { ChangeLog, Language } from "@/types/recruitment";
 
 export function AuditView({ language, rows }: { language: Language; rows: ChangeLog[] }) {
   const [filters, setFilters] = useState({ action: "", changedBy: "", end: "", entity: "", entityId: "", start: "" });
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setFilters((current) => ({
+      ...current,
+      entity: params.get("entity") ?? current.entity,
+      entityId: params.get("entityId") ?? current.entityId
+    }));
+  }, []);
   const filteredRows = useMemo(() => rows.filter((row) => {
     const changedAt = row.changed_at.slice(0, 10);
     return (!filters.entity || row.entity.toLowerCase().includes(filters.entity.toLowerCase()))

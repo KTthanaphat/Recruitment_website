@@ -250,7 +250,9 @@ test("candidate drawer has one action hierarchy and modal becomes topmost", asyn
 
   await page.getByRole("button", { name: "View candidate detail for Pat Phone" }).click();
   const drawer = page.getByRole("dialog", { name: /C-PHONE \/ Pat Phone/ });
-  await expect(drawer.getByText("Current stage")).toHaveCount(0);
+  await expect(drawer.getByText("Current stage")).toBeVisible();
+  await expect(drawer.getByText("Pending details")).toBeVisible();
+  await expect(drawer.getByText("Awaiting outcome")).toBeVisible();
   await expect(drawer.getByText("Result", { exact: true })).toHaveCount(0);
   await expect(drawer.getByRole("button", { name: "Update process" })).toHaveCount(1);
 

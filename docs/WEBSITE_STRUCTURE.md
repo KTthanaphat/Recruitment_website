@@ -1,6 +1,6 @@
 # Recruitment Website Structure
 
-Last updated: 2026-07-14
+Last updated: 2026-08-01
 
 ## Overview
 
@@ -245,7 +245,13 @@ Process update validation:
 
 Pipeline:
 
+- The paired-status implementation record and compact cross-layer map live in `docs/CANDIDATE_PIPELINE_ADJUSTMENT_PLAN.md`; this section owns current product behavior.
+- The six active stored stages, in order, are `Phone Screen`, `HR Interview`, `Line Interview`, `Test`, `Reference Check`, and `Offer`. `Resume Screening` is derived display/reporting state. `First Contact`, `Rejected`, and `Withdrawn` are not active board stages.
+- One canonical `recruitment_logs` row owns one candidate/stage/round. Existing `log_date`, `interviewer`, and `remark` fields are the Pending details; `result` plus `outcome_date`, `outcome_interviewer`, `outcome_remark`, and `outcome_recorded_at` are the optional Outcome. A null result means `Awaiting outcome`; saved outcomes are `Passed` or `Failed`.
+- Superseded rows remain audit history but are excluded from current state, board lanes, primary Candidate Detail history, terminal guards, and funnel/report counts.
 - Pipeline is group-based and resolves grouped doc IDs, sites, persons in charge, and group position.
+- Candidate sourcing `Reference Name` remains the Referral-channel attribution field. Contactable employment references are a separate optional list: name, relationship, channel type/value, and Other label. Available references require one final Bangkok-dated conversation record with positive duration (minutes) and summary; unavailable or archived references require a reason and remain audit history.
+- Every pipeline write requires a recruitment-writer role and candidate-management scope. System Admin and Admin Recruiter can manage all candidates. Site Recruiter writes require a linked requisition matching both the recruiter's assigned site and nickname/PIC. Viewer is read-only.
 - Active stage panels use the current assigned-site accent as a tinted panel background; candidate cards remain neutral for scan speed.
 - Active cards show candidate name, `{site}-{position} ({PIC})`, next-step icon, and last updated date.
 - Active cards are sorted by latest update ascending in each stage so the oldest update appears first.
@@ -254,13 +260,15 @@ Pipeline:
 - Board filter and pipeline search live in a filter-icon popover at the right side of the board controls row, with the visible Group cards controls kept on the left. The popover supports Escape, outside-click dismissal, and active filter count.
 - Do not show SLA/pass/fail/latest metric text under Pipeline stage names.
 - Empty active Pipeline stage columns and empty Failed Candidates stage columns keep their body blank; only the all-empty Failed Candidates panel shows an empty message.
-- Forward jumps from drag/drop or card actions are allowed only through the passed-stage confirmation flow. The flow must confirm every crossed stage in order; the database writes Pending then Pass for each crossed stage that does not already have a matching pending row, then creates the target stage as Pending.
-- If a card's latest stage is already Pass, the board action can open only the immediate next stage as Pending through Process Update. Farther jumps require a current Pending stage first.
-- Pipeline write RPCs must also block candidates with any historical Fail or all active stages already passed, so direct calls cannot bypass UI restrictions.
-- Test is a multi-round stage. A Test card can be maintained in Test to create the next pending Test round, or moved to Reference Check through the passed-stage confirmation flow.
-- Maintaining Test saves the current pending Test round as Pass and creates the next Test round as Pending in one database transaction.
-- When leaving Test, the latest Test round is used as the passed round. The confirmation modal can add extra pending Test rounds first, while the pass round remains locked to the original latest round, then creates Reference Check as pending.
-- Pending active-stage cards expose Fail current stage through the candidate action menu, opening Process Update prefilled to the current stage with result Fail. Offer-stage cards expose Update Offer through the same menu, opening Process Update for Offer.
+- A current Pending card menu orders `Pass stage`, `Fail stage`, Test-only `Add another Test round`, forward-jump targets beyond the immediate next stage, then `Edit pending details`. The menu is a viewport overlay above board cards; its immediate next-stage command is omitted because Pass performs that transition. Pending date/interviewer/remark are editable only on the current unresolved canonical record, guarded by `expected_updated_at`, and audited as `pipeline:pending-edit`. System Admin and Admin Recruiter can use this edit for every manageable candidate; Site Recruiter remains limited to matching Site and PIC.
+- Pass shows locked stage/round context, editable Pass Outcome, and the required derived Next Pending (except Offer); it submits the stored Current Pending values unchanged. Fail continues to show editable Current Pending details plus a locked-result Fail Outcome. Outcome date defaults to Bangkok today, interviewer defaults from Pending, and Outcome remark starts blank. A non-Offer Pass requires the immediate next Pending in the same transaction; Fail creates none and is terminal. Offer Pass creates no next stage and returns candidate/group/eligible-requisition handoff context.
+- Reference Check Pass requires every currently Available candidate reference to have a saved final check; zero references, unavailable references, and archived references do not block. Reference Check Fail stays available. The same database trigger prevents a forward jump from bypassing this requirement.
+- Forward jumps from drag/drop and card actions open the same confirmation without writing immediately. Every crossed stage has Pending plus Pass details, the target has required Pending details, crossed stages must be consecutive and Pass-only, and the entire jump commits or rolls back atomically.
+- Date order is `previous Outcome <= current Pending <= current Outcome <= next Pending <= Asia/Bangkok business date`; same-day transitions are valid.
+- Test is multi-round. `Pass stage` exits Test to Reference Check. `Add another Test round` passes Test round N and opens Test round N+1; rounds and dates must be sequential.
+- Candidate Detail keeps Resume Screening in the derived journey, then shows an expanded Current Stage panel and Completed Stage History with Pending and Outcome/Awaiting details. Edited and Migrated indicators include text, migration notes remain visible, and each canonical stage links to its filtered Audit Log. Board cards remain compact.
+- Outcome result is immutable. System Admin may correct only completed Outcome date/interviewer/remark; correction supersedes the old canonical row, inserts a replacement, and leaves downstream state unchanged.
+- Database row locks, optimistic timestamps, superseded-aware guards, role/PIC checks, and canonical delete protection enforce the same rules when the UI is bypassed.
 - Failed Candidates use the same stage-column layout as the active pipeline for the current last-7-days window.
 - Failed candidates remain workflow state. They should stay visible in Pipeline failed-candidate sections, but a failed candidate in an active stage is not a Data Quality issue.
 - Passed Offer uses the same compact card arrangement in responsive multi-column layouts. Write roles see `Create offer` on passed-Offer cards only when no offer record exists for that candidate.
@@ -305,6 +313,7 @@ Important newer fields:
 
 - `requisitions.replacement_names`
 - `candidates.candidate_folder_url`
+- `recruitment_logs.stage_instance_id`, Outcome detail fields, Pending edit metadata, record origin/migration note, and supersession metadata.
 - sourcing channel flags and applicant counts for LinkedIn, Walk-in, Referral, and Others.
 
 Candidates store `doc_group_id`, not a direct `group_id`. Group-level behavior is resolved through `document_groups`.
@@ -325,8 +334,11 @@ Protected RPC functions handle all recruitment writes:
 - `app_delete_recruitment_record`
 - `app_upsert_sourcing_weekly_update`
 - `app_upsert_candidate`
-- `app_insert_recruitment_log`
-- `app_insert_pipeline_passes`
+- `app_start_pipeline_stage_v2`
+- `app_update_pipeline_pending_v2`
+- `app_complete_pipeline_stage_v2`
+- `app_pass_pipeline_jump_v2`
+- `app_correct_pipeline_outcome_v2`
 - `app_upsert_offer`
 
 ## Security

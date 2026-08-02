@@ -1,26 +1,39 @@
 "use client";
 
-import { useEffect } from "react";
+import { useLayoutEffect, useRef } from "react";
 
-let activeOverlayLocks = 0;
-let previousBodyOverflow: string | null = null;
+const overlayOwners = new Set<symbol>();
+let previousOverflow: { body: string; documentElement: string } | null = null;
+
+function syncScrollLock() {
+  const root = document.documentElement;
+  if (overlayOwners.size > 0) {
+    if (!previousOverflow) {
+      previousOverflow = { body: document.body.style.overflow, documentElement: root.style.overflow };
+    }
+    root.style.overflow = "hidden";
+    document.body.style.overflow = "hidden";
+    return;
+  }
+  if (!previousOverflow) return;
+  document.body.style.overflow = previousOverflow.body;
+  root.style.overflow = previousOverflow.documentElement;
+  previousOverflow = null;
+}
 
 export function useOverlayScrollLock(open: boolean) {
-  useEffect(() => {
-    if (!open) return;
+  const ownerRef = useRef<symbol>();
 
-    if (activeOverlayLocks === 0) {
-      previousBodyOverflow = document.body.style.overflow;
-      document.body.style.overflow = "hidden";
-    }
-    activeOverlayLocks += 1;
+  useLayoutEffect(() => {
+    if (!open) return;
+    const owner = ownerRef.current ?? Symbol("overlay-scroll-lock");
+    ownerRef.current = owner;
+    overlayOwners.add(owner);
+    syncScrollLock();
 
     return () => {
-      activeOverlayLocks = Math.max(0, activeOverlayLocks - 1);
-      if (activeOverlayLocks === 0) {
-        document.body.style.overflow = previousBodyOverflow ?? "";
-        previousBodyOverflow = null;
-      }
+      overlayOwners.delete(owner);
+      syncScrollLock();
     };
   }, [open]);
 }

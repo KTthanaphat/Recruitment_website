@@ -151,6 +151,7 @@ begin
     select 1
     from public.recruitment_logs
     where candidate_id = p_candidate_id
+      and superseded_at is null
       and result = 0
   ) then
     raise exception 'Pipeline update unavailable because this candidate has a failed stage.';
@@ -160,6 +161,7 @@ begin
     select count(distinct recruitment_process)
     from public.recruitment_logs
     where candidate_id = p_candidate_id
+      and superseded_at is null
       and result = 1
       and recruitment_process in ('Phone Screen', 'HR Interview', 'Line Interview', 'Test', 'Reference Check', 'Offer')
   ) = 6 then
@@ -238,6 +240,28 @@ as $$
     where c.candidate_id = p_candidate_id
       and app_private.can_manage_requisition(dg.doc_id)
   )
+$$;
+
+create or replace function app_private.can_read_candidate(p_candidate_id text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    app_private.is_global_recruitment_reader()
+    or (
+      app_private.current_app_role() = 'site_recruiter'
+      and exists (
+        select 1
+        from public.candidates c
+        join public.document_groups dg on dg.doc_group_id = c.doc_group_id
+        join public.requisitions r on r.doc_id = dg.doc_id
+        where c.candidate_id = p_candidate_id
+          and r.site = app_private.current_profile_site()
+      )
+    )
 $$;
 
 create or replace function app_private.has_open_group_requisition(p_group_id text)
@@ -396,17 +420,14 @@ declare
   v_email text;
 begin
   v_row := coalesce(to_jsonb(new), to_jsonb(old));
-  v_entity_id := coalesce(
-    v_row ->> 'doc_id',
-    v_row ->> 'candidate_id',
-    v_row ->> 'group_id',
-    v_row ->> 'doc_group_id',
-    v_row ->> 'offer_id',
-    v_row ->> 'snapshot_id',
-    v_row ->> 'log_id',
-    v_row ->> 'week_start',
-    'unknown'
-  );
+  v_entity_id := case
+    when tg_table_name = 'candidate_references' then v_row ->> 'reference_id'
+    when tg_table_name = 'candidate_reference_checks' then v_row ->> 'check_id'
+    else coalesce(
+      v_row ->> 'doc_id', v_row ->> 'candidate_id', v_row ->> 'group_id', v_row ->> 'doc_group_id',
+      v_row ->> 'offer_id', v_row ->> 'snapshot_id', v_row ->> 'log_id', v_row ->> 'week_start', 'unknown'
+    )
+  end;
   v_action := coalesce(nullif(current_setting('app.action', true), ''), lower(tg_op));
   v_email := coalesce(
     (select email from public.profiles where id = auth.uid()),
@@ -428,6 +449,61 @@ begin
 end;
 $$;
 
+create or replace function app_private.protect_canonical_pipeline_log_delete()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if old.superseded_at is null
+    and coalesce(current_setting('app.action', true), '') <> 'candidate:delete'
+  then
+    raise exception 'Canonical pipeline stage records cannot be deleted; use app_correct_pipeline_outcome_v2.';
+  end if;
+  return old;
+end;
+$$;
+
+create or replace function app_private.assert_reference_check_passable(p_candidate_id text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_unresolved_count integer;
+begin
+  select count(*)::integer into v_unresolved_count
+  from public.candidate_references reference
+  left join public.candidate_reference_checks checked on checked.reference_id = reference.reference_id
+  where reference.candidate_id = p_candidate_id
+    and reference.status = 'available'
+    and checked.reference_id is null;
+
+  if v_unresolved_count > 0 then
+    raise exception 'PIPELINE_REFERENCE_CHECKS_REQUIRED: % available reference(s) still need a saved check.', v_unresolved_count;
+  end if;
+end;
+$$;
+
+create or replace function app_private.enforce_reference_check_pass_gate()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, app_private
+as $$
+begin
+  if new.recruitment_process = 'Reference Check'
+    and new.result = 1
+    and coalesce(current_setting('app.action', true), '') in ('pipeline:pass', 'pipeline:jump-pass')
+  then
+    perform app_private.assert_reference_check_passable(new.candidate_id);
+  end if;
+  return new;
+end;
+$$;
+
 drop trigger if exists set_profiles_updated_at on public.profiles;
 create trigger set_profiles_updated_at before update on public.profiles
 for each row execute function app_private.set_updated_at();
@@ -446,6 +522,18 @@ for each row execute function app_private.set_updated_at();
 
 drop trigger if exists set_candidates_updated_at on public.candidates;
 create trigger set_candidates_updated_at before update on public.candidates
+for each row execute function app_private.set_updated_at();
+
+drop trigger if exists set_candidate_references_updated_at on public.candidate_references;
+create trigger set_candidate_references_updated_at before update on public.candidate_references
+for each row execute function app_private.set_updated_at();
+
+drop trigger if exists set_candidate_reference_checks_updated_at on public.candidate_reference_checks;
+create trigger set_candidate_reference_checks_updated_at before update on public.candidate_reference_checks
+for each row execute function app_private.set_updated_at();
+
+drop trigger if exists set_recruitment_logs_updated_at on public.recruitment_logs;
+create trigger set_recruitment_logs_updated_at before update on public.recruitment_logs
 for each row execute function app_private.set_updated_at();
 
 drop trigger if exists set_offers_updated_at on public.offers;
@@ -484,9 +572,25 @@ drop trigger if exists audit_candidates on public.candidates;
 create trigger audit_candidates after insert or update or delete on public.candidates
 for each row execute function app_private.audit_row_change();
 
+drop trigger if exists audit_candidate_references on public.candidate_references;
+create trigger audit_candidate_references after insert or update or delete on public.candidate_references
+for each row execute function app_private.audit_row_change();
+
+drop trigger if exists audit_candidate_reference_checks on public.candidate_reference_checks;
+create trigger audit_candidate_reference_checks after insert or update or delete on public.candidate_reference_checks
+for each row execute function app_private.audit_row_change();
+
 drop trigger if exists audit_recruitment_logs on public.recruitment_logs;
 create trigger audit_recruitment_logs after insert or update or delete on public.recruitment_logs
 for each row execute function app_private.audit_row_change();
+
+drop trigger if exists protect_canonical_pipeline_log_delete on public.recruitment_logs;
+create trigger protect_canonical_pipeline_log_delete before delete on public.recruitment_logs
+for each row execute function app_private.protect_canonical_pipeline_log_delete();
+
+drop trigger if exists enforce_reference_check_pass_gate on public.recruitment_logs;
+create trigger enforce_reference_check_pass_gate before insert or update of result on public.recruitment_logs
+for each row execute function app_private.enforce_reference_check_pass_gate();
 
 drop trigger if exists audit_offers on public.offers;
 create trigger audit_offers after insert or update or delete on public.offers

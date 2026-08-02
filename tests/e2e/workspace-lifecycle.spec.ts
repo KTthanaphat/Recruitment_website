@@ -141,14 +141,13 @@ test("passing Offer hands off to workspace offer creation with proposed accepted
 
   const card = page.locator("#pipeline-candidate-C-OFFER-READY");
   await card.getByRole("button", { name: "Candidate actions for Nina Offer Ready" }).click();
-  await page.getByRole("menuitem", { name: "Update Offer for Nina Offer Ready" }).click();
-  const processDialog = page.getByRole("dialog", { name: "Process Update" });
-  await processDialog.getByLabel("Result").selectOption("1");
-  const proposedAcceptedDate = await processDialog.getByRole("textbox", { name: "Date", exact: true }).inputValue();
+  await page.getByRole("menuitem", { name: "Pass stage" }).click();
+  const processDialog = page.getByRole("dialog", { name: "Complete Stage" });
+  const proposedAcceptedDate = await processDialog.locator('input[name="outcome_date"]').inputValue();
   await processDialog.getByRole("button", { name: "Review changes" }).click();
   await page.getByRole("dialog", { name: "Confirm Save" }).getByRole("button", { name: "Save changes" }).click();
 
-  await expect.poll(() => mock.rpcCalls.at(-1)?.endpoint).toBe("app_insert_recruitment_log");
+  await expect.poll(() => mock.rpcCalls.at(-1)?.endpoint).toBe("app_complete_pipeline_stage_v2");
   await expect(page.getByRole("dialog", { name: "Offer stage passed" })).toBeVisible();
   await expect(page.getByText(/passed Offer on/)).toBeVisible();
   expect(mock.rpcCalls.some((call) => call.endpoint === "app_upsert_offer")).toBe(false);

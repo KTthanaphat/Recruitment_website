@@ -102,6 +102,38 @@ export type Candidate = {
   updated_at: string;
 };
 
+export type CandidateReferenceStatus = "available" | "unavailable" | "archived";
+export type CandidateReferenceChannel = "phone" | "email" | "line" | "other";
+
+/** A contactable employment reference, separate from the candidate sourcing-referral field. */
+export type CandidateReference = {
+  reference_id: string;
+  candidate_id: string;
+  reference_name: string;
+  relationship: string;
+  channel_type: CandidateReferenceChannel;
+  channel_value: string;
+  other_channel_label: string | null;
+  status: CandidateReferenceStatus;
+  status_reason: string | null;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+/** The single final conversation record for one available reference. */
+export type CandidateReferenceCheck = {
+  check_id: string;
+  reference_id: string;
+  checked_date: string;
+  duration_minutes: number;
+  conversation_summary: string;
+  checked_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type RecruitmentLog = {
   log_id: number;
   candidate_id: string;
@@ -112,6 +144,52 @@ export type RecruitmentLog = {
   result: ResultValue;
   remark: string | null;
   created_at: string;
+  updated_at?: string;
+  stage_instance_id?: string | null;
+  outcome_date?: string | null;
+  outcome_interviewer?: string | null;
+  outcome_remark?: string | null;
+  outcome_recorded_at?: string | null;
+  pending_edited_at?: string | null;
+  pending_edited_by?: string | null;
+  record_origin?: "user" | "auto" | "migration" | "correction" | null;
+  migration_note?: string | null;
+  superseded_at?: string | null;
+  superseded_by_stage_instance_id?: string | null;
+  superseded_reason?: string | null;
+};
+
+/** A pending process entry, kept separate from its eventual outcome for audit-safe UI. */
+export type ActiveProcessStage = Extract<ProcessStage, "Phone Screen" | "HR Interview" | "Line Interview" | "Test" | "Reference Check" | "Offer">;
+
+export type PendingStatusDetail = {
+  openedDate: string;
+  interviewer: string | null;
+  remark: string | null;
+  editedAt: string | null;
+  editedBy: string | null;
+};
+
+/** The pass/fail entry which resolves a pending process entry. */
+export type OutcomeStatusDetail = {
+  result: "pass" | "fail";
+  date: string;
+  interviewer: string | null;
+  remark: string | null;
+  recordedAt: string;
+};
+
+export type PipelineStageRecord = {
+  logId: number;
+  stageInstanceId: string;
+  candidateId: string;
+  stage: ActiveProcessStage;
+  round: number;
+  pending: PendingStatusDetail;
+  outcome: OutcomeStatusDetail | null;
+  origin: "user" | "auto" | "migration" | "correction";
+  migrationNote: string | null;
+  updatedAt: string;
 };
 
 export type Offer = {
@@ -185,6 +263,8 @@ export type DashboardData = {
   position_groups: PositionGroup[];
   document_groups: DocumentGroup[];
   candidates: Candidate[];
+  candidate_references: CandidateReference[];
+  candidate_reference_checks: CandidateReferenceCheck[];
   recruitment_logs: RecruitmentLog[];
   offers: Offer[];
   sourcing_weekly_updates: SourcingWeeklyUpdate[];

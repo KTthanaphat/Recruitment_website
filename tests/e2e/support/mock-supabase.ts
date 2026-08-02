@@ -150,6 +150,24 @@ function createRecruitmentDataset(activeRole: MockUserRole): DashboardData {
       candidate("C-OFFER-NO-OFFER", "Oscar Offer Needed", "DG-HQ-ENG", "Referral", "2026-07-02"),
       candidate("C-NO-ACTIVITY", "Nora No Activity", "DG-KT2-ANL", "Others", "2026-06-28")
     ],
+    candidate_references: [
+      {
+        reference_id: "10000000-0000-4000-8000-000000000001",
+        candidate_id: "C-REF",
+        reference_name: "Mina Manager",
+        relationship: "Former manager",
+        channel_type: "phone",
+        channel_value: "0812345678",
+        other_channel_label: null,
+        status: "available",
+        status_reason: null,
+        created_by: "qa-admin",
+        updated_by: "qa-admin",
+        created_at: "2026-07-10T05:00:00.000Z",
+        updated_at: "2026-07-10T05:00:00.000Z"
+      }
+    ],
+    candidate_reference_checks: [],
     recruitment_logs: [
       log(1, "C-PHONE", "Phone Screen", null, 1, "2026-07-09"),
       log(28, "C-PHONE-PASS", "Phone Screen", 1, 1, "2026-07-10"),
@@ -235,55 +253,128 @@ function applyRpcMutation(data: DashboardData, endpoint: string, payload: Record
     }
     if (entity === "vacancy_weekly_snapshot") data.vacancy_weekly_snapshots = data.vacancy_weekly_snapshots.filter((row) => String(row.snapshot_id) !== id);
   }
-  if (endpoint === "app_insert_pipeline_passes" || endpoint === "app_insert_pipeline_test_exit") {
+  if (endpoint === "app_start_pipeline_stage_v2") {
     const candidateId = String(payload.candidate_id ?? "");
-    const stages = Array.isArray(payload.stages) ? payload.stages as Array<Record<string, unknown>> : [];
-    for (const stage of stages) {
-      const stageName = String(stage.stage) as never;
-      const round = Number(stage.round ?? 1);
-      const date = String(stage.log_date ?? "2026-07-11");
-      const hasPending = data.recruitment_logs.some((row) => (
-        row.candidate_id === candidateId
-        && row.recruitment_process === stageName
-        && row.round === round
-        && row.result === null
-      ));
-      if (!hasPending) data.recruitment_logs.push(log(nextLogId(data), candidateId, stageName, null, round, date));
-      data.recruitment_logs.push(log(
-        nextLogId(data),
-        candidateId,
-        stageName,
-        1,
-        round,
-        date
-      ));
-    }
-    const targetStage = String(payload.target_stage ?? "") as never;
-    if (targetStage) {
-      data.recruitment_logs.push(log(
-        nextLogId(data),
-        candidateId,
-        targetStage,
-        null,
-        1,
-        String(stages.at(-1)?.log_date ?? "2026-07-11")
-      ));
-    }
+    addCanonicalPending(data, candidateId, asRecord(payload.pending));
+    const created = data.recruitment_logs.at(-1);
+    if (created) appendPipelineAudit(data, created.log_id, "pipeline:start", created);
   }
-  if (endpoint === "app_insert_test_maintenance") {
+  if (endpoint === "app_update_pipeline_pending_v2") {
     const candidateId = String(payload.candidate_id ?? "");
-    const nextTest = payload.next_test as Record<string, unknown> | undefined;
-    data.recruitment_logs.push(log(nextLogId(data), candidateId, "Test", null, Number(nextTest?.round ?? 2), String(nextTest?.log_date ?? "2026-07-11")));
-  }
-  if (endpoint === "app_insert_recruitment_log") {
-    data.recruitment_logs.push(log(
-      nextLogId(data),
-      String(payload.candidate_id ?? ""),
-      String(payload.recruitment_process ?? "Phone Screen") as never,
-      payload.result === "1" || payload.result === 1 ? 1 : payload.result === "0" || payload.result === 0 ? 0 : null,
-      Number(payload.round ?? 1),
-      String(payload.log_date ?? "2026-07-11")
+    const stageInstanceId = String(payload.stage_instance_id ?? "");
+    const pending = Object.keys(asRecord(payload.pending)).length ? asRecord(payload.pending) : payload;
+    const current = data.recruitment_logs.find((row) => (
+      row.candidate_id === candidateId
+      && (row.stage_instance_id === stageInstanceId || row.log_id === Number(payload.pending_log_id ?? -1))
+      && row.result === null
+      && row.superseded_at === null
     ));
+    if (!current) return;
+    current.log_date = String(pending.opened_date ?? current.log_date);
+    current.interviewer = nullableText(pending.interviewer);
+    current.remark = nullableText(pending.remark);
+    current.pending_edited_at = "2026-07-24T05:00:00.000Z";
+    current.pending_edited_by = "qa-admin";
+    current.updated_at = "2026-07-24T05:00:00.000Z";
+    appendPipelineAudit(data, current.log_id, "pipeline:pending-edit", current);
+  }
+  if (endpoint === "app_upsert_candidate_reference_v1") {
+    const candidateId = String(payload.candidate_id ?? "");
+    const referenceId = String(payload.reference_id ?? "");
+    const current = data.candidate_references.find((row) => row.reference_id === referenceId);
+    if (current) {
+      current.reference_name = String(payload.reference_name ?? current.reference_name);
+      current.relationship = String(payload.relationship ?? current.relationship);
+      current.channel_type = String(payload.channel_type ?? current.channel_type) as typeof current.channel_type;
+      current.channel_value = String(payload.channel_value ?? current.channel_value);
+      current.other_channel_label = nullableText(payload.other_channel_label);
+      current.updated_at = "2026-07-24T05:00:00.000Z";
+    } else {
+      data.candidate_references.push({
+        reference_id: `10000000-0000-4000-8000-${String(data.candidate_references.length + 2).padStart(12, "0")}`,
+        candidate_id: candidateId,
+        reference_name: String(payload.reference_name ?? ""),
+        relationship: String(payload.relationship ?? ""),
+        channel_type: String(payload.channel_type ?? "phone") as "phone" | "email" | "line" | "other",
+        channel_value: String(payload.channel_value ?? ""),
+        other_channel_label: nullableText(payload.other_channel_label),
+        status: "available",
+        status_reason: null,
+        created_by: "qa-admin",
+        updated_by: "qa-admin",
+        created_at: "2026-07-24T05:00:00.000Z",
+        updated_at: "2026-07-24T05:00:00.000Z"
+      });
+    }
+  }
+  if (endpoint === "app_set_candidate_reference_status_v1") {
+    const current = data.candidate_references.find((row) => row.reference_id === String(payload.reference_id ?? ""));
+    if (!current) return;
+    current.status = String(payload.status ?? current.status) as typeof current.status;
+    current.status_reason = nullableText(payload.reason);
+    current.updated_at = "2026-07-24T05:00:00.000Z";
+  }
+  if (endpoint === "app_save_candidate_reference_check_v1") {
+    const referenceId = String(payload.reference_id ?? "");
+    const current = data.candidate_reference_checks.find((row) => row.reference_id === referenceId);
+    if (current) {
+      current.checked_date = String(payload.checked_date ?? current.checked_date);
+      current.duration_minutes = Number(payload.duration_minutes ?? current.duration_minutes);
+      current.conversation_summary = String(payload.conversation_summary ?? current.conversation_summary);
+      current.updated_at = "2026-07-24T05:00:00.000Z";
+    } else {
+      data.candidate_reference_checks.push({
+        check_id: `20000000-0000-4000-8000-${String(data.candidate_reference_checks.length + 1).padStart(12, "0")}`,
+        reference_id: referenceId,
+        checked_date: String(payload.checked_date ?? "2026-07-24"),
+        duration_minutes: Number(payload.duration_minutes ?? 0),
+        conversation_summary: String(payload.conversation_summary ?? ""),
+        checked_by: "qa-admin",
+        created_at: "2026-07-24T05:00:00.000Z",
+        updated_at: "2026-07-24T05:00:00.000Z"
+      });
+    }
+  }
+  if (endpoint === "app_complete_pipeline_stage_v2") {
+    const candidateId = String(payload.candidate_id ?? "");
+    const current = findCanonicalPending(data, candidateId, String(payload.stage_instance_id ?? ""), Number(payload.pending_log_id ?? -1));
+    if (!current) return;
+    const pending = Object.keys(asRecord(payload.pending)).length ? asRecord(payload.pending) : payload;
+    const outcome = Object.keys(asRecord(payload.outcome)).length
+      ? asRecord(payload.outcome)
+      : { ...asRecord(payload.outcome_detail), result: payload.outcome };
+    applyPending(current, pending);
+    current.result = outcome.result === "fail" ? 0 : 1;
+    current.outcome_date = String(outcome.date ?? current.log_date);
+    current.outcome_interviewer = nullableText(outcome.interviewer);
+    current.outcome_remark = nullableText(outcome.remark);
+    current.outcome_recorded_at = "2026-07-24T05:00:00.000Z";
+    current.updated_at = "2026-07-24T05:00:00.000Z";
+    const next = asRecord(payload.next_pending);
+    if (current.result === 1 && Object.keys(next).length) addCanonicalPending(data, candidateId, next);
+    appendPipelineAudit(data, current.log_id, "pipeline:completion", current);
+  }
+  if (endpoint === "app_pass_pipeline_jump_v2") {
+    const candidateId = String(payload.candidate_id ?? "");
+    const current = findCanonicalPending(data, candidateId, String(payload.current_stage_instance_id ?? ""), Number(payload.pending_log_id ?? -1));
+    const passedStages = Array.isArray(payload.passed_stages) ? payload.passed_stages.map(asRecord) : [];
+    if (!current || !passedStages.length) return;
+    for (const [index, stage] of passedStages.entries()) {
+      const row = index === 0
+        ? current
+        : log(nextLogId(data), candidateId, String(stage.stage) as never, null, Number(stage.round ?? 1), String(asRecord(stage.pending).opened_date ?? "2026-07-24"));
+      if (index > 0) data.recruitment_logs.push(row);
+      applyPending(row, asRecord(stage.pending));
+      const outcome = asRecord(stage.outcome);
+      row.result = 1;
+      row.outcome_date = String(outcome.date ?? row.log_date);
+      row.outcome_interviewer = nullableText(outcome.interviewer);
+      row.outcome_remark = nullableText(outcome.remark);
+      row.outcome_recorded_at = "2026-07-24T05:00:00.000Z";
+      row.updated_at = "2026-07-24T05:00:00.000Z";
+      appendPipelineAudit(data, row.log_id, "pipeline:jump", row);
+    }
+    addCanonicalPending(data, candidateId, asRecord(payload.target_pending));
   }
 }
 
@@ -295,6 +386,8 @@ function tableRows(data: DashboardData, table: string) {
     position_groups: data.position_groups,
     document_groups: data.document_groups,
     candidates: data.candidates,
+    candidate_references: data.candidate_references,
+    candidate_reference_checks: data.candidate_reference_checks,
     recruitment_logs: data.recruitment_logs,
     offers: data.offers,
     sourcing_weekly_updates: data.sourcing_weekly_updates,
@@ -343,6 +436,55 @@ function generatedIdForEndpoint(endpoint: string) {
 
 function nextLogId(data: DashboardData) {
   return Math.max(0, ...data.recruitment_logs.map((item) => item.log_id)) + 1;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function nullableText(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function findCanonicalPending(data: DashboardData, candidateId: string, stageInstanceId: string, pendingLogId = -1) {
+  return data.recruitment_logs.find((row) => (
+    row.candidate_id === candidateId
+    && (row.stage_instance_id === stageInstanceId || row.log_id === pendingLogId)
+    && row.result === null
+    && row.superseded_at === null
+  ));
+}
+
+function applyPending(row: DashboardData["recruitment_logs"][number], pending: Record<string, unknown>) {
+  row.log_date = String(pending.opened_date ?? row.log_date);
+  row.interviewer = nullableText(pending.interviewer);
+  row.remark = nullableText(pending.remark);
+  row.pending_edited_at = "2026-07-24T05:00:00.000Z";
+  row.pending_edited_by = "qa-admin";
+}
+
+function addCanonicalPending(data: DashboardData, candidateId: string, pending: Record<string, unknown>) {
+  const stage = String(pending.stage ?? "Phone Screen") as DashboardData["recruitment_logs"][number]["recruitment_process"];
+  const row = log(nextLogId(data), candidateId, stage, null, Number(pending.round ?? 1), String(pending.opened_date ?? "2026-07-24"));
+  row.interviewer = nullableText(pending.interviewer);
+  row.remark = nullableText(pending.remark);
+  row.record_origin = "auto";
+  data.recruitment_logs.push(row);
+  appendPipelineAudit(data, row.log_id, "pipeline:pending-create", row);
+}
+
+function appendPipelineAudit(data: DashboardData, logId: number, action: string, record: unknown) {
+  data.change_logs.unshift({
+    log_id: Math.max(0, ...data.change_logs.map((item) => item.log_id)) + 1,
+    entity: "recruitment_logs",
+    entity_id: String(logId),
+    action,
+    changed_at: "2026-07-24T05:00:00.000Z",
+    changed_by: "qa-admin",
+    changed_by_email: "admin@example.com",
+    old_data: null,
+    new_data: asRecord(record)
+  });
 }
 
 function profile(id: string, email: string, fullName: string, nickname: string, site: string | null, role: Role) {
@@ -420,7 +562,7 @@ function candidate(candidateId: string, name: string, docGroupId: string, channe
   };
 }
 
-function log(logId: number, candidateId: string, stage: DashboardData["recruitment_logs"][number]["recruitment_process"], result: 0 | 1 | null, round: number, date: string) {
+function log(logId: number, candidateId: string, stage: DashboardData["recruitment_logs"][number]["recruitment_process"], result: 0 | 1 | null, round: number, date: string): DashboardData["recruitment_logs"][number] {
   return {
     log_id: logId,
     candidate_id: candidateId,
@@ -430,7 +572,20 @@ function log(logId: number, candidateId: string, stage: DashboardData["recruitme
     interviewer: "QA Interviewer",
     result,
     remark: `QA ${stage}`,
-    created_at: `${date}T09:00:00`
+    created_at: `${date}T09:00:00`,
+    stage_instance_id: `00000000-0000-4000-8000-${String(logId).padStart(12, "0")}`,
+    outcome_date: result === null ? null : date,
+    outcome_interviewer: result === null ? null : "QA Interviewer",
+    outcome_remark: result === null ? null : `QA ${stage} outcome`,
+    outcome_recorded_at: result === null ? null : `${date}T10:00:00`,
+    updated_at: `${date}T09:00:00`,
+    pending_edited_at: null,
+    pending_edited_by: null,
+    record_origin: "user" as const,
+    migration_note: null,
+    superseded_at: null,
+    superseded_by_stage_instance_id: null,
+    superseded_reason: null
   };
 }
 

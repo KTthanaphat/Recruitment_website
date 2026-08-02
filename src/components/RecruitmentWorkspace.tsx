@@ -60,7 +60,7 @@ import {
 } from "@/lib/data";
 import { boolFromForm, emptyToNull, formatDate, formatNumber, resultText, statusTone } from "@/lib/format";
 import { fillReadinessLabel, requisitionStatusLabel, requestTypeLabel, roleLabel, translate } from "@/lib/i18n/dictionary";
-import { candidateProcessDisabledReason, deriveDataQualityIssues, latestSuccessfulOfferPassDate, requisitionFillReadiness } from "@/lib/operations";
+import { activeProcessStage, candidatePipelineCapability, candidateProcessDisabledReason, deriveDataQualityIssues, latestSuccessfulOfferPassDate, pipelineStageRecords, requisitionFillReadiness } from "@/lib/operations";
 import { getRequisitionSlaState } from "@/lib/sla";
 import { clearStoredSupabaseSession, hasSupabaseConfig, supabase, withAuthTimeout } from "@/lib/supabase/client";
 import { asNumber, requireFields } from "@/lib/validation/forms";
@@ -84,9 +84,13 @@ type ModalName =
   | "requisition"
   | "status"
   | "candidate"
-  | "process"
+  | "candidate_reference"
+  | "reference_status"
+  | "reference_check"
+  | "pipeline_start"
+  | "pending_edit"
+  | "stage_outcome"
   | "pipeline_pass"
-  | "test_maintenance"
   | "offer"
   | "group"
   | "match"
@@ -120,6 +124,26 @@ type ProcessDefaults = {
   remark?: string;
   passed_stages?: ProcessStage[];
   current_round?: number;
+  pending_log_id?: number;
+  stage_instance_id?: string;
+  expected_updated_at?: string;
+  outcome?: "pass" | "fail";
+  pending_log_date?: string;
+  pending_interviewer?: string | null;
+  pending_remark?: string | null;
+  reference_id?: string;
+  reference_expected_updated_at?: string;
+  reference_check_expected_updated_at?: string;
+  reference_name?: string;
+  reference_relationship?: string;
+  reference_channel_type?: string;
+  reference_channel_value?: string;
+  reference_other_channel_label?: string | null;
+  reference_status?: string;
+  reference_status_reason?: string | null;
+  reference_checked_date?: string;
+  reference_duration_minutes?: number;
+  reference_conversation_summary?: string;
 };
 
 type ModalDefaults = {
@@ -194,9 +218,13 @@ const rpcByModal: Record<Exclude<ModalName, null | "user">, string> = {
   requisition: "app_upsert_requisition",
   status: "app_insert_requisition_log",
   candidate: "app_upsert_candidate",
-  process: "app_insert_recruitment_log",
-  pipeline_pass: "app_insert_pipeline_passes",
-  test_maintenance: "app_insert_test_maintenance",
+  candidate_reference: "app_upsert_candidate_reference_v1",
+  reference_status: "app_set_candidate_reference_status_v1",
+  reference_check: "app_save_candidate_reference_check_v1",
+  pipeline_start: "app_start_pipeline_stage_v2",
+  pending_edit: "app_update_pipeline_pending_v2",
+  stage_outcome: "app_complete_pipeline_stage_v2",
+  pipeline_pass: "app_pass_pipeline_jump_v2",
   offer: "app_upsert_offer",
   group: "app_upsert_position_group",
   match: "app_create_group_match",
@@ -493,51 +521,50 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     const targetIndex = ACTIVE_PIPELINE_STAGES.indexOf(nextStage);
     if (currentIndex === -1 || targetIndex <= currentIndex) return;
     if (candidate.latest_result !== null) {
-      if (candidate.latest_result === 1 && targetIndex === currentIndex + 1) {
-        setProcessDefaults({
-          candidate_id: candidate.candidate_id,
-          recruitment_process: nextStage,
-          result: "",
-          source: "pipeline",
-          remark: `Opened ${processLabel(nextStage)} from ${processLabel(candidate.latest_process)} pass`
-        });
-        setActiveModal("process");
-        return;
-      }
       setStatus("Pipeline movement requires a pending current stage. Open the next pending stage before jumping farther.");
       return;
     }
     const passedStages = ACTIVE_PIPELINE_STAGES.slice(currentIndex, targetIndex);
     const currentRound = latestRoundForStage(logs, candidate.latest_process as ProcessStage);
+    const currentPending = logs.find((row) => row.result === null);
     setProcessDefaults({
       candidate_id: candidate.candidate_id,
       target_stage: nextStage,
       source: "pipeline",
       passed_stages: passedStages,
       current_round: currentRound,
+      stage_instance_id: currentPending?.stage_instance_id ?? String(currentPending?.log_id ?? ""),
+      expected_updated_at: currentPending?.updated_at ?? currentPending?.created_at,
+      pending_log_date: currentPending?.log_date,
+      pending_interviewer: currentPending?.interviewer,
+      pending_remark: currentPending?.remark,
       remark: `Progressed from ${processLabel(candidate.latest_process)} to ${processLabel(nextStage)} by pipeline drag and drop`
     });
     setActiveModal("pipeline_pass");
   }
 
-  function openFailCurrentStage(candidate: EnrichedCandidate) {
-    if (!ACTIVE_PIPELINE_STAGES.includes(candidate.latest_process as ProcessStage) || candidate.latest_result !== null) return;
+  function openPendingEdit(candidate: EnrichedCandidate) {
     const logs = latestLogsForCandidate(data, candidate.candidate_id);
-    const blockedReason = processUpdateBlockReason(logs);
-    if (blockedReason) {
-      setStatus(blockedReason);
+    const active = activeProcessStage(logs);
+    if (!active) return;
+    const pending = logs.find((row) => row.stage_instance_id === active.stageInstanceId);
+    if (!pending || !candidatePipelineCapability(candidate, logs, data.profile).canWrite) {
+      setStatus("This pending stage is outside your update responsibility.");
       return;
     }
-    const currentStage = candidate.latest_process as ProcessStage;
-    setProcessDefaults({
-      candidate_id: candidate.candidate_id,
-      recruitment_process: currentStage,
-      round: latestRoundForStage(logs, currentStage) || 1,
-      result: "0",
-      source: "manual",
-      remark: "Failed from pipeline current-stage action"
-    });
-    setActiveModal("process");
+    setProcessDefaults({ candidate_id: candidate.candidate_id, recruitment_process: active.stage, round: active.round, pending_log_id: active.pendingLogId, stage_instance_id: active.stageInstanceId, expected_updated_at: active.updatedAt, pending_log_date: pending.log_date, pending_interviewer: pending.interviewer, pending_remark: pending.remark });
+    setActiveModal("pending_edit");
+  }
+
+  function openStageOutcome(candidate: EnrichedCandidate, outcome: "pass" | "fail") {
+    const logs = latestLogsForCandidate(data, candidate.candidate_id);
+    const active = activeProcessStage(logs);
+    if (!active || !candidatePipelineCapability(candidate, logs, data.profile).canWrite) return;
+    const nextIndex = ACTIVE_PIPELINE_STAGES.indexOf(active.stage) + 1;
+    const nextStage = outcome === "pass" && active.stage !== "Offer" ? ACTIVE_PIPELINE_STAGES[nextIndex] : undefined;
+    const pending = logs.find((row) => row.stage_instance_id === active.stageInstanceId);
+    setProcessDefaults({ candidate_id: candidate.candidate_id, recruitment_process: active.stage, round: active.round, pending_log_id: active.pendingLogId, stage_instance_id: active.stageInstanceId, expected_updated_at: active.updatedAt, pending_log_date: pending?.log_date, pending_interviewer: pending?.interviewer, pending_remark: pending?.remark, outcome, target_stage: nextStage, source: "pipeline" });
+    setActiveModal("stage_outcome");
   }
 
   function openMaintainTest(candidate: EnrichedCandidate) {
@@ -547,57 +574,39 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       setStatus(blockedReason);
       return;
     }
-    if (candidate.latest_process !== "Test") return;
-    setProcessDefaults({
-      candidate_id: candidate.candidate_id,
-      recruitment_process: "Test",
-      round: latestRoundForStage(logs, "Test"),
-      result: "",
-      source: "manual",
-      current_round: latestRoundForStage(logs, "Test"),
-      remark: "Maintained in Test from pipeline"
-    });
-    setActiveModal("test_maintenance");
+    const active = activeProcessStage(logs);
+    const pending = active ? logs.find((row) => row.stage_instance_id === active.stageInstanceId) : null;
+    if (candidate.latest_process !== "Test" || !active || !pending) return;
+    setProcessDefaults({ candidate_id: candidate.candidate_id, recruitment_process: "Test", round: active.round, pending_log_id: pending.log_id, stage_instance_id: active.stageInstanceId, expected_updated_at: active.updatedAt, pending_log_date: pending.log_date, pending_interviewer: pending.interviewer, pending_remark: pending.remark, outcome: "pass", target_stage: "Test", current_round: active.round });
+    setActiveModal("stage_outcome");
   }
 
   function openOfferUpdate(candidate: EnrichedCandidate) {
-    const logs = latestLogsForCandidate(data, candidate.candidate_id);
-    const blockedReason = processUpdateBlockReason(logs);
-    if (blockedReason) {
-      setStatus(blockedReason);
-      return;
-    }
     if (candidate.latest_process !== "Offer") return;
-    setProcessDefaults({
-      candidate_id: candidate.candidate_id,
-      recruitment_process: "Offer",
-      round: latestRoundForStage(logs, "Offer") || 1,
-      result: "",
-      source: "manual",
-      remark: "Updated Offer from pipeline"
-    });
-    setActiveModal("process");
+    const active = activeProcessStage(latestLogsForCandidate(data, candidate.candidate_id));
+    if (active) openStageOutcome(candidate, "pass");
   }
 
   function openInitialProcessUpdate(candidate: EnrichedCandidate) {
     setProcessDefaults({
       candidate_id: candidate.candidate_id,
       recruitment_process: "Phone Screen",
-      source: "manual",
-      remark: "Started from pipeline no-activity lane"
+      pending_log_date: today(),
+      pending_remark: "Started from pipeline no-activity lane"
     });
-    setActiveModal("process");
+    setActiveModal("pipeline_start");
   }
 
   const openProcessFromDetail = useCallback((candidateId: string) => {
-    const latest = latestLogsForCandidate(data, candidateId)[0];
-    setProcessDefaults({
-      candidate_id: candidateId,
-      recruitment_process: latest?.recruitment_process,
-      source: "manual"
-    });
-    setActiveModal("process");
-  }, [data]);
+    const candidate = enrichedCandidates.find((row) => row.candidate_id === candidateId);
+    if (!candidate) return;
+    if (candidate.latest_process === "No activity") {
+      openInitialProcessUpdate(candidate);
+      return;
+    }
+    setDetail(null);
+    router.push(`/pipeline?pipelineSearch=${encodeURIComponent(candidateId)}&detailType=candidate&detailId=${encodeURIComponent(candidateId)}`);
+  }, [enrichedCandidates, router]);
 
   const openDetailRequisitionChange = useCallback((docId: string) => {
     setModalDefaults({ mode: "change", selectedId: docId });
@@ -608,6 +617,34 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     setModalDefaults({ mode: "change", selectedId: candidateId });
     setActiveModal("candidate");
   }, []);
+
+  const openCandidateReference = useCallback((candidateId: string, referenceId?: string) => {
+    const reference = data.candidate_references.find((row) => row.reference_id === referenceId);
+    setProcessDefaults({
+      candidate_id: candidateId,
+      reference_id: reference?.reference_id,
+      reference_expected_updated_at: reference?.updated_at,
+      reference_name: reference?.reference_name,
+      reference_relationship: reference?.relationship,
+      reference_channel_type: reference?.channel_type,
+      reference_channel_value: reference?.channel_value,
+      reference_other_channel_label: reference?.other_channel_label
+    });
+    setActiveModal("candidate_reference");
+  }, [data.candidate_references]);
+
+  const openCandidateReferenceStatus = useCallback((candidateId: string, referenceId: string) => {
+    const reference = data.candidate_references.find((row) => row.reference_id === referenceId);
+    if (!reference) return;
+    setProcessDefaults({ candidate_id: candidateId, reference_id: reference.reference_id, reference_expected_updated_at: reference.updated_at, reference_status: reference.status, reference_status_reason: reference.status_reason });
+    setActiveModal("reference_status");
+  }, [data.candidate_references]);
+
+  const openCandidateReferenceCheck = useCallback((candidateId: string, referenceId: string) => {
+    const check = data.candidate_reference_checks.find((row) => row.reference_id === referenceId);
+    setProcessDefaults({ candidate_id: candidateId, reference_id: referenceId, reference_check_expected_updated_at: check?.updated_at, reference_checked_date: check?.checked_date, reference_duration_minutes: check?.duration_minutes, reference_conversation_summary: check?.conversation_summary });
+    setActiveModal("reference_check");
+  }, [data.candidate_reference_checks]);
 
   function dispatchWorkspaceAction(request: WorkspaceActionRequest) {
     if (request.kind === "record.open") {
@@ -708,18 +745,10 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     const payload = buildPayload(modal, formData);
     const actionPayload = payload as Record<string, unknown>;
     if (modal === "candidate") validateCandidatePayload(data, payload, language);
-    if (modal === "process") validateProcessUpdatePayload(data, payload);
     const summary = buildSummary(modal, payload);
-    const isPipelineTestExit = modal === "pipeline_pass"
-      && actionPayload.target_stage === "Reference Check"
-      && Array.isArray(actionPayload.stages)
-      && actionPayload.stages.length === 1
-      && actionPayload.stages.some((stage) => typeof stage === "object" && stage !== null && "stage" in stage && stage.stage === "Test");
     const endpoint = modal === "user"
       ? "/api/admin/users"
-      : isPipelineTestExit
-        ? "app_insert_pipeline_test_exit"
-        : rpcByModal[modal];
+      : rpcByModal[modal];
 
     setPendingAction({
       title: "Confirm Save",
@@ -913,8 +942,8 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     });
   }, [language]);
   const detailBody = useMemo(
-    () => buildDetailBodyV2(detail, data, language, canWrite, canDeleteRecords, openProcessFromDetail, navigationContext, openDetailRequisitionChange, openDetailCandidateChange, prepareDestructiveRpcAction),
-    [canDeleteRecords, canWrite, detail, data, language, navigationContext, openDetailCandidateChange, openDetailRequisitionChange, openProcessFromDetail, prepareDestructiveRpcAction]
+    () => buildDetailBodyV2(detail, data, language, canWrite, canDeleteRecords, openProcessFromDetail, navigationContext, openDetailRequisitionChange, openDetailCandidateChange, openCandidateReference, openCandidateReferenceStatus, openCandidateReferenceCheck, prepareDestructiveRpcAction),
+    [canDeleteRecords, canWrite, detail, data, language, navigationContext, openCandidateReference, openCandidateReferenceCheck, openCandidateReferenceStatus, openDetailCandidateChange, openDetailRequisitionChange, openProcessFromDetail, prepareDestructiveRpcAction]
   );
 
   if (!hasSupabaseConfig) {
@@ -1045,14 +1074,19 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
               language={language}
               profile={data.profile}
               recruitmentLogs={data.recruitment_logs}
+              candidateReferences={data.candidate_references}
+              candidateReferenceChecks={data.candidate_reference_checks}
               rows={workspaceScope.candidates}
               offeredCandidateIds={offeredCandidateIds}
               onNewCandidate={workspaceScope.docGroupId ? () => dispatchWorkspaceAction({ kind: "candidate.create", docGroupId: workspaceScope.docGroupId! }) : undefined}
               onOpen={(id) => setDetail({ type: "candidate", id })}
               onMove={openProcessForMove}
-              onFailCurrentStage={openFailCurrentStage}
+              onFailCurrentStage={(candidate) => openStageOutcome(candidate, "fail")}
               onMaintainTest={openMaintainTest}
               onStartProcess={openInitialProcessUpdate}
+              onEditPending={openPendingEdit}
+              onPassStage={(candidate) => openStageOutcome(candidate, "pass")}
+              onManageReferenceChecks={(candidate) => setDetail({ type: "candidate", id: candidate.candidate_id })}
               onCreateOffer={(candidate) => dispatchWorkspaceAction({ kind: "offer.upsert", candidateId: candidate.candidate_id })}
               onUpdateOffer={openOfferUpdate}
             />
@@ -1090,11 +1124,11 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       ) : null}
 
       {initialView === "candidates" ? (
-        <CandidatesView language={language} rows={filteredCandidates} profile={data.profile} canWrite={canWrite} onNew={() => setActiveModal("candidate")} onProcess={() => setActiveModal("process")} onOpen={(id) => setDetail({ type: "candidate", id })} />
+        <CandidatesView language={language} rows={filteredCandidates} profile={data.profile} canWrite={canWrite} onNew={() => setActiveModal("candidate")} onOpen={(id) => setDetail({ type: "candidate", id })} />
       ) : null}
 
       {initialView === "pipeline" ? (
-        <PipelineBoardView language={language} rows={filteredCandidates} recruitmentLogs={data.recruitment_logs} profile={data.profile} dataQualityIssues={dataQualityIssues} canWrite={canWrite} offeredCandidateIds={offeredCandidateIds} onNewCandidate={() => setActiveModal("candidate")} onAddUpdate={() => setActiveModal("process")} onOpen={(id) => setDetail({ type: "candidate", id })} onMove={openProcessForMove} onFailCurrentStage={openFailCurrentStage} onMaintainTest={openMaintainTest} onStartProcess={openInitialProcessUpdate} onCreateOffer={(candidate) => dispatchWorkspaceAction({ kind: "offer.upsert", candidateId: candidate.candidate_id })} onUpdateOffer={openOfferUpdate} />
+        <PipelineBoardView language={language} rows={filteredCandidates} recruitmentLogs={data.recruitment_logs} candidateReferences={data.candidate_references} candidateReferenceChecks={data.candidate_reference_checks} profile={data.profile} dataQualityIssues={dataQualityIssues} canWrite={canWrite} offeredCandidateIds={offeredCandidateIds} onNewCandidate={() => setActiveModal("candidate")} onOpen={(id) => setDetail({ type: "candidate", id })} onMove={openProcessForMove} onFailCurrentStage={(candidate) => openStageOutcome(candidate, "fail")} onMaintainTest={openMaintainTest} onStartProcess={openInitialProcessUpdate} onEditPending={openPendingEdit} onPassStage={(candidate) => openStageOutcome(candidate, "pass")} onManageReferenceChecks={(candidate) => setDetail({ type: "candidate", id: candidate.candidate_id })} onCreateOffer={(candidate) => dispatchWorkspaceAction({ kind: "offer.upsert", candidateId: candidate.candidate_id })} onUpdateOffer={openOfferUpdate} />
       ) : null}
 
       {initialView === "offers" ? <OffersView language={language} rows={filteredOffers} allOffers={data.offers} requisitions={filteredRequisitions} profile={data.profile} canWrite={canWrite} onNew={() => setActiveModal("offer")} onOpenCandidate={(id) => setDetail({ type: "candidate", id })} /> : null}
@@ -1230,6 +1264,18 @@ function buildPayload(modal: Exclude<ModalName, null>, formData: FormData) {
 
   if (modal === "candidate") {
     const channel = emptyToNull(formData.get("channel"));
+    const referenceNames = formData.getAll("candidate_reference_name");
+    const references = referenceNames.map((value, index) => ({
+      reference_name: emptyToNull(value),
+      relationship: emptyToNull(formData.getAll("candidate_reference_relationship")[index]),
+      channel_type: emptyToNull(formData.getAll("candidate_reference_channel_type")[index]),
+      channel_value: emptyToNull(formData.getAll("candidate_reference_channel_value")[index]),
+      other_channel_label: emptyToNull(formData.getAll("candidate_reference_other_channel_label")[index])
+    }));
+    for (const reference of references) {
+      requireFields(reference, ["reference_name", "relationship", "channel_type", "channel_value"]);
+      if (reference.channel_type === "other" && !reference.other_channel_label) throw new Error("Other channel requires its label.");
+    }
     const payload = {
       mode: String(formData.get("mode") ?? "new"),
       candidate_id: emptyToNull(formData.get("candidate_id")),
@@ -1239,85 +1285,137 @@ function buildPayload(modal: Exclude<ModalName, null>, formData: FormData) {
       channel,
       ref_name: channel === "Referral" ? emptyToNull(formData.get("ref_name")) : null,
       first_contact_date: emptyToNull(formData.get("first_contact_date")),
-      candidate_folder_url: emptyToNull(formData.get("candidate_folder_url"))
+      candidate_folder_url: emptyToNull(formData.get("candidate_folder_url")),
+      references
     };
     return payload;
   }
 
-  if (modal === "process") {
+  if (modal === "candidate_reference") {
     const payload = {
       candidate_id: emptyToNull(formData.get("candidate_id")),
-      log_date: emptyToNull(formData.get("log_date")),
-      recruitment_process: emptyToNull(formData.get("recruitment_process")),
-      round: asNumber(formData.get("round"), 1),
-      interviewer: emptyToNull(formData.get("interviewer")),
-      result: emptyToNull(formData.get("result")),
-      remark: emptyToNull(formData.get("remark")),
-      source: emptyToNull(formData.get("source")) ?? "manual"
+      reference_id: emptyToNull(formData.get("reference_id")),
+      expected_updated_at: emptyToNull(formData.get("expected_updated_at")),
+      reference_name: emptyToNull(formData.get("reference_name")),
+      relationship: emptyToNull(formData.get("relationship")),
+      channel_type: emptyToNull(formData.get("channel_type")),
+      channel_value: emptyToNull(formData.get("channel_value")),
+      other_channel_label: emptyToNull(formData.get("other_channel_label"))
     };
-    requireFields(payload, ["candidate_id", "log_date", "recruitment_process", "round"]);
+    requireFields(payload, ["candidate_id", "reference_name", "relationship", "channel_type", "channel_value"]);
+    if (payload.channel_type === "other" && !payload.other_channel_label) throw new Error("Other channel requires its label.");
+    return payload;
+  }
+
+  if (modal === "reference_status") {
+    const payload = {
+      candidate_id: emptyToNull(formData.get("candidate_id")),
+      reference_id: emptyToNull(formData.get("reference_id")),
+      expected_updated_at: emptyToNull(formData.get("expected_updated_at")),
+      status: emptyToNull(formData.get("reference_status")),
+      reason: emptyToNull(formData.get("reference_status_reason"))
+    };
+    requireFields(payload, ["candidate_id", "reference_id", "expected_updated_at", "status"]);
+    if (payload.status !== "available" && !payload.reason) throw new Error("Unavailable and archived references require a reason.");
+    return payload;
+  }
+
+  if (modal === "reference_check") {
+    const payload = {
+      candidate_id: emptyToNull(formData.get("candidate_id")),
+      reference_id: emptyToNull(formData.get("reference_id")),
+      expected_updated_at: emptyToNull(formData.get("expected_updated_at")),
+      checked_date: emptyToNull(formData.get("checked_date")),
+      duration_minutes: asNumber(formData.get("duration_minutes"), 0),
+      conversation_summary: emptyToNull(formData.get("conversation_summary"))
+    };
+    requireFields(payload, ["candidate_id", "reference_id", "checked_date", "duration_minutes", "conversation_summary"]);
+    if (payload.duration_minutes <= 0) throw new Error("Conversation duration must be greater than zero minutes.");
+    return payload;
+  }
+
+  if (modal === "pipeline_start") {
+    const payload = {
+      candidate_id: emptyToNull(formData.get("candidate_id")),
+      pending: {
+        opened_date: emptyToNull(formData.get("opened_date")),
+        interviewer: emptyToNull(formData.get("interviewer")),
+        remark: emptyToNull(formData.get("remark"))
+      }
+    };
+    requireFields(payload, ["candidate_id"]);
+    if (!payload.pending.opened_date) throw new Error("Pending date is required.");
+    return payload;
+  }
+
+  if (modal === "pending_edit") {
+    const payload = {
+      candidate_id: emptyToNull(formData.get("candidate_id")),
+      stage_instance_id: emptyToNull(formData.get("stage_instance_id")),
+      expected_updated_at: emptyToNull(formData.get("expected_updated_at")),
+      pending: { opened_date: emptyToNull(formData.get("opened_date")), interviewer: emptyToNull(formData.get("interviewer")), remark: emptyToNull(formData.get("remark")) }
+    };
+    requireFields(payload, ["candidate_id", "stage_instance_id", "expected_updated_at"]);
+    if (!payload.pending.opened_date) throw new Error("Pending date is required.");
+    return payload;
+  }
+
+  if (modal === "stage_outcome") {
+    const outcome = String(formData.get("outcome") ?? "") as "pass" | "fail";
+    const targetStage = emptyToNull(formData.get("target_stage"));
+    const payload = {
+      candidate_id: emptyToNull(formData.get("candidate_id")),
+      stage_instance_id: emptyToNull(formData.get("stage_instance_id")),
+      expected_updated_at: emptyToNull(formData.get("expected_updated_at")),
+      pending: { opened_date: emptyToNull(formData.get("pending_opened_date")), interviewer: emptyToNull(formData.get("pending_interviewer")), remark: emptyToNull(formData.get("pending_remark")) },
+      outcome: {
+        result: outcome,
+        date: emptyToNull(formData.get("outcome_date")),
+        interviewer: emptyToNull(formData.get("outcome_interviewer")),
+        remark: emptyToNull(formData.get("outcome_remark"))
+      },
+      next_pending: targetStage ? {
+        stage: targetStage,
+        round: asNumber(formData.get("next_round"), 1),
+        opened_date: emptyToNull(formData.get("next_opened_date")),
+        interviewer: emptyToNull(formData.get("next_interviewer")),
+        remark: emptyToNull(formData.get("next_remark"))
+      } : null
+    };
+    requireFields(payload, ["candidate_id", "stage_instance_id", "expected_updated_at"]);
+    if (!payload.pending.opened_date || !payload.outcome.date || (outcome === "pass" && Boolean(targetStage) && !payload.next_pending?.opened_date)) throw new Error("A pass requires an outcome date and the next pending stage date.");
     return payload;
   }
 
   if (modal === "pipeline_pass") {
     const stageCount = asNumber(formData.get("stage_count"), 0);
-    const extraTestRoundCount = asNumber(formData.get("extra_test_round_count"), 0);
     const candidateId = emptyToNull(formData.get("candidate_id"));
     const stages = Array.from({ length: stageCount }, (_, index) => ({
-      index,
       stage: emptyToNull(formData.get(`stage_${index}`)),
-      log_date: emptyToNull(formData.get(`log_date_${index}`)),
       round: asNumber(formData.get(`round_${index}`), 1),
-      interviewer: emptyToNull(formData.get(`interviewer_${index}`)),
-      remark: emptyToNull(formData.get(`remark_${index}`))
+      pending: { opened_date: emptyToNull(formData.get(`pending_date_${index}`)), interviewer: emptyToNull(formData.get(`pending_interviewer_${index}`)), remark: emptyToNull(formData.get(`pending_remark_${index}`)) },
+      outcome: { result: "pass" as const, date: emptyToNull(formData.get(`outcome_date_${index}`)), interviewer: emptyToNull(formData.get(`outcome_interviewer_${index}`)), remark: emptyToNull(formData.get(`outcome_remark_${index}`)) }
     }));
-    const extraTestRounds = Array.from({ length: extraTestRoundCount }, (_, index) => ({
-      candidate_id: candidateId,
-      log_date: emptyToNull(formData.get(`extra_test_log_date_${index}`)),
-      recruitment_process: "Test",
-      round: asNumber(formData.get(`extra_test_round_${index}`), 1),
-      interviewer: emptyToNull(formData.get(`extra_test_interviewer_${index}`)),
-      result: null,
-      remark: emptyToNull(formData.get(`extra_test_remark_${index}`)),
-      source: "manual"
-    }));
+    const targetStage = emptyToNull(formData.get("target_stage"));
+    const targetPending = {
+      stage: targetStage,
+      round: asNumber(formData.get("target_pending_round"), 1),
+      opened_date: emptyToNull(formData.get("target_pending_opened_date")),
+      interviewer: emptyToNull(formData.get("target_pending_interviewer")),
+      remark: emptyToNull(formData.get("target_pending_remark"))
+    };
     const payload = {
       candidate_id: candidateId,
-      target_stage: emptyToNull(formData.get("target_stage")),
-      audit_mode: "pending_then_pass",
-      stages,
-      extra_test_rounds: extraTestRounds
+      current_stage_instance_id: emptyToNull(formData.get("current_stage_instance_id")),
+      expected_updated_at: emptyToNull(formData.get("expected_updated_at")),
+      passed_stages: stages,
+      target_pending: targetPending
     };
-    requireFields(payload, ["candidate_id", "target_stage"]);
-    if (stages.length === 0 || stages.some((stage) => !stage.stage || !stage.log_date || !stage.round)) {
+    requireFields(payload, ["candidate_id", "current_stage_instance_id", "expected_updated_at"]);
+    if (stages.length === 0 || stages.some((stage) => !stage.stage || !stage.pending.opened_date || !stage.outcome.date || !stage.round)) {
       throw new Error("Every crossed stage needs a stage, result date, and round.");
     }
-    if (extraTestRounds.some((round) => !round.log_date)) {
-      throw new Error("Every additional Test round needs a date.");
-    }
-    return payload;
-  }
-
-  if (modal === "test_maintenance") {
-    const payload = {
-      candidate_id: emptyToNull(formData.get("candidate_id")),
-      current_test: {
-        log_date: emptyToNull(formData.get("current_log_date")),
-        round: asNumber(formData.get("current_round"), 1),
-        interviewer: emptyToNull(formData.get("current_interviewer")),
-        remark: emptyToNull(formData.get("current_remark"))
-      },
-      next_test: {
-        log_date: emptyToNull(formData.get("next_log_date")),
-        round: asNumber(formData.get("next_round"), 1),
-        interviewer: emptyToNull(formData.get("next_interviewer")),
-        remark: emptyToNull(formData.get("next_remark"))
-      }
-    };
-    requireFields(payload, ["candidate_id"]);
-    if (!payload.current_test.log_date || !payload.next_test.log_date) {
-      throw new Error("Current and next Test rounds both need a date.");
-    }
+    if (!targetPending.stage || !targetPending.opened_date) throw new Error("The target pending stage needs an opened date.");
     return payload;
   }
 
@@ -1561,10 +1659,6 @@ function RecordModal({
 
   if (!modal) return null;
   const selectedRecords = selectedModalRecords(data, selectedId);
-  const processSubmitBlocked = modal === "process"
-    && Boolean(selectedRecords.candidate)
-    && Boolean(processUpdateBlockReason(latestLogsForCandidate(data, selectedRecords.candidate!.candidate_id)));
-
   function handleModeChange(nextMode: "new" | "change") {
     setMode(nextMode);
     setSelectedId("");
@@ -1586,9 +1680,13 @@ function RecordModal({
         {modal === "requisition" ? <RequisitionFields data={data} language={language} profile={profile} mode={mode} selectedId={selectedId} selected={selectedRecords.requisition} onSelect={setSelectedId} /> : null}
         {modal === "status" ? <StatusFields data={data} language={language} selectedId={selectedId} selected={selectedRecords.requisition} onSelect={setSelectedId} /> : null}
         {modal === "candidate" ? <CandidatePrefillFields data={data} language={language} mode={mode} selectedId={selectedId} selected={selectedRecords.candidate} defaults={modalDefaults} onSelect={setSelectedId} /> : null}
-        {modal === "process" ? <ProcessPrefillFields data={data} defaults={processDefaults} language={language} selectedId={selectedId} selected={selectedRecords.candidate} onSelect={setSelectedId} /> : null}
+        {modal === "candidate_reference" ? <CandidateReferenceFields defaults={processDefaults} language={language} /> : null}
+        {modal === "reference_status" ? <CandidateReferenceStatusFields defaults={processDefaults} language={language} /> : null}
+        {modal === "reference_check" ? <CandidateReferenceCheckFields defaults={processDefaults} language={language} /> : null}
+        {modal === "pipeline_start" ? <PipelineStartFields defaults={processDefaults} language={language} /> : null}
+        {modal === "pending_edit" ? <PendingEditFields defaults={processDefaults} language={language} /> : null}
+        {modal === "stage_outcome" ? <StageOutcomeFields defaults={processDefaults} language={language} /> : null}
         {modal === "pipeline_pass" ? <PipelinePassFields data={data} defaults={processDefaults} language={language} /> : null}
-        {modal === "test_maintenance" ? <TestMaintenanceFields data={data} defaults={processDefaults} language={language} /> : null}
         {modal === "offer" ? <OfferPrefillFields data={data} language={language} mode={mode} selectedId={selectedId} selected={selectedRecords.offer} defaults={modalDefaults} onSelect={setSelectedId} /> : null}
         {modal === "group" ? <GroupPrefillFields data={data} language={language} mode={mode} selectedId={selectedId} selected={selectedRecords.group} defaults={modalDefaults} onSelect={setSelectedId} /> : null}
         {modal === "match" ? <MatchFields data={data} defaults={modalDefaults} language={language} /> : null}
@@ -1596,7 +1694,7 @@ function RecordModal({
         {modal === "user" ? <UserPrefillFields canManageUsers={canManageUsers} data={data} language={language} mode={mode} selectedId={selectedId} selected={selectedRecords.profile} onSelect={setSelectedId} /> : null}
         <div className="flex justify-end gap-2 border-t border-[#D7DEE8] pt-4">
           <Button type="button" variant="secondary" onClick={onClose}>{translate(language, "cancel")}</Button>
-          <Button type="submit" disabled={processSubmitBlocked}>{translate(language, "reviewChanges")}</Button>
+          <Button type="submit">{translate(language, "reviewChanges")}</Button>
         </div>
       </form>
     </Modal>
@@ -1926,12 +2024,16 @@ function CandidatePrefillFields({
   const firstContactDate = mode === "new" ? defaults.first_contact_date ?? "" : selected?.first_contact_date ?? "";
   const [selectedDocGroupId, setSelectedDocGroupId] = useState(docGroupValue);
   const [selectedChannel, setSelectedChannel] = useState(selected?.channel ?? "");
+  const [referenceRows, setReferenceRows] = useState<number[]>([]);
+  const [referenceChannelTypes, setReferenceChannelTypes] = useState<Record<number, string>>({});
   const availableChannels = useMemo(() => sourcingChannelsForDocGroup(data, selectedDocGroupId), [data, selectedDocGroupId]);
   const showReferenceName = selectedChannel === "Referral";
 
   useEffect(() => {
     setSelectedDocGroupId(docGroupValue);
     setSelectedChannel(selected?.channel ?? "");
+    setReferenceRows([]);
+    setReferenceChannelTypes({});
   }, [docGroupValue, selected?.channel]);
 
   useEffect(() => {
@@ -1969,9 +2071,78 @@ function CandidatePrefillFields({
       {showReferenceName ? (
         <Field label={translate(language, "referenceName")}><TextInput name="ref_name" required list="ref-options" defaultValue={selected?.ref_name ?? ""} /></Field>
       ) : null}
+      <div className="rounded-md border border-[#D7DEE8] bg-lightgray/60 p-3 md:col-span-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div><p className="text-sm font-semibold text-navy">{translate(language, "contactReferences")} <span className="font-medium text-slate">({translate(language, "optional")})</span></p><p className="mt-1 text-xs font-medium text-slate">{translate(language, "contactReferencesHelper")}</p></div>
+          <Button type="button" size="sm" variant="secondary" onClick={() => setReferenceRows((rows) => [...rows, (rows.at(-1) ?? -1) + 1])}>{translate(language, "addReference")}</Button>
+        </div>
+        {referenceRows.length > 0 ? <div className="mt-3 grid gap-3">{referenceRows.map((row) => {
+          const channelType = referenceChannelTypes[row] ?? "phone";
+          return <div key={row} className="grid gap-3 rounded-md border border-[#D7DEE8] bg-white p-3 md:grid-cols-2">
+            <div className="flex items-center justify-between gap-2 md:col-span-2"><p className="text-xs font-semibold text-slate">{translate(language, "referenceNumber", { number: row + 1 })}</p><Button type="button" size="sm" variant="secondary" onClick={() => setReferenceRows((rows) => rows.filter((value) => value !== row))}>{translate(language, "remove")}</Button></div>
+            <Field label={translate(language, "referenceContactName")}><TextInput name="candidate_reference_name" required /></Field>
+            <Field label={translate(language, "relationship")}><TextInput name="candidate_reference_relationship" required /></Field>
+            <Field label={translate(language, "channel")}><SelectInput name="candidate_reference_channel_type" value={channelType} onChange={(event) => setReferenceChannelTypes((current) => ({ ...current, [row]: event.target.value }))}><option value="phone">{translate(language, "referenceChannelPhone")}</option><option value="email">{translate(language, "referenceChannelEmail")}</option><option value="line">LINE</option><option value="other">{translate(language, "referenceChannelOther")}</option></SelectInput></Field>
+            <Field label={translate(language, "contactValue")}><TextInput name="candidate_reference_channel_value" required /></Field>
+            {channelType === "other" ? <Field label={translate(language, "otherChannelLabel")} className="md:col-span-2"><TextInput name="candidate_reference_other_channel_label" required /></Field> : <input type="hidden" name="candidate_reference_other_channel_label" value="" />}
+          </div>;
+        })}</div> : null}
+      </div>
       <Field label={translate(language, "firstContactDate")}><TextInput name="first_contact_date" required type="date" defaultValue={firstContactDate} /></Field>
       <Field label={translate(language, "candidateFolderLink")} className="md:col-span-2"><TextInput name="candidate_folder_url" type="url" defaultValue={selected?.candidate_folder_url ?? ""} /></Field>
       <DataLists data={data} />
+    </div>
+  );
+}
+
+function CandidateReferenceFields({ defaults, language }: { defaults: ProcessDefaults; language: Language }) {
+  const [channelType, setChannelType] = useState(defaults.reference_channel_type ?? "phone");
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      <input type="hidden" name="candidate_id" value={defaults.candidate_id ?? ""} />
+      <input type="hidden" name="reference_id" value={defaults.reference_id ?? ""} />
+      <input type="hidden" name="expected_updated_at" value={defaults.reference_expected_updated_at ?? ""} />
+      <div className="rounded-md border border-[#D7DEE8] bg-lightgray p-3 text-sm font-semibold text-navy md:col-span-2">{translate(language, "referenceContact")}</div>
+      <Field label={translate(language, "referenceContactName")}><TextInput autoFocus name="reference_name" defaultValue={defaults.reference_name ?? ""} required /></Field>
+      <Field label={translate(language, "relationshipWithCandidate")}><TextInput name="relationship" defaultValue={defaults.reference_relationship ?? ""} required /></Field>
+      <Field label={translate(language, "channel")}>
+        <SelectInput name="channel_type" value={channelType} onChange={(event) => setChannelType(event.target.value)}>
+          <option value="phone">{translate(language, "referenceChannelPhone")}</option><option value="email">{translate(language, "referenceChannelEmail")}</option><option value="line">LINE</option><option value="other">{translate(language, "referenceChannelOther")}</option>
+        </SelectInput>
+      </Field>
+      <Field label={translate(language, "contactValue")}><TextInput name="channel_value" defaultValue={defaults.reference_channel_value ?? ""} required /></Field>
+      {channelType === "other" ? <Field label={translate(language, "otherChannelLabel")} className="md:col-span-2"><TextInput name="other_channel_label" defaultValue={defaults.reference_other_channel_label ?? ""} required /></Field> : null}
+    </div>
+  );
+}
+
+function CandidateReferenceStatusFields({ defaults, language }: { defaults: ProcessDefaults; language: Language }) {
+  const [status, setStatus] = useState(defaults.reference_status === "archived" ? "archived" : defaults.reference_status === "unavailable" ? "unavailable" : "unavailable");
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      <input type="hidden" name="candidate_id" value={defaults.candidate_id ?? ""} />
+      <input type="hidden" name="reference_id" value={defaults.reference_id ?? ""} />
+      <input type="hidden" name="expected_updated_at" value={defaults.reference_expected_updated_at ?? ""} />
+      <Field label={translate(language, "referenceStatus")}>
+        <SelectInput name="reference_status" value={status} onChange={(event) => setStatus(event.target.value)}>
+          <option value="available">{translate(language, "referenceAvailable")}</option><option value="unavailable">{translate(language, "referenceUnavailable")}</option><option value="archived">{translate(language, "referenceArchived")}</option>
+        </SelectInput>
+      </Field>
+      <Field label={translate(language, "reason")}><TextInput name="reference_status_reason" defaultValue={defaults.reference_status_reason ?? ""} required={status !== "available"} /></Field>
+    </div>
+  );
+}
+
+function CandidateReferenceCheckFields({ defaults, language }: { defaults: ProcessDefaults; language: Language }) {
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      <input type="hidden" name="candidate_id" value={defaults.candidate_id ?? ""} />
+      <input type="hidden" name="reference_id" value={defaults.reference_id ?? ""} />
+      <input type="hidden" name="expected_updated_at" value={defaults.reference_check_expected_updated_at ?? ""} />
+      <div className="rounded-md border border-[#D7DEE8] bg-lightgray p-3 text-sm font-semibold text-navy md:col-span-2">{translate(language, "finalReferenceConversation")}</div>
+      <Field label={translate(language, "checkedDate")}><TextInput autoFocus name="checked_date" type="date" defaultValue={defaults.reference_checked_date ?? today()} required /></Field>
+      <Field label={translate(language, "conversationDurationMinutes")}><TextInput name="duration_minutes" type="number" min={1} defaultValue={defaults.reference_duration_minutes ?? ""} required /></Field>
+      <Field label={translate(language, "conversationSummary")} className="md:col-span-2"><TextArea name="conversation_summary" rows={5} defaultValue={defaults.reference_conversation_summary ?? ""} required /></Field>
     </div>
   );
 }
@@ -2025,62 +2196,106 @@ function ProcessPrefillFields({
   );
 }
 
+function PendingEditFields({ defaults, language }: { defaults: ProcessDefaults; language: Language }) {
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      <input type="hidden" name="candidate_id" value={defaults.candidate_id ?? ""} />
+      <input type="hidden" name="stage_instance_id" value={defaults.stage_instance_id ?? ""} />
+      <input type="hidden" name="expected_updated_at" value={defaults.expected_updated_at ?? ""} />
+      <Field label={translate(language, "process")}><TextInput value={processLabel(defaults.recruitment_process as ProcessStage, language)} readOnly /></Field>
+      <Field label={translate(language, "round")}><TextInput value={defaults.round ?? 1} readOnly /></Field>
+      <Field label="Pending date"><TextInput autoFocus name="opened_date" type="date" defaultValue={defaults.pending_log_date ?? today()} required /></Field>
+      <Field label={translate(language, "interviewer")}><TextInput name="interviewer" defaultValue={defaults.pending_interviewer ?? ""} /></Field>
+      <Field label={translate(language, "remark")} className="md:col-span-2"><TextArea name="remark" rows={3} defaultValue={defaults.pending_remark ?? ""} /></Field>
+    </div>
+  );
+}
+
+function PipelineStartFields({ defaults, language }: { defaults: ProcessDefaults; language: Language }) {
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      <input type="hidden" name="candidate_id" value={defaults.candidate_id ?? ""} />
+      <div className="rounded-md border border-[#D7DEE8] bg-lightgray p-3 text-sm font-semibold text-navy md:col-span-2">{translate(language, "startPhoneScreen")}</div>
+      <Field label="Pending date"><TextInput autoFocus name="opened_date" type="date" defaultValue={defaults.pending_log_date ?? today()} required /></Field>
+      <Field label={translate(language, "interviewer")}><TextInput name="interviewer" list="interviewer-options" defaultValue={defaults.pending_interviewer ?? ""} /></Field>
+      <Field label={translate(language, "remark")} className="md:col-span-2"><TextArea name="remark" rows={3} defaultValue={defaults.pending_remark ?? ""} /></Field>
+    </div>
+  );
+}
+
+function StageOutcomeFields({ defaults, language }: { defaults: ProcessDefaults; language: Language }) {
+  const isPass = defaults.outcome === "pass";
+  const hasNextPending = isPass && defaults.recruitment_process !== "Offer" && Boolean(defaults.target_stage);
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      <input type="hidden" name="candidate_id" value={defaults.candidate_id ?? ""} />
+      <input type="hidden" name="stage_instance_id" value={defaults.stage_instance_id ?? ""} />
+      <input type="hidden" name="expected_updated_at" value={defaults.expected_updated_at ?? ""} />
+      <input type="hidden" name="outcome" value={defaults.outcome ?? ""} />
+      <input type="hidden" name="target_stage" value={hasNextPending ? defaults.target_stage : ""} />
+      <div className="rounded-md border border-[#D7DEE8] bg-lightgray p-3 text-sm font-semibold text-navy md:col-span-2">{isPass ? translate(language, "passStage") : translate(language, "failStage")}: {processLabel(defaults.recruitment_process as ProcessStage, language)}</div>
+      {isPass ? <>
+        <input type="hidden" name="pending_opened_date" value={defaults.pending_log_date ?? ""} />
+        <input type="hidden" name="pending_interviewer" value={defaults.pending_interviewer ?? ""} />
+        <input type="hidden" name="pending_remark" value={defaults.pending_remark ?? ""} />
+      </> : <>
+        <div className="border-b border-[#D7DEE8] pb-2 text-sm font-semibold text-navy md:col-span-2">{translate(language, "pendingDetails")}</div>
+        <Field label="Pending opened date"><TextInput autoFocus name="pending_opened_date" type="date" defaultValue={defaults.pending_log_date ?? today()} required /></Field>
+        <Field label={translate(language, "interviewer")}><TextInput name="pending_interviewer" list="interviewer-options" defaultValue={defaults.pending_interviewer ?? ""} /></Field>
+        <Field label={translate(language, "remark")} className="md:col-span-2"><TextArea name="pending_remark" rows={3} defaultValue={defaults.pending_remark ?? ""} /></Field>
+      </>}
+      <div className="border-b border-[#D7DEE8] pb-2 text-sm font-semibold text-navy md:col-span-2">{translate(language, "outcome")}</div>
+      <Field label="Outcome date"><TextInput name="outcome_date" type="date" defaultValue={today()} required /></Field>
+      <Field label={translate(language, "interviewer")}><TextInput name="outcome_interviewer" list="interviewer-options" defaultValue={defaults.pending_interviewer ?? ""} /></Field>
+      <Field label={translate(language, "remark")} className="md:col-span-2"><TextArea name="outcome_remark" rows={3} /></Field>
+      {hasNextPending ? <>
+        <div className="border-t border-[#D7DEE8] pt-3 text-sm font-semibold text-navy md:col-span-2">{translate(language, "nextPendingStage")}: {processLabel(defaults.target_stage as ProcessStage, language)}</div>
+        <input type="hidden" name="next_round" value={defaults.target_stage === "Test" ? (defaults.round ?? 1) + 1 : 1} />
+        <Field label="Next pending date"><TextInput name="next_opened_date" type="date" defaultValue={today()} required /></Field>
+        <Field label={translate(language, "interviewer")}><TextInput name="next_interviewer" list="interviewer-options" defaultValue="" /></Field>
+        <Field label={translate(language, "remark")} className="md:col-span-2"><TextArea name="next_remark" rows={3} /></Field>
+      </> : null}
+    </div>
+  );
+}
+
 function PipelinePassFields({ data, defaults, language }: { data: DashboardData; defaults: ProcessDefaults; language: Language }) {
   const stages = defaults.passed_stages ?? [];
   const isTestExit = stages.length === 1 && stages[0] === "Test" && defaults.target_stage === "Reference Check";
   const currentRound = defaults.current_round ?? 1;
-  const [extraTestRoundCount, setExtraTestRoundCount] = useState(0);
-
-  useEffect(() => {
-    setExtraTestRoundCount(0);
-  }, [defaults.candidate_id, defaults.target_stage, defaults.current_round]);
 
   return (
     <div className="grid gap-4">
       <input type="hidden" name="candidate_id" value={defaults.candidate_id ?? ""} />
       <input type="hidden" name="target_stage" value={defaults.target_stage ?? ""} />
+      <input type="hidden" name="current_stage_instance_id" value={defaults.stage_instance_id ?? ""} />
+      <input type="hidden" name="expected_updated_at" value={defaults.expected_updated_at ?? ""} />
       <input type="hidden" name="stage_count" value={stages.length} />
-      <input type="hidden" name="extra_test_round_count" value={isTestExit ? extraTestRoundCount : 0} />
       <div className="rounded-md border border-[#D7DEE8] bg-lightgray p-3 text-sm font-bold text-slate">
         {translate(language, "confirmPassedStagesHint", { stage: processLabel(defaults.target_stage as ProcessStage, language), result: resultText(null, language) })}
       </div>
-      {isTestExit ? (
-        <div className="grid gap-3 rounded-md border border-[#D7DEE8] bg-white p-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <strong className="text-sm text-navy">{translate(language, "additionalTestRounds")}</strong>
-              <p className="mt-1 text-xs font-medium text-slate">{translate(language, "additionalTestRoundsHelp")}</p>
-            </div>
-            <Button type="button" size="sm" variant="secondary" onClick={() => setExtraTestRoundCount((count) => count + 1)}>{translate(language, "addTestRound")}</Button>
-          </div>
-          {Array.from({ length: extraTestRoundCount }, (_, index) => {
-            const round = currentRound + index + 1;
-            return (
-              <div key={index} className="grid gap-4 rounded-md border border-[#D7DEE8] bg-lightgray/70 p-3 md:grid-cols-2">
-                <div className="flex flex-wrap items-center gap-2 md:col-span-2">
-                  <Tag tone="teal">{processLabel("Test", language)}</Tag>
-                  <Tag tone="muted">{translate(language, "round")} {round}</Tag>
-                  <Tag tone="warning">{resultText(null, language)}</Tag>
-                </div>
-                <Field label={translate(language, "date")}><TextInput name={`extra_test_log_date_${index}`} type="date" defaultValue={today()} required /></Field>
-                <Field label={translate(language, "round")}><TextInput name={`extra_test_round_${index}`} type="number" min={1} defaultValue={round} required /></Field>
-                <Field label={translate(language, "interviewer")}><TextInput name={`extra_test_interviewer_${index}`} list="interviewer-options" /></Field>
-                <Field label={translate(language, "remark")}><TextArea name={`extra_test_remark_${index}`} rows={2} defaultValue={translate(language, "additionalTestRoundRemark")} /></Field>
-              </div>
-            );
-          })}
+      {(
+        <div className="grid gap-4 rounded-md border border-[#D7DEE8] bg-white p-3 md:grid-cols-2">
+          <div className="md:col-span-2"><Tag tone="warning">{translate(language, "nextPendingStage")}: {processLabel(defaults.target_stage as ProcessStage, language)}</Tag></div>
+          <Field label="Next pending date"><TextInput name="target_pending_opened_date" type="date" defaultValue={today()} required /></Field>
+          <Field label={translate(language, "round")}><TextInput name="target_pending_round" type="number" min={1} defaultValue={1} required /></Field>
+          <Field label={translate(language, "interviewer")}><TextInput name="target_pending_interviewer" list="interviewer-options" defaultValue="" /></Field>
+          <Field label={translate(language, "remark")}><TextArea name="target_pending_remark" rows={2} defaultValue="" /></Field>
         </div>
-      ) : null}
+      )}
       {stages.map((stage, index) => (
         <div key={stage} className="grid gap-4 rounded-md border border-[#D7DEE8] bg-white p-3 md:grid-cols-2">
           <input type="hidden" name={`stage_${index}`} value={stage} />
           <div className="md:col-span-2">
             <Tag tone="teal">{processLabel(stage, language)}</Tag>
           </div>
-          <Field label={translate(language, "date")}><TextInput name={`log_date_${index}`} type="date" defaultValue={today()} required /></Field>
+          <Field label="Pending date"><TextInput name={`pending_date_${index}`} type="date" defaultValue={index === 0 ? (defaults.pending_log_date ?? today()) : today()} required /></Field>
           <Field label={translate(language, "round")}><TextInput name={`round_${index}`} type="number" min={1} value={isTestExit && stage === "Test" ? currentRound : undefined} defaultValue={isTestExit && stage === "Test" ? undefined : 1} readOnly={isTestExit && stage === "Test"} required /></Field>
-          <Field label={translate(language, "interviewer")}><TextInput name={`interviewer_${index}`} list="interviewer-options" /></Field>
-          <Field label={translate(language, "remark")}><TextArea name={`remark_${index}`} rows={2} defaultValue={index === stages.length - 1 ? defaults.remark ?? "" : ""} /></Field>
+          <Field label={translate(language, "interviewer")}><TextInput name={`pending_interviewer_${index}`} list="interviewer-options" defaultValue={index === 0 ? (defaults.pending_interviewer ?? "") : ""} /></Field>
+          <Field label={translate(language, "remark")}><TextArea name={`pending_remark_${index}`} rows={2} defaultValue={index === 0 ? (defaults.pending_remark ?? "") : ""} /></Field>
+          <Field label="Outcome date"><TextInput name={`outcome_date_${index}`} type="date" defaultValue={today()} required /></Field>
+          <Field label={translate(language, "interviewer")}><TextInput name={`outcome_interviewer_${index}`} list="interviewer-options" defaultValue={index === 0 ? (defaults.pending_interviewer ?? "") : ""} /></Field>
+          <Field label={translate(language, "remark")} className="md:col-span-2"><TextArea name={`outcome_remark_${index}`} rows={2} defaultValue="" /></Field>
         </div>
       ))}
       <DataLists data={data} />
@@ -2743,6 +2958,9 @@ function buildDetailBodyV2(
   navigationContext: { language: Language; site: string; owner: string; sourcingWeek: string },
   onChangeRequisition: (docId: string) => void,
   onChangeCandidate: (candidateId: string) => void,
+  onEditReference: (candidateId: string, referenceId?: string) => void,
+  onSetReferenceStatus: (candidateId: string, referenceId: string) => void,
+  onSaveReferenceCheck: (candidateId: string, referenceId: string) => void,
   onDeleteRecord: (endpoint: string, payload: Record<string, unknown>, summary: string) => void
 ): DetailBodyResult {
   if (!detail) return { title: "Detail", body: null };
@@ -2836,7 +3054,15 @@ function buildDetailBodyV2(
   const candidate = enrichCandidates(data).find((row) => row.candidate_id === detail.id);
   if (!candidate) return { title: "Candidate", body: <p className="text-sm font-bold text-slate">Record not found.</p> };
   const logs = latestLogsForCandidate(data, candidate.candidate_id);
+  const stageRecords = pipelineStageRecords(logs, data.change_logs).sort((a, b) => {
+    const stageOrder = ACTIVE_PIPELINE_STAGES.indexOf(a.stage) - ACTIVE_PIPELINE_STAGES.indexOf(b.stage);
+    return stageOrder || a.round - b.round || a.logId - b.logId;
+  });
   const offers = data.offers.filter((row) => row.candidate_id === candidate.candidate_id);
+  const references = data.candidate_references.filter((row) => row.candidate_id === candidate.candidate_id);
+  const referenceChecks = new Map(data.candidate_reference_checks.map((row) => [row.reference_id, row]));
+  const availableReferenceCount = references.filter((row) => row.status === "available").length;
+  const checkedReferenceCount = references.filter((row) => row.status === "available" && referenceChecks.has(row.reference_id)).length;
   const updateDisabledReason = candidateProcessDisabledReason(candidate, logs, data.profile);
   const issues = deriveDataQualityIssues(data).filter((issue) =>
     issue.entityId === candidate.candidate_id || offers.some((offer) => String(offer.offer_id) === issue.entityId)
@@ -2903,19 +3129,73 @@ function buildDetailBodyV2(
           ["Channel", candidate.channel ?? "-"],
           ["Reference", candidate.ref_name ?? "-"]
         ]} />
-        <DetailDisclosure title="Activity" summary="Timeline and offers">
+        <DetailDisclosure title={translate(language, "contactReferences")} summary={translate(language, "referenceProgress", { checked: checkedReferenceCount, available: availableReferenceCount })} defaultOpen={candidate.latest_process === "Reference Check" && candidate.latest_result === null}>
+          <div className="grid gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-[#D7DEE8] bg-lightgray/70 p-3">
+              <p className="text-sm font-medium text-slate">{translate(language, "referencePassRequirement")}</p>
+              {canWrite ? <Button type="button" size="sm" variant="secondary" onClick={() => onEditReference(candidate.candidate_id)}>{translate(language, "addReference")}</Button> : null}
+            </div>
+            {references.length === 0 ? <p className="text-sm font-medium text-slate">{translate(language, "noContactReferences")}</p> : references.map((reference) => {
+              const check = referenceChecks.get(reference.reference_id);
+              const channel = reference.channel_type === "other" ? reference.other_channel_label ?? "Other" : reference.channel_type.toUpperCase();
+              return (
+                <div key={reference.reference_id} className="rounded-md border border-[#D7DEE8] bg-white p-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-navy">{reference.reference_name} <span className="font-medium text-slate">/ {reference.relationship}</span></p>
+                      <p className="mt-1 break-words text-sm text-slate">{channel}: {reference.channel_value}</p>
+                    </div>
+                      <Tag tone={reference.status === "available" ? (check ? "success" : "warning") : "muted"}>{reference.status === "available" ? (check ? translate(language, "referenceChecked") : translate(language, "referenceAwaitingCheck")) : reference.status === "unavailable" ? translate(language, "referenceUnavailable") : translate(language, "referenceArchived")}</Tag>
+                  </div>
+                  {reference.status_reason ? <p className="mt-2 text-sm text-slate">{reference.status_reason}</p> : null}
+                  {check ? <p className="mt-2 text-sm font-medium text-slate">{translate(language, "referenceCheckSummary", { date: formatDate(check.checked_date, language), minutes: check.duration_minutes, summary: check.conversation_summary })}</p> : null}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {canWrite ? <Button type="button" size="sm" variant="secondary" onClick={() => onEditReference(candidate.candidate_id, reference.reference_id)}>{translate(language, "edit")}</Button> : null}
+                    {canWrite && reference.status === "available" ? <Button type="button" size="sm" variant="secondary" onClick={() => onSaveReferenceCheck(candidate.candidate_id, reference.reference_id)}>{check ? translate(language, "editReferenceCheck") : translate(language, "recordReferenceCheck")}</Button> : null}
+                    {canWrite ? <Button type="button" size="sm" variant="secondary" onClick={() => onSetReferenceStatus(candidate.candidate_id, reference.reference_id)}>{reference.status === "available" ? translate(language, "markReferenceUnavailableOrArchive") : translate(language, "changeStatus")}</Button> : null}
+                    <a className="self-center text-xs font-semibold text-primary underline" href={`/audit?entity=candidate_references&entityId=${reference.reference_id}`}>{translate(language, "viewAudit")}</a>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </DetailDisclosure>
+        <DetailDisclosure title="Activity" summary="Stage records and offers" defaultOpen>
           <div className="grid gap-4">
             <div>
-              <h4 className="mb-2 font-semibold text-navy">Timeline</h4>
+              <h4 className="mb-2 font-semibold text-navy">{translate(language, "currentStage")}</h4>
               <div className="grid gap-2">
-                {logs.length === 0 ? <p className="text-sm font-medium text-slate">No process logs yet.</p> : logs.map((log) => (
-                  <div key={log.log_id} className="min-w-0 rounded-md border border-[#D7DEE8] bg-white p-3 shadow-[0_6px_16px_rgba(11,19,43,0.025)]">
+                {stageRecords.filter((record) => !record.outcome).map((record) => (
+                  <div key={record.stageInstanceId} className="min-w-0 rounded-md border border-[#D7DEE8] bg-white p-3 shadow-[0_6px_16px_rgba(11,19,43,0.025)]">
                     <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-                      <strong className="min-w-0 break-words text-navy">{processLabel(log.recruitment_process, language)}</strong>
-                      <Tag tone={statusTone(resultText(log.result).toLowerCase())}>{resultText(log.result, language)}</Tag>
+                      <strong className="min-w-0 break-words text-navy">{processLabel(record.stage, language)} / {translate(language, "round")} {record.round}</strong>
+                      <Tag tone="warning">{translate(language, "awaitingOutcome")}</Tag>
                     </div>
-                    <p className="mt-1 break-words text-sm font-medium text-slate">{formatDate(log.log_date, language)} / {translate(language, "round")} {log.round} / {log.interviewer ?? translate(language, "noInterviewer")}</p>
-                    {log.remark ? <p className="mt-1 break-words text-sm text-slate">{log.remark}</p> : null}
+                    <p className="mt-1 break-words text-sm font-medium text-slate">{translate(language, "pendingDetails")}: {formatDate(record.pending.openedDate, language)} / {record.pending.interviewer ?? translate(language, "noInterviewer")}</p>
+                    {record.pending.remark ? <p className="mt-1 break-words text-sm text-slate">{record.pending.remark}</p> : null}
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      {record.pending.editedAt ? <Tag tone="muted">{translate(language, "edited")}</Tag> : null}
+                      {record.origin === "migration" ? <Tag tone="muted">{translate(language, "migrated")}</Tag> : null}
+                      <a className="text-xs font-semibold text-primary underline" href={`/audit?entity=recruitment_logs&entityId=${record.logId}`}>{translate(language, "viewAudit")}</a>
+                    </div>
+                    {record.migrationNote ? <p className="mt-2 break-words text-xs font-medium text-slate">{record.migrationNote}</p> : null}
+                  </div>
+                ))}
+                {stageRecords.every((record) => record.outcome) ? <p className="text-sm font-medium text-slate">{translate(language, "noData")}</p> : null}
+              </div>
+              <h4 className="mb-2 mt-4 font-semibold text-navy">{translate(language, "completedStageHistory")}</h4>
+              <div className="grid gap-2">
+                {stageRecords.filter((record) => record.outcome).map((record) => (
+                  <div key={record.stageInstanceId} className="min-w-0 rounded-md border border-[#D7DEE8] bg-white p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-navy">{processLabel(record.stage, language)} / {translate(language, "round")} {record.round}</strong><Tag tone={record.outcome?.result === "pass" ? "success" : "danger"}>{record.outcome?.result === "pass" ? resultText(1, language) : resultText(0, language)}</Tag></div>
+                    <p className="mt-1 text-sm font-medium text-slate">{translate(language, "pendingDetails")}: {formatDate(record.pending.openedDate, language)} / {record.pending.interviewer ?? translate(language, "noInterviewer")}</p>
+                    <p className="mt-1 text-sm font-medium text-slate">{translate(language, "outcome")}: {formatDate(record.outcome?.date, language)} / {record.outcome?.interviewer ?? translate(language, "noInterviewer")}</p>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      {record.pending.editedAt ? <Tag tone="muted">{translate(language, "edited")}</Tag> : null}
+                      {record.origin === "migration" ? <Tag tone="muted">{translate(language, "migrated")}</Tag> : null}
+                      <a className="text-xs font-semibold text-primary underline" href={`/audit?entity=recruitment_logs&entityId=${record.logId}`}>{translate(language, "viewAudit")}</a>
+                    </div>
+                    {record.migrationNote ? <p className="mt-2 break-words text-xs font-medium text-slate">{record.migrationNote}</p> : null}
                   </div>
                 ))}
               </div>
@@ -3192,9 +3472,13 @@ function modalTitle(modal: ModalName) {
     requisition: "Requisition",
     status: "Requisition Status",
     candidate: "Candidate",
-    process: "Process Update",
+    candidate_reference: "Reference",
+    reference_status: "Reference status",
+    reference_check: "Reference check",
+    pipeline_start: "Start Phone Screen",
+    pending_edit: "Edit Pending Details",
+    stage_outcome: "Complete Stage",
     pipeline_pass: "Confirm Passed Stages",
-    test_maintenance: "Maintain Test Round",
     offer: "Offer",
     group: "Position Group",
     match: "Match Requisition and Group",
@@ -3209,6 +3493,9 @@ function modalDialogTitle(language: Language, modal: ModalName, mode: "new" | "c
   const editableLabels: Partial<Record<Exclude<ModalName, null>, string>> = {
     requisition: "Requisition",
     candidate: "Candidate",
+    candidate_reference: translate(language, "reference"),
+    reference_status: translate(language, "referenceStatus"),
+    reference_check: translate(language, "referenceCheck"),
     offer: "Offer",
     group: "Position Group",
     user: "User"
@@ -3232,12 +3519,8 @@ function offerPassHandoffFromAction(action: PendingAction, data: DashboardData):
   if (!candidateId) return null;
 
   let submittedPassDate = "";
-  if (
-    action.modal === "process"
-    && action.payload.recruitment_process === "Offer"
-    && String(action.payload.result) === "1"
-  ) {
-    submittedPassDate = valueAsString(action.payload.log_date);
+  if (action.modal === "stage_outcome" && valueAsString((action.payload.outcome as Record<string, unknown> | undefined)?.result) === "pass") {
+    submittedPassDate = valueAsString((action.payload.outcome as Record<string, unknown> | undefined)?.date);
   }
   if (action.modal === "pipeline_pass" && action.payload.target_stage === "Offer" && Array.isArray(action.payload.stages)) {
     const offerStage = action.payload.stages.find((stage) => (

@@ -8,8 +8,16 @@ create index if not exists idx_position_groups_position on public.position_group
 create index if not exists idx_document_groups_doc_id on public.document_groups(doc_id);
 create index if not exists idx_document_groups_group_id on public.document_groups(group_id);
 create index if not exists idx_candidates_doc_group_id on public.candidates(doc_group_id);
-create index if not exists idx_recruitment_logs_candidate_latest on public.recruitment_logs(candidate_id, log_id desc);
-create index if not exists idx_recruitment_logs_stage_result_date on public.recruitment_logs(recruitment_process, result, log_date desc);
+create index if not exists idx_candidate_references_candidate_status on public.candidate_references(candidate_id, status, updated_at desc);
+create index if not exists idx_candidate_reference_checks_reference on public.candidate_reference_checks(reference_id);
+create index if not exists idx_recruitment_logs_candidate_latest on public.recruitment_logs(candidate_id, log_id desc) where superseded_at is null;
+create index if not exists idx_recruitment_logs_stage_result_date on public.recruitment_logs(recruitment_process, result, coalesce(outcome_date, log_date) desc) where superseded_at is null;
+create unique index if not exists uq_recruitment_logs_canonical_stage_round
+on public.recruitment_logs(candidate_id, recruitment_process, round)
+where superseded_at is null;
+create unique index if not exists uq_recruitment_logs_current_pending
+on public.recruitment_logs(candidate_id)
+where superseded_at is null and result is null;
 create index if not exists idx_offers_candidate_id on public.offers(candidate_id);
 create index if not exists idx_offers_doc_accepted on public.offers(doc_id, accepted_date) where accepted_date is not null;
 create index if not exists idx_sourcing_weekly_updates_week on public.sourcing_weekly_updates(week_start);

@@ -1,4 +1,4 @@
-import { Plus, Search, Workflow } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -24,7 +24,6 @@ export function CandidatesView({
   canWrite,
   profile,
   onNew,
-  onProcess,
   onOpen
 }: {
   language: Language;
@@ -32,7 +31,6 @@ export function CandidatesView({
   canWrite: boolean;
   profile: Profile | null;
   onNew: () => void;
-  onProcess: () => void;
   onOpen: (candidateId: string) => void;
 }) {
   const initialTableState = useMemo(() => readTableUrlState("cand"), []);
@@ -88,7 +86,6 @@ export function CandidatesView({
           canWrite ? (
             <>
               <Button type="button" size="sm" icon={<Plus size={16} />} onClick={onNew}>{translate(language, "newCandidate")}</Button>
-              <Button type="button" size="sm" variant="secondary" icon={<Workflow size={16} />} onClick={onProcess}>{translate(language, "processUpdate")}</Button>
             </>
           ) : null
         }

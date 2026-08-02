@@ -17,6 +17,7 @@ venv/
 # Next.js / Node
 node_modules/
 .next/
+next-local-cache/
 out/
 coverage/
 playwright-report/

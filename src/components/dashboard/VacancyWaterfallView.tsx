@@ -991,11 +991,12 @@ function passedStageActivityCountsForDocGroups(data: DashboardData, docGroupIds:
   );
 
   for (const log of data.recruitment_logs) {
-    const logDate = dateOnly(log.log_date);
+    const result = log.result;
+    const logDate = dateOnly(result === 1 ? (log.outcome_date ?? log.log_date) : log.log_date);
     if (!logDate || logDate < startDate || logDate > endDate) continue;
     if (!candidateIds.has(log.candidate_id) || !detailStages.includes(log.recruitment_process)) continue;
     if (log.recruitment_process === "Phone Screen") stageCandidates["Resume Screening"].add(log.candidate_id);
-    if (log.result === 1) stageCandidates[log.recruitment_process].add(log.candidate_id);
+    if (result === 1) stageCandidates[log.recruitment_process].add(log.candidate_id);
   }
 
   return Object.fromEntries(PIPELINE_FUNNEL_STAGES.map((stage) => [stage, stageCandidates[stage].size])) as FunnelStageCounts;

@@ -75,11 +75,10 @@ test("home groups recruitment records into ordered role-aware tabs", async ({ pa
 });
 
 test("welcome popup uses bilingual daily CSV messages by weekday and filled ratio", async ({ page }) => {
-  const weekday = new Date().getDay();
-
   await installMockSupabase(page, { role: "admin_recruiter", language: "en" });
   await page.goto("/home");
   await expectWorkspaceReady(page);
+  const weekday = await page.evaluate(() => new Date().getDay());
   await expect(page.locator("[role='dialog']")).toContainText(englishHighWorkloadMessages[weekday]);
 
   const thaiPage = await page.context().newPage();
@@ -89,7 +88,7 @@ test("welcome popup uses bilingual daily CSV messages by weekday and filled rati
   await expect(thaiHeader).toBeVisible();
   await expect(thaiHeader.getByRole("button", { name: "EN", exact: true })).toBeVisible();
   await expect(thaiPage.locator("[role='dialog']")).not.toContainText(englishHighWorkloadMessages[weekday]);
-  await expect(thaiPage.locator("[role='dialog']")).toContainText("8%");
+  await expect(thaiPage.locator("[role='dialog']")).toContainText("0%");
   await thaiPage.close();
 });
 

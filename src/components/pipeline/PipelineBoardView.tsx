@@ -1,7 +1,8 @@
 "use client";
 
-import { ArrowRight, Filter, Plus, Workflow } from "lucide-react";
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { ArrowRight, Filter, Plus } from "lucide-react";
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { OperationalSummaryStrip } from "@/components/ui/Operations";
@@ -12,8 +13,8 @@ import { ACTIVE_PIPELINE_STAGES, processIndex, processLabel } from "@/lib/consta
 import { formatLocalDateInput } from "@/lib/dates";
 import { formatDate } from "@/lib/format";
 import { translate } from "@/lib/i18n/dictionary";
-import { candidateProcessDisabledReason, deriveStageHealth, isCandidateAging, pipelineMoveDisabledReason, type DataQualityIssue } from "@/lib/operations";
-import type { EnrichedCandidate, Language, ProcessStage, Profile, RecruitmentLog } from "@/types/recruitment";
+import { candidatePipelineCapability, candidateProcessDisabledReason, deriveStageHealth, isCandidateAging, pipelineMoveDisabledReason, type DataQualityIssue } from "@/lib/operations";
+import type { CandidateReference, CandidateReferenceCheck, EnrichedCandidate, Language, ProcessStage, Profile, RecruitmentLog } from "@/types/recruitment";
 
 type PipelineStageKey = ProcessStage | "No activity";
 type PipelineGroupBy = "none" | "site" | "owner";
@@ -23,24 +24,30 @@ export function PipelineBoardView({
   language,
   rows,
   recruitmentLogs,
+  candidateReferences = [],
+  candidateReferenceChecks = [],
   profile,
   dataQualityIssues = [],
   embedded = false,
   canWrite,
   offeredCandidateIds,
   onNewCandidate,
-  onAddUpdate,
   onOpen,
   onMove,
   onFailCurrentStage,
   onMaintainTest,
   onStartProcess,
+  onEditPending,
+  onPassStage,
+  onManageReferenceChecks,
   onCreateOffer,
   onUpdateOffer
 }: {
   language: Language;
   rows: EnrichedCandidate[];
   recruitmentLogs: RecruitmentLog[];
+  candidateReferences?: CandidateReference[];
+  candidateReferenceChecks?: CandidateReferenceCheck[];
   profile: Profile | null;
   dataQualityIssues?: DataQualityIssue[];
   /** Renders inside an existing workspace surface without standalone page chrome. */
@@ -48,12 +55,14 @@ export function PipelineBoardView({
   canWrite: boolean;
   offeredCandidateIds?: ReadonlySet<string>;
   onNewCandidate?: () => void;
-  onAddUpdate?: () => void;
   onOpen: (candidateId: string) => void;
   onMove: (candidate: EnrichedCandidate, nextStage: ProcessStage) => void;
   onFailCurrentStage: (candidate: EnrichedCandidate) => void;
   onMaintainTest: (candidate: EnrichedCandidate) => void;
   onStartProcess: (candidate: EnrichedCandidate) => void;
+  onEditPending?: (candidate: EnrichedCandidate) => void;
+  onPassStage?: (candidate: EnrichedCandidate) => void;
+  onManageReferenceChecks?: (candidate: EnrichedCandidate) => void;
   onCreateOffer?: (candidate: EnrichedCandidate) => void;
   onUpdateOffer: (candidate: EnrichedCandidate) => void;
 }) {
@@ -147,10 +156,9 @@ export function PipelineBoardView({
           <SectionTitle
             title={translate(language, "candidatePipeline")}
             action={
-              canWrite && (onNewCandidate || onAddUpdate) ? (
+              canWrite && onNewCandidate ? (
                 <>
                   {onNewCandidate ? <Button type="button" size="sm" icon={<Plus size={16} />} onClick={onNewCandidate}>{translate(language, "newCandidate")}</Button> : null}
-                  {onAddUpdate ? <Button type="button" size="sm" variant="secondary" icon={<Workflow size={16} />} onClick={onAddUpdate}>{translate(language, "addUpdate")}</Button> : null}
                 </>
               ) : null
             }
@@ -295,10 +303,12 @@ export function PipelineBoardView({
                         candidate={candidate}
                         language={language}
                         canWrite={canWrite}
-                        draggable={canWrite}
+                        draggable={canWrite && candidatePipelineCapability(candidate, recruitmentLogs.filter((log) => log.candidate_id === candidate.candidate_id), profile).canDrag}
                         updateStages={updateStages}
                         profile={profile}
                         recruitmentLogs={recruitmentLogs.filter((log) => log.candidate_id === candidate.candidate_id)}
+                        candidateReferences={candidateReferences.filter((reference) => reference.candidate_id === candidate.candidate_id)}
+                        candidateReferenceChecks={candidateReferenceChecks}
                         issueCount={issueCount}
                         focused={focusedCandidateId === candidate.candidate_id}
                         menuOpen={openStageMenu === candidate.candidate_id}
@@ -307,6 +317,9 @@ export function PipelineBoardView({
                         onFailCurrentStage={onFailCurrentStage}
                         onMaintainTest={onMaintainTest}
                         onStartProcess={onStartProcess}
+                        onEditPending={onEditPending}
+                        onPassStage={onPassStage}
+                        onManageReferenceChecks={onManageReferenceChecks}
                         onUpdateOffer={onUpdateOffer}
                         onMenuToggle={() => setOpenStageMenu((current) => current === candidate.candidate_id ? null : candidate.candidate_id)}
                         onMenuClose={() => setOpenStageMenu(null)}
@@ -432,6 +445,8 @@ function PipelineCandidateCard({
   updateStages = [],
   profile = null,
   recruitmentLogs = [],
+  candidateReferences = [],
+  candidateReferenceChecks = [],
   issueCount = 0,
   menuOpen = false,
   focused = false,
@@ -442,6 +457,9 @@ function PipelineCandidateCard({
   onFailCurrentStage,
   onMaintainTest,
   onStartProcess,
+  onEditPending,
+  onPassStage,
+  onManageReferenceChecks,
   onCreateOffer,
   onUpdateOffer,
   onMenuToggle,
@@ -456,6 +474,8 @@ function PipelineCandidateCard({
   updateStages?: ProcessStage[];
   profile?: Profile | null;
   recruitmentLogs?: RecruitmentLog[];
+  candidateReferences?: CandidateReference[];
+  candidateReferenceChecks?: CandidateReferenceCheck[];
   issueCount?: number;
   menuOpen?: boolean;
   focused?: boolean;
@@ -466,6 +486,9 @@ function PipelineCandidateCard({
   onFailCurrentStage?: (candidate: EnrichedCandidate) => void;
   onMaintainTest?: (candidate: EnrichedCandidate) => void;
   onStartProcess?: (candidate: EnrichedCandidate) => void;
+  onEditPending?: (candidate: EnrichedCandidate) => void;
+  onPassStage?: (candidate: EnrichedCandidate) => void;
+  onManageReferenceChecks?: (candidate: EnrichedCandidate) => void;
   onCreateOffer?: (candidate: EnrichedCandidate) => void;
   onUpdateOffer?: (candidate: EnrichedCandidate) => void;
   onMenuToggle?: () => void;
@@ -475,12 +498,18 @@ function PipelineCandidateCard({
 }) {
   const lastUpdate = candidateLastUpdate(candidate);
   const canFailCurrentStage = ACTIVE_PIPELINE_STAGES.includes(candidate.latest_process as ProcessStage) && candidate.latest_result === null;
+  const unresolvedReferences = candidateReferences.filter((reference) => (
+    reference.status === "available" && !candidateReferenceChecks.some((check) => check.reference_id === reference.reference_id)
+  )).length;
+  const referencePassBlocked = candidate.latest_process === "Reference Check" && unresolvedReferences > 0;
   const hasCardAction = showCreateOffer || updateStages.length > 0 || canFailCurrentStage || candidate.latest_process === "Offer" || candidate.latest_process === "No activity";
   const baseDisabledReason = candidateProcessDisabledReason(candidate, recruitmentLogs ?? [], profile ?? null);
+  const capability = candidatePipelineCapability(candidate, recruitmentLogs ?? [], profile ?? null);
   const stageMenuId = `stage-menu-${candidate.candidate_id}`;
   const actionsButtonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const wasMenuOpenRef = useRef(false);
+  const [menuPosition, setMenuPosition] = useState({ left: 8, top: 8, above: false });
 
   useEffect(() => {
     if (menuOpen) {
@@ -491,6 +520,24 @@ function PipelineCandidateCard({
     if (!wasMenuOpenRef.current) return;
     wasMenuOpenRef.current = false;
     window.setTimeout(() => actionsButtonRef.current?.focus(), 0);
+  }, [menuOpen]);
+  useLayoutEffect(() => {
+    if (!menuOpen) return;
+    const positionMenu = () => {
+      const rect = actionsButtonRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const width = Math.min(320, window.innerWidth - 16);
+      const left = Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8));
+      const above = window.innerHeight - rect.bottom < 280 && rect.top > 280;
+      setMenuPosition({ left, top: above ? rect.top - 8 : rect.bottom + 8, above });
+    };
+    positionMenu();
+    window.addEventListener("resize", positionMenu);
+    window.addEventListener("scroll", positionMenu, true);
+    return () => {
+      window.removeEventListener("resize", positionMenu);
+      window.removeEventListener("scroll", positionMenu, true);
+    };
   }, [menuOpen]);
   const toneClass = tone === "failed"
       ? "hover:border-scarlet/40 hover:bg-[#FFF8F7]"
@@ -557,23 +604,26 @@ function PipelineCandidateCard({
           {translate(language, "createOffer")}
         </Button>
       ) : null}
-      {menuOpen ? (
+      {menuOpen && typeof document !== "undefined" ? createPortal(
         <div
           ref={menuRef}
           id={stageMenuId}
           role="menu"
           aria-label={translate(language, "candidateActionsFor", { name: candidate.name })}
-          className="absolute right-3 top-12 z-20 grid w-[min(20rem,calc(100vw-2rem))] gap-1 rounded-2xl border border-[#E4E9F2] bg-white p-2 shadow-[0_8px_24px_rgba(11,19,43,0.08)]"
+          className="fixed z-[45] grid w-[min(20rem,calc(100vw-1rem))] max-h-[min(70vh,28rem)] gap-1 overflow-y-auto rounded-2xl border border-[#E4E9F2] bg-white p-2 shadow-[0_8px_24px_rgba(11,19,43,0.16)]"
+          style={{ left: menuPosition.left, top: menuPosition.top, transform: menuPosition.above ? "translateY(-100%)" : undefined }}
+          data-stage-menu-root="true"
           onClick={(event) => event.stopPropagation()}
           onKeyDown={(event) => handlePipelineMenuKeyDown(event, menuRef.current, actionsButtonRef.current, onMenuClose)}
         >
-          <DisabledReasonHint language={language} reason={baseDisabledReason} />
+          <DisabledReasonHint language={language} reason={capability.blocked ? capability : baseDisabledReason} />
+          {referencePassBlocked ? <p className="px-2 py-1 text-xs font-medium text-orange">{translate(language, "referencePassBlocked", { count: unresolvedReferences })}</p> : null}
           {candidate.latest_process === "No activity" ? (
             <button
               type="button"
               role="menuitem"
               className="rounded px-2 py-1 text-left text-xs font-medium text-slate transition-colors hover:bg-lightgray hover:text-primary focus:bg-lightgray focus:text-primary"
-              disabled={baseDisabledReason.blocked}
+              disabled={capability.blocked || referencePassBlocked}
               aria-label={translate(language, "startPhoneScreenFor", { name: candidate.name })}
               onClick={(event) => {
                 event.stopPropagation();
@@ -589,7 +639,7 @@ function PipelineCandidateCard({
               type="button"
               role="menuitem"
               className="rounded px-2 py-1 text-left text-xs font-medium text-slate transition-colors hover:bg-lightgray hover:text-primary focus:bg-lightgray focus:text-primary"
-              disabled={baseDisabledReason.blocked}
+              disabled={capability.blocked}
               aria-label={translate(language, "updateOfferFor", { name: candidate.name })}
               onClick={(event) => {
                 event.stopPropagation();
@@ -604,18 +654,47 @@ function PipelineCandidateCard({
             <button
               type="button"
               role="menuitem"
+              className="rounded px-2 py-1 text-left text-xs font-medium text-slate transition-colors hover:bg-lightgray hover:text-primary focus:bg-lightgray focus:text-primary"
+              disabled={capability.blocked || referencePassBlocked}
+              aria-label={translate(language, "passStageFor", { name: candidate.name, stage: processLabel(candidate.latest_process, language) })}
+              title={referencePassBlocked ? translate(language, "referencePassBlockedShort", { count: unresolvedReferences }) : undefined}
+              onClick={(event) => { event.stopPropagation(); if (capability.blocked || referencePassBlocked) return; onMenuClose?.(); onPassStage?.(candidate); }}
+            >
+              {translate(language, "passStage")}
+            </button>
+          ) : null}
+          {canFailCurrentStage ? (
+            <button
+              type="button"
+              role="menuitem"
               className="rounded px-2 py-1 text-left text-xs font-medium text-scarlet transition-colors hover:bg-[#FFF1F0] focus:bg-[#FFF1F0] focus:text-scarlet"
-              disabled={baseDisabledReason.blocked}
-              aria-label={translate(language, "failCurrentStageFor", { name: candidate.name })}
+              disabled={capability.blocked}
+              aria-label={translate(language, "failStageFor", { name: candidate.name, stage: processLabel(candidate.latest_process, language) })}
               title={baseDisabledReason.detail}
               onClick={(event) => {
                 event.stopPropagation();
-                if (baseDisabledReason.blocked) return;
+                if (capability.blocked) return;
                 onMenuClose?.();
                 onFailCurrentStage?.(candidate);
               }}
             >
-              {translate(language, "failCurrentStage")}
+              {translate(language, "failStage")}
+            </button>
+          ) : null}
+          {candidate.latest_process === "Reference Check" && candidate.latest_result === null ? (
+            <button
+              type="button"
+              role="menuitem"
+              className="rounded px-2 py-1 text-left text-xs font-medium text-slate transition-colors hover:bg-lightgray hover:text-primary focus:bg-lightgray focus:text-primary"
+              disabled={capability.blocked}
+              onClick={(event) => {
+                event.stopPropagation();
+                if (capability.blocked) return;
+                onMenuClose?.();
+                onManageReferenceChecks?.(candidate);
+              }}
+            >
+              {translate(language, "manageReferenceChecks")}
             </button>
           ) : null}
           {candidate.latest_process === "Test" ? (
@@ -623,20 +702,20 @@ function PipelineCandidateCard({
               type="button"
               role="menuitem"
               className="rounded px-2 py-1 text-left text-xs font-medium text-slate transition-colors hover:bg-lightgray hover:text-primary focus:bg-lightgray focus:text-primary"
-              disabled={baseDisabledReason.blocked}
-              aria-label={translate(language, "maintainTestFor", { name: candidate.name })}
+              disabled={capability.blocked}
+              aria-label={`${translate(language, "addAnotherTestRound")} ${candidate.name}`}
               onClick={(event) => {
                 event.stopPropagation();
                 onMenuClose?.();
                 onMaintainTest?.(candidate);
               }}
             >
-              {translate(language, "maintainInTest")}
+              {translate(language, "addAnotherTestRound")}
             </button>
           ) : null}
           {updateStages.map((nextStage) => (
             (() => {
-              const disabledReason = pipelineMoveDisabledReason(candidate, nextStage, recruitmentLogs ?? [], profile ?? null);
+              const disabledReason = capability.blocked ? capability : pipelineMoveDisabledReason(candidate, nextStage, recruitmentLogs ?? [], profile ?? null);
               return (
             <button
               key={nextStage}
@@ -658,7 +737,20 @@ function PipelineCandidateCard({
               );
             })()
           ))}
-        </div>
+          {canFailCurrentStage ? (
+            <button
+              type="button"
+              role="menuitem"
+              className="rounded px-2 py-1 text-left text-xs font-medium text-slate transition-colors hover:bg-lightgray hover:text-primary focus:bg-lightgray focus:text-primary"
+              disabled={capability.blocked}
+              aria-label={translate(language, "editPendingDetailsFor", { name: candidate.name })}
+              onClick={(event) => { event.stopPropagation(); if (capability.blocked) return; onMenuClose?.(); onEditPending?.(candidate); }}
+            >
+              {translate(language, "editPendingDetails")}
+            </button>
+          ) : null}
+        </div>,
+        document.body
       ) : null}
     </article>
   );
@@ -707,8 +799,7 @@ function nextStages(stage: ProcessStage | "No activity" | null | undefined) {
   const currentIndex = ACTIVE_PIPELINE_STAGES.indexOf(stage as ProcessStage);
   if (stage === "No activity") return [];
   if (currentIndex === -1) return ACTIVE_PIPELINE_STAGES;
-  if (stage === "Test") return ["Reference Check" as ProcessStage];
-  return ACTIVE_PIPELINE_STAGES.slice(currentIndex + 1);
+  return ACTIVE_PIPELINE_STAGES.slice(currentIndex + 2);
 }
 
 const pipelineGroupOptions: Array<{ value: PipelineGroupBy; labelKey: string }> = [

@@ -805,6 +805,17 @@ const th: Dictionary = {
   overSlaLabel: "เกิน SLA"
 };
 
+Object.assign(en, {
+  contactReferences: "Contact references", optional: "optional", contactReferencesHelper: "These are contactable employment references, separate from the recruitment-source Reference Name.", addReference: "Add reference", referenceNumber: "Reference {number}", remove: "Remove", reference: "Reference", referenceContact: "Reference contact", referenceContactName: "Reference name", relationship: "Relationship", relationshipWithCandidate: "Relationship with candidate", contactValue: "Contact value", otherChannelLabel: "Other channel label", referenceChannelPhone: "Phone", referenceChannelEmail: "Email", referenceChannelOther: "Other", referenceStatus: "Reference status", referenceCheck: "Reference check", referenceAvailable: "Available", referenceUnavailable: "Unavailable", referenceArchived: "Archived", reason: "Reason", finalReferenceConversation: "Final reference conversation", checkedDate: "Checked date", conversationDurationMinutes: "Conversation duration (minutes)", conversationSummary: "Conversation summary", referenceProgress: "{checked}/{available} available checked", referencePassRequirement: "Available references need one saved conversation check before Reference Check can pass.", noContactReferences: "No contact references recorded. Reference Check may pass without any.", referenceChecked: "Checked", referenceAwaitingCheck: "Awaiting check", editReferenceCheck: "Edit check", recordReferenceCheck: "Record check", markReferenceUnavailableOrArchive: "Mark unavailable / archive", manageReferenceChecks: "Manage reference checks", referencePassBlocked: "Complete {count} available reference(s) before passing Reference Check.", referencePassBlockedShort: "Complete {count} available reference(s) first.", conversationDurationRequired: "Conversation duration must be greater than zero minutes."
+});
+
+Object.assign(th, {
+  contactReferences: "รายชื่อผู้ให้ข้อมูลอ้างอิง", optional: "ไม่บังคับ", contactReferencesHelper: "เป็นผู้ให้ข้อมูลอ้างอิงด้านการทำงานที่ติดต่อได้ แยกจากชื่อผู้อ้างอิงของแหล่งที่มาผู้สมัคร", addReference: "เพิ่มผู้ให้ข้อมูลอ้างอิง", referenceNumber: "ผู้ให้ข้อมูลอ้างอิง {number}", remove: "ลบ", reference: "ผู้ให้ข้อมูลอ้างอิง", referenceContact: "ข้อมูลติดต่อผู้ให้ข้อมูลอ้างอิง", referenceContactName: "ชื่อผู้ให้ข้อมูลอ้างอิง", relationship: "ความสัมพันธ์", relationshipWithCandidate: "ความสัมพันธ์กับผู้สมัคร", contactValue: "ข้อมูลติดต่อ", otherChannelLabel: "ระบุช่องทางอื่น", referenceChannelPhone: "โทรศัพท์", referenceChannelEmail: "อีเมล", referenceChannelOther: "อื่น ๆ", referenceStatus: "สถานะผู้ให้ข้อมูลอ้างอิง", referenceCheck: "บันทึกการตรวจสอบข้อมูลอ้างอิง", referenceAvailable: "ติดต่อได้", referenceUnavailable: "ติดต่อไม่ได้", referenceArchived: "เก็บถาวร", reason: "เหตุผล", finalReferenceConversation: "บันทึกการสนทนากับผู้ให้ข้อมูลอ้างอิง", checkedDate: "วันที่ตรวจสอบ", conversationDurationMinutes: "ระยะเวลาสนทนา (นาที)", conversationSummary: "สรุปการสนทนา", referenceProgress: "ตรวจสอบแล้ว {checked}/{available} รายการที่ติดต่อได้", referencePassRequirement: "ต้องบันทึกการสนทนาของผู้ให้ข้อมูลอ้างอิงที่ติดต่อได้ทุกคนก่อนผ่านขั้นตอนตรวจสอบข้อมูลอ้างอิง", noContactReferences: "ยังไม่มีผู้ให้ข้อมูลอ้างอิง ขั้นตอนตรวจสอบข้อมูลอ้างอิงสามารถผ่านได้", referenceChecked: "ตรวจสอบแล้ว", referenceAwaitingCheck: "รอตรวจสอบ", editReferenceCheck: "แก้ไขบันทึกการตรวจสอบ", recordReferenceCheck: "บันทึกการตรวจสอบ", markReferenceUnavailableOrArchive: "ระบุติดต่อไม่ได้ / เก็บถาวร", manageReferenceChecks: "จัดการการตรวจสอบข้อมูลอ้างอิง", referencePassBlocked: "ต้องตรวจสอบผู้ให้ข้อมูลอ้างอิงที่ติดต่อได้อีก {count} รายก่อนผ่านขั้นตอนตรวจสอบข้อมูลอ้างอิง", referencePassBlockedShort: "ต้องตรวจสอบผู้ให้ข้อมูลอ้างอิงที่ติดต่อได้อีก {count} รายก่อน", conversationDurationRequired: "ระยะเวลาสนทนาต้องมากกว่า 0 นาที"
+});
+
+Object.assign(en, { referenceCheckSummary: "Checked {date} / {minutes} min — {summary}" });
+Object.assign(th, { referenceCheckSummary: "ตรวจสอบเมื่อ {date} / {minutes} นาที — {summary}" });
+
 export const dictionaries = { en, th };
 
 export function translate(language: Language, key: string, params?: TranslateParams) {
@@ -890,7 +901,23 @@ Object.assign(en, {
   startPhoneScreen: "Start phone screen",
   updateOffer: "Update Offer",
   maintainInTest: "Maintain in Test",
+  addAnotherTestRound: "Add another Test round",
   failCurrentStage: "Fail current stage",
+  editPendingDetails: "Edit pending details",
+  editPendingDetailsFor: "Edit pending details for {name}",
+  passStage: "Pass stage",
+  passStageFor: "Pass {stage} for {name}",
+  failStage: "Fail stage",
+  failStageFor: "Fail {stage} for {name}",
+  pendingDetails: "Pending details",
+  outcome: "Outcome",
+  awaitingOutcome: "Awaiting outcome",
+  currentStage: "Current stage",
+  completedStageHistory: "Completed stage history",
+  edited: "Edited",
+  migrated: "Migrated",
+  viewAudit: "View audit",
+  nextPendingStage: "Next pending stage",
   dataIssuesCount: "{count} data issue{plural}",
   updatedDate: "Updated {date}",
   failedCandidatesLast7Days: "Failed Candidates - Last 7 Days",
@@ -1123,7 +1150,23 @@ Object.assign(th, {
   startPhoneScreen: "เริ่มคัดกรองโทรศัพท์",
   updateOffer: "อัปเดต Offer",
   maintainInTest: "คงสถานะทดสอบ",
+  addAnotherTestRound: "เพิ่มรอบทดสอบอีกหนึ่งรอบ",
   failCurrentStage: "ไม่ผ่านขั้นตอนปัจจุบัน",
+  editPendingDetails: "แก้ไขรายละเอียดที่รอดำเนินการ",
+  editPendingDetailsFor: "แก้ไขรายละเอียดที่รอดำเนินการสำหรับ {name}",
+  passStage: "ผ่านขั้นตอน",
+  passStageFor: "บันทึกผ่าน {stage} สำหรับ {name}",
+  failStage: "ไม่ผ่านขั้นตอน",
+  failStageFor: "บันทึกไม่ผ่าน {stage} สำหรับ {name}",
+  pendingDetails: "รายละเอียดที่รอดำเนินการ",
+  outcome: "ผลลัพธ์",
+  awaitingOutcome: "รอผลลัพธ์",
+  currentStage: "ขั้นตอนปัจจุบัน",
+  completedStageHistory: "ประวัติขั้นตอนที่เสร็จสิ้น",
+  edited: "แก้ไขแล้ว",
+  migrated: "ข้อมูลเดิม",
+  viewAudit: "ดูประวัติแก้ไข",
+  nextPendingStage: "ขั้นตอนถัดไปที่รอดำเนินการ",
   dataIssuesCount: "{count} ปัญหาข้อมูล",
   updatedDate: "อัปเดต {date}",
   failedCandidatesLast7Days: "ผู้สมัครไม่ผ่าน - 7 วันล่าสุด",

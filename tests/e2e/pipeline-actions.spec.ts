@@ -1,214 +1,214 @@
 import { expect, test } from "@playwright/test";
 import { expectWorkspaceReady, installMockSupabase } from "./support/mock-supabase";
 
-test("stage menu is keyboard reachable and closes with Escape", async ({ page }) => {
+async function openPatMenu(page: Parameters<typeof installMockSupabase>[0]) {
+  await page.getByRole("button", { name: "Candidate actions for Pat Phone" }).click();
+  return page.getByRole("menu", { name: "Candidate actions for Pat Phone" });
+}
+
+test("pending-stage menu is keyboard reachable and keeps paired-status actions before forward moves", async ({ page }) => {
   await installMockSupabase(page, { role: "admin_recruiter" });
   await page.goto("/pipeline");
   await expectWorkspaceReady(page);
 
-  const updateButton = page.getByRole("button", { name: "Candidate actions for Pat Phone" });
-  await updateButton.focus();
+  const actions = page.getByRole("button", { name: "Candidate actions for Pat Phone" });
+  await actions.focus();
   await page.keyboard.press("Enter");
-  await expect(page.getByRole("menu")).toBeVisible();
-  await expect(page.getByRole("menuitem", { name: /HR Interview/ })).toBeVisible();
-  await expect(page.getByRole("menuitem", { name: "Fail current stage" })).toBeFocused();
-  await page.keyboard.press("ArrowDown");
-  await expect(page.getByRole("menuitem", { name: "HR Interview" })).toBeFocused();
+  const menu = page.getByRole("menu", { name: "Candidate actions for Pat Phone" });
+  await expect(menu).toBeVisible();
+  const firstActions = await menu.getByRole("menuitem").evaluateAll((items) => items.slice(0, 4).map((item) => item.textContent?.trim()));
+  expect(firstActions).toEqual(["Pass stage", "Fail stage", "Line Interview", "Test"]);
+  await expect(menu.getByRole("menuitem", { name: "Edit pending details" })).toBeVisible();
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("menu")).toHaveCount(0);
-  await expect(updateButton).toBeFocused();
+  await expect(actions).toBeFocused();
 });
 
-test("no-activity candidate can start process from pipeline menu", async ({ page }) => {
-  await installMockSupabase(page, { role: "admin_recruiter" });
-  await page.goto("/pipeline");
-  await expectWorkspaceReady(page);
-
-  await page.getByRole("button", { name: "Candidate actions for Nora No Activity" }).click();
-  await expect(page.getByRole("menuitem", { name: "Start phone screen for Nora No Activity" })).toBeVisible();
-  await page.getByRole("menuitem", { name: "Start phone screen for Nora No Activity" }).click();
-  const dialog = page.getByRole("dialog", { name: "Process Update" });
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByLabel("Candidate")).toHaveValue("C-NO-ACTIVITY");
-  await expect(dialog.getByLabel("Process")).toHaveValue("Phone Screen");
-  await expect(dialog.getByLabel("Process").locator("option")).toHaveText(["Phone Screening"]);
-  await expect(dialog.getByLabel("Result")).toHaveValue("");
-});
-
-test("moving a candidate forward uses pipeline pass RPC payload", async ({ page }) => {
+test("edit pending details preloads its exact values and calls the v2 pending RPC", async ({ page }) => {
   const mock = await installMockSupabase(page, { role: "admin_recruiter" });
   await page.goto("/pipeline");
   await expectWorkspaceReady(page);
 
-  await page.getByRole("button", { name: "Candidate actions for Pat Phone" }).click();
-  await page.getByRole("menuitem", { name: "HR Interview" }).click();
-  await expect(page.getByRole("dialog", { name: "Confirm Passed Stages" })).toBeVisible();
-  await page.getByRole("button", { name: "Review changes" }).click();
-  await expect(page.getByRole("dialog", { name: "Confirm Save" })).toBeVisible();
-  await expect(page.getByText('"target_stage": "HR Interview"')).toBeVisible();
+  const menu = await openPatMenu(page);
+  await menu.getByRole("menuitem", { name: "Edit pending details" }).click();
+  const dialog = page.getByRole("dialog", { name: /Edit pending/i });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('input[name="opened_date"]')).toHaveValue("2026-07-09");
+  await expect(dialog.locator('input[name="interviewer"]')).toHaveValue("QA Interviewer");
+  await expect(dialog.locator('textarea[name="remark"]')).toHaveValue("QA Phone Screen");
+  await dialog.locator('textarea[name="remark"]').fill("Recruiter corrected pending note");
+  await dialog.getByRole("button", { name: "Review changes" }).click();
   await page.getByRole("button", { name: "Save changes" }).click();
 
-  await expect.poll(() => mock.rpcCalls.at(-1)?.endpoint).toBe("app_insert_pipeline_passes");
+  await expect.poll(() => mock.rpcCalls.at(-1)?.endpoint).toBe("app_update_pipeline_pending_v2");
   expect(mock.rpcCalls.at(-1)?.payload).toMatchObject({
     candidate_id: "C-PHONE",
-    target_stage: "HR Interview",
-    audit_mode: "pending_then_pass"
+    stage_instance_id: "00000000-0000-4000-8000-000000000001",
+    pending: { opened_date: "2026-07-09", interviewer: "QA Interviewer", remark: "Recruiter corrected pending note" }
   });
+  expect(mock.data.recruitment_logs.find((row) => row.log_id === 1)?.result).toBeNull();
 });
 
-test("multi-stage jump records pending then pass for crossed stages and final pending", async ({ page }) => {
+test("Pass stage preserves Pending details and sends only editable Outcome plus next Pending data", async ({ page }) => {
   const mock = await installMockSupabase(page, { role: "admin_recruiter" });
   await page.goto("/pipeline");
   await expectWorkspaceReady(page);
 
-  await page.getByRole("button", { name: "Candidate actions for Pat Phone" }).click();
-  await page.getByRole("menuitem", { name: "Line Interview" }).click();
-  const dialog = page.getByRole("dialog", { name: "Confirm Passed Stages" });
+  const menu = await openPatMenu(page);
+  await menu.getByRole("menuitem").filter({ hasText: "Pass stage" }).click();
+  const dialog = page.getByRole("dialog", { name: /Pass .*stage|Complete Stage/i });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByText("Phone Screening", { exact: true }).first()).toBeVisible();
-  await expect(dialog.getByText("HR Interview", { exact: true }).first()).toBeVisible();
-
-  await page.getByRole("button", { name: "Review changes" }).click();
+  await expect(dialog.locator('input[type="date"][name="pending_opened_date"]')).toHaveCount(0);
+  await expect(dialog.locator('input[name="pending_interviewer"]:not([type="hidden"])')).toHaveCount(0);
+  await expect(dialog.locator('textarea[name="pending_remark"]')).toHaveCount(0);
+  await expect(dialog.locator('input[name="outcome_date"]')).toHaveValue("2026-07-24");
+  await expect(dialog.locator('input[name="next_opened_date"]')).toHaveValue("2026-07-24");
+  await dialog.locator('textarea[name="outcome_remark"]').fill("Strong phone screen");
+  await dialog.getByRole("button", { name: "Review changes" }).click();
   await page.getByRole("button", { name: "Save changes" }).click();
 
-  await expect.poll(() => mock.rpcCalls.at(-1)?.endpoint).toBe("app_insert_pipeline_passes");
+  await expect.poll(() => mock.rpcCalls.at(-1)?.endpoint).toBe("app_complete_pipeline_stage_v2");
   expect(mock.rpcCalls.at(-1)?.payload).toMatchObject({
     candidate_id: "C-PHONE",
-    target_stage: "Line Interview",
-    audit_mode: "pending_then_pass"
+    stage_instance_id: "00000000-0000-4000-8000-000000000001",
+    pending: { opened_date: "2026-07-09", interviewer: "QA Interviewer", remark: "QA Phone Screen" },
+    outcome: { result: "pass", date: "2026-07-24", interviewer: "QA Interviewer", remark: "Strong phone screen" },
+    next_pending: { stage: "HR Interview", round: 1, opened_date: "2026-07-24" }
   });
-  expect(mock.rpcCalls.at(-1)?.payload.stages).toMatchObject([
-    { stage: "Phone Screen", round: 1 },
-    { stage: "HR Interview", round: 1 }
-  ]);
-  const savedLogs = mock.data.recruitment_logs
-    .filter((log) => log.candidate_id === "C-PHONE")
-    .slice(-4)
-    .map((log) => [log.recruitment_process, log.result]);
-  expect(savedLogs).toEqual([
-    ["Phone Screen", 1],
-    ["HR Interview", null],
-    ["HR Interview", 1],
-    ["Line Interview", null]
-  ]);
+  const stages = mock.data.recruitment_logs.filter((row) => row.candidate_id === "C-PHONE" && row.superseded_at === null);
+  expect(stages.find((row) => row.log_id === 1)?.result).toBe(1);
+  expect(stages.filter((row) => row.result === null)).toHaveLength(1);
 });
 
-test("full-jump confirmation requires stage date and round before save review", async ({ page }) => {
-  await installMockSupabase(page, { role: "admin_recruiter" });
+test("system admin can edit Pending details outside Site and PIC scope", async ({ page }) => {
+  const mock = await installMockSupabase(page, { role: "system_admin" });
   await page.goto("/pipeline");
   await expectWorkspaceReady(page);
 
-  await page.getByRole("button", { name: "Candidate actions for Pat Phone" }).click();
-  await page.getByRole("menuitem", { name: "Line Interview" }).click();
-  const dialog = page.getByRole("dialog", { name: "Confirm Passed Stages" });
-  await expect(dialog).toBeVisible();
-
-  await dialog.getByLabel("Date").first().fill("");
-  await page.getByRole("button", { name: "Review changes" }).click();
-  await expect(page.getByRole("dialog", { name: "Confirm Save" })).toHaveCount(0);
-});
-
-test("passed latest stage opens the immediate next stage as pending", async ({ page }) => {
-  const mock = await installMockSupabase(page, { role: "admin_recruiter" });
-  await page.goto("/pipeline");
-  await expectWorkspaceReady(page);
-
-  await page.getByRole("button", { name: "Candidate actions for Penny Phone Pass" }).click();
-  await expect(page.getByRole("menuitem", { name: "Line Interview" })).toBeDisabled();
-  await page.getByRole("menuitem", { name: "HR Interview" }).click();
-  const dialog = page.getByRole("dialog", { name: "Process Update" });
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByLabel("Candidate")).toHaveValue("C-PHONE-PASS");
-  await expect(dialog.getByLabel("Process")).toHaveValue("HR Interview");
-  await expect(dialog.getByLabel("Result")).toHaveValue("");
-
-  await page.getByRole("button", { name: "Review changes" }).click();
+  const menu = await openPatMenu(page);
+  await menu.getByRole("menuitem", { name: "Edit pending details" }).click();
+  const dialog = page.getByRole("dialog", { name: /Edit pending/i });
+  await dialog.locator('textarea[name="remark"]').fill("System Admin correction");
+  await dialog.getByRole("button", { name: "Review changes" }).click();
   await page.getByRole("button", { name: "Save changes" }).click();
-  await expect.poll(() => mock.rpcCalls.at(-1)?.endpoint).toBe("app_insert_recruitment_log");
-  expect(mock.rpcCalls.at(-1)?.payload).toMatchObject({
-    candidate_id: "C-PHONE-PASS",
-    recruitment_process: "HR Interview",
-    result: null
-  });
-});
 
-test("manual process update exposes only valid next step for pending and passed candidates", async ({ page }) => {
-  await installMockSupabase(page, { role: "admin_recruiter" });
-  await page.goto("/pipeline");
-  await expectWorkspaceReady(page);
-
-  await page.getByRole("button", { name: "Add Update" }).click();
-  let dialog = page.getByRole("dialog", { name: "Process Update" });
-  await expect(dialog).toBeVisible();
-  await dialog.getByLabel("Candidate").selectOption("C-PHONE");
-  await expect(dialog.getByLabel("Process").locator("option")).toHaveText(["Phone Screening"]);
-  await expect(dialog.getByLabel("Result")).toHaveValue("");
-  await page.keyboard.press("Escape");
-
-  await page.getByRole("button", { name: "Add Update" }).click();
-  dialog = page.getByRole("dialog", { name: "Process Update" });
-  await dialog.getByLabel("Candidate").selectOption("C-PHONE-PASS");
-  await expect(dialog.getByLabel("Process").locator("option")).toHaveText(["HR Interview"]);
-  await expect(dialog.getByLabel("Result")).toHaveValue("");
-});
-
-test("pipeline menu can fail the current pending stage", async ({ page }) => {
-  const mock = await installMockSupabase(page, { role: "admin_recruiter" });
-  await page.goto("/pipeline");
-  await expectWorkspaceReady(page);
-
-  await page.getByRole("button", { name: "Candidate actions for Pat Phone" }).click();
-  await page.getByRole("menuitem", { name: "Fail current stage" }).click();
-  const dialog = page.getByRole("dialog", { name: "Process Update" });
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByLabel("Candidate")).toHaveValue("C-PHONE");
-  await expect(dialog.getByLabel("Process")).toHaveValue("Phone Screen");
-  await expect(dialog.getByLabel("Result")).toHaveValue("0");
-
-  await page.getByRole("button", { name: "Review changes" }).click();
-  await page.getByRole("button", { name: "Save changes" }).click();
-  await expect.poll(() => mock.rpcCalls.at(-1)?.endpoint).toBe("app_insert_recruitment_log");
+  await expect.poll(() => mock.rpcCalls.at(-1)?.endpoint).toBe("app_update_pipeline_pending_v2");
   expect(mock.rpcCalls.at(-1)?.payload).toMatchObject({
     candidate_id: "C-PHONE",
-    recruitment_process: "Phone Screen",
-    result: "0"
+    pending: { remark: "System Admin correction" }
   });
 });
 
-test("test-stage maintenance and test exit use special workflows", async ({ page }) => {
+test("Fail stage is atomic and never sends or creates next pending data", async ({ page }) => {
   const mock = await installMockSupabase(page, { role: "admin_recruiter" });
   await page.goto("/pipeline");
   await expectWorkspaceReady(page);
 
-  await page.getByRole("button", { name: "Candidate actions for Tina Test" }).scrollIntoViewIfNeeded();
-  await page.getByRole("button", { name: "Candidate actions for Tina Test" }).click();
-  await expect(page.getByRole("menu")).toBeVisible();
-  await page.getByRole("menuitem", { name: "Maintain in Test" }).click();
-  await expect(page.getByRole("dialog", { name: "Maintain Test Round" })).toBeVisible();
-  await page.getByRole("button", { name: "Review changes" }).click();
+  const menu = await openPatMenu(page);
+  await menu.getByRole("menuitem").filter({ hasText: "Fail stage" }).click();
+  const dialog = page.getByRole("dialog", { name: /Fail .*stage|Complete Stage/i });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('input[name="next_opened_date"]')).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Review changes" }).click();
   await page.getByRole("button", { name: "Save changes" }).click();
-  await expect.poll(() => mock.rpcCalls.at(-1)?.endpoint).toBe("app_insert_test_maintenance");
 
-  await page.getByRole("button", { name: "Candidate actions for Tina Test" }).click();
-  await expect(page.getByRole("menu")).toBeVisible();
-  await page.getByRole("menuitem", { name: "Reference Check" }).click();
-  await page.getByRole("button", { name: "Review changes" }).click();
-  await page.getByRole("button", { name: "Save changes" }).click();
-  await expect.poll(() => mock.rpcCalls.at(-1)?.endpoint).toBe("app_insert_pipeline_test_exit");
+  await expect.poll(() => mock.rpcCalls.at(-1)?.endpoint).toBe("app_complete_pipeline_stage_v2");
+  expect(mock.rpcCalls.at(-1)?.payload).toMatchObject({
+    candidate_id: "C-PHONE",
+    outcome: { result: "fail" }
+  });
+  expect(mock.rpcCalls.at(-1)?.payload.next_pending).toBeNull();
+  expect(mock.data.recruitment_logs.filter((row) => row.candidate_id === "C-PHONE")).toHaveLength(1);
 });
 
-test("failed and completed candidates cannot be updated", async ({ page }) => {
-  await installMockSupabase(page, { role: "admin_recruiter" });
+test("Test has a separate next-round action while Pass stage exits to Reference Check", async ({ page }) => {
+  const mock = await installMockSupabase(page, { role: "admin_recruiter" });
   await page.goto("/pipeline");
   await expectWorkspaceReady(page);
 
-  await page.locator("#pipeline-candidate-C-FAILED").getByRole("button", { name: /Finn Failed/ }).click();
-  const failedDialog = page.getByRole("dialog", { name: /C-FAILED/ });
-  await expect(failedDialog).toBeVisible();
-  await expect(failedDialog.getByRole("button", { name: /Update process/ })).toHaveCount(0);
-  await page.keyboard.press("Escape");
+  const actions = page.getByRole("button", { name: "Candidate actions for Tina Test" });
+  await actions.click();
+  const menu = page.getByRole("menu", { name: "Candidate actions for Tina Test" });
+  await expect(menu.getByRole("menuitem").filter({ hasText: "Pass stage" })).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: /Add another Test round/ })).toBeVisible();
+  await menu.getByRole("menuitem", { name: /Add another Test round/ }).click();
+  await page.getByRole("button", { name: "Review changes" }).click();
+  await page.getByRole("button", { name: "Save changes" }).click();
 
-  await page.locator("#pipeline-candidate-C-OFFER-PASS").getByRole("button", { name: /Olivia Offer Pass/ }).click();
-  const completedDialog = page.getByRole("dialog", { name: /C-OFFER-PASS/ });
-  await expect(completedDialog.getByRole("button", { name: /Update process/ })).toHaveCount(0);
+  await expect.poll(() => mock.rpcCalls.at(-1)?.endpoint).toBe("app_complete_pipeline_stage_v2");
+  expect(mock.rpcCalls.at(-1)?.payload).toMatchObject({
+    candidate_id: "C-TEST",
+    outcome: { result: "pass" },
+    next_pending: { stage: "Test", round: 2 }
+  });
+});
+
+test("forward menu jump opens confirmation without a write and submits paired pass records plus target pending", async ({ page }) => {
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  const mock = await installMockSupabase(page, { role: "admin_recruiter" });
+  await page.goto("/pipeline");
+  await expectWorkspaceReady(page);
+
+  const menu = await openPatMenu(page);
+  const lineInterviewAction = menu.getByRole("menuitem", { name: /Line Interview/ });
+  await lineInterviewAction.focus();
+  await lineInterviewAction.press("Enter");
+  expect(pageErrors).toEqual([]);
+  const dialog = page.getByRole("dialog", { name: /Confirm Passed Stages|Move to Line Interview/i });
+  await expect(dialog).toBeVisible();
+  expect(mock.rpcCalls).toHaveLength(0);
+  await expect(dialog.getByText(/Phone Screening/).first()).toBeVisible();
+  await expect(dialog.getByText(/HR Interview/).first()).toBeVisible();
+  await dialog.getByRole("button", { name: "Review changes" }).click();
+  await page.getByRole("button", { name: "Save changes" }).click();
+
+  await expect.poll(() => mock.rpcCalls.at(-1)?.endpoint).toBe("app_pass_pipeline_jump_v2");
+  expect(mock.rpcCalls.at(-1)?.payload).toMatchObject({
+    candidate_id: "C-PHONE",
+    current_stage_instance_id: "00000000-0000-4000-8000-000000000001",
+    passed_stages: [
+      { stage: "Phone Screen", round: 1, outcome: { result: "pass" } },
+      { stage: "HR Interview", round: 1, outcome: { result: "pass" } }
+    ],
+    target_pending: { stage: "Line Interview", round: 1 }
+  });
+});
+
+test("candidate detail separates current pending details from outcome history and stays read-only for viewers", async ({ page }) => {
+  await installMockSupabase(page, { role: "viewer" });
+  await page.goto("/pipeline");
+  await expectWorkspaceReady(page);
+
+  await page.getByRole("button", { name: /^Pat Phone/ }).click();
+  const dialog = page.getByRole("dialog", { name: /C-PHONE/ });
+  await expect(dialog.getByText("Current stage")).toBeVisible();
+  await expect(dialog.getByText("Pending details")).toBeVisible();
+  await expect(dialog.getByText("Awaiting outcome")).toBeVisible();
+  await expect(dialog.getByText("Resume Screening")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Candidate actions for Pat Phone" })).toHaveCount(0);
+});
+
+test("Reference Check requires available references to be checked before Pass", async ({ page }) => {
+  const mock = await installMockSupabase(page, { role: "admin_recruiter" });
+  await page.goto("/pipeline");
+  await expectWorkspaceReady(page);
+
+  await page.getByRole("button", { name: "Candidate actions for Rae Reference" }).click();
+  const menu = page.getByRole("menu", { name: "Candidate actions for Rae Reference" });
+  await expect(menu.getByRole("menuitem").filter({ hasText: "Pass stage" })).toBeDisabled();
+  await menu.getByRole("menuitem", { name: "Manage reference checks" }).click();
+
+  const detail = page.getByRole("dialog", { name: /C-REF/ });
+  await expect(detail.getByText("References")).toBeVisible();
+  await detail.getByRole("button", { name: "Record check" }).click();
+  const checkDialog = page.getByRole("dialog", { name: /Reference check/i });
+  await checkDialog.getByLabel("Conversation duration (minutes)").fill("18");
+  await checkDialog.getByLabel("Conversation summary").fill("Confirmed role scope and collaboration.");
+  await checkDialog.getByRole("button", { name: "Review changes" }).click();
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect.poll(() => mock.rpcCalls.at(-1)?.endpoint).toBe("app_save_candidate_reference_check_v1");
+
+  await page.getByRole("button", { name: "Candidate actions for Rae Reference" }).click();
+  const readyMenu = page.getByRole("menu", { name: "Candidate actions for Rae Reference" });
+  await expect(readyMenu.getByRole("menuitem").filter({ hasText: "Pass stage" })).toBeEnabled();
 });

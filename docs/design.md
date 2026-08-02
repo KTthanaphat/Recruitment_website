@@ -4,7 +4,7 @@
 
 ## 1. Document purpose
 
-This document defines the visual language, interface rules, component behavior, and implementation guidance for the internal ATS. It should be treated as the shared source of truth for product, design, and engineering decisions.
+This document defines visual language, layout, styling, and interaction presentation for the internal ATS. It is the visual source of truth; product behavior and restrictions belong in `docs/WEBSITE_STRUCTURE.md`, with the focused Candidate Pipeline audit and implementation plan in `docs/CANDIDATE_PIPELINE_ADJUSTMENT_PLAN.md`.
 
 The design system is intentionally simple: a Swiss-inspired grid, a mostly monochromatic blue palette, restrained decoration, clear hierarchy, generous whitespace, and friendly 2D illustrations that communicate the big picture without adding visual noise.
 

@@ -1,6 +1,8 @@
 import { PROCESS_STAGES, SOURCING_CHANNELS } from "@/lib/constants";
 import type {
   Candidate,
+  CandidateReference,
+  CandidateReferenceCheck,
   ChangeLog,
   DashboardData,
   DocumentGroup,
@@ -27,6 +29,8 @@ export const emptyDashboardData: DashboardData = {
   position_groups: [],
   document_groups: [],
   candidates: [],
+  candidate_references: [],
+  candidate_reference_checks: [],
   recruitment_logs: [],
   offers: [],
   sourcing_weekly_updates: [],
@@ -69,6 +73,8 @@ export async function loadDashboardData(client: SupabaseLike): Promise<Dashboard
     positionGroups,
     documentGroups,
     candidates,
+    candidateReferences,
+    candidateReferenceChecks,
     recruitmentLogs,
     offers,
     sourcingWeeklyUpdates,
@@ -82,6 +88,8 @@ export async function loadDashboardData(client: SupabaseLike): Promise<Dashboard
     selectAll<PositionGroup>(client, "position_groups", "updated_at"),
     selectAll<DocumentGroup>(client, "document_groups", "updated_at"),
     selectAll<Candidate>(client, "candidates", "updated_at"),
+    selectAll<CandidateReference>(client, "candidate_references", "updated_at"),
+    selectAll<CandidateReferenceCheck>(client, "candidate_reference_checks", "updated_at"),
     selectLimited<RecruitmentLog>(client, "recruitment_logs", "created_at", 250),
     selectAll<Offer>(client, "offers", "updated_at"),
     selectAll<SourcingWeeklyUpdate>(client, "sourcing_weekly_updates", "updated_at"),
@@ -93,6 +101,8 @@ export async function loadDashboardData(client: SupabaseLike): Promise<Dashboard
 
   const userId = userResult.data.user?.id;
   const profile = profiles.find((row) => row.id === userId) ?? null;
+  // v2 keeps corrected/superseded stage rows for audit, but operational views must use canonical rows only.
+  const activeRecruitmentLogs = recruitmentLogs.filter((row) => !row.superseded_at && !row.superseded_by_stage_instance_id);
 
   return {
     profile,
@@ -102,7 +112,9 @@ export async function loadDashboardData(client: SupabaseLike): Promise<Dashboard
     position_groups: positionGroups,
     document_groups: documentGroups,
     candidates,
-    recruitment_logs: recruitmentLogs,
+    candidate_references: candidateReferences,
+    candidate_reference_checks: candidateReferenceChecks,
+    recruitment_logs: activeRecruitmentLogs,
     offers,
     sourcing_weekly_updates: sourcingWeeklyUpdates,
     vacancy_weekly_snapshots: vacancyWeeklySnapshots,
