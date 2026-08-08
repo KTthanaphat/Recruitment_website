@@ -241,7 +241,7 @@ Requisition form:
 - Level label is `Level (L)`.
 - Level is a dropdown from `0` to `14`.
 - SLA age starts from PR approved date using calendar days.
-- SLA thresholds are L0-L3: 30 days, L4-L9: 45 days, and L10-L14: 60 days.
+- SLA thresholds are L0-L6: 30 days, L7-L9: 45 days, and L10-L14: 60 days.
 - Unknown/missing PR approved date or unknown/out-of-range level displays SLA as neutral `-`.
 - Open overdue status applies only when status is not filled/cancel, open headcount is greater than `0`, and age is greater than SLA.
 - Requisition cards/tables show age/SLA context; overdue open Doc IDs render red.

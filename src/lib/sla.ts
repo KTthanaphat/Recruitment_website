@@ -25,7 +25,7 @@ export function getSlaDays(level: string | null | undefined) {
   if (!level) return null;
   const numericLevel = Number.parseInt(level.replace(/^L/i, ""), 10);
   if (Number.isNaN(numericLevel) || numericLevel < 0 || numericLevel > 14) return null;
-  if (numericLevel <= 3) return 30;
+  if (numericLevel <= 6) return 30;
   if (numericLevel <= 9) return 45;
   return 60;
 }

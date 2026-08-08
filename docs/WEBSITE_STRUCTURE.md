@@ -185,7 +185,7 @@ Requisitions:
 - `Position` appears after `Section`.
 - `Level (L)` is a dropdown from `0` to `14`.
 - SLA age starts from `pr_approved_date` and uses calendar days.
-- SLA thresholds are L0-L3: 30 days, L4-L9: 45 days, and L10-L14: 60 days.
+- SLA thresholds are L0-L6: 30 days, L7-L9: 45 days, and L10-L14: 60 days.
 - Operational overdue styling applies only to open requisitions with open headcount, valid PR approved date, valid level threshold, and age greater than SLA.
 - Requisition list and Home Needs Action show age/SLA context; overdue open Doc IDs render red.
 - Requisition Fill Readiness is tone-colored text in records and detail drawers, not a boxed tag.
