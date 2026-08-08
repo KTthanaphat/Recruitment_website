@@ -10,7 +10,7 @@ import { Tag } from "@/components/ui/Tag";
 import { DataQualityPanel, SourcingConversionPanel } from "@/components/ui/Workflow";
 import { ACTIVE_PIPELINE_STAGES, processLabel, SOURCING_CHANNELS } from "@/lib/constants";
 import { enrichCandidates, enrichOffers, enrichRequisitions, enrichSourcingGroups } from "@/lib/data";
-import { formatDate, resultText, statusTone } from "@/lib/format";
+import { formatDate, formatRequisitionOptionLabel, formatRequisitionTitle, resultText, statusTone } from "@/lib/format";
 import { actionToneLabel, fillReadinessLabel, offerStatusLabel, translate } from "@/lib/i18n/dictionary";
 import {
   deriveDataQualityIssues,
@@ -434,7 +434,22 @@ function GroupDocumentSelector({ language, requisitions, selectedDocId, onSelect
         <Panel variant="subtle" className="mb-4">
       <SectionTitle title={translate(language, "workspaceRequisitionContext")} eyebrow={translate(language, "workspaceRequisitionContextHelp")} />
       <div className="flex min-w-0 gap-2 overflow-x-auto pb-1">
-        {requisitions.map((requisition) => <button key={requisition.doc_id} type="button" aria-pressed={selectedDocId === requisition.doc_id} className={`min-h-9 shrink-0 rounded-lg px-3 text-sm font-semibold ring-1 ring-inset transition-colors ${selectedDocId === requisition.doc_id ? "bg-primary text-white ring-primary" : "bg-white text-navy ring-[#C9D5E6] hover:bg-[#F8FAFD]"}`} onClick={() => onSelect(requisition.doc_id)}>{requisition.doc_id} - {requisition.position}</button>)}
+        {requisitions.map((requisition) => {
+          const active = selectedDocId === requisition.doc_id;
+          return (
+            <button
+              key={requisition.doc_id}
+              type="button"
+              aria-label={formatRequisitionOptionLabel(requisition)}
+              aria-pressed={active}
+              className={`grid min-h-11 shrink-0 gap-0.5 rounded-lg px-3 py-1.5 text-left ring-1 ring-inset transition-colors ${active ? "bg-primary text-white ring-primary" : "bg-white text-navy ring-[#C9D5E6] hover:bg-[#F8FAFD]"}`}
+              onClick={() => onSelect(requisition.doc_id)}
+            >
+              <span className="max-w-64 break-words text-sm font-semibold leading-tight">{formatRequisitionTitle(requisition)}</span>
+              <span className={`text-[10px] font-medium ${active ? "text-white/80" : "text-cool"}`}>{translate(language, "requisitionId")}: {requisition.doc_id}</span>
+            </button>
+          );
+        })}
       </div>
     </Panel>
   );
@@ -443,7 +458,7 @@ function GroupDocumentSelector({ language, requisitions, selectedDocId, onSelect
 function WorkspacePicker({ candidates, canCreate, groups, invalidTarget, language, mode, onCreate, onModeChange, onSelect, requisitions }: { candidates: EnrichedCandidate[]; canCreate: boolean; groups: EnrichedSourcingGroup[]; invalidTarget: boolean; language: Language; mode: PickerMode; onCreate: () => void; onModeChange: (mode: PickerMode) => void; onSelect: (target: SelectedWorkspaceTarget) => void; requisitions: EnrichedRequisition[] }) {
   const [query, setQuery] = useState("");
   const normalizedQuery = query.trim().toLowerCase();
-  const filteredRequisitions = requisitions.filter((row) => !normalizedQuery || [row.doc_id, row.position, row.site, row.department, row.person_in_charge].filter(Boolean).join(" ").toLowerCase().includes(normalizedQuery));
+  const filteredRequisitions = requisitions.filter((row) => !normalizedQuery || [row.doc_id, row.position, row.level, row.site, row.department, row.person_in_charge].filter(Boolean).join(" ").toLowerCase().includes(normalizedQuery));
   const filteredGroups = groups.filter((group) => !normalizedQuery || [group.group_id, group.group_position, group.sites.join(" "), group.owners.join(" "), group.doc_ids.join(" ")].join(" ").toLowerCase().includes(normalizedQuery));
   const rows = mode === "requisitions" ? filteredRequisitions.slice(0, 12) : filteredGroups.slice(0, 12);
   return (
@@ -454,7 +469,7 @@ function WorkspacePicker({ candidates, canCreate, groups, invalidTarget, languag
         {rows.length === 0 ? <EmptyState message={translate(language, "noMatchingWorkspaces")} /> : null}
         {mode === "requisitions" ? (rows as EnrichedRequisition[]).map((row) => {
           const candidateCount = candidates.filter((candidate) => candidate.doc_ids.includes(row.doc_id)).length;
-          return <button key={row.doc_id} type="button" className="ats-card grid min-w-0 gap-2 p-3 text-left" onClick={() => onSelect({ type: "requisition", id: row.doc_id })}><div className="flex min-w-0 items-start justify-between gap-2"><strong className="break-words text-navy">{row.doc_id}</strong><Tag tone={row.open_headcount > 0 ? "warning" : "success"}>{translate(language, "openCount", { count: row.open_headcount })}</Tag></div><p className="break-words font-medium text-slate">{row.position}</p><p className="text-xs font-medium text-cool">{row.site} - {row.person_in_charge ?? "-"} - {translate(language, "candidatesCount", { count: candidateCount })}</p></button>;
+          return <button key={row.doc_id} type="button" aria-label={formatRequisitionOptionLabel(row)} className="ats-card grid min-w-0 gap-1.5 p-3 text-left" onClick={() => onSelect({ type: "requisition", id: row.doc_id })}><div className="flex min-w-0 items-start justify-between gap-2"><strong className="break-words text-navy">{formatRequisitionTitle(row)}</strong><Tag tone={row.open_headcount > 0 ? "warning" : "success"}>{translate(language, "openCount", { count: row.open_headcount })}</Tag></div><p className="text-xs font-medium text-cool">{translate(language, "requisitionId")}: {row.doc_id}</p><p className="text-xs font-medium text-cool">{row.site} - {row.person_in_charge ?? "-"} - {translate(language, "candidatesCount", { count: candidateCount })}</p></button>;
         }) : (rows as EnrichedSourcingGroup[]).map((group) => <button key={group.group_id} type="button" className="ats-card grid min-w-0 gap-2 p-3 text-left" onClick={() => onSelect({ type: "group", id: group.group_id })}><div className="flex min-w-0 items-start justify-between gap-2"><strong className="break-words text-navy">{group.group_id}</strong><Tag tone="muted">{translate(language, "candidatesCount", { count: group.candidate_count })}</Tag></div><p className="break-words font-medium text-slate">{group.group_position}</p><p className="text-xs font-medium text-cool">{group.sites.join(", ")} - {group.owners.join(", ") || "-"}</p></button>)}
       </div>
     </Panel>
@@ -487,7 +502,7 @@ function contextForRequisition(id: string, data: DashboardData, requisitions: En
   const relatedCandidates = candidates.filter((candidate) => docGroupIds.has(candidate.doc_group_id) || candidate.doc_ids.includes(id));
   const relatedOffers = offers.filter((offer) => offer.doc_id === id);
   const relatedGroups = groups.filter((group) => groupIds.has(group.group_id));
-  return { id, type: "requisition", title: `${requisition.doc_id} - ${requisition.position}`, meta: `${requisition.site} - ${requisition.department} - ${requisition.person_in_charge ?? translate(language, "unassigned")}`, primaryRequisition: requisition, requisitions: [requisition], groups: relatedGroups, candidates: relatedCandidates, offers: relatedOffers, openHeadcount: requisition.open_headcount, docGroupId: matches[0]?.doc_group_id ?? null, activity: activityForContext(data, relatedCandidates.map((row) => row.candidate_id), [id], [...groupIds], contextualHref, language) };
+  return { id, type: "requisition", title: formatRequisitionTitle(requisition), meta: `${translate(language, "requisitionId")}: ${requisition.doc_id} - ${requisition.site} - ${requisition.department} - ${requisition.person_in_charge ?? translate(language, "unassigned")}`, primaryRequisition: requisition, requisitions: [requisition], groups: relatedGroups, candidates: relatedCandidates, offers: relatedOffers, openHeadcount: requisition.open_headcount, docGroupId: matches[0]?.doc_group_id ?? null, activity: activityForContext(data, relatedCandidates.map((row) => row.candidate_id), [id], [...groupIds], contextualHref, language) };
 }
 
 function contextForGroup(id: string, selectedDocId: string | null, data: DashboardData, requisitions: EnrichedRequisition[], candidates: EnrichedCandidate[], offers: EnrichedOffer[], groups: EnrichedSourcingGroup[], contextualHref: (path: string) => string, language: Language): WorkspaceContext | null {

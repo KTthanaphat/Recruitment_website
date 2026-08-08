@@ -177,6 +177,7 @@ export function enrichOffers(data: DashboardData): EnrichedOffer[] {
       ...offer,
       candidate_name: candidate?.name ?? null,
       position: requisition?.position ?? null,
+      level: requisition?.level ?? null,
       site: requisition?.site ?? null,
       person_in_charge: requisition?.person_in_charge ?? null,
       request_type: requisition?.request_type ?? null

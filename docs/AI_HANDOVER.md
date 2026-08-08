@@ -235,6 +235,8 @@ Opened requisition detail:
 
 ## Requisition Rules
 
+For requisition display identity, use `formatRequisitionTitle` and `formatRequisitionOptionLabel` from `src/lib/format.ts`; the canonical normalization, ID hierarchy, Pipeline boundary, and export boundary are documented in `docs/WEBSITE_STRUCTURE.md`.
+
 Requisition form:
 
 - Position appears after Section.

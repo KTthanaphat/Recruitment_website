@@ -1,6 +1,21 @@
 import { resultLabel } from "@/lib/i18n/dictionary";
 import type { Language, ResultValue } from "@/types/recruitment";
 
+type RequisitionTitleFields = { position?: string | null; level?: string | null };
+type RequisitionOptionFields = RequisitionTitleFields & { doc_id: string };
+
+export function formatRequisitionTitle(requisition: RequisitionTitleFields) {
+  const storedPosition = requisition.position ?? "";
+  const position = storedPosition.trim() ? storedPosition : "-";
+  const rawLevel = requisition.level?.trim() ?? "";
+  const levelMatch = rawLevel.match(/^L?(0|[1-9]|1[0-4])$/i);
+  return levelMatch ? `${position} (L${levelMatch[1]})` : position;
+}
+
+export function formatRequisitionOptionLabel(requisition: RequisitionOptionFields) {
+  return `${formatRequisitionTitle(requisition)} — ${requisition.doc_id}`;
+}
+
 export function formatDate(value: string | null | undefined, language: Language = "en") {
   if (!value) return "-";
   const date = dateFromValue(value);

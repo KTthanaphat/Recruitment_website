@@ -184,6 +184,9 @@ Requisitions:
 
 - `Position` appears after `Section`.
 - `Level (L)` is a dropdown from `0` to `14`.
+- Interactive UI surfaces that present a requisition as a named record use `Position (L#)` as the primary identity. The shared formatter accepts stored numeric levels `0`-`14` with or without one case-insensitive `L` prefix, so `4`, `L4`, and `l4` all display as `L4`; missing, blank, malformed, or out-of-range levels omit the suffix and preserve the stored position text.
+- Requisition ID is compact secondary metadata. Native selection options use `Position (L#) — Requisition ID` so duplicate titles remain distinguishable. Raw IDs remain unchanged in breadcrumbs, dedicated Doc ID fields and columns, candidate Doc IDs, audit/destructive/data-quality records, URLs, search values, and payloads.
+- Candidate Pipeline cards remain candidate-first and unchanged because a group can inherit multiple requisitions. Exports, Vacancy Waterfall reporting, PDFs, XLSX, and CSV schemas continue to use their existing raw requisition fields.
 - SLA age starts from `pr_approved_date` and uses calendar days.
 - SLA thresholds are L0-L6: 30 days, L7-L9: 45 days, and L10-L14: 60 days.
 - Operational overdue styling applies only to open requisitions with open headcount, valid PR approved date, valid level threshold, and age greater than SLA.

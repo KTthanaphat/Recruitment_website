@@ -8,7 +8,7 @@ import { SortableFilterHeader, TableToolbar, type TableColumn, useTableControls 
 import { Tag } from "@/components/ui/Tag";
 import { RecordQuickActions, type RecordQuickAction } from "@/components/ui/Operations";
 import { BulkActionToolbar, BulkReviewModal } from "@/components/ui/Workflow";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatRequisitionTitle } from "@/lib/format";
 import { offerStatusLabel, translate } from "@/lib/i18n/dictionary";
 import { bulkActionDisabledReason, offerImpact, offerStatus, type BulkActionResult } from "@/lib/operations";
 import { readTableUrlState, writeTableUrlValues } from "@/lib/table-url-state";
@@ -45,7 +45,7 @@ export function OffersView({
   const columns: TableColumn<EnrichedOffer>[] = [
     { key: "candidate", label: "Candidate", value: (row) => row.candidate_name ?? row.candidate_id },
     { key: "doc_id", label: "Doc ID", value: (row) => row.doc_id },
-    { key: "position", label: "Position", value: (row) => row.position ?? "-" },
+    { key: "position", label: "Position", value: (row) => formatRequisitionTitle(row) },
     { key: "status", label: "Offer Status", value: (row) => offerStatusLabel(language, offerStatus(row).label) },
     { key: "impact", label: "Impact", value: (row) => offerImpact(row, allOffers, requisitions) },
     { key: "accepted", label: "Accepted", value: (row) => row.accepted_date ? formatDate(row.accepted_date, language) : translate(language, "pending"), sortValue: (row) => row.accepted_date ?? "" },
@@ -105,8 +105,9 @@ export function OffersView({
                 </strong>
                 {row.accepted_date ? <Tag tone="success">{formatDate(row.accepted_date, language)}</Tag> : <Tag tone="muted">{translate(language, "pending")}</Tag>}
               </div>
-              <p className="text-sm font-semibold text-navy">{row.doc_id}</p>
-              <p className="text-sm font-medium text-slate">{row.position ?? "-"} - {translate(language, "startLower")} {formatDate(row.first_working_date, language)}</p>
+              <p className="text-sm font-semibold text-navy">{formatRequisitionTitle(row)}</p>
+              <p className="text-xs font-medium text-cool">{translate(language, "requisitionId")}: {row.doc_id}</p>
+              <p className="text-sm font-medium text-slate">{translate(language, "startLower")} {formatDate(row.first_working_date, language)}</p>
               <p className="text-sm font-medium text-slate">{offerImpact(row, allOffers, requisitions)} - {translate(language, "age")} {ageLabel(row)}</p>
               <div className="mt-3">
                 <RecordQuickActions label={translate(language, "recordActionsFor", { label: row.candidate_name ?? row.candidate_id })} actions={offerActions(row, language, onOpenCandidate)} />
@@ -161,7 +162,7 @@ export function OffersView({
                     </span>
                   </td>
                   <td className="px-3 py-3 font-semibold text-navy">{row.doc_id}</td>
-                  <td className="px-3 py-3 text-slate">{row.position ?? "-"}</td>
+                  <td className="px-3 py-3 text-slate">{formatRequisitionTitle(row)}</td>
                   <td className="px-3 py-3"><Tag tone={offerStatus(row).tone}>{offerStatusLabel(language, offerStatus(row).label)}</Tag></td>
                   <td className="px-3 py-3 text-slate">{offerImpact(row, allOffers, requisitions)}</td>
                   <td className="px-3 py-3">{row.accepted_date ? <Tag tone="success">{formatDate(row.accepted_date, language)}</Tag> : <Tag tone="muted">{translate(language, "pending")}</Tag>}</td>

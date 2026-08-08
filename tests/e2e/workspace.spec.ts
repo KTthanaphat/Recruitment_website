@@ -42,10 +42,11 @@ test("group workspace shows aggregate records and keeps section when selecting r
   await page.goto("/workspace?type=group&id=GRP-ENG&section=pipeline&sourcingWeek=2026-07-06");
   await expectWorkspaceReady(page);
 
-  await expect(page.getByRole("button", { name: /REQ-HQ-1 - Engineer/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /REQ-HQ-2 - Engineer/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Engineer (L4) — REQ-HQ-1" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Engineer (L4) — REQ-HQ-2" })).toBeVisible();
+  await expect(page.getByText("LL4", { exact: false })).toHaveCount(0);
   await expect(page.getByText("Pat Phone")).toBeVisible();
-  await page.getByRole("button", { name: /REQ-HQ-2 - Engineer/ }).click();
+  await page.getByRole("button", { name: "Engineer (L4) — REQ-HQ-2" }).click();
   await expect(page).toHaveURL(/doc=REQ-HQ-2/);
   await expect(page).toHaveURL(/section=pipeline/);
   await expect(page.getByRole("tab", { name: "Pipeline" })).toHaveAttribute("aria-selected", "true");
@@ -78,7 +79,13 @@ test("workspace picker lists open requisitions and groups when no target is sele
 
   await expect(page.getByText("Choose a requisition or sourcing group to focus the workspace.")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Select a hiring workspace", level: 2 })).toBeVisible();
-  await expect(page.getByRole("button", { name: /REQ-HQ-1/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Engineer (L4) — REQ-HQ-1" })).toBeVisible();
+  await page.getByLabel("Search workspaces").fill("REQ-UNMATCHED-1");
+  await expect(page.getByRole("button", { name: /Senior Procurement Operations and Supplier Development Specialist — REQ-UNMATCHED-1/ })).toBeVisible();
+  await expect(page.getByText("Senior Procurement Operations and Supplier Development Specialist (", { exact: false })).toHaveCount(0);
+  await page.getByLabel("Search workspaces").fill("Engineer");
+  await expect(page.getByRole("button", { name: "Engineer (L4) — REQ-HQ-1" })).toBeVisible();
+  await page.getByLabel("Search workspaces").fill("");
   await page.getByRole("button", { name: "Groups" }).click();
   await expect(page.getByRole("button", { name: /GRP-ENG/ })).toBeVisible();
 });

@@ -10,7 +10,7 @@ import { StageRail } from "@/components/ui/StageRail";
 import { Tag } from "@/components/ui/Tag";
 import { DataQualityIssueCard } from "@/components/ui/Workflow";
 import { ACTIVE_PIPELINE_STAGES, processLabel } from "@/lib/constants";
-import { formatDateTime, formatNumber, statusTone, toTitle } from "@/lib/format";
+import { formatDateTime, formatNumber, formatRequisitionTitle, statusTone, toTitle } from "@/lib/format";
 import { actionToneLabel, translate } from "@/lib/i18n/dictionary";
 import { deriveWorkQueue, isCandidateAging, type DataQualityIssue } from "@/lib/operations";
 import { getRequisitionSlaState } from "@/lib/sla";
@@ -242,9 +242,10 @@ function NeedActionCard({
       onClick={() => onOpenRequisition(row.doc_id)}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <strong className={slaState.isOverdue ? "text-scarlet" : "text-navy"}>{row.doc_id} - {row.position}</strong>
+        <strong className={slaState.isOverdue ? "text-scarlet" : "text-navy"}>{formatRequisitionTitle(row)}</strong>
         <Tag tone="warning">{translate(language, "openCount", { count: row.open_headcount })}</Tag>
       </div>
+      <p className="text-xs font-medium text-cool">{translate(language, "requisitionId")}: {row.doc_id}</p>
       <p className="text-sm font-medium text-slate">{row.department} - {row.site} - {row.person_in_charge ?? translate(language, "unassigned")}</p>
       <p className="text-xs font-medium text-slate">{translate(language, "ageLabel")}: {slaState.ageDays === null ? "-" : `${slaState.ageDays}d`} - {translate(language, "slaLabel")}: {slaState.label}</p>
     </button>

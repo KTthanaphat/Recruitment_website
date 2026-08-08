@@ -1,6 +1,7 @@
 import { ACTIVE_PIPELINE_STAGES, PROCESS_UPDATE_STAGES, SOURCING_CHANNELS, processLabel } from "@/lib/constants";
 import { enrichCandidates, enrichOffers, enrichRequisitions, enrichSourcingGroups, latestLogsForCandidate } from "@/lib/data";
 import { formatLocalDateInput } from "@/lib/dates";
+import { formatRequisitionTitle } from "@/lib/format";
 import { getRequisitionSlaState } from "@/lib/sla";
 import type {
   ChangeLog,
@@ -219,8 +220,8 @@ export function deriveWorkQueue({
     if (row.status !== "ongoing" || row.open_headcount <= 0 || !sla.isOverdue) continue;
     items.push({
       id: `req:${row.doc_id}`,
-      title: `${row.doc_id} - ${row.position}`,
-      meta: `${row.site} - ${row.person_in_charge ?? "Unassigned"} - ${row.open_headcount} open - ${sla.label}`,
+      title: formatRequisitionTitle(row),
+      meta: `${row.doc_id} - ${row.site} - ${row.person_in_charge ?? "Unassigned"} - ${row.open_headcount} open - ${sla.label}`,
       actionLabel: "Overdue SLA",
       priority: 10 + (sla.ageDays ?? 0),
       recordId: row.doc_id,
@@ -263,7 +264,7 @@ export function deriveWorkQueue({
     items.push({
       id: `offer:${offer.offer_id}`,
       title: offer.candidate_name ?? offer.candidate_id,
-      meta: `${offer.doc_id} - ${offer.position ?? "-"} - ${status.label}`,
+      meta: `${formatRequisitionTitle(offer)} - ${offer.doc_id} - ${status.label}`,
       actionLabel: status.label,
       priority: status.label === "Missing start date" ? 9 : 6 + (status.ageDays ?? 0),
       recordId: offer.candidate_id,

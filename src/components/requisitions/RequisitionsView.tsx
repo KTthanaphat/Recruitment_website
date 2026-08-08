@@ -8,7 +8,7 @@ import { SortableFilterHeader, TableToolbar, type TableColumn, useTableControls 
 import { Tag } from "@/components/ui/Tag";
 import { RecordQuickActions, type RecordQuickAction } from "@/components/ui/Operations";
 import { BulkActionToolbar, BulkReviewModal } from "@/components/ui/Workflow";
-import { formatDate, statusTone } from "@/lib/format";
+import { formatDate, formatRequisitionOptionLabel, formatRequisitionTitle, statusTone } from "@/lib/format";
 import { fillReadinessLabel, requisitionStatusLabel, requestTypeLabel, translate } from "@/lib/i18n/dictionary";
 import { bulkActionDisabledReason, requisitionFillReadiness, type BulkActionResult } from "@/lib/operations";
 import { getRequisitionSlaState } from "@/lib/sla";
@@ -45,7 +45,7 @@ export function RequisitionsView({
   const tableInitialized = useRef(false);
   const columns: TableColumn<EnrichedRequisition>[] = [
     { key: "doc_id", label: translate(language, "docId"), value: (row) => row.doc_id },
-    { key: "position", label: translate(language, "position"), value: (row) => row.position },
+    { key: "position", label: translate(language, "position"), value: (row) => formatRequisitionTitle(row) },
     { key: "department", label: translate(language, "department"), value: (row) => row.department },
     { key: "request_type", label: translate(language, "requestType"), value: (row) => requestTypeLabel(language, row.request_type) },
     { key: "section", label: translate(language, "section"), value: (row) => row.section ?? "-" },
@@ -118,19 +118,19 @@ export function RequisitionsView({
               <div className="mb-2 flex items-center justify-between gap-2">
                 <div className="min-w-0">
                   <strong className={`font-semibold ${getRequisitionSlaState(row, { openOnly: true }).isOverdue ? "text-scarlet" : "text-navy"}`}>
-                    {row.doc_id}
+                    {formatRequisitionTitle(row)}
                   </strong>
                 </div>
                 <Tag tone={statusTone(row.status) as never}>{requisitionStatusLabel(language, row.status)}</Tag>
               </div>
-              <p className="font-semibold text-navy">{row.position}</p>
+              <p className="text-xs font-medium text-cool">{translate(language, "requisitionId")}: {row.doc_id}</p>
               <p className="text-sm font-medium text-slate">{row.department} - {row.site}</p>
               <p className="text-sm font-medium text-slate">{translate(language, "requestType")}: {requestTypeLabel(language, row.request_type)}</p>
               <p className="text-sm font-medium text-slate">{row.person_in_charge ?? "-"} - {translate(language, "openCount", { count: row.open_headcount })} - {translate(language, "candidatesCount", { count: row.candidate_count })}</p>
               <p className="text-sm font-medium text-slate">{translate(language, "readiness")}: <ReadinessText row={row} candidates={candidates} language={language} /></p>
               <p className="text-sm font-medium text-slate">{translate(language, "ageLabel")}: {ageLabel(row)} - {translate(language, "slaLabel")}: {getRequisitionSlaState(row, { openOnly: true }).label}</p>
               <div className="mt-3">
-                <RecordQuickActions label={translate(language, "recordActionsFor", { label: row.doc_id })} actions={requisitionActions(row.doc_id, language, onOpen)} />
+                <RecordQuickActions label={translate(language, "recordActionsFor", { label: formatRequisitionOptionLabel(row) })} actions={requisitionActions(row, language, onOpen)} />
               </div>
             </article>
           ))}
@@ -181,7 +181,7 @@ export function RequisitionsView({
                       {row.doc_id}
                     </span>
                   </td>
-                  <td className="px-3 py-3 font-semibold text-navy">{row.position}</td>
+                  <td className="px-3 py-3 font-semibold text-navy">{formatRequisitionTitle(row)}</td>
                   <td className="px-3 py-3 text-slate">{row.department}</td>
                   <td className="px-3 py-3 text-slate">{requestTypeLabel(language, row.request_type)}</td>
                   <td className="px-3 py-3 text-slate">{row.section ?? "-"}</td>
@@ -198,7 +198,7 @@ export function RequisitionsView({
                   <td className="px-3 py-3 text-slate">{formatDate(row.updated_at)}</td>
                   <td className="px-3 py-3">
                     <div className="flex items-center justify-end gap-2">
-                      <RecordQuickActions label={translate(language, "recordActionsFor", { label: row.doc_id })} actions={requisitionActions(row.doc_id, language, onOpen)} />
+                      <RecordQuickActions label={translate(language, "recordActionsFor", { label: formatRequisitionOptionLabel(row) })} actions={requisitionActions(row, language, onOpen)} />
                     </div>
                   </td>
                 </tr>
@@ -248,9 +248,9 @@ function exportRequisitions(rows: EnrichedRequisition[]) {
   })));
 }
 
-function requisitionActions(docId: string, language: Language, onOpen: (docId: string) => void): RecordQuickAction[] {
+function requisitionActions(row: EnrichedRequisition, language: Language, onOpen: (docId: string) => void): RecordQuickAction[] {
   return [
-    { id: "view", label: translate(language, "viewRequisitionDetailFor", { id: docId }), icon: <Search size={16} aria-hidden="true" />, iconOnly: true, onSelect: () => onOpen(docId) }
+    { id: "view", label: translate(language, "viewRequisitionDetailFor", { id: formatRequisitionOptionLabel(row) }), icon: <Search size={16} aria-hidden="true" />, iconOnly: true, onSelect: () => onOpen(row.doc_id) }
   ];
 }
 

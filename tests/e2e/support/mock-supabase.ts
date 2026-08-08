@@ -115,10 +115,10 @@ function createRecruitmentDataset(activeRole: MockUserRole): DashboardData {
     profiles,
     requisitions: [
       requisition("REQ-HQ-1", "HQ", "Engineer", "Operations", "Alice", 5, "2026-06-01"),
-      requisition("REQ-HQ-2", "HQ", "Engineer", "Operations", "Alice", 1, "2026-06-10"),
+      requisition("REQ-HQ-2", "HQ", "Engineer", "Operations", "Alice", 1, "2026-06-10", "ongoing", "4"),
       requisition("REQ-KT1-1", "KT1", "Technician", "Production", "Bob", 3, "2026-06-03"),
       requisition("REQ-KT2-1", "KT2", "Analyst", "Planning", "Alice", 2, "2026-06-05"),
-      requisition("REQ-UNMATCHED-1", "HQ", "Buyer", "Procurement", "Alice", 1, "2026-07-08"),
+      requisition("REQ-UNMATCHED-1", "HQ", "Senior Procurement Operations and Supplier Development Specialist", "Procurement", "Alice", 1, "2026-07-08", "ongoing", null),
       requisition("REQ-CLOSED-1", "HQ", "Closed Role", "Operations", "Alice", 1, "2026-06-07", "filled")
     ],
     requisition_logs: [],
@@ -491,7 +491,17 @@ function profile(id: string, email: string, fullName: string, nickname: string, 
   return { id, email, full_name: fullName, nickname, site, role, created_at: "2026-06-01T00:00:00", updated_at: "2026-07-01T00:00:00" };
 }
 
-function requisition(docId: string, site: string, position: string, department: string, owner: string, headCount: number, date: string, status: "ongoing" | "filled" | "cancel" = "ongoing") {
+function requisition(
+  docId: string,
+  site: string,
+  position: string,
+  department: string,
+  owner: string,
+  headCount: number,
+  date: string,
+  status: "ongoing" | "filled" | "cancel" = "ongoing",
+  level: string | null = "L4"
+) {
   return {
     doc_id: docId,
     pr_approved_date: date,
@@ -499,7 +509,7 @@ function requisition(docId: string, site: string, position: string, department: 
     position,
     department,
     section: "QA",
-    level: "L4",
+    level,
     head_count: headCount,
     person_in_charge: owner,
     line_manager: "QA Manager",

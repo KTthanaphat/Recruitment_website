@@ -58,7 +58,7 @@ import {
   staleOpenSourcingGroups,
   uniqueValues
 } from "@/lib/data";
-import { boolFromForm, emptyToNull, formatDate, formatNumber, resultText, statusTone } from "@/lib/format";
+import { boolFromForm, emptyToNull, formatDate, formatNumber, formatRequisitionOptionLabel, formatRequisitionTitle, resultText, statusTone } from "@/lib/format";
 import { fillReadinessLabel, requisitionStatusLabel, requestTypeLabel, roleLabel, translate } from "@/lib/i18n/dictionary";
 import { activeProcessStage, candidatePipelineCapability, candidateProcessDisabledReason, deriveDataQualityIssues, latestSuccessfulOfferPassDate, pipelineStageRecords, requisitionFillReadiness } from "@/lib/operations";
 import { getRequisitionSlaState } from "@/lib/sla";
@@ -165,6 +165,7 @@ type GuideStep = "source_candidates" | "create_group" | "add_match" | "ask_candi
 type GuideContext = {
   doc_id?: string;
   position?: string;
+  level?: string | null;
   department?: string;
   site?: string;
   person_in_charge?: string;
@@ -676,7 +677,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     }
     if (request.kind === "group.create") {
       const requisition = data.requisitions.find((row) => row.doc_id === request.docId);
-      setGuideContext({ doc_id: request.docId, position: requisition?.position, site: requisition?.site, person_in_charge: requisition?.person_in_charge ?? undefined });
+      setGuideContext({ doc_id: request.docId, position: requisition?.position, level: requisition?.level, site: requisition?.site, person_in_charge: requisition?.person_in_charge ?? undefined });
       setGuideStep(request.docId ? "create_group" : null);
       setModalDefaults({ mode: "new", group_position: requisition?.position ?? "" });
       setActiveModal("group");
@@ -860,6 +861,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       setGuideContext({
         doc_id: createdDocId,
         position: valueAsString(payload.position),
+        level: valueAsString(payload.level) || null,
         department: valueAsString(payload.department),
         site: valueAsString(payload.site),
         person_in_charge: valueAsString(payload.person_in_charge)
@@ -1719,7 +1721,7 @@ function optionLabel(parts: Array<string | number | null | undefined>) {
 }
 
 function requisitionOptionLabel(row: DashboardData["requisitions"][number]) {
-  return optionLabel([row.doc_id, row.position]);
+  return formatRequisitionOptionLabel(row);
 }
 
 function candidateOptionLabel(row: DashboardData["candidates"][number]) {
@@ -2833,7 +2835,8 @@ function GuidePrompt({
       <Modal open title={translate(language, "guideNextStepSourceCandidates")} onClose={onLater} width="max-w-lg">
         <div className="grid gap-4">
           <div className="rounded-md border border-[#D7DEE8] bg-lightgray p-3 text-sm font-bold text-slate">
-            <p className="text-navy">{context.doc_id} - {context.position}</p>
+            <p className="text-navy">{formatRequisitionTitle(context)}</p>
+            <p className="mt-1 text-xs font-medium text-cool">{translate(language, "requisitionId")}: {context.doc_id}</p>
             <p className="mt-1">{translate(language, "guideSourceCandidatesMessage")}</p>
           </div>
           <div className="flex flex-wrap justify-end gap-2">
@@ -2849,7 +2852,8 @@ function GuidePrompt({
     <Modal open title={translate(language, "guideHaveCandidateQuestion")} onClose={onLater} width="max-w-lg">
       <div className="grid gap-4">
         <div className="rounded-md border border-[#D7DEE8] bg-lightgray p-3 text-sm font-bold text-slate">
-          <p className="text-navy">{context.doc_id} - {context.group_position ?? context.position}</p>
+          <p className="text-navy">{formatRequisitionTitle(context)}</p>
+          <p className="mt-1 text-xs font-medium text-cool">{translate(language, "requisitionId")}: {context.doc_id}</p>
           <p className="mt-1">{translate(language, "guideCandidateMessage")}</p>
         </div>
         <div className="flex flex-wrap justify-end gap-2">
@@ -2987,7 +2991,7 @@ function buildDetailBodyV2(
     );
 
     return {
-      title: `${requisition.doc_id} / ${requisition.position}`,
+      title: formatRequisitionTitle(requisition),
       headerMeta: (
         <>
           <Tag tone={statusTone(requisition.status)}>{requisitionStatusLabel(language, requisition.status)}</Tag>
@@ -2996,7 +3000,7 @@ function buildDetailBodyV2(
       ),
       headerActions: (
         <RecordActionGroup
-          label={requisition.doc_id}
+          label={formatRequisitionOptionLabel(requisition)}
           primary={{ id: "workspace", label: translate(language, "workspaceOpen"), href: href(`/workspace?type=requisition&id=${encodeURIComponent(requisition.doc_id)}&section=overview`), tone: "primary", iconOnly: true }}
           items={[
             ...(canWrite ? [{ id: "change-record", label: translate(language, "changeRecord"), onSelect: () => onChangeRequisition(requisition.doc_id) }] : []),
@@ -3021,6 +3025,7 @@ function buildDetailBodyV2(
           ]} />
           <InlineDataQualityIssues issues={issues} language={language} />
           <DetailGrid rows={[
+            [translate(language, "requisitionId"), requisition.doc_id],
             [translate(language, "site"), requisition.site],
             [translate(language, "department"), requisition.department],
             [translate(language, "section"), requisition.section ?? "-"],
@@ -3238,7 +3243,7 @@ function buildDetailBody(detail: { type: "requisition" | "candidate"; id: string
     const issues = deriveDataQualityIssues(data).filter((issue) => issue.entityId === requisition.doc_id || candidates.some((candidate) => candidate.candidate_id === issue.entityId) || offers.some((offer) => String(offer.offer_id) === issue.entityId));
 
     return {
-      title: `${requisition.doc_id} · ${requisition.position}`,
+      title: formatRequisitionTitle(requisition),
       body: (
         <div className="grid gap-5">
           <div className="rounded-md border border-[#D7DEE8] bg-lightgray/70 p-4">
@@ -3250,7 +3255,7 @@ function buildDetailBody(detail: { type: "requisition" | "candidate"; id: string
               <Tag tone={readiness.tone}>{fillReadinessLabel(language, readiness.label)}</Tag>
             </div>
             <RecordActionGroup
-              label={requisition.doc_id}
+              label={formatRequisitionOptionLabel(requisition)}
               primary={{ id: "workspace", href: `/workspace?type=requisition&id=${encodeURIComponent(requisition.doc_id)}`, label: "Open workspace", tone: "primary", iconOnly: true }}
               items={[
                 { id: "sourcing", href: `/sourcing?site=${encodeURIComponent(requisition.site)}&pic=${encodeURIComponent(requisition.person_in_charge ?? "")}`, label: "Open sourcing", tone: "primary" },
@@ -3261,6 +3266,7 @@ function buildDetailBody(detail: { type: "requisition" | "candidate"; id: string
           </div>
           <InlineDataQualityIssues issues={issues} language={language} />
           <DetailGrid rows={[
+            [translate(language, "requisitionId"), requisition.doc_id],
             ["Site", requisition.site],
             ["Department", requisition.department],
             ["Section", requisition.section ?? "-"],

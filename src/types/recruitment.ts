@@ -296,6 +296,7 @@ export type EnrichedCandidate = Candidate & {
 export type EnrichedOffer = Offer & {
   candidate_name: string | null;
   position: string | null;
+  level: string | null;
   site: string | null;
   person_in_charge: string | null;
   request_type: RequisitionRequestType | null;

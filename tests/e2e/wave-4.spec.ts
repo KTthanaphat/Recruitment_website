@@ -134,10 +134,12 @@ test("record tables expose only magnifying-glass detail controls and drawer chan
   await expect(page.locator("table").getByRole("button", { name: /More actions/ })).toHaveCount(0);
   await expect(page.locator("table").getByRole("button", { name: "Edit REQ-HQ-1" })).toHaveCount(0);
   await expect(page.locator("table").getByRole("link", { name: "Workspace" })).toHaveCount(0);
-  await page.getByRole("button", { name: "View requisition detail for REQ-HQ-1" }).click();
-  const requisitionDrawer = page.getByRole("dialog", { name: /REQ-HQ-1/ });
+  await page.getByRole("button", { name: "View requisition detail for Engineer (L4) — REQ-HQ-1" }).click();
+  const requisitionDrawer = page.getByRole("dialog", { name: "Engineer (L4)" });
   await expect(requisitionDrawer).toBeVisible();
-  await requisitionDrawer.getByRole("button", { name: "More actions for REQ-HQ-1" }).click();
+  await expect(requisitionDrawer).toContainText("Requisition ID");
+  await expect(requisitionDrawer).toContainText("REQ-HQ-1");
+  await requisitionDrawer.getByRole("button", { name: "More actions for Engineer (L4) — REQ-HQ-1" }).click();
   await requisitionDrawer.getByRole("menuitem", { name: "Change record" }).click();
   await expect(page.getByRole("dialog", { name: "Edit Requisition" })).toBeVisible();
   await page.keyboard.press("Escape");
@@ -191,7 +193,7 @@ test("sourcing shows unmatched groups with match action and no weekly save field
   const matchDialog = page.getByRole("dialog", { name: "Match Requisition and Group" });
   await expect(matchDialog).toBeVisible();
   await expect(matchDialog.getByLabel("Group ID")).toHaveValue("GRP-BUY");
-  await expect(matchDialog.getByLabel("Doc ID")).toContainText("REQ-UNMATCHED-1");
+  await expect(matchDialog.getByLabel("Doc ID")).toContainText("Senior Procurement Operations and Supplier Development Specialist — REQ-UNMATCHED-1");
 });
 
 test("sourcing unmatch uses destructive confirmation and RPC", async ({ page }) => {

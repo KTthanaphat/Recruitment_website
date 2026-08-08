@@ -6,7 +6,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { RecordActionGroup, type RecordAction } from "@/components/ui/Operations";
 import { Panel, SectionTitle } from "@/components/ui/Panel";
 import { Tag } from "@/components/ui/Tag";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatRequisitionOptionLabel, formatRequisitionTitle } from "@/lib/format";
 import { offerStatusLabel, translate } from "@/lib/i18n/dictionary";
 import { offerStatus } from "@/lib/operations";
 import type { EnrichedCandidate, EnrichedOffer, EnrichedRequisition, Language, Offer, Profile, WorkspaceActionRequest } from "@/types/recruitment";
@@ -92,8 +92,9 @@ export function WorkspaceOfferSection({
           <div className="grid gap-2 sm:grid-cols-2">
             {reconciliationRows.map((row) => (
               <div key={row.doc_id} className="flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-md border border-[#E8D7A4] bg-white/70 p-2">
-                <button type="button" className="min-w-0 break-words text-left text-sm font-semibold text-navy focus:outline-none focus:ring-2 focus:ring-primary/25" onClick={() => onOpenRequisition(row.doc_id)}>
-                  {row.doc_id} <span className="font-medium text-slate">({acceptedFor(row.doc_id, allOffers)}/{row.head_count})</span>
+                <button type="button" aria-label={formatRequisitionOptionLabel(row)} className="grid min-w-0 gap-0.5 break-words text-left focus:outline-none focus:ring-2 focus:ring-primary/25" onClick={() => onOpenRequisition(row.doc_id)}>
+                  <span className="text-sm font-semibold text-navy">{formatRequisitionTitle(row)} <span className="font-medium text-slate">({acceptedFor(row.doc_id, allOffers)}/{row.head_count})</span></span>
+                  <span className="text-[10px] font-medium text-cool">{translate(language, "requisitionId")}: {row.doc_id}</span>
                 </button>
                 <button
                   type="button"
@@ -141,7 +142,8 @@ export function WorkspaceOfferSection({
                     </button>
                     <Tag tone={status.tone}>{offerStatusLabel(language, status.label)}</Tag>
                   </div>
-                  <p className="break-words text-sm font-semibold text-navy">{offer.doc_id}{offer.position ? ` - ${offer.position}` : ""}</p>
+                  <p className="break-words text-sm font-semibold text-navy">{formatRequisitionTitle(offer)}</p>
+                  <p className="text-[10px] font-medium text-cool">{translate(language, "requisitionId")}: {offer.doc_id}</p>
                   <div className="flex min-w-0 flex-wrap gap-x-3 gap-y-1 text-xs font-medium text-slate">
                     <span>HC impact: {impact}</span>
                     <span>Accepted: {formatDate(offer.accepted_date)}</span>
