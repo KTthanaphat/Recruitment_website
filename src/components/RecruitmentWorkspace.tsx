@@ -1,7 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { FormEvent, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Check, ChevronDown, SlidersHorizontal } from "lucide-react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AdminView } from "@/components/admin/AdminView";
 import { AuditView } from "@/components/audit/AuditView";
 import { CandidatesView } from "@/components/candidates/CandidatesView";
@@ -46,6 +47,7 @@ import { dailyWelcomeMessage } from "@/lib/daily-messages";
 import { appendLegacyOption, departmentOptions, sectionOptionsForDepartment, type DepartmentSectionRow } from "@/lib/department-section-data";
 import {
   emptyDashboardData,
+  loadCompanyDashboardReport,
   enrichCandidates,
   enrichOffers,
   enrichRequisitions,
@@ -67,6 +69,7 @@ import { asNumber, requireFields } from "@/lib/validation/forms";
 import { buildContextualHref, pushWorkspaceUrlState, readWorkspaceUrlState as readWorkspaceUrlParams, updateWorkspaceUrlState, useWorkspaceUrlState } from "@/lib/workspace-url-state";
 import type {
   DashboardData,
+  DashboardReportData,
   EnrichedCandidate,
   EnrichedRequisition,
   Language,
@@ -180,7 +183,7 @@ type WelcomeSummary = {
   openVacancy: number;
   activeCandidates: number;
   offerFinalizationNeeded: number;
-  filledLast7Days: number;
+  filledThisMonth: number;
   responsibleVacancyTotal: number;
   filledResponsibleVacancyRatio: number;
   filledResponsibleVacancyBucket: WelcomeRatioBucket;
@@ -232,11 +235,66 @@ const rpcByModal: Record<Exclude<ModalName, null | "user">, string> = {
   snapshot: "app_upsert_vacancy_weekly_snapshot"
 };
 
+function HeaderFilterPicker({
+  label,
+  allLabel,
+  options,
+  value,
+  onValueChange,
+  className = ""
+}: {
+  label: string;
+  allLabel: string;
+  options: readonly string[];
+  value: string;
+  onValueChange: (value: string) => void;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+  const selectedLabel = value || allLabel;
+
+  useEffect(() => {
+    const close = (event: MouseEvent) => {
+      if (!ref.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, []);
+
+  return (
+    <div ref={ref} className={`relative ${className}`}>
+      <button type="button" className="flex min-h-9 w-full items-center gap-2 rounded-xl border border-[#B8CCE4] bg-[#F8FAFD] px-3 text-left text-sm font-semibold text-primary shadow-sm transition hover:border-primary/60 hover:bg-white focus:outline-none focus:ring-2 focus:ring-primary/25" aria-label={label} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((current) => !current)}>
+        <SlidersHorizontal size={15} className="shrink-0" aria-hidden="true" />
+        <span className="min-w-0 flex-1 truncate">{selectedLabel}</span>
+        <ChevronDown size={16} className={`shrink-0 transition-transform ${open ? "rotate-180" : ""}`} aria-hidden="true" />
+      </button>
+      {open ? <div role="listbox" aria-label={label} className="absolute right-0 z-50 mt-2 grid w-full min-w-[12rem] grid-cols-1 gap-1.5 rounded-2xl border border-[#C9D5E6] bg-white p-2 shadow-[0_18px_40px_rgba(11,19,43,0.18)]">
+        {[{ value: "", label: allLabel }, ...options.map((option) => ({ value: option, label: option }))].map((option) => {
+          const selected = option.value === value;
+          return <button key={option.value || "all"} type="button" role="option" aria-selected={selected} className={`relative min-h-10 rounded-xl border px-3 py-2 text-left text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-primary/30 ${selected ? "border-primary bg-primary text-white shadow-sm" : "border-[#E4E9F2] bg-[#F8FAFD] text-navy hover:border-[#8AAED8] hover:bg-white"}`} onClick={() => { onValueChange(option.value); setOpen(false); }}>
+            <span className="block pr-5">{option.label}</span>
+            {selected ? <Check size={16} className="absolute right-3 top-1/2 -translate-y-1/2" aria-hidden="true" /> : null}
+          </button>;
+        })}
+      </div> : null}
+    </div>
+  );
+}
+
 export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const router = useRouter();
   const workspaceUrlState = useWorkspaceUrlState();
   const [language, setLanguage] = useState<Language>("th");
   const [data, setData] = useState<DashboardData>(emptyDashboardData);
+  const [companyDashboardReport, setCompanyDashboardReport] = useState<DashboardReportData | null>(null);
   const [workspaceLoadState, setWorkspaceLoadState] = useState<WorkspaceLoadState>("checking_session");
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("Loading recruitment records...");
@@ -292,8 +350,9 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
 
     setWorkspaceLoadState("loading_data");
     try {
-      const loaded = await loadDashboardData(supabase);
+      const [loaded, dashboardReport] = await Promise.all([loadDashboardData(supabase), loadCompanyDashboardReport(supabase)]);
       setData(loaded);
+      setCompanyDashboardReport(dashboardReport);
       setStatus("Recruitment records loaded.");
       setWorkspaceLoadState("ready");
       return loaded;
@@ -386,8 +445,8 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const staleSourcingGroups = useMemo(() => staleOpenSourcingGroups(data), [data]);
   const dataQualityIssues = useMemo(() => deriveDataQualityIssues(data), [data]);
   const welcomeSummary = useMemo(
-    () => buildWelcomeSummary(enrichedRequisitions, enrichedCandidates, data.offers, data.profile),
-    [data.offers, data.profile, enrichedCandidates, enrichedRequisitions]
+    () => buildWelcomeSummary(enrichedRequisitions, enrichedCandidates, data.offers, data.requisition_logs, data.profile),
+    [data.offers, data.profile, data.requisition_logs, enrichedCandidates, enrichedRequisitions]
   );
 
   const filteredRequisitions = useMemo(() => filterByText(enrichedRequisitions, filters), [enrichedRequisitions, filters]);
@@ -1002,28 +1061,8 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       activeView={initialView}
       headerControls={(
         <>
-          <div className="w-full min-w-[8.5rem] sm:w-36">
-            <select
-              aria-label={translate(language, "site")}
-              className="min-h-9 w-full rounded-lg bg-[#E8F0FF] px-3 text-sm font-semibold text-primary ring-1 ring-inset ring-[#C4D8FF] transition hover:bg-[#DDEAFF] focus:outline-none focus:ring-2 focus:ring-primary/35"
-              value={filters.site}
-              onChange={(event) => setFilters((old) => ({ ...old, site: event.target.value }))}
-            >
-              <option value="">{translate(language, "allSites")}</option>
-              {siteOptions.map((value) => <option key={value} value={value}>{value}</option>)}
-            </select>
-          </div>
-          <div className="w-full min-w-[11rem] sm:w-48">
-            <select
-              aria-label={translate(language, "personInCharge")}
-              className="min-h-9 w-full rounded-lg bg-[#E8F0FF] px-3 text-sm font-semibold text-primary ring-1 ring-inset ring-[#C4D8FF] transition hover:bg-[#DDEAFF] focus:outline-none focus:ring-2 focus:ring-primary/35"
-              value={filters.owner}
-              onChange={(event) => setFilters((old) => ({ ...old, owner: event.target.value }))}
-            >
-              <option value="">{translate(language, "allOwners")}</option>
-              {ownerOptions.map((value) => <option key={value} value={value}>{value}</option>)}
-            </select>
-          </div>
+          <HeaderFilterPicker label={translate(language, "site")} allLabel={translate(language, "allSites")} options={siteOptions} value={filters.site} onValueChange={(value) => setFilters((old) => ({ ...old, site: value }))} className="w-full min-w-[8.5rem] sm:w-36" />
+          <HeaderFilterPicker label={translate(language, "personInCharge")} allLabel={translate(language, "allOwners")} options={ownerOptions} value={filters.owner} onValueChange={(value) => setFilters((old) => ({ ...old, owner: value }))} className="w-full min-w-[11rem] sm:w-48" />
         </>
       )}
       language={language}
@@ -1046,7 +1085,12 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       ) : null}
 
       {initialView === "dashboard" ? (
-        <VacancyWaterfallView language={language} data={data} requisitions={filteredRequisitions} offers={filteredOffers} />
+        <VacancyWaterfallView
+          language={language}
+          data={companyDashboardReport ? { ...data, ...companyDashboardReport } : data}
+          requisitions={companyDashboardReport ? enrichRequisitions({ ...data, ...companyDashboardReport }) : filteredRequisitions}
+          offers={companyDashboardReport ? enrichOffers({ ...data, ...companyDashboardReport }) : filteredOffers}
+        />
       ) : null}
 
       {initialView === "workspace" ? (
@@ -2681,7 +2725,7 @@ function WelcomeBackPrompt({
                   <p className="text-xs font-semibold uppercase tracking-normal text-slate">{translate(language, "welcomeFilledRatioLabel")}</p>
                   <p className="mt-0.5 text-xs font-medium text-slate">
                     {translate(language, "welcomeFilledRatioHelper")
-                      .replace("{filled}", formatNumber(summary.filledLast7Days, language))
+                      .replace("{filled}", formatNumber(summary.filledThisMonth, language))
                       .replace("{total}", formatNumber(summary.responsibleVacancyTotal, language))}
                   </p>
                 </div>
@@ -2721,20 +2765,21 @@ function buildWelcomeSummary(
   requisitions: EnrichedRequisition[],
   candidates: EnrichedCandidate[],
   offers: DashboardData["offers"],
+  requisitionLogs: DashboardData["requisition_logs"],
   profile: DashboardData["profile"]
 ): WelcomeSummary {
   const responsibleRequisitions = responsibleRows(requisitions, profile);
   const responsibleCandidates = responsibleRows(candidates, profile);
   const offerCandidateIds = new Set(offers.map((offer) => offer.candidate_id));
   const actionableRequisitions = responsibleRequisitions.filter((row) => row.status !== "filled" && row.status !== "cancel" && row.open_headcount > 0);
-  const responsibleVacancyRequisitions = responsibleRequisitions.filter((row) => row.status !== "cancel");
+  const responsibleVacancyRequisitions = responsibleRequisitions.filter((row) => isPimEligible(row, offers, requisitionLogs));
   const responsibleDocIds = new Set(responsibleVacancyRequisitions.map((row) => row.doc_id));
   const responsibleVacancyTotal = responsibleVacancyRequisitions.reduce((sum, row) => sum + row.head_count, 0);
-  const filledLast7Days = offers.filter((offer) =>
-    responsibleDocIds.has(offer.doc_id) && isWithinLast7CalendarDays(offer.accepted_date)
+  const filledThisMonth = offers.filter((offer) =>
+    responsibleDocIds.has(offer.doc_id) && isAcceptedThisCalendarMonth(offer.accepted_date)
   ).length;
   const filledResponsibleVacancyRatio = responsibleVacancyTotal > 0
-    ? Math.floor((filledLast7Days / responsibleVacancyTotal) * 100)
+    ? Math.floor((filledThisMonth / responsibleVacancyTotal) * 100)
     : 0;
   const activeCandidates = responsibleCandidates.filter(
     (row) => row.latest_process !== "No activity"
@@ -2749,19 +2794,39 @@ function buildWelcomeSummary(
     openVacancy: actionableRequisitions.reduce((sum, row) => sum + row.open_headcount, 0),
     activeCandidates: activeCandidates.length,
     offerFinalizationNeeded,
-    filledLast7Days,
+    filledThisMonth,
     responsibleVacancyTotal,
     filledResponsibleVacancyRatio,
     filledResponsibleVacancyBucket: welcomeRatioBucket(filledResponsibleVacancyRatio)
   };
 }
 
-function isWithinLast7CalendarDays(value: string | null | undefined) {
+function isAcceptedThisCalendarMonth(value: string | null | undefined) {
+  if (!value || !/^\d{4}-\d{2}-\d{2}(?:$|T)/.test(value)) return false;
   const acceptedDate = dateOnly(value);
-  if (!acceptedDate) return false;
-  const endDate = todayDate();
-  const startDate = addDays(endDate, -6);
-  return acceptedDate >= startDate && acceptedDate <= endDate;
+  if (!acceptedDate || !isValidCalendarDate(acceptedDate)) return false;
+  const today = todayDate();
+  const monthStart = `${today.slice(0, 7)}-01`;
+  return acceptedDate >= monthStart && acceptedDate <= today;
+}
+
+function isPimEligible(requisition: EnrichedRequisition, offers: DashboardData["offers"], logs: DashboardData["requisition_logs"]) {
+  const today = todayDate();
+  const monthStart = `${today.slice(0, 7)}-01`;
+  const monthEnd = `${today.slice(0, 7)}-${new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 0)).getUTCDate()}`;
+  const prDate = dateOnly(requisition.pr_approved_date);
+  if (!prDate || requisition.status === "cancel" || prDate > monthEnd) return false;
+  const filledLogDate = logs.filter((log) => log.doc_id === requisition.doc_id && log.status === "filled").map((log) => dateOnly(log.log_date)).filter(Boolean).sort().at(-1);
+  const closeDate = filledLogDate ?? offers.filter((offer) => offer.doc_id === requisition.doc_id).map((offer) => dateOnly(offer.accepted_date)).filter(Boolean).sort().at(-1) ?? null;
+  return !closeDate || closeDate >= monthStart;
+}
+
+function isValidCalendarDate(value: string) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return false;
+  const [, year, month, day] = match.map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  return parsed.getUTCFullYear() === year && parsed.getUTCMonth() === month - 1 && parsed.getUTCDate() === day;
 }
 
 function welcomeRatioBucket(ratio: number): WelcomeRatioBucket {

@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { dailyWelcomeMessage, recruitmentDailyMessages } from "../../src/lib/daily-messages";
 import { expectWorkspaceReady, installMockSupabase } from "./support/mock-supabase";
 
 const englishHighWorkloadMessages = [
@@ -74,12 +75,16 @@ test("home groups recruitment records into ordered role-aware tabs", async ({ pa
   await expect(page.getByRole("tablist", { name: "Recruitment record categories" }).getByRole("tab", { name: "Recent Activity" })).toHaveCount(0);
 });
 
-test("welcome popup uses bilingual daily CSV messages by weekday and filled ratio", async ({ page }) => {
+test("welcome popup uses monthly accepted vacancies with bilingual weekday messages", async ({ page }) => {
   await installMockSupabase(page, { role: "admin_recruiter", language: "en" });
   await page.goto("/home");
   await expectWorkspaceReady(page);
   const weekday = await page.evaluate(() => new Date().getDay());
-  await expect(page.locator("[role='dialog']")).toContainText(englishHighWorkloadMessages[weekday]);
+  const welcomeDialog = page.getByRole("dialog", { name: "Welcome back" });
+  await expect(welcomeDialog).toContainText(englishHighWorkloadMessages[weekday]);
+  await expect(welcomeDialog).toContainText("Monthly filled vacancy ratio");
+  await expect(welcomeDialog).toContainText("1/13 vacancies accepted this month");
+  await expect(welcomeDialog).toContainText("7%");
 
   const thaiPage = await page.context().newPage();
   await installMockSupabase(thaiPage, { role: "admin_recruiter", language: "th" });
@@ -88,8 +93,46 @@ test("welcome popup uses bilingual daily CSV messages by weekday and filled rati
   await expect(thaiHeader).toBeVisible();
   await expect(thaiHeader.getByRole("button", { name: "EN", exact: true })).toBeVisible();
   await expect(thaiPage.locator("[role='dialog']")).not.toContainText(englishHighWorkloadMessages[weekday]);
-  await expect(thaiPage.locator("[role='dialog']")).toContainText("0%");
+  await expect(thaiPage.locator("[role='dialog']")).toContainText("อัตราเติมตำแหน่งรายเดือน");
+  await expect(thaiPage.locator("[role='dialog']")).toContainText("1/13 อัตราที่ตอบรับในเดือนนี้");
+  await expect(thaiPage.locator("[role='dialog']")).toContainText("7%");
   await thaiPage.close();
+});
+
+test("welcome popup counts only valid accepted offers in the current Bangkok month", async ({ page }) => {
+  const mock = await installMockSupabase(page, { role: "admin_recruiter" });
+  const baseOffer = mock.data.offers[1];
+  mock.data.offers.push(
+    { ...baseOffer, offer_id: 3, candidate_id: "C-MONTH-START", doc_id: "REQ-HQ-1", accepted_date: "2026-07-01" },
+    { ...baseOffer, offer_id: 4, candidate_id: "C-MONTH-TODAY", doc_id: "REQ-HQ-1", accepted_date: "2026-07-24" },
+    { ...baseOffer, offer_id: 5, candidate_id: "C-PRIOR-MONTH", doc_id: "REQ-HQ-1", accepted_date: "2026-06-30" },
+    { ...baseOffer, offer_id: 6, candidate_id: "C-FUTURE", doc_id: "REQ-HQ-1", accepted_date: "2026-07-25" },
+    { ...baseOffer, offer_id: 7, candidate_id: "C-MISSING", doc_id: "REQ-HQ-1", accepted_date: null },
+    { ...baseOffer, offer_id: 8, candidate_id: "C-MALFORMED", doc_id: "REQ-HQ-1", accepted_date: "2026-07-40" }
+  );
+
+  await page.goto("/home");
+  await expectWorkspaceReady(page);
+  const welcomeDialog = page.getByRole("dialog", { name: "Welcome back" });
+  await expect(welcomeDialog).toContainText("3/13 vacancies accepted this month");
+  await expect(welcomeDialog).toContainText("23%");
+});
+
+test("monthly fill rate keeps recruiter scope and existing CSV threshold bands", async ({ page }) => {
+  await installMockSupabase(page, { role: "site_recruiter" });
+  await page.goto("/home");
+  await expectWorkspaceReady(page);
+  const welcomeDialog = page.getByRole("dialog", { name: "Welcome back" });
+  await expect(welcomeDialog).toContainText("1/3 vacancies accepted this month");
+  await expect(welcomeDialog).toContainText("33%");
+
+  const friday = new Date("2026-07-24T05:00:00.000Z");
+  for (const ratio of [0, 0.33, 0.66]) {
+    const expected = recruitmentDailyMessages
+      .filter((row) => row.day === "Fri" && row.filledMin <= ratio)
+      .sort((a, b) => b.filledMin - a.filledMin)[0].en.replace(/\{name\}/g, "Alice");
+    expect(dailyWelcomeMessage({ language: "en", ratio, name: "Alice", date: friday, fallback: "fallback" })).toBe(expected);
+  }
 });
 
 test("sourcing shows weekly health and can copy previous week", async ({ page }) => {

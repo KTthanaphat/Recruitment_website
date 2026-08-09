@@ -174,11 +174,7 @@ Welcome Back popup:
 
 - Shows once per session/login.
 - Uses responsible actionable counts.
-- Ratio is accepted offers in the last 7 calendar days for responsible requisitions divided by total responsible non-cancelled vacancy headcount.
-- Message text comes from `recruitment_daily_messages_th_en.csv`, mirrored in `src/lib/daily-messages.ts`.
-- Select the current local weekday row with the highest `Filled%_min` less than or equal to the ratio.
-- Use the Thai or English CSV message by current language and replace `{name}` with nickname/full name/email fallback.
-- If no CSV row matches, fall back to the legacy dictionary ratio message. No backend connector changes are required.
+- Monthly filled-vacancy calculation, Bangkok boundaries, weekday CSV selection, and fallback behavior are canonical in `docs/WEBSITE_STRUCTURE.md`; runtime selection remains in `src/lib/daily-messages.ts`.
 - Primary action goes to Pipeline.
 
 Weekly Sourcing Updates on Home:
@@ -198,25 +194,15 @@ Home-only recruiter bottleneck:
 
 ## Dashboard Rules
 
-Dashboard is dedicated to Vacancy Waterfall.
+Dashboard is dedicated to Vacancy Waterfall. Its dropdown/custom-range behavior, eligibility, original site colors, company-report RPC boundary, close-date precedence, and Welcome PIM behavior are canonical in `docs/WEBSITE_STRUCTURE.md`; implementation is owned by `VacancyWaterfallView.tsx`, `RecruitmentWorkspace.tsx`, and `app_dashboard_company_report`.
 
-Waterfall logic:
-
-- Week Start: open headcount before selected start date.
-- Open: requisitions approved inside selected range.
-- Filled: accepted offers inside selected range.
-- Total: remaining vacancy grouped by site and requisition type.
-
-Keep connector/running-total logic stable unless user explicitly changes it.
+Waterfall movement bars retain their Week Start, Open, Filled, and Total connector model; use the selected calendar view's eligible requisition population. Do not duplicate the MTD/YTD/PIM formulas here; Website Structure is canonical.
 
 Current report behavior:
 
 - Curly brace callouts on final Total stack.
 - Chart PDF export.
-- Opened requisition detail PDF export.
-- Opened requisition detail XLSX export.
-- PDF exports use A4 landscape print CSS and loading overlay.
-- Opened requisition detail must remain horizontally scrollable inside its panel on screen; it must not widen the whole page.
+- Active-requisition detail/export eligibility, close-date precedence, and unchanged chart boundary are canonical in `docs/WEBSITE_STRUCTURE.md`.
 - Opened requisition detail PDF uses print-specific sizing and print-safe SLA dots.
 - Recruitment Pipeline Health is a separate collapsible funnel with its own date range, level filter, channel filter, and PDF export.
 - Funnel rows are `Applicants`, derived `Resume Screening`, then active pipeline stages.

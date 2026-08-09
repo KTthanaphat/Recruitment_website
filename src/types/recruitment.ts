@@ -302,6 +302,13 @@ export type EnrichedOffer = Offer & {
   request_type: RequisitionRequestType | null;
 };
 
+/** Read-only, company-wide data intentionally exposed to the Dashboard report only. */
+export type DashboardReportData = {
+  requisitions: Requisition[];
+  requisition_logs: RequisitionLog[];
+  offers: Offer[];
+};
+
 export type EnrichedSourcingGroup = {
   group_id: string;
   group_position: string;

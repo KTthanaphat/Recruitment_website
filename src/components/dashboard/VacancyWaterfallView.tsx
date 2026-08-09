@@ -1,10 +1,10 @@
 "use client";
 
-import { ChevronDown, Download } from "lucide-react";
+import { CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, Download, SlidersHorizontal } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Field, SelectInput, TextInput } from "@/components/ui/Field";
+import { Field, TextInput } from "@/components/ui/Field";
 import { OperationalSummaryStrip } from "@/components/ui/Operations";
 import { PipelineFunnel, type PipelineFunnelRow } from "@/components/ui/PipelineFunnel";
 import { SortableFilterHeader, type TableColumn, useTableControls } from "@/components/ui/TableControls";
@@ -15,10 +15,10 @@ import {
   SOURCING_CHANNELS,
   type PipelineDisplayStage
 } from "@/lib/constants";
-import { currentLocalYearStart, formatLocalDateInput } from "@/lib/dates";
+import { formatLocalDateInput } from "@/lib/dates";
 import { formatDate, formatNumber } from "@/lib/format";
 import { processStageLabel, requestTypeLabel, translate } from "@/lib/i18n/dictionary";
-import { getRequisitionSlaState, type RequisitionSlaState, todayDate } from "@/lib/sla";
+import { getRequisitionSlaState, getSlaDays, type RequisitionSlaState, todayDate } from "@/lib/sla";
 import { readWorkspaceUrlState, updateWorkspaceUrlState } from "@/lib/workspace-url-state";
 import type {
   DashboardData,
@@ -30,7 +30,6 @@ import type {
   VacancyWaterfallCategory
 } from "@/types/recruitment";
 
-const siteOrder = ["HQ", "KT1", "KT2"];
 const detailStages = ACTIVE_PIPELINE_STAGES;
 const funnelLevelOptions: Array<{ value: FunnelLevelBand; label: string }> = [
   { value: "all", label: "All levels" },
@@ -43,6 +42,7 @@ type PrintTarget = "chart" | "requisition-detail" | "pipeline-funnel";
 type FunnelLevelBand = "all" | "0-3" | "4-9" | "10-14";
 type FunnelChannelFilter = "all" | string;
 type FunnelStageCounts = Record<PipelineDisplayStage, number>;
+type ReportView = "mtd" | "ytd" | "pim" | "custom";
 
 type WaterfallRow = {
   waterfall_category: VacancyWaterfallCategory;
@@ -79,10 +79,15 @@ export function VacancyWaterfallView({
   requisitions: EnrichedRequisition[];
   offers: EnrichedOffer[];
 }) {
-  const [startDate, setStartDate] = useState(currentYearStart());
-  const [endDate, setEndDate] = useState(today());
+  const [reportView, setReportView] = useState<ReportView>("mtd");
+  const [reportMonth, setReportMonth] = useState(today().slice(0, 7));
+  const [customStartDate, setCustomStartDate] = useState("");
+  const [customEndDate, setCustomEndDate] = useState("");
+  const [viewMenuOpen, setViewMenuOpen] = useState(false);
+  const [monthPickerOpen, setMonthPickerOpen] = useState(false);
+  const [monthPickerYear, setMonthPickerYear] = useState(() => Number(today().slice(0, 4)));
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [funnelStartDate, setFunnelStartDate] = useState(currentYearStart());
+  const [funnelStartDate, setFunnelStartDate] = useState(`${today().slice(0, 4)}-01-01`);
   const [funnelEndDate, setFunnelEndDate] = useState(today());
   const [funnelLevelBand, setFunnelLevelBand] = useState<FunnelLevelBand>("all");
   const [funnelChannel, setFunnelChannel] = useState<FunnelChannelFilter>("all");
@@ -91,14 +96,21 @@ export function VacancyWaterfallView({
   const [exportPreparing, setExportPreparing] = useState(false);
   const [urlStateReady, setUrlStateReady] = useState(false);
   const printFallbackTimer = useRef<number | null>(null);
+  const viewMenuRef = useRef<HTMLDivElement | null>(null);
+  const monthPickerRef = useRef<HTMLDivElement | null>(null);
+  const { startDate, endDate } = useMemo(
+    () => reportRange(reportView, reportMonth, customStartDate, customEndDate),
+    [customEndDate, customStartDate, reportMonth, reportView]
+  );
+  const validReportRange = Boolean(startDate && endDate && startDate <= endDate);
 
   const waterfallRows = useMemo(
-    () => buildLiveWaterfallRows(requisitions, offers, startDate, endDate),
-    [endDate, offers, requisitions, startDate]
+    () => buildLiveWaterfallRows(data, requisitions, offers, startDate, endDate, reportView),
+    [data, endDate, offers, reportView, requisitions, startDate]
   );
   const requisitionRows = useMemo(
-    () => buildOpenedRequisitionRows(data, requisitions, startDate, endDate),
-    [data, endDate, requisitions, startDate]
+    () => buildActiveRequisitionRows(data, requisitions, startDate, endDate, reportView),
+    [data, endDate, reportView, requisitions, startDate]
   );
   const funnelRows = useMemo(
     () => buildDashboardPipelineFunnelRows(data, requisitions, funnelStartDate, funnelEndDate, funnelLevelBand, funnelChannel, language),
@@ -108,14 +120,15 @@ export function VacancyWaterfallView({
   const funnelChannelOptions = useMemo(() => buildFunnelChannelOptions(data, language), [data, language]);
   const funnelChannelLabel = channelFilterLabel(funnelChannel, language);
   const localizedFunnelLevelOptions = useMemo(() => buildFunnelLevelOptions(language), [language]);
-  const reportSummary = useMemo(() => buildReportSummary(requisitionRows, funnelRows, language), [funnelRows, language, requisitionRows]);
+  const reportSummary = useMemo(() => buildReportSummary(requisitionRows, offers, startDate, endDate, language), [endDate, language, offers, requisitionRows, startDate]);
 
   useEffect(() => {
     const params = readWorkspaceUrlState();
-    const queryStart = params.get("start");
-    const queryEnd = params.get("end");
-    if (queryStart) setStartDate(queryStart);
-    if (queryEnd) setEndDate(queryEnd);
+    if (isReportView(params.get("reportView"))) setReportView(params.get("reportView") as ReportView);
+    if (/^\d{4}-\d{2}$/.test(params.get("reportMonth") ?? "")) setReportMonth(params.get("reportMonth")!);
+    else if (/^\d{4}-\d{2}-\d{2}$/.test(params.get("end") ?? "")) setReportMonth(params.get("end")!.slice(0, 7));
+    if (/^\d{4}-\d{2}-\d{2}$/.test(params.get("start") ?? "")) setCustomStartDate(params.get("start")!);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(params.get("end") ?? "")) setCustomEndDate(params.get("end")!);
     if (params.get("details") === "open") setDetailsOpen(true);
     if (params.get("details") === "closed") setDetailsOpen(false);
     if (params.get("funnelStart")) setFunnelStartDate(params.get("funnelStart")!);
@@ -128,10 +141,31 @@ export function VacancyWaterfallView({
   }, []);
 
   useEffect(() => {
+    const closePickers = (event: MouseEvent) => {
+      if (!viewMenuRef.current?.contains(event.target as Node)) setViewMenuOpen(false);
+      if (!monthPickerRef.current?.contains(event.target as Node)) setMonthPickerOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setViewMenuOpen(false);
+        setMonthPickerOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", closePickers);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closePickers);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!urlStateReady) return;
     updateWorkspaceUrlState({
-      start: startDate,
-      end: endDate,
+      start: reportView === "custom" ? customStartDate : null,
+      end: reportView === "custom" ? customEndDate : null,
+      reportView,
+      reportMonth: reportView === "custom" ? null : reportMonth,
       details: detailsOpen ? "open" : "closed",
       funnelStart: funnelStartDate,
       funnelEnd: funnelEndDate,
@@ -139,7 +173,7 @@ export function VacancyWaterfallView({
       funnelChannel,
       funnel: funnelOpen ? "open" : "closed"
     });
-  }, [detailsOpen, endDate, funnelChannel, funnelEndDate, funnelLevelBand, funnelOpen, funnelStartDate, startDate, urlStateReady]);
+  }, [customEndDate, customStartDate, detailsOpen, funnelChannel, funnelEndDate, funnelLevelBand, funnelOpen, funnelStartDate, reportMonth, reportView, urlStateReady]);
 
   useEffect(() => {
     const clearPrintTarget = () => {
@@ -190,60 +224,98 @@ export function VacancyWaterfallView({
         [translate(language, "rows")]: requisitionRows.length
       }]);
       const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, translate(language, "openedRequisitionsSheet"));
+      XLSX.utils.book_append_sheet(workbook, worksheet, translate(language, "activeRequisitionsSheet"));
       XLSX.utils.book_append_sheet(workbook, metadata, translate(language, "exportMetadataSheet"));
-      XLSX.writeFile(workbook, `opened-requisitions-${startDate}-to-${endDate}.xlsx`);
+      XLSX.writeFile(workbook, `active-requisitions-${startDate}-to-${endDate}.xlsx`);
     } finally {
       window.setTimeout(() => setExportPreparing(false), 300);
     }
   }
 
-  function applyReportPreset(preset: "weekly" | "monthly" | "site") {
-    const end = today();
-    const days = preset === "weekly" ? 6 : 29;
-    const start = addDays(end, -days);
-    setStartDate(start);
-    setEndDate(end);
-    setFunnelStartDate(start);
-    setFunnelEndDate(end);
-    if (preset === "site") {
-      setDetailsOpen(true);
-      setFunnelOpen(true);
+  function changeReportView(nextView: ReportView) {
+    if (nextView === "custom" && reportView !== "custom") {
+      setCustomStartDate(startDate);
+      setCustomEndDate(endDate);
     }
+    setReportView(nextView);
+    setViewMenuOpen(false);
+  }
+
+  function selectReportMonth(month: number) {
+    setReportMonth(`${monthPickerYear}-${String(month).padStart(2, "0")}`);
+    setMonthPickerOpen(false);
   }
 
   return (
     <div className="grid min-w-0 max-w-full gap-4 overflow-x-hidden">
       <section className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-[#C9D5E6] bg-white py-5 font-normal shadow-[0_14px_34px_rgba(11,19,43,0.06)]">
-        <div className="mb-5 grid gap-5 border-b border-[#E4E9F2] px-4 pb-5 sm:px-6 lg:grid-cols-[1fr_auto] lg:items-start lg:px-8">
-          <div>
-            <p className="mb-1 text-xs font-medium uppercase tracking-normal text-slate">{translate(language, "weeklyRecruitmentPerformance")}</p>
-            <h2 className="text-2xl font-semibold tracking-normal text-navy sm:text-[28px]">{translate(language, "vacancyWaterfall")}</h2>
-            <p className="mt-1 text-sm font-medium text-slate">{formatDate(startDate, language)} - {formatDate(endDate, language)}</p>
-          </div>
-          <div className="grid gap-3 rounded-2xl border border-[#E4E9F2] bg-[#F8FAFD] p-3 sm:flex sm:items-start sm:justify-end">
-            <Field label={translate(language, "startDate")} className="text-xs font-medium">
-              <TextInput
-                className="min-h-10 w-full rounded-xl border border-[#C9D5E6] bg-white px-2.5 py-1.5 text-sm font-normal text-navy shadow-none focus:border-primary focus:ring-2 focus:ring-primary/20 sm:w-36"
-                type="date"
-                value={startDate}
-                onChange={(event) => setStartDate(event.target.value)}
-              />
-            </Field>
-            <Field label={translate(language, "endDate")} className="text-xs font-medium">
-              <TextInput
-                className="min-h-10 w-full rounded-xl border border-[#C9D5E6] bg-white px-2.5 py-1.5 text-sm font-normal text-navy shadow-none focus:border-primary focus:ring-2 focus:ring-primary/20 sm:w-36"
-                type="date"
-                value={endDate}
-                onChange={(event) => setEndDate(event.target.value)}
-              />
-            </Field>
-            <div className="flex flex-wrap items-end gap-2 pt-5 print:hidden">
-              <Button type="button" size="sm" variant="secondary" onClick={() => applyReportPreset("weekly")}>{translate(language, "weeklyPreset")}</Button>
-              <Button type="button" size="sm" variant="secondary" onClick={() => applyReportPreset("monthly")}>{translate(language, "monthlyPreset")}</Button>
-              <Button type="button" size="sm" variant="secondary" onClick={() => applyReportPreset("site")}>{translate(language, "siteReviewPreset")}</Button>
-              <Button type="button" size="sm" variant="secondary" icon={<Download size={16} />} disabled={exportPreparing} onClick={() => exportPdf("chart")}>{translate(language, "exportPdf")}</Button>
+        <div className="mb-5 border-b border-[#E4E9F2] px-4 pb-5 sm:px-6 lg:px-8">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h2 className="text-2xl font-semibold tracking-normal text-navy sm:text-[28px]">{translate(language, "vacancyWaterfall")}</h2>
+              <p className="mt-1 text-sm font-medium text-slate">{translate(language, "reportingWindow")}</p>
             </div>
+            <div className="inline-flex w-fit items-center gap-2 rounded-xl border border-[#C9D5E6] bg-[#F8FAFD] px-3 py-2 text-sm font-semibold text-navy shadow-sm" aria-live="polite">
+              <CalendarDays size={16} className="text-primary" aria-hidden="true" />
+              <span className="text-slate">{translate(language, "selectedPeriod")}</span>
+              <span className="tabular-nums">{formatDate(startDate, language)} - {formatDate(endDate, language)}</span>
+            </div>
+          </div>
+          <div className="mt-4 rounded-2xl border border-[#D7E2F1] bg-[linear-gradient(135deg,#F8FAFD_0%,#F1F6FC_100%)] p-3 shadow-[0_8px_20px_rgba(11,19,43,0.04)]">
+            <div className="grid gap-3 lg:grid-cols-[minmax(10rem,11rem)_10rem_auto] lg:items-end">
+            <div ref={viewMenuRef} className="grid gap-1.5 text-sm font-medium text-navy">
+              <span className="text-xs font-semibold text-slate">{translate(language, "metricView")}</span>
+              <div className="relative">
+                <button type="button" className="flex min-h-11 w-full items-center gap-2 rounded-xl border border-[#B8CCE4] bg-white px-3 text-left text-sm font-semibold text-navy shadow-sm transition hover:border-primary/60 hover:bg-[#FBFDFF] focus:outline-none focus:ring-2 focus:ring-primary/20" aria-haspopup="listbox" aria-expanded={viewMenuOpen} aria-controls="dashboard-report-view-options" onClick={() => setViewMenuOpen((open) => !open)}>
+                  <SlidersHorizontal size={16} className="shrink-0 text-primary" aria-hidden="true" />
+                  <span className="min-w-0 flex-1 truncate">{reportViewLabel(reportView, language)}</span>
+                  <ChevronDown size={17} className={`shrink-0 text-slate transition-transform ${viewMenuOpen ? "rotate-180" : ""}`} aria-hidden="true" />
+                </button>
+                {viewMenuOpen ? <div id="dashboard-report-view-options" role="listbox" aria-label={translate(language, "metricView")} className="absolute z-30 mt-2 grid w-full min-w-[13rem] grid-cols-1 gap-1.5 rounded-2xl border border-[#C9D5E6] bg-white p-2 shadow-[0_18px_40px_rgba(11,19,43,0.18)]">
+                  {(["mtd", "ytd", "pim", "custom"] as ReportView[]).map((view) => {
+                    const selected = reportView === view;
+                    return <button key={view} type="button" role="option" aria-selected={selected} className={`relative min-h-11 rounded-xl border px-3 py-2.5 text-left text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-primary/30 ${selected ? "border-primary bg-primary text-white shadow-sm" : "border-[#E4E9F2] bg-[#F8FAFD] text-navy hover:border-[#8AAED8] hover:bg-white"}`} onClick={() => changeReportView(view)}>
+                      <span className="block pr-5 leading-snug">{reportViewLabel(view, language)}</span>
+                      {selected ? <Check size={16} className="absolute right-3 top-3" aria-hidden="true" /> : null}
+                    </button>;
+                  })}
+                </div> : null}
+              </div>
+            </div>
+            {reportView === "custom" ? <>
+              <Field label={translate(language, "startDate")} className="text-xs font-semibold text-slate">
+                <TextInput className="min-h-11 rounded-xl border-[#B8CCE4] bg-white font-semibold tabular-nums shadow-sm transition hover:border-primary/60 focus:ring-2 focus:ring-primary/20" type="date" value={customStartDate} onChange={(event) => setCustomStartDate(event.target.value)} required />
+              </Field>
+              <Field label={translate(language, "endDate")} className="text-xs font-semibold text-slate">
+                <TextInput className="min-h-11 rounded-xl border-[#B8CCE4] bg-white font-semibold tabular-nums shadow-sm transition hover:border-primary/60 focus:ring-2 focus:ring-primary/20" type="date" value={customEndDate} onChange={(event) => setCustomEndDate(event.target.value)} required />
+              </Field>
+            </> : <Field label={translate(language, "reportMonth")} className="text-xs font-semibold text-slate">
+              <div ref={monthPickerRef} className="relative">
+                <button type="button" className="flex min-h-11 w-full items-center gap-2 rounded-xl border border-[#B8CCE4] bg-white px-3 text-left text-sm font-semibold text-navy shadow-sm transition hover:border-primary/60 hover:bg-[#FBFDFF] focus:outline-none focus:ring-2 focus:ring-primary/20" aria-haspopup="dialog" aria-expanded={monthPickerOpen} aria-controls="dashboard-report-month-picker" onClick={() => { setMonthPickerYear(Number(reportMonth.slice(0, 4))); setMonthPickerOpen((open) => !open); }}>
+                  <CalendarDays size={16} className="shrink-0 text-primary" aria-hidden="true" />
+                  <span className="min-w-0 flex-1 truncate tabular-nums">{monthPickerLabel(reportMonth, language)}</span>
+                  <ChevronDown size={17} className={`shrink-0 text-slate transition-transform ${monthPickerOpen ? "rotate-180" : ""}`} aria-hidden="true" />
+                </button>
+                {monthPickerOpen ? <div id="dashboard-report-month-picker" role="dialog" aria-label={translate(language, "reportMonth")} className="absolute z-30 mt-2 w-[19rem] rounded-2xl border border-[#C9D5E6] bg-white p-3 shadow-[0_18px_40px_rgba(11,19,43,0.18)]">
+                  <div className="mb-3 flex items-center justify-between rounded-xl bg-[#F8FAFD] p-1">
+                    <button type="button" className="grid size-8 place-items-center rounded-lg text-slate transition hover:bg-white hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary/20" aria-label={translate(language, "previousYear")} onClick={() => setMonthPickerYear((year) => year - 1)}><ChevronLeft size={17} /></button>
+                    <span className="text-sm font-semibold tabular-nums text-navy">{monthPickerYear}</span>
+                    <button type="button" className="grid size-8 place-items-center rounded-lg text-slate transition hover:bg-white hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary/20" aria-label={translate(language, "nextYear")} onClick={() => setMonthPickerYear((year) => year + 1)}><ChevronRight size={17} /></button>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {Array.from({ length: 12 }, (_, index) => index + 1).map((month) => {
+                      const selected = reportMonth === `${monthPickerYear}-${String(month).padStart(2, "0")}`;
+                      return <button key={month} type="button" className={`min-h-10 rounded-xl border px-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-primary/30 ${selected ? "border-primary bg-primary text-white shadow-sm" : "border-[#E4E9F2] bg-[#F8FAFD] text-navy hover:border-[#8AAED8] hover:bg-white"}`} aria-pressed={selected} onClick={() => selectReportMonth(month)}>{monthPickerMonthLabel(month, language)}</button>;
+                    })}
+                  </div>
+                </div> : null}
+              </div>
+            </Field>}
+            <div className="flex flex-wrap items-end gap-2 print:hidden lg:justify-end">
+              <Button type="button" size="sm" variant="secondary" icon={<Download size={16} />} disabled={exportPreparing || !validReportRange} onClick={() => exportPdf("chart")}>{translate(language, "exportPdf")}</Button>
+            </div>
+            </div>
+            {reportView === "custom" && !validReportRange ? <p className="mt-3 rounded-xl border border-danger/20 bg-danger/5 px-3 py-2 text-sm font-medium text-danger" role="alert">{translate(language, "invalidCustomDateRange")}</p> : null}
           </div>
         </div>
 
@@ -257,7 +329,7 @@ export function VacancyWaterfallView({
           </div>
         ) : (
           <div data-print-section="chart" className="print-chart-report">
-            <ReportHeader language={language} title={translate(language, "weeklyRecruitmentPerformance")} startDate={startDate} endDate={endDate} />
+            <ReportHeader language={language} title={translate(language, "vacancyWaterfall")} startDate={startDate} endDate={endDate} />
             <VacancyWaterfallChart language={language} rows={waterfallRows} />
           </div>
         )}
@@ -271,14 +343,14 @@ export function VacancyWaterfallView({
             onClick={() => setDetailsOpen((open) => !open)}
           >
             <span>
-              <strong className="block text-lg font-semibold text-navy">{translate(language, "openedRequisitionsSelectedRange")}</strong>
-              <span className="text-sm font-medium text-slate">{translate(language, "requisitionsInRange", { count: formatNumber(requisitionRows.length, language), start: formatDate(startDate, language), end: formatDate(endDate, language) })}</span>
+              <strong className="block text-lg font-semibold text-navy">{translate(language, "activeRequisitionsSelectedRange")}</strong>
+              <span className="text-sm font-medium text-slate">{translate(language, "activeRequisitionsInRange", { count: formatNumber(requisitionRows.length, language), start: formatDate(startDate, language), end: formatDate(endDate, language) })}</span>
             </span>
             <ChevronDown className={`shrink-0 transition-transform motion-reduce:transition-none ${detailsOpen ? "rotate-180" : ""}`} size={20} />
           </button>
           <div className="flex flex-wrap gap-2 print:hidden">
-            <Button type="button" size="sm" variant="secondary" icon={<Download size={16} />} disabled={exportPreparing} onClick={exportRequisitionDetailXlsx}>{translate(language, "exportDetailXlsx")}</Button>
-            <Button type="button" size="sm" variant="secondary" icon={<Download size={16} />} disabled={exportPreparing} onClick={() => exportPdf("requisition-detail")}>{translate(language, "exportDetailPdf")}</Button>
+            <Button type="button" size="sm" variant="secondary" icon={<Download size={16} />} disabled={exportPreparing || !validReportRange} onClick={exportRequisitionDetailXlsx}>{translate(language, "exportDetailXlsx")}</Button>
+            <Button type="button" size="sm" variant="secondary" icon={<Download size={16} />} disabled={exportPreparing || !validReportRange} onClick={() => exportPdf("requisition-detail")}>{translate(language, "exportDetailPdf")}</Button>
           </div>
         </div>
         {detailsOpen ? (
@@ -326,16 +398,8 @@ export function VacancyWaterfallView({
                   onChange={(event) => setFunnelEndDate(event.target.value)}
                 />
               </Field>
-              <Field label={translate(language, "level")} className="text-xs font-medium">
-                <SelectInput value={funnelLevelBand} onChange={(event) => setFunnelLevelBand(event.target.value as FunnelLevelBand)}>
-                  {localizedFunnelLevelOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                </SelectInput>
-              </Field>
-              <Field label={translate(language, "channel")} className="text-xs font-medium">
-                <SelectInput value={funnelChannel} onChange={(event) => setFunnelChannel(event.target.value)}>
-                  {funnelChannelOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                </SelectInput>
-              </Field>
+              <DashboardFilterPicker id="funnel-level-options" label={translate(language, "level")} options={localizedFunnelLevelOptions} value={funnelLevelBand} onValueChange={(value) => setFunnelLevelBand(value as FunnelLevelBand)} />
+              <DashboardFilterPicker id="funnel-channel-options" label={translate(language, "channel")} options={funnelChannelOptions} value={funnelChannel} onValueChange={setFunnelChannel} />
             </div>
             <PipelineFunnel
               language={language}
@@ -351,7 +415,7 @@ export function VacancyWaterfallView({
       </section>
 
       <div data-print-section="requisition-detail" className="print-report-only">
-        <ReportHeader language={language} title={translate(language, "openedRequisitionsSelectedRange")} startDate={startDate} endDate={endDate} />
+        <ReportHeader language={language} title={translate(language, "activeRequisitionsSelectedRange")} startDate={startDate} endDate={endDate} />
         <RequisitionDetailTable rows={requisitionRows} language={language} printMode />
       </div>
 
@@ -376,6 +440,59 @@ export function VacancyWaterfallView({
           </div>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function DashboardFilterPicker({
+  id,
+  label,
+  options,
+  value,
+  onValueChange
+}: {
+  id: string;
+  label: string;
+  options: Array<{ value: string; label: string }>;
+  value: string;
+  onValueChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+  const selectedLabel = options.find((option) => option.value === value)?.label ?? value;
+
+  useEffect(() => {
+    const close = (event: MouseEvent) => {
+      if (!ref.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, []);
+
+  return (
+    <div ref={ref} className="relative grid gap-1.5 text-sm font-medium text-navy">
+      <span className="text-xs font-semibold text-slate">{label}</span>
+      <button type="button" className="flex min-h-10 w-full items-center gap-2 rounded-xl border border-[#B8CCE4] bg-white px-3 text-left text-sm font-semibold text-navy shadow-sm transition hover:border-primary/60 hover:bg-[#FBFDFF] focus:outline-none focus:ring-2 focus:ring-primary/20" aria-haspopup="listbox" aria-expanded={open} aria-controls={id} onClick={() => setOpen((current) => !current)}>
+        <SlidersHorizontal size={15} className="shrink-0 text-primary" aria-hidden="true" />
+        <span className="min-w-0 flex-1 truncate">{selectedLabel}</span>
+        <ChevronDown size={16} className={`shrink-0 text-slate transition-transform ${open ? "rotate-180" : ""}`} aria-hidden="true" />
+      </button>
+      {open ? <div id={id} role="listbox" aria-label={label} className="absolute z-30 mt-[4.45rem] grid w-full min-w-[12rem] grid-cols-1 gap-1.5 rounded-2xl border border-[#C9D5E6] bg-white p-2 shadow-[0_18px_40px_rgba(11,19,43,0.18)]">
+        {options.map((option) => {
+          const selected = option.value === value;
+          return <button key={option.value} type="button" role="option" aria-selected={selected} className={`relative min-h-10 rounded-xl border px-3 py-2 text-left text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-primary/30 ${selected ? "border-primary bg-primary text-white shadow-sm" : "border-[#E4E9F2] bg-[#F8FAFD] text-navy hover:border-[#8AAED8] hover:bg-white"}`} onClick={() => { onValueChange(option.value); setOpen(false); }}>
+            <span className="block pr-5">{option.label}</span>
+            {selected ? <Check size={16} className="absolute right-3 top-1/2 -translate-y-1/2" aria-hidden="true" /> : null}
+          </button>;
+        })}
+      </div> : null}
     </div>
   );
 }
@@ -582,7 +699,7 @@ function RequisitionDetailTable({ rows, language, printMode = false }: { rows: R
   ];
   const table = useTableControls(rows, columns);
   const visibleRows = printMode ? rows : table.controlledRows;
-  if (rows.length === 0) return <EmptyState message={translate(language, "noOpenedRequisitionsInRange")} />;
+  if (rows.length === 0) return <EmptyState message={translate(language, "noActiveRequisitionsInRange")} />;
 
   return (
     <div className={`max-h-[560px] min-w-0 max-w-full overflow-x-auto ${printMode ? "print-detail-scroll" : "dashboard-detail-scroll"}`}>
@@ -716,7 +833,7 @@ function isDetailStageHeader(header: string) {
 }
 
 function buildWaterfall(rows: WaterfallRow[], language: Language) {
-  const sites = siteOrder.filter((site) => rows.some((row) => row.site === site));
+  const sites = Array.from(new Set(rows.map((row) => row.site))).sort((a, b) => a.localeCompare(b));
   const categories: string[] = [];
   if (rows.some((row) => row.waterfall_category === "Week Start")) categories.push("Week Start");
   for (const site of sites) if (rows.some((row) => row.waterfall_category === "Open" && row.site === site)) categories.push(`${site} Open`);
@@ -792,10 +909,12 @@ function buildWaterfall(rows: WaterfallRow[], language: Language) {
 }
 
 function buildLiveWaterfallRows(
+  data: DashboardData,
   requisitions: EnrichedRequisition[],
   offers: EnrichedOffer[],
   startDate: string,
-  endDate: string
+  endDate: string,
+  reportView: ReportView
 ): WaterfallRow[] {
   if (!startDate || !endDate || startDate > endDate) return [];
 
@@ -804,7 +923,7 @@ function buildLiveWaterfallRows(
   const acceptedOffers = offers.filter((offer) => Boolean(offer.accepted_date));
 
   for (const requisition of requisitions) {
-    if (requisition.status === "cancel" || !siteOrder.includes(requisition.site)) continue;
+    if (!isReportEligible(requisition, data, startDate, endDate, reportView)) continue;
     const openedDate = dateOnly(requisition.pr_approved_date) ?? dateOnly(requisition.created_at);
     if (!openedDate) continue;
 
@@ -840,22 +959,16 @@ function buildLiveWaterfallRows(
   return aggregateWaterfallRows([...groupedRows, ...Array.from(totals.values())]);
 }
 
-function buildOpenedRequisitionRows(data: DashboardData, requisitions: EnrichedRequisition[], startDate: string, endDate: string): RequisitionDetailRow[] {
+function buildActiveRequisitionRows(data: DashboardData, requisitions: EnrichedRequisition[], startDate: string, endDate: string, reportView: ReportView): RequisitionDetailRow[] {
   return requisitions
-    .filter((requisition) => {
-      const openedDate = dateOnly(requisition.pr_approved_date) ?? dateOnly(requisition.created_at);
-      return requisition.status !== "cancel" && Boolean(openedDate) && openedDate! >= startDate && openedDate! <= endDate;
-    })
+    .filter((requisition) => isReportEligible(requisition, data, startDate, endDate, reportView))
     .map((requisition) => {
-      const openedDate = dateOnly(requisition.pr_approved_date) ?? dateOnly(requisition.created_at) ?? "";
+      const requisitionDate = validDateOnly(requisition.pr_approved_date) ?? "";
       const groupIds = groupIdsForRequisition(data, requisition.doc_id);
       const relatedDocGroupIds = docGroupIdsForGroupIds(data, groupIds);
       const stageCounts = stageHistoryCountsForDocGroups(data, relatedDocGroupIds);
-      const acceptedDates = data.offers
-        .filter((offer) => offer.doc_id === requisition.doc_id && offer.accepted_date)
-        .map((offer) => dateOnly(offer.accepted_date))
-        .filter(Boolean) as string[];
-      const filledStatus: RequisitionDetailRow["filled_status"] = requisition.status === "filled" || requisition.accepted_count >= requisition.head_count ? "Filled" : "Open";
+      const closeDate = resolvedCloseDate(requisition, data);
+      const filledStatus: RequisitionDetailRow["filled_status"] = requisition.status === "filled" ? "Filled" : "Open";
 
       return {
         doc_id: requisition.doc_id,
@@ -866,18 +979,59 @@ function buildOpenedRequisitionRows(data: DashboardData, requisitions: EnrichedR
         vacancy: requisition.head_count,
         applicant_count: applicantCountForGroups(data, groupIds, startDate, endDate),
         request_type: requisition.request_type,
-        requisition_date: openedDate,
+        requisition_date: requisitionDate,
         person_in_charge: requisition.person_in_charge ?? "-",
         stage_counts: stageCounts,
         sla_state: getRequisitionSlaState(
           requisition,
-          { endDate: filledStatus === "Filled" ? acceptedDates.sort().at(-1) ?? todayDate() : todayDate() }
+          { endDate: filledStatus === "Filled" ? closeDate ?? todayDate() : todayDate() }
         ),
         filled_status: filledStatus,
-        filled_date: filledStatus === "Filled" && acceptedDates.length > 0 ? acceptedDates.sort().at(-1) ?? null : null
+        filled_date: filledStatus === "Filled" ? closeDate : null
       };
     })
     .sort(compareRequisitionDetailRows);
+}
+
+function isReportEligible(requisition: EnrichedRequisition, data: DashboardData, startDate: string, endDate: string, reportView: ReportView) {
+  const prDate = validDateOnly(requisition.pr_approved_date);
+  const closeDate = resolvedCloseDate(requisition, data);
+  if (!prDate || requisition.status === "cancel" || prDate > endDate || Boolean(closeDate && closeDate < startDate)) return false;
+  if (reportView === "pim" || reportView === "custom") return true;
+  const slaDays = getSlaDays(requisition.level);
+  const slaDeadline = slaDays === null ? null : addCalendarDays(prDate, slaDays);
+  return Boolean(slaDeadline && slaDeadline >= startDate);
+}
+
+function resolvedCloseDate(requisition: EnrichedRequisition, data: DashboardData) {
+  if (requisition.status !== "filled") return null;
+  const filledLogDate = latestValidDate(
+    data.requisition_logs
+      .filter((log) => log.doc_id === requisition.doc_id && log.status === "filled")
+      .map((log) => log.log_date)
+  );
+  if (filledLogDate) return filledLogDate;
+  return latestValidDate(
+    data.offers
+      .filter((offer) => offer.doc_id === requisition.doc_id)
+      .map((offer) => offer.accepted_date)
+  );
+}
+
+function latestValidDate(values: Array<string | null | undefined>) {
+  return values
+    .map(validDateOnly)
+    .filter((value): value is string => Boolean(value))
+    .sort()
+    .at(-1) ?? null;
+}
+
+function validDateOnly(value: string | null | undefined) {
+  const date = dateOnly(value);
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  const [year, month, day] = date.split("-").map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  return parsed.getUTCFullYear() === year && parsed.getUTCMonth() === month - 1 && parsed.getUTCDate() === day ? date : null;
 }
 
 function buildDashboardPipelineFunnelRows(
@@ -1057,7 +1211,7 @@ function levelMatchesBand(level: string | null | undefined, band: FunnelLevelBan
 }
 
 function compareRequisitionDetailRows(a: RequisitionDetailRow, b: RequisitionDetailRow) {
-  const siteDelta = siteRank(a.site) - siteRank(b.site);
+  const siteDelta = a.site.localeCompare(b.site);
   if (siteDelta !== 0) return siteDelta;
   const statusDelta = (a.filled_status === "Open" ? 0 : 1) - (b.filled_status === "Open" ? 0 : 1);
   if (statusDelta !== 0) return statusDelta;
@@ -1074,12 +1228,7 @@ function rowsForCategory(rows: WaterfallRow[], category: string) {
 }
 
 function sortSnapshotRows(rows: WaterfallRow[]) {
-  return [...rows].sort((a, b) => siteRank(a.site) - siteRank(b.site) || requestTypeRank(a.request_type) - requestTypeRank(b.request_type));
-}
-
-function siteRank(site: string) {
-  const index = siteOrder.indexOf(site);
-  return index === -1 ? siteOrder.length : index;
+  return [...rows].sort((a, b) => a.site.localeCompare(b.site) || requestTypeRank(a.request_type) - requestTypeRank(b.request_type));
 }
 
 function requestTypeRank(requestType: RequisitionRequestType) {
@@ -1087,9 +1236,21 @@ function requestTypeRank(requestType: RequisitionRequestType) {
 }
 
 function snapshotColor(site: string, requestType: string) {
-  const rep: Record<string, string> = { HQ: "#0AA0C3", KT1: "#146EFA", KT2: "#411EDC" };
-  const fresh: Record<string, string> = { HQ: "#90F5EC", KT1: "#80BDFF", KT2: "#C7BCF5" };
-  return requestType === "New" ? fresh[site] ?? "#D7DEE8" : rep[site] ?? "#475569";
+  const originalColors: Record<string, { New: string; Replacement: string }> = {
+    HQ: { New: "#90F5EC", Replacement: "#0AA0C3" },
+    KT1: { New: "#80BDFF", Replacement: "#146EFA" },
+    KT2: { New: "#C7BCF5", Replacement: "#411EDC" }
+  };
+  const original = originalColors[site]?.[requestType === "New" ? "New" : "Replacement"];
+  if (original) return original;
+  const palette = requestType === "New"
+    ? ["#90F5EC", "#80BDFF", "#C7BCF5", "#CFE8B4", "#F8D3A2", "#F4C6DF"]
+    : ["#0AA0C3", "#146EFA", "#411EDC", "#4B7F52", "#C56A16", "#A33B72"];
+  return palette[stableColorIndex(site, palette.length)];
+}
+
+function stableColorIndex(value: string, length: number) {
+  return [...value].reduce((hash, character) => ((hash * 31) + character.charCodeAt(0)) >>> 0, 0) % length;
 }
 
 function categoryX(index: number, step: number, leftPad: number) {
@@ -1103,7 +1264,7 @@ function formatChartValue(value: number, language: Language, isFilled = false) {
 
 function waterfallAxisMax(rows: WaterfallRow[]) {
   const startTotal = rows.filter((row) => row.waterfall_category === "Week Start").reduce((sum, row) => sum + row.vacancy_count, 0);
-  const openTotal = rows.filter((row) => row.waterfall_category === "Open" && siteOrder.includes(row.site)).reduce((sum, row) => sum + Math.max(row.vacancy_count, 0), 0);
+  const openTotal = rows.filter((row) => row.waterfall_category === "Open").reduce((sum, row) => sum + Math.max(row.vacancy_count, 0), 0);
   return Math.max(Math.ceil((startTotal + openTotal) * 1.1), 1);
 }
 
@@ -1152,7 +1313,7 @@ function formatBreakdownLabel(row: WaterfallRow, language: Language) {
 function stackItems(rows: WaterfallRow[]) {
   const seen = new Set<string>();
   const items = [];
-  for (const row of sortSnapshotRows(rows.filter((item) => item.vacancy_count !== 0 && siteOrder.includes(item.site)))) {
+  for (const row of sortSnapshotRows(rows.filter((item) => item.vacancy_count !== 0))) {
     const key = `${row.site}|${row.request_type}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -1175,32 +1336,57 @@ function aggregateWaterfallRows(rows: WaterfallRow[]) {
   return Array.from(totals.values());
 }
 
-function currentYearStart() {
-  return currentLocalYearStart();
-}
-
 function today() {
   return formatLocalDateInput();
 }
 
-function addDays(value: string, days: number) {
-  const date = new Date(`${value}T00:00:00`);
-  date.setDate(date.getDate() + days);
-  return formatLocalDateInput(date);
+function reportRange(view: ReportView, month: string, customStartDate: string, customEndDate: string) {
+  if (view === "custom") return { startDate: customStartDate, endDate: customEndDate };
+  const safeMonth = /^\d{4}-\d{2}$/.test(month) ? month : today().slice(0, 7);
+  const [year, monthNumber] = safeMonth.split("-").map(Number);
+  const endDate = `${safeMonth}-${String(new Date(Date.UTC(year, monthNumber, 0)).getUTCDate()).padStart(2, "0")}`;
+  return { startDate: view === "ytd" ? `${year}-01-01` : `${safeMonth}-01`, endDate };
 }
 
-function buildReportSummary(requisitionRows: RequisitionDetailRow[], funnelRows: PipelineFunnelRow[], language: Language) {
-  const opened = requisitionRows.length;
-  const openHeadcount = requisitionRows.reduce((sum, row) => sum + (row.filled_status === "Open" ? row.vacancy : 0), 0);
-  const filled = requisitionRows.filter((row) => row.filled_status === "Filled").length;
+function reportViewLabel(view: ReportView, language: Language) {
+  return translate(language, view === "mtd" ? "monthToDate" : view === "ytd" ? "yearToDate" : view === "pim" ? "performanceInMonth" : "customRange");
+}
+
+function monthPickerLabel(value: string, language: Language) {
+  const [year, month] = value.split("-").map(Number);
+  if (!year || !month) return value;
+  return new Intl.DateTimeFormat(language === "th" ? "th-TH" : "en-US", { month: "long", year: "numeric" }).format(new Date(Date.UTC(year, month - 1, 1)));
+}
+
+function monthPickerMonthLabel(month: number, language: Language) {
+  return new Intl.DateTimeFormat(language === "th" ? "th-TH" : "en-US", { month: "short" }).format(new Date(Date.UTC(2026, month - 1, 1)));
+}
+
+function isReportView(value: string | null): value is ReportView {
+  return value === "mtd" || value === "ytd" || value === "pim" || value === "custom";
+}
+
+function addCalendarDays(value: string, days: number) {
+  const date = new Date(`${value}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function buildReportSummary(requisitionRows: RequisitionDetailRow[], offers: EnrichedOffer[], startDate: string, endDate: string, language: Language) {
+  const openRequisitions = requisitionRows.filter((row) => row.filled_status === "Open").length;
+  const activeVacancy = requisitionRows.reduce((sum, row) => sum + row.vacancy, 0);
+  const filled = offers.filter((offer) => {
+    const date = validDateOnly(offer.accepted_date);
+    return Boolean(date && date >= startDate && date <= endDate && requisitionRows.some((row) => row.doc_id === offer.doc_id));
+  }).length;
+  const performance = activeVacancy === 0 ? 0 : Math.floor((filled / activeVacancy) * 100);
   const overSla = requisitionRows.filter((row) => row.sla_state.isOverdue).length;
-  const bottleneck = topFunnelBottleneck(funnelRows, language);
   return [
-    { label: translate(language, "opened"), value: opened, tone: "primary" as const, helper: translate(language, "requisitionsInRangeHelper") },
-    { label: translate(language, "filled"), value: filled, tone: filled > 0 ? "success" as const : "muted" as const, helper: translate(language, "filledRequisitions") },
-    { label: translate(language, "openHeadcountShort"), value: openHeadcount, tone: openHeadcount > 0 ? "warning" as const : "success" as const, helper: translate(language, "remainingVacancy") },
-    { label: translate(language, "overSlaLabel"), value: overSla, tone: overSla > 0 ? "danger" as const : "success" as const, helper: translate(language, "needsReview") },
-    { label: translate(language, "pipelineBottleneck"), value: bottleneck, tone: "teal" as const, helper: translate(language, "largestFunnelDrop") }
+    { label: translate(language, "openRequisitions"), value: openRequisitions, tone: "primary" as const, helper: translate(language, "openRequisitionsHelper") },
+    { label: translate(language, "filledVacancies"), value: filled, tone: filled > 0 ? "success" as const : "muted" as const, helper: translate(language, "acceptedOffersInRange") },
+    { label: translate(language, "eligibleVacancies"), value: activeVacancy, tone: activeVacancy > 0 ? "warning" as const : "success" as const, helper: translate(language, "eligibleVacanciesHelper") },
+    { label: translate(language, "performance"), value: `${performance}%`, tone: performance > 0 ? "teal" as const : "muted" as const, helper: translate(language, "filledVacancyRatio") },
+    { label: translate(language, "overSlaLabel"), value: overSla, tone: overSla > 0 ? "danger" as const : "success" as const, helper: translate(language, "needsReview") }
   ];
 }
 

@@ -5,6 +5,7 @@ import type {
   CandidateReferenceCheck,
   ChangeLog,
   DashboardData,
+  DashboardReportData,
   DocumentGroup,
   EnrichedCandidate,
   EnrichedOffer,
@@ -50,6 +51,7 @@ type SupabaseLike = {
   auth: {
     getUser: () => Promise<{ data: { user: { id: string } | null }; error: { message: string } | null }>;
   };
+  rpc?: (functionName: string) => PromiseLike<{ data: unknown; error: { message: string } | null }>;
 };
 
 async function selectAll<T>(client: SupabaseLike, table: string, orderColumn = "created_at", ascending = false): Promise<T[]> {
@@ -119,6 +121,18 @@ export async function loadDashboardData(client: SupabaseLike): Promise<Dashboard
     sourcing_weekly_updates: sourcingWeeklyUpdates,
     vacancy_weekly_snapshots: vacancyWeeklySnapshots,
     change_logs: changeLogs
+  };
+}
+
+export async function loadCompanyDashboardReport(client: SupabaseLike): Promise<DashboardReportData | null> {
+  if (!client.rpc) return null;
+  const { data, error } = await client.rpc("app_dashboard_company_report");
+  if (error) throw new Error(error.message);
+  const report = (data ?? {}) as Partial<DashboardReportData>;
+  return {
+    requisitions: Array.isArray(report.requisitions) ? report.requisitions : [],
+    requisition_logs: Array.isArray(report.requisition_logs) ? report.requisition_logs : [],
+    offers: Array.isArray(report.offers) ? report.offers : []
   };
 }
 

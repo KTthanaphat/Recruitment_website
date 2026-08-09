@@ -142,25 +142,32 @@ Home-only recruiter bottleneck:
 - Workspace sections may show diagnostics and commands for the selected hiring case, but Home remains the only page that aggregates recruiter bottlenecks across all assigned work.
 - Recommendation and next-action language is removed. Use factual risk labels and explicit commands such as Open, Edit, Save, or Create Offer.
 
-The Welcome Back popup appears once per browser session/login. It summarizes actionable responsible records, links users toward Pipeline work, and uses a warm professional message selected by the user’s last-7-days filled responsible vacancy ratio.
+The Welcome Back popup appears once per browser session/login. It summarizes actionable responsible records, links users toward Pipeline work, and uses a warm professional message selected by the user’s current-calendar-month filled responsible vacancy ratio in `Asia/Bangkok`.
 
 Welcome Back message logic:
 
-- Ratio is accepted offers in the last 7 calendar days for responsible requisitions divided by total responsible non-cancelled vacancy headcount.
+- Ratio is `floor(accepted offers from the first Bangkok day of the current month through today / responsible PIM-eligible requisition headcount × 100)`. PIM eligibility is PR date on/before month end, not cancelled, and no resolved close date before month start. Accepted offers require a valid, non-future `accepted_date`; a zero denominator yields `0%`; only the visual progress bar caps at `100%`.
 - Message text comes from `recruitment_daily_messages_th_en.csv`, mirrored at runtime in `src/lib/daily-messages.ts` to avoid runtime CSV parsing.
 - Select the current local weekday row with the highest `Filled%_min` less than or equal to the filled vacancy ratio.
 - Use `Current_Thai_Version` in Thai and `English_Version` in English; replace `{name}` with nickname, full name, email, or system fallback.
 - If no CSV row matches, fall back to the legacy dictionary ratio message.
-- The popup shows the selected message, ratio percentage, and `{filled}/{total}` vacancy helper without backend connector changes.
+- The popup shows the selected message, monthly ratio percentage, and monthly `{filled}/{total}` helper without backend connector changes. Candidate Pipeline cards, permissions, exports, and the CSV message bands remain unchanged.
 
 ## Dashboard Page
 
 Dashboard contains the Vacancy Waterfall report only.
 
-The waterfall shows weekly recruitment performance by date range:
+The waterfall uses a localized dropdown with MTD, YTD, PIM, and Custom range. Its header is title, resolved date range, then report controls; it has no weekly subtitle, Weekly preset, or Site Review preset.
+
+- MTD: selected month start through end; PR date ≤ end, derived SLA deadline ≥ start, and no resolved close before start.
+- YTD: 1 January through selected month end; PR date ≤ end, derived SLA deadline ≥ 1 January, and no resolved close before 1 January.
+- PIM: selected month start through end; PR date ≤ end and no resolved close before start.
+- Custom range: required inclusive Start/End dates, with PIM eligibility; invalid or reversed ranges show no report data and disable exports. Calendar views use `reportView` + `reportMonth`; custom uses `reportView=custom` + `start` + `end`.
+- Cancelled requisitions are excluded. Close date is latest `filled` requisition log, falling back to latest accepted offer for legacy rows. Filled vacancy counts are accepted offers in range; denominator is eligible original headcount; Open Requisitions are eligible rows with `ongoing` status.
+- Dashboard calls the authenticated, read-only company report RPC. It exposes no candidate information and does not alter raw record or write permissions.
 
 - Week Start: open headcount before the selected start date.
-- Open: requisitions approved inside the selected date range.
+- Open: eligible requisitions approved inside the selected reporting view.
 - Filled: accepted offers inside the selected date range.
 - Total: remaining vacancy grouped by site and requisition type.
 
@@ -169,12 +176,12 @@ The report keeps running-total connector logic between bars and uses right-side 
 Dashboard export actions:
 
 - `Export PDF` for the chart report.
-- `Export PDF` for opened requisition details.
-- `Export XLSX` for opened requisition details.
+- `Export PDF` for requisitions active in the selected period.
+- `Export XLSX` for requisitions active in the selected period.
 
-PDF export uses browser print with A4 landscape print CSS and shows a loading overlay while preparing. Opened requisition detail stays horizontally scrollable on screen and uses print-specific table sizing so the SLA dot/age and dense columns remain readable in PDF.
+PDF export uses browser print with A4 landscape print CSS and shows a loading overlay while preparing. Active-requisition detail stays horizontally scrollable on screen and uses print-specific table sizing so the SLA dot/age and dense columns remain readable in PDF.
 
-Opened requisition detail includes requisitions opened in the selected date range and is collapsed by default. It includes requisition ownership, requisition date, applicant totals, historical pipeline stage counts, SLA status, fill status, and fill date. Applicant totals include Facebook, JobThai, JobTopGun, JobDB, LinkedIn, Walk-in, Referral, and Others.
+Active-requisition detail is collapsed by default. It includes each non-cancelled requisition with a valid PR date on or before the selected end date and no resolved close date before the selected start date; every eligible row contributes original headcount. For a filled requisition, close date is the newest filled requisition-log date, falling back to its latest valid accepted-offer date; no resolved close date is treated as blank. The Waterfall chart remains a separate movement report. Detail includes ownership, requisition date, applicant totals, historical pipeline stage counts, SLA status, fill status, and fill date.
 
 Recruitment Pipeline Health is a separate collapsible funnel report with its own date range, level filter, channel filter, and PDF export. Funnel rows are `Applicants`, derived `Resume Screening`, then active pipeline stages. `Resume Screening` is display/reporting-only and is counted from candidates who have reached Phone Screen. Real stage funnel counts are passed-only and de-duplicated per candidate per stage.
 
@@ -383,7 +390,7 @@ Shared UI behavior:
 - Prefer neutral-first cards, tables, panels, and menus. Use typography, weight, spacing, and borders before adding color.
 - Summary cards and operational metrics use navy values by default; tone may affect a small border/accent or risk text only.
 - Tags use bright semantic fills with white text; primary/success tags inherit a contrast-safe assigned-site accent mix.
-- Vacancy Waterfall chart colors are frozen by `snapshotColor`; preserve the chart, legend, connectors, callouts, and print CSS unless the user explicitly changes the chart.
+- Vacancy Waterfall restores HQ (`#0AA0C3` replacement / `#90F5EC` new), KT1 (`#146EFA` / `#80BDFF`), and KT2 (`#411EDC` / `#C7BCF5`) colors in chart and legend; other sites use deterministic fallback colors. Preserve connectors, callouts, and print CSS.
 - Pipeline Funnel uses one dominant assigned-site data fill with subdued neutral grid/table structure.
 - Magnifying-glass icon buttons for record View actions.
 - Requisitions, Candidates, and Offers tables/cards expose only the magnifying-glass View detail action. Workspace, related-record navigation, and write actions do not appear in table/card rows.
