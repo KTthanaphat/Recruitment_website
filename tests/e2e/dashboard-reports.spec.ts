@@ -9,14 +9,14 @@ test("dashboard report uses calendar views, persists its month, and keeps expand
   await expect(page.getByRole("heading", { name: "Vacancy Waterfall" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Requisitions Active in Selected Period/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /Recruitment Pipeline Health in Selected Range/ })).toBeVisible();
-  await expect(page.getByText("Selected date range: 07/01/2026 - 07/31/2026")).toBeVisible();
+  await expect(page.getByText("Selected date range: 01/07/2026 - 31/07/2026")).toBeVisible();
   await expect(page.getByLabel("Metric view")).toHaveValue("pim");
   await expect(page.getByLabel("Report month")).toHaveValue("2026-07");
   await expect(page.getByRole("heading", { name: "Recruitment Pipeline Health" })).toBeVisible();
 
   await page.getByLabel("Report month").fill("2026-06");
   await expect(page).toHaveURL(/reportMonth=2026-06/);
-  await expect(page.getByText("Selected date range: 06/01/2026 - 06/30/2026")).toBeVisible();
+  await expect(page.getByText("Selected date range: 01/06/2026 - 30/06/2026")).toBeVisible();
 
   await page.getByLabel("Metric view").selectOption("custom");
   await expect(page.getByLabel("Start Date").first()).toHaveValue("2026-06-01");

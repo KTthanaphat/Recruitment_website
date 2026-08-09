@@ -452,6 +452,18 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const filteredRequisitions = useMemo(() => filterByText(enrichedRequisitions, filters), [enrichedRequisitions, filters]);
   const filteredCandidates = useMemo(() => filterByText(enrichedCandidates, filters), [enrichedCandidates, filters]);
   const filteredOffers = useMemo(() => filterByText(enrichedOffers, filters), [enrichedOffers, filters]);
+  const dashboardReportData = useMemo(
+    () => companyDashboardReport ? { ...data, ...companyDashboardReport } : data,
+    [companyDashboardReport, data]
+  );
+  const dashboardRequisitions = useMemo(
+    () => filterByText(enrichRequisitions(dashboardReportData), filters),
+    [dashboardReportData, filters]
+  );
+  const dashboardOffers = useMemo(
+    () => filterByText(enrichOffers(dashboardReportData), filters),
+    [dashboardReportData, filters]
+  );
   const filteredChangeLogs = useMemo(() => filterChangeLogsByText(data, filters), [data, filters]);
   const selectedWorkspaceDocId = workspaceUrlState.params.get("doc");
 
@@ -1087,9 +1099,9 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       {initialView === "dashboard" ? (
         <VacancyWaterfallView
           language={language}
-          data={companyDashboardReport ? { ...data, ...companyDashboardReport } : data}
-          requisitions={companyDashboardReport ? enrichRequisitions({ ...data, ...companyDashboardReport }) : filteredRequisitions}
-          offers={companyDashboardReport ? enrichOffers({ ...data, ...companyDashboardReport }) : filteredOffers}
+          data={dashboardReportData}
+          requisitions={dashboardRequisitions}
+          offers={dashboardOffers}
         />
       ) : null}
 

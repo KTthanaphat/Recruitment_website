@@ -18,26 +18,19 @@ export function formatRequisitionOptionLabel(requisition: RequisitionOptionField
 
 export function formatDate(value: string | null | undefined, language: Language = "en") {
   if (!value) return "-";
+  const dateOnly = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (dateOnly) return `${dateOnly[3]}/${dateOnly[2]}/${dateOnly[1]}`;
   const date = dateFromValue(value);
   if (!date) return value.slice(0, 10);
-  return new Intl.DateTimeFormat(localeForLanguage(language), {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit"
-  }).format(date);
+  return `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}/${date.getFullYear()}`;
 }
 
 export function formatDateTime(value: string | null | undefined, language: Language = "en") {
   if (!value) return "-";
   const date = dateFromValue(value);
   if (!date) return value;
-  return new Intl.DateTimeFormat(localeForLanguage(language), {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit"
-  }).format(date);
+  const time = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false }).format(date);
+  return `${formatDate(value, language)} ${time}`;
 }
 
 export function formatNumber(value: number, language: Language = "en") {

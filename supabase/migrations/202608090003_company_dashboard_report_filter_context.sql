@@ -1,4 +1,5 @@
--- Company-wide, read-only dashboard feed. Raw table policies remain unchanged.
+-- Preserve requisition ownership in the company dashboard feed so client-side
+-- site and person-in-charge filters can scope every dashboard calculation.
 create or replace function public.app_dashboard_company_report()
 returns jsonb
 language plpgsql
