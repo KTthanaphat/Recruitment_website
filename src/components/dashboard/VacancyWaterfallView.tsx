@@ -262,7 +262,7 @@ export function VacancyWaterfallView({
             </div>
           </div>
           <div className="mt-4 rounded-2xl border border-[#D7E2F1] bg-[linear-gradient(135deg,#F8FAFD_0%,#F1F6FC_100%)] p-3 shadow-[0_8px_20px_rgba(11,19,43,0.04)]">
-            <div className="grid gap-3 lg:grid-cols-[minmax(10rem,11rem)_10rem_auto] lg:items-end">
+            <div className={`grid gap-3 lg:items-end ${reportView === "custom" ? "lg:grid-cols-[14rem_10rem_10rem_auto]" : "lg:grid-cols-[14rem_10rem_auto]"}`}>
             <div ref={viewMenuRef} className="grid gap-1.5 text-sm font-medium text-navy">
               <span className="text-xs font-semibold text-slate">{translate(language, "metricView")}</span>
               <div className="relative">
@@ -283,12 +283,8 @@ export function VacancyWaterfallView({
               </div>
             </div>
             {reportView === "custom" ? <>
-              <Field label={translate(language, "startDate")} className="text-xs font-semibold text-slate">
-                <TextInput className="min-h-11 rounded-xl border-[#B8CCE4] bg-white font-semibold tabular-nums shadow-sm transition hover:border-primary/60 focus:ring-2 focus:ring-primary/20" type="date" value={customStartDate} onChange={(event) => setCustomStartDate(event.target.value)} required />
-              </Field>
-              <Field label={translate(language, "endDate")} className="text-xs font-semibold text-slate">
-                <TextInput className="min-h-11 rounded-xl border-[#B8CCE4] bg-white font-semibold tabular-nums shadow-sm transition hover:border-primary/60 focus:ring-2 focus:ring-primary/20" type="date" value={customEndDate} onChange={(event) => setCustomEndDate(event.target.value)} required />
-              </Field>
+              <DashboardDateFilter label={translate(language, "startDate")} value={customStartDate} onChange={setCustomStartDate} language={language} />
+              <DashboardDateFilter label={translate(language, "endDate")} value={customEndDate} onChange={setCustomEndDate} language={language} />
             </> : <Field label={translate(language, "reportMonth")} className="text-xs font-semibold text-slate">
               <div ref={monthPickerRef} className="relative">
                 <button type="button" className="flex min-h-11 w-full items-center gap-2 rounded-xl border border-[#B8CCE4] bg-white px-3 text-left text-sm font-semibold text-navy shadow-sm transition hover:border-primary/60 hover:bg-[#FBFDFF] focus:outline-none focus:ring-2 focus:ring-primary/20" aria-haspopup="dialog" aria-expanded={monthPickerOpen} aria-controls="dashboard-report-month-picker" onClick={() => { setMonthPickerYear(Number(reportMonth.slice(0, 4))); setMonthPickerOpen((open) => !open); }}>
@@ -1336,8 +1332,84 @@ function aggregateWaterfallRows(rows: WaterfallRow[]) {
   return Array.from(totals.values());
 }
 
+function DashboardDateFilter({
+  label,
+  value,
+  onChange,
+  language
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  language: Language;
+}) {
+  const [open, setOpen] = useState(false);
+  const [visibleMonth, setVisibleMonth] = useState(() => calendarMonth(value || today()));
+  const pickerRef = useRef<HTMLDivElement | null>(null);
+  const selectedDate = validDateOnly(value);
+  const monthStart = new Date(`${visibleMonth}-01T00:00:00Z`);
+  const monthEnd = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 0));
+  const leadingDays = monthStart.getUTCDay();
+  const dayCount = monthEnd.getUTCDate();
+  const calendarDays = Array.from({ length: Math.ceil((leadingDays + dayCount) / 7) * 7 }, (_, index) => index - leadingDays + 1);
+  const weekdayFormatter = new Intl.DateTimeFormat(language === "th" ? "th-TH" : "en-US", { weekday: "narrow" });
+
+  useEffect(() => {
+    const close = (event: MouseEvent) => {
+      if (!pickerRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, []);
+
+  function moveMonth(offset: number) {
+    const next = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + offset, 1));
+    setVisibleMonth(`${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}`);
+  }
+
+  return <div className="grid gap-1.5 text-sm font-medium text-navy">
+    <span className="text-xs font-semibold text-slate">{label}</span>
+    <div ref={pickerRef} className="relative">
+      <button type="button" className="flex min-h-11 w-full items-center gap-2 rounded-xl border border-[#B8CCE4] bg-white px-3 text-left text-sm font-semibold text-navy shadow-sm transition hover:border-primary/60 hover:bg-[#FBFDFF] focus:outline-none focus:ring-2 focus:ring-primary/20" aria-label={label} aria-haspopup="dialog" aria-expanded={open} onClick={() => { setVisibleMonth(calendarMonth(value || today())); setOpen((current) => !current); }}>
+        <CalendarDays size={16} className="shrink-0 text-primary" aria-hidden="true" />
+        <span className={`min-w-0 flex-1 truncate tabular-nums ${selectedDate ? "" : "text-slate"}`}>{selectedDate ? formatDate(selectedDate, language) : translate(language, "selectDate")}</span>
+        <ChevronDown size={17} className={`shrink-0 text-slate transition-transform ${open ? "rotate-180" : ""}`} aria-hidden="true" />
+      </button>
+      {open ? <div role="dialog" aria-label={label} className="absolute z-30 mt-2 w-[19rem] rounded-2xl border border-[#C9D5E6] bg-white p-3 shadow-[0_18px_40px_rgba(11,19,43,0.18)]">
+        <div className="mb-3 flex items-center justify-between rounded-xl bg-[#F8FAFD] p-1">
+          <button type="button" className="grid size-8 place-items-center rounded-lg text-slate transition hover:bg-white hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary/20" aria-label={translate(language, "previousMonth")} onClick={() => moveMonth(-1)}><ChevronLeft size={17} /></button>
+          <span className="text-sm font-semibold tabular-nums text-navy">{monthPickerLabel(visibleMonth, language)}</span>
+          <button type="button" className="grid size-8 place-items-center rounded-lg text-slate transition hover:bg-white hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary/20" aria-label={translate(language, "nextMonth")} onClick={() => moveMonth(1)}><ChevronRight size={17} /></button>
+        </div>
+        <div className="mb-1 grid grid-cols-7 gap-1 text-center text-[11px] font-semibold text-slate" aria-hidden="true">
+          {Array.from({ length: 7 }, (_, day) => <span key={day}>{weekdayFormatter.format(new Date(Date.UTC(2026, 5, day + 7)))}</span>)}
+        </div>
+        <div className="grid grid-cols-7 gap-1">
+          {calendarDays.map((day) => {
+            if (day < 1 || day > dayCount) return <span key={`blank-${day}`} className="size-9" aria-hidden="true" />;
+            const date = `${visibleMonth}-${String(day).padStart(2, "0")}`;
+            const selected = selectedDate === date;
+            return <button key={date} type="button" className={`grid size-9 place-items-center rounded-lg text-sm font-semibold tabular-nums transition focus:outline-none focus:ring-2 focus:ring-primary/30 ${selected ? "bg-primary text-white shadow-sm" : "text-navy hover:bg-[#EAF2FC]"}`} aria-pressed={selected} onClick={() => { onChange(date); setOpen(false); }}>{day}</button>;
+          })}
+        </div>
+      </div> : null}
+    </div>
+  </div>;
+}
+
 function today() {
   return formatLocalDateInput();
+}
+
+function calendarMonth(value: string) {
+  return /^\d{4}-\d{2}/.test(value) ? value.slice(0, 7) : today().slice(0, 7);
 }
 
 function reportRange(view: ReportView, month: string, customStartDate: string, customEndDate: string) {
@@ -1383,9 +1455,7 @@ function buildReportSummary(requisitionRows: RequisitionDetailRow[], offers: Enr
   const overSla = requisitionRows.filter((row) => row.sla_state.isOverdue).length;
   return [
     { label: translate(language, "openRequisitions"), value: openRequisitions, tone: "primary" as const, helper: translate(language, "openRequisitionsHelper") },
-    { label: translate(language, "filledVacancies"), value: filled, tone: filled > 0 ? "success" as const : "muted" as const, helper: translate(language, "acceptedOffersInRange") },
-    { label: translate(language, "eligibleVacancies"), value: activeVacancy, tone: activeVacancy > 0 ? "warning" as const : "success" as const, helper: translate(language, "eligibleVacanciesHelper") },
-    { label: translate(language, "performance"), value: `${performance}%`, tone: performance > 0 ? "teal" as const : "muted" as const, helper: translate(language, "filledVacancyRatio") },
+    { label: translate(language, "filledVacancyRatio"), value: `${formatNumber(filled, language)}/${formatNumber(activeVacancy, language)} (${performance}%)`, tone: performance > 0 ? "teal" as const : "muted" as const, helper: translate(language, "acceptedOffersInRange") },
     { label: translate(language, "overSlaLabel"), value: overSla, tone: overSla > 0 ? "danger" as const : "success" as const, helper: translate(language, "needsReview") }
   ];
 }
