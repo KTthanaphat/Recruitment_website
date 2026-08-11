@@ -79,6 +79,7 @@ create table if not exists public.document_groups (
 create table if not exists public.candidates (
   candidate_id text primary key,
   name text not null,
+  nickname text,
   phone_no text,
   doc_group_id text not null references public.document_groups(doc_group_id) on delete restrict,
   channel text,

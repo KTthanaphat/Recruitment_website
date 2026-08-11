@@ -10,7 +10,7 @@ import { StageRail } from "@/components/ui/StageRail";
 import { Tag } from "@/components/ui/Tag";
 import { DataQualityIssueCard } from "@/components/ui/Workflow";
 import { ACTIVE_PIPELINE_STAGES, processLabel } from "@/lib/constants";
-import { formatDateTime, formatNumber, formatRequisitionTitle, statusTone, toTitle } from "@/lib/format";
+import { formatCandidateName, formatDateTime, formatNumber, formatRequisitionTitle, statusTone, toTitle } from "@/lib/format";
 import { actionToneLabel, translate } from "@/lib/i18n/dictionary";
 import { deriveWorkQueue, isCandidateAging, type DataQualityIssue } from "@/lib/operations";
 import { getRequisitionSlaState } from "@/lib/sla";
@@ -270,7 +270,7 @@ function CandidateActionCard({
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <strong className="block truncate text-navy">{candidate.name}</strong>
+          <strong className="block truncate text-navy">{formatCandidateName(candidate)}</strong>
           <p className="text-xs font-medium text-slate">{candidate.candidate_id} - {candidate.group_position ?? "-"}</p>
         </div>
         <Tag tone={needsOfferFinalization ? "warning" : "primary"}>

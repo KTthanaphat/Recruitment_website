@@ -152,6 +152,8 @@ Unrelated findings were deliberately excluded: signup role bootstrap, candidate-
 | Database tests | `tests/db/candidate-pipeline-paired-status.sql`, `tests/db/workspace-group-authorization.sql` |
 | Browser fixtures/tests | `tests/e2e/support/mock-supabase.ts`, `tests/e2e/pipeline-actions.spec.ts` |
 
+Candidate identity contract: `app_upsert_candidate` accepts nullable trimmed `nickname`, while `phone_no` is required for every New/Change write and must match `^0[0-9]{9}$` (`CANDIDATE_PHONE_INVALID` otherwise). Candidate UI uses the shared label and phone formatters; focused coverage belongs with candidate/form, Pipeline, Workspace, Offer, and daily-summary checks.
+
 ## Verification record
 
 - v2-only cleanup: added `app_start_pipeline_stage_v2`; migration `202608010002_pipeline_v2_only_cleanup.sql` removes the four legacy Pipeline write RPCs.

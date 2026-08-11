@@ -3,6 +3,7 @@ import type { Language, ResultValue } from "@/types/recruitment";
 
 type RequisitionTitleFields = { position?: string | null; level?: string | null };
 type RequisitionOptionFields = RequisitionTitleFields & { doc_id: string };
+type CandidateIdentityFields = { name?: string | null; nickname?: string | null };
 
 export function formatRequisitionTitle(requisition: RequisitionTitleFields) {
   const storedPosition = requisition.position ?? "";
@@ -14,6 +15,18 @@ export function formatRequisitionTitle(requisition: RequisitionTitleFields) {
 
 export function formatRequisitionOptionLabel(requisition: RequisitionOptionFields) {
   return `${formatRequisitionTitle(requisition)} — ${requisition.doc_id}`;
+}
+
+export function formatCandidateName(candidate: CandidateIdentityFields) {
+  const name = candidate.name?.trim() ?? "";
+  const nickname = candidate.nickname?.trim() ?? "";
+  if (name && nickname) return `${name} (${nickname})`;
+  return name || nickname || "-";
+}
+
+export function formatThaiMobilePhone(value: string | null | undefined) {
+  if (!value) return "-";
+  return /^0[0-9]{9}$/.test(value) ? `${value.slice(0, 3)}-${value.slice(3, 6)}-${value.slice(6)}` : value;
 }
 
 export function formatDate(value: string | null | undefined, language: Language = "en") {

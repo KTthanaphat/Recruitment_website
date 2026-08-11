@@ -1,4 +1,5 @@
 import { PROCESS_STAGES, SOURCING_CHANNELS } from "@/lib/constants";
+import { formatCandidateName } from "@/lib/format";
 import type {
   Candidate,
   CandidateReference,
@@ -189,7 +190,7 @@ export function enrichOffers(data: DashboardData): EnrichedOffer[] {
 
     return {
       ...offer,
-      candidate_name: candidate?.name ?? null,
+      candidate_name: candidate ? formatCandidateName(candidate) : null,
       position: requisition?.position ?? null,
       level: requisition?.level ?? null,
       site: requisition?.site ?? null,

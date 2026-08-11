@@ -9,7 +9,7 @@ import { Tag } from "@/components/ui/Tag";
 import { RecordQuickActions, type RecordQuickAction } from "@/components/ui/Operations";
 import { BulkActionToolbar, BulkReviewModal } from "@/components/ui/Workflow";
 import { processLabel } from "@/lib/constants";
-import { resultText, statusTone } from "@/lib/format";
+import { formatCandidateName, resultText, statusTone } from "@/lib/format";
 import { translate } from "@/lib/i18n/dictionary";
 import { bulkActionDisabledReason, candidateTouchAgeDays, isCandidateAging, type BulkActionResult } from "@/lib/operations";
 import { readTableUrlState, writeTableUrlValues } from "@/lib/table-url-state";
@@ -44,7 +44,7 @@ export function CandidatesView({
   const tableInitialized = useRef(false);
   const columns: TableColumn<EnrichedCandidate>[] = [
     { key: "candidate_id", label: "ID", value: (row) => row.candidate_id },
-    { key: "name", label: translate(language, "name"), value: (row) => row.name },
+    { key: "name", label: translate(language, "name"), value: (row) => formatCandidateName(row) },
     { key: "group", label: translate(language, "group"), value: (row) => row.group_position ?? "-", filterValue: (row) => [row.group_position, ...row.doc_ids].filter(Boolean).join(" ") },
     { key: "site", label: translate(language, "site"), value: (row) => row.site ?? "-" },
     { key: "owner", label: translate(language, "owner"), value: (row) => row.person_in_charge ?? "-" },
@@ -121,7 +121,7 @@ export function CandidatesView({
             <article key={row.candidate_id} className="ats-card p-3 text-left">
               <div className="mb-2 flex items-center justify-between gap-2">
                 <strong className="font-bold text-navy">
-                  {row.name}
+                  {formatCandidateName(row)}
                 </strong>
                 <Tag tone={statusTone(resultText(row.latest_result).toLowerCase()) as never}>{resultText(row.latest_result, language)}</Tag>
               </div>
@@ -130,7 +130,7 @@ export function CandidatesView({
               <p className="text-sm font-medium text-slate">{processLabel(row.latest_process, language)} - {row.person_in_charge ?? "-"}</p>
               <p className="text-sm font-medium text-slate">{translate(language, "lastTouchValue", { value: ageLabel(row) })}</p>
               <div className="mt-3">
-                <RecordQuickActions label={translate(language, "recordActionsFor", { label: row.name })} actions={candidateActions(row, language, onOpen)} />
+                <RecordQuickActions label={translate(language, "recordActionsFor", { label: formatCandidateName(row) })} actions={candidateActions(row, language, onOpen)} />
               </div>
             </article>
           ))}
@@ -179,7 +179,7 @@ export function CandidatesView({
                   <td className="px-3 py-3 font-semibold text-navy">{row.candidate_id}</td>
                   <td className="px-3 py-3">
                     <span className="font-bold text-navy">
-                      {row.name}
+                      {formatCandidateName(row)}
                     </span>
                   </td>
                   <td className="px-3 py-3 text-slate">{row.group_position ?? "-"}</td>
@@ -190,7 +190,7 @@ export function CandidatesView({
                   <td className="px-3 py-3 text-slate">{ageLabel(row)}</td>
                   <td className="px-3 py-3">
                     <div className="flex items-center justify-end gap-2">
-                      <RecordQuickActions label={translate(language, "recordActionsFor", { label: row.name })} actions={candidateActions(row, language, onOpen)} />
+                      <RecordQuickActions label={translate(language, "recordActionsFor", { label: formatCandidateName(row) })} actions={candidateActions(row, language, onOpen)} />
                     </div>
                   </td>
                 </tr>
@@ -232,7 +232,7 @@ export function CandidatesView({
 function exportCandidates(rows: EnrichedCandidate[], language: Language) {
   downloadCsv("selected-candidates.csv", rows.map((row) => ({
     candidate_id: row.candidate_id,
-    name: row.name,
+    name: formatCandidateName(row),
     site: row.site ?? "",
     owner: row.person_in_charge ?? "",
     latest_process: processLabel(row.latest_process, language)
@@ -241,7 +241,7 @@ function exportCandidates(rows: EnrichedCandidate[], language: Language) {
 
 function candidateActions(row: EnrichedCandidate, language: Language, onOpen: (candidateId: string) => void): RecordQuickAction[] {
   return [
-    { id: "view", label: translate(language, "viewCandidateDetailFor", { name: row.name }), icon: <Search size={16} aria-hidden="true" />, iconOnly: true, onSelect: () => onOpen(row.candidate_id) }
+    { id: "view", label: translate(language, "viewCandidateDetailFor", { name: formatCandidateName(row) }), icon: <Search size={16} aria-hidden="true" />, iconOnly: true, onSelect: () => onOpen(row.candidate_id) }
   ];
 }
 

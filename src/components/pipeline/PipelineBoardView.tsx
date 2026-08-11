@@ -11,7 +11,7 @@ import { Tag } from "@/components/ui/Tag";
 import { DisabledReasonHint } from "@/components/ui/Workflow";
 import { ACTIVE_PIPELINE_STAGES, processIndex, processLabel } from "@/lib/constants";
 import { formatLocalDateInput } from "@/lib/dates";
-import { formatDate } from "@/lib/format";
+import { formatCandidateName, formatDate } from "@/lib/format";
 import { translate } from "@/lib/i18n/dictionary";
 import { candidatePipelineCapability, candidateProcessDisabledReason, deriveStageHealth, isCandidateAging, pipelineMoveDisabledReason, type DataQualityIssue } from "@/lib/operations";
 import type { CandidateReference, CandidateReferenceCheck, EnrichedCandidate, Language, ProcessStage, Profile, RecruitmentLog } from "@/types/recruitment";
@@ -559,7 +559,7 @@ function PipelineCandidateCard({
             onOpen(candidate.candidate_id);
           }}
         >
-          <strong className="block truncate text-sm leading-tight text-navy">{candidate.name}</strong>
+          <strong className="block truncate text-sm leading-tight text-navy">{formatCandidateName(candidate)}</strong>
           <p className="mt-1 truncate text-xs font-medium text-slate">{candidate.site ?? "-"}-{candidate.group_position ?? "-"} ({candidate.person_in_charge ?? "-"})</p>
         </button>
         {canWrite ? (
@@ -570,8 +570,8 @@ function PipelineCandidateCard({
             aria-haspopup="menu"
             aria-expanded={menuOpen}
             aria-controls={stageMenuId}
-            aria-label={translate(language, "candidateActionsFor", { name: candidate.name })}
-            title={hasCardAction ? translate(language, "candidateActionsFor", { name: candidate.name }) : translate(language, "noActionsFor", { name: candidate.name })}
+            aria-label={translate(language, "candidateActionsFor", { name: formatCandidateName(candidate) })}
+            title={hasCardAction ? translate(language, "candidateActionsFor", { name: formatCandidateName(candidate) }) : translate(language, "noActionsFor", { name: formatCandidateName(candidate) })}
             disabled={!hasCardAction}
             onClick={(event) => {
               event.stopPropagation();
@@ -604,7 +604,7 @@ function PipelineCandidateCard({
           ref={menuRef}
           id={stageMenuId}
           role="menu"
-          aria-label={translate(language, "candidateActionsFor", { name: candidate.name })}
+          aria-label={translate(language, "candidateActionsFor", { name: formatCandidateName(candidate) })}
           className="fixed z-[45] grid w-[min(20rem,calc(100vw-1rem))] max-h-[min(70vh,28rem)] gap-1 overflow-y-auto rounded-2xl border border-[#E4E9F2] bg-white p-2 shadow-[0_8px_24px_rgba(11,19,43,0.16)]"
           style={{ left: menuPosition.left, top: menuPosition.top, transform: menuPosition.above ? "translateY(-100%)" : undefined }}
           data-stage-menu-root="true"
@@ -619,7 +619,7 @@ function PipelineCandidateCard({
               role="menuitem"
               className="rounded px-2 py-1 text-left text-xs font-medium text-slate transition-colors hover:bg-lightgray hover:text-primary focus:bg-lightgray focus:text-primary"
               disabled={capability.blocked || referencePassBlocked}
-              aria-label={translate(language, "startPhoneScreenFor", { name: candidate.name })}
+              aria-label={translate(language, "startPhoneScreenFor", { name: formatCandidateName(candidate) })}
               onClick={(event) => {
                 event.stopPropagation();
                 onMenuClose?.();
@@ -635,7 +635,7 @@ function PipelineCandidateCard({
               role="menuitem"
               className="rounded px-2 py-1 text-left text-xs font-medium text-slate transition-colors hover:bg-lightgray hover:text-primary focus:bg-lightgray focus:text-primary"
               disabled={capability.blocked}
-              aria-label={translate(language, "updateOfferFor", { name: candidate.name })}
+              aria-label={translate(language, "updateOfferFor", { name: formatCandidateName(candidate) })}
               onClick={(event) => {
                 event.stopPropagation();
                 onMenuClose?.();
@@ -651,7 +651,7 @@ function PipelineCandidateCard({
               role="menuitem"
               className="rounded px-2 py-1 text-left text-xs font-medium text-slate transition-colors hover:bg-lightgray hover:text-primary focus:bg-lightgray focus:text-primary"
               disabled={capability.blocked || referencePassBlocked}
-              aria-label={translate(language, "passStageFor", { name: candidate.name, stage: processLabel(candidate.latest_process, language) })}
+              aria-label={translate(language, "passStageFor", { name: formatCandidateName(candidate), stage: processLabel(candidate.latest_process, language) })}
               title={referencePassBlocked ? translate(language, "referencePassBlockedShort", { count: unresolvedReferences }) : undefined}
               onClick={(event) => { event.stopPropagation(); if (capability.blocked || referencePassBlocked) return; onMenuClose?.(); onPassStage?.(candidate); }}
             >
@@ -664,7 +664,7 @@ function PipelineCandidateCard({
               role="menuitem"
               className="rounded px-2 py-1 text-left text-xs font-medium text-scarlet transition-colors hover:bg-[#FFF1F0] focus:bg-[#FFF1F0] focus:text-scarlet"
               disabled={capability.blocked}
-              aria-label={translate(language, "failStageFor", { name: candidate.name, stage: processLabel(candidate.latest_process, language) })}
+              aria-label={translate(language, "failStageFor", { name: formatCandidateName(candidate), stage: processLabel(candidate.latest_process, language) })}
               title={baseDisabledReason.detail}
               onClick={(event) => {
                 event.stopPropagation();
@@ -698,7 +698,7 @@ function PipelineCandidateCard({
               role="menuitem"
               className="rounded px-2 py-1 text-left text-xs font-medium text-slate transition-colors hover:bg-lightgray hover:text-primary focus:bg-lightgray focus:text-primary"
               disabled={capability.blocked}
-              aria-label={`${translate(language, "addAnotherTestRound")} ${candidate.name}`}
+              aria-label={`${translate(language, "addAnotherTestRound")} ${formatCandidateName(candidate)}`}
               onClick={(event) => {
                 event.stopPropagation();
                 onMenuClose?.();
@@ -719,7 +719,7 @@ function PipelineCandidateCard({
               className="rounded px-2 py-1 text-left text-xs font-medium text-slate transition-colors hover:bg-lightgray hover:text-primary focus:bg-lightgray focus:text-primary"
               disabled={disabledReason.blocked}
               title={disabledReason.detail}
-              aria-label={`${translate(language, "updateStage")} ${candidate.name} ${processLabel(nextStage, language)}`}
+              aria-label={`${translate(language, "updateStage")} ${formatCandidateName(candidate)} ${processLabel(nextStage, language)}`}
               onClick={(event) => {
                 event.stopPropagation();
                 if (disabledReason.blocked) return;
@@ -738,7 +738,7 @@ function PipelineCandidateCard({
               role="menuitem"
               className="rounded px-2 py-1 text-left text-xs font-medium text-slate transition-colors hover:bg-lightgray hover:text-primary focus:bg-lightgray focus:text-primary"
               disabled={capability.blocked}
-              aria-label={translate(language, "editPendingDetailsFor", { name: candidate.name })}
+              aria-label={translate(language, "editPendingDetailsFor", { name: formatCandidateName(candidate) })}
               onClick={(event) => { event.stopPropagation(); if (capability.blocked) return; onMenuClose?.(); onEditPending?.(candidate); }}
             >
               {translate(language, "editPendingDetails")}
@@ -824,6 +824,7 @@ function filterPipelineRows(rows: EnrichedCandidate[], search: string) {
   return rows.filter((row) => [
     row.candidate_id,
     row.name,
+    row.nickname,
     row.group_position,
     row.site,
     row.person_in_charge,

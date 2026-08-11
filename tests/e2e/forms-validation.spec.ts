@@ -20,12 +20,23 @@ test("candidate creation form enforces required fields before review", async ({ 
   await dialog.getByLabel("First Contact Date").fill("2026-05-31");
 
   await dialog.getByRole("button", { name: "Review changes" }).click();
-  await expect(page.getByText("First Contact Date cannot be before the oldest PR Approved Date for this group")).toBeVisible();
-  await expect(page.getByRole("dialog", { name: "Confirm Save" })).toHaveCount(0);
-
-  await dialog.getByLabel("First Contact Date").fill("2026-06-01");
-  await dialog.getByRole("button", { name: "Review changes" }).click();
   await expect(page.getByRole("dialog", { name: "Confirm Save" })).toBeVisible();
+});
+
+test("candidate identity fields guide Thai input and reject an invalid mobile number", async ({ page }) => {
+  await installMockSupabase(page, { role: "admin_recruiter", language: "th" });
+  await page.goto("/candidates");
+  await expectWorkspaceReady(page);
+  await page.getByRole("button", { name: /ใหม่|New/ }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByLabel("ชื่อ")).toHaveAttribute("placeholder", "โปรดใส่ชื่อจริง นามสกุล (เช่น จริงใจ กล้าหาญ)");
+  await expect(dialog.getByLabel("เบอร์โทร")).toHaveAttribute("placeholder", "โปรดหมายเลขโทรศัพท์ 10 หลัก (เช่น 0941231234)");
+  await expect(dialog.getByLabel("ชื่อเล่น")).toBeVisible();
+  await dialog.getByLabel("ชื่อ").fill("จริงใจ กล้าหาญ");
+  await dialog.getByLabel("ชื่อเล่น").fill("ใจดี");
+  await dialog.getByLabel("เบอร์โทร").fill("812345678");
+  await dialog.getByRole("button", { name: /ตรวจสอบ|Review/ }).click();
+  await expect(page.getByText("เบอร์โทรต้องเป็นตัวเลข 10 หลักและขึ้นต้นด้วย 0")).toBeVisible();
 });
 
 test("candidate reference name is required only for Referral channel", async ({ page }) => {

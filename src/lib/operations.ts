@@ -1,7 +1,7 @@
 import { ACTIVE_PIPELINE_STAGES, PROCESS_UPDATE_STAGES, SOURCING_CHANNELS, processLabel } from "@/lib/constants";
 import { enrichCandidates, enrichOffers, enrichRequisitions, enrichSourcingGroups, latestLogsForCandidate } from "@/lib/data";
 import { formatLocalDateInput } from "@/lib/dates";
-import { formatRequisitionTitle } from "@/lib/format";
+import { formatCandidateName, formatRequisitionTitle } from "@/lib/format";
 import { getRequisitionSlaState } from "@/lib/sla";
 import type {
   ChangeLog,
@@ -235,7 +235,7 @@ export function deriveWorkQueue({
     if (!isCandidateAging(row)) continue;
     items.push({
       id: `cand:${row.candidate_id}`,
-      title: row.name,
+      title: formatCandidateName(row),
       meta: `${row.site ?? "-"} - ${processLabel(row.latest_process)} - last touched ${ageDays ?? "-"}d ago`,
       actionLabel: "Aging candidate",
       priority: 8 + (ageDays ?? 0),
@@ -563,7 +563,7 @@ export function derivePipelineBottlenecks(candidates: EnrichedCandidate[], recru
   const scoped = candidates.filter((candidate) =>
     (!filters?.site || candidate.site === filters.site)
       && (!filters?.owner || candidate.person_in_charge === filters.owner)
-      && (!filters?.query || [candidate.candidate_id, candidate.name, candidate.group_position, candidate.doc_ids.join(" ")].join(" ").toLowerCase().includes(filters.query.toLowerCase()))
+      && (!filters?.query || [candidate.candidate_id, candidate.name, candidate.nickname, candidate.group_position, candidate.doc_ids.join(" ")].join(" ").toLowerCase().includes(filters.query.toLowerCase()))
   );
   const scopedCandidateIds = new Set(scoped.map((candidate) => candidate.candidate_id));
   const scopedLogs = recruitmentLogs.filter((log) => scopedCandidateIds.has(log.candidate_id));

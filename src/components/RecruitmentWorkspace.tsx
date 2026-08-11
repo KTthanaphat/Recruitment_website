@@ -60,7 +60,7 @@ import {
   staleOpenSourcingGroups,
   uniqueValues
 } from "@/lib/data";
-import { boolFromForm, emptyToNull, formatDate, formatNumber, formatRequisitionOptionLabel, formatRequisitionTitle, resultText, statusTone } from "@/lib/format";
+import { boolFromForm, emptyToNull, formatCandidateName, formatDate, formatNumber, formatRequisitionOptionLabel, formatRequisitionTitle, formatThaiMobilePhone, resultText, statusTone } from "@/lib/format";
 import { fillReadinessLabel, requisitionStatusLabel, requestTypeLabel, roleLabel, translate } from "@/lib/i18n/dictionary";
 import { activeProcessStage, candidatePipelineCapability, candidateProcessDisabledReason, deriveDataQualityIssues, latestSuccessfulOfferPassDate, pipelineStageRecords, requisitionFillReadiness } from "@/lib/operations";
 import { getRequisitionSlaState } from "@/lib/sla";
@@ -767,7 +767,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     const formData = new FormData(form);
     const payload = buildPayload(modal, formData);
     const actionPayload = payload as Record<string, unknown>;
-    if (modal === "candidate") validateCandidatePayload(data, payload, language);
+    if (modal === "candidate") validateCandidatePayload(payload, language);
     const summary = buildSummary(modal, payload);
     const endpoint = modal === "user"
       ? "/api/admin/users"
@@ -1294,6 +1294,7 @@ function buildPayload(modal: Exclude<ModalName, null>, formData: FormData) {
       mode: String(formData.get("mode") ?? "new"),
       candidate_id: emptyToNull(formData.get("candidate_id")),
       name: emptyToNull(formData.get("name")),
+      nickname: emptyToNull(formData.get("nickname")),
       phone_no: emptyToNull(formData.get("phone_no")),
       doc_group_id: emptyToNull(formData.get("doc_group_id")),
       channel,
@@ -1507,7 +1508,7 @@ function replacementNamesPayload(formData: FormData) {
   return names.length > 0 ? names.join("\n") : null;
 }
 
-function validateCandidatePayload(data: DashboardData, payload: Record<string, unknown>, language: Language) {
+function validateCandidatePayload(payload: Record<string, unknown>, language: Language) {
   const requiredFields = [
     ...(valueAsString(payload.mode) === "change" ? ["candidate_id"] : []),
     "name",
@@ -1529,12 +1530,10 @@ function validateCandidatePayload(data: DashboardData, payload: Record<string, u
     throw new Error(translate(language, "candidateFirstContactDateInvalid"));
   }
 
-  const oldestPrApprovedDate = oldestPrApprovedDateForDocGroup(data, valueAsString(payload.doc_group_id));
-  if (oldestPrApprovedDate && firstContactDate < oldestPrApprovedDate) {
-    throw new Error(translate(language, "candidateFirstContactBeforePrApproved", {
-      date: formatDate(oldestPrApprovedDate, language)
-    }));
+  if (!/^0[0-9]{9}$/.test(valueAsString(payload.phone_no))) {
+    throw new Error(translate(language, "candidatePhoneInvalid"));
   }
+
 }
 
 function candidateRequiredFieldLabel(language: Language, field: string) {
@@ -1548,23 +1547,6 @@ function candidateRequiredFieldLabel(language: Language, field: string) {
     ref_name: translate(language, "referenceName")
   };
   return labels[field] ?? field;
-}
-
-function oldestPrApprovedDateForDocGroup(data: DashboardData, docGroupId: string) {
-  const selectedGroup = data.document_groups.find((row) => row.doc_group_id === docGroupId);
-  if (!selectedGroup) return null;
-
-  const docIds = selectedGroup.group_id
-    ? data.document_groups
-        .filter((row) => row.group_id === selectedGroup.group_id)
-        .map((row) => row.doc_id)
-    : [selectedGroup.doc_id];
-  const docIdSet = new Set(docIds);
-  const dates = data.requisitions
-    .filter((row) => docIdSet.has(row.doc_id) && isIsoDateInput(row.pr_approved_date))
-    .map((row) => row.pr_approved_date as string)
-    .sort();
-  return dates[0] ?? null;
 }
 
 function isIsoDateInput(value: string | null | undefined): value is string {
@@ -1740,7 +1722,7 @@ function requisitionOptionLabel(row: DashboardData["requisitions"][number]) {
 }
 
 function candidateOptionLabel(row: DashboardData["candidates"][number]) {
-  return optionLabel([row.candidate_id, row.name]);
+  return optionLabel([row.candidate_id, formatCandidateName(row)]);
 }
 
 function documentGroupOptionLabel(row: DashboardData["document_groups"][number]) {
@@ -2092,8 +2074,9 @@ function CandidatePrefillFields({
           <SelectInput name="candidate_id"><option value="">{translate(language, "autoInNewMode")}</option>{data.candidates.map((row) => <option key={row.candidate_id} value={row.candidate_id}>{candidateOptionLabel(row)}</option>)}</SelectInput>
         )}
       </Field>
-      <Field label={translate(language, "name")}><TextInput name="name" required defaultValue={selected?.name ?? ""} /></Field>
-      <Field label={translate(language, "phoneNo")}><TextInput name="phone_no" required defaultValue={selected?.phone_no ?? ""} /></Field>
+      <Field label={translate(language, "name")}><TextInput name="name" required placeholder={translate(language, "candidateNamePlaceholder")} defaultValue={selected?.name ?? ""} /></Field>
+      <Field label={translate(language, "nickname")}><TextInput name="nickname" defaultValue={selected?.nickname ?? ""} /></Field>
+      <Field label={translate(language, "phoneNo")}><TextInput name="phone_no" type="tel" inputMode="numeric" maxLength={10} pattern="0[0-9]{9}" required placeholder={translate(language, "candidatePhonePlaceholder")} defaultValue={selected?.phone_no ?? ""} /></Field>
       <Field label={translate(language, "groupId")}>
         <CreateSelectInput name="doc_group_id" required value={selectedDocGroupId} disabled={mode === "new" && (defaults.lock_doc_group_id || eligibleGroups.length === 0)} onChange={(event) => setSelectedDocGroupId(event.target.value)}>
           <option value="">{eligibleGroups.length === 0 ? translate(language, "noEligibleGroups") : translate(language, "selectGroup")}</option>
@@ -3109,7 +3092,7 @@ function buildDetailBodyV2(
           </DetailDisclosure>
           <DetailDisclosure title="Related records" summary="Candidates and offers">
             <div className="grid gap-4">
-              <DetailList title={translate(language, "candidates")} rows={candidates.map((row) => optionLabel([row.candidate_id, row.name, processLabel(row.latest_process, language)]))} />
+              <DetailList title={translate(language, "candidates")} rows={candidates.map((row) => optionLabel([row.candidate_id, formatCandidateName(row), processLabel(row.latest_process, language)]))} />
               <DetailList title={translate(language, "offers")} rows={offers.map((row) => `${row.candidate_id} / ${translate(language, "acceptedLower")} ${formatDate(row.accepted_date, language)}`)} />
             </div>
           </DetailDisclosure>
@@ -3136,7 +3119,7 @@ function buildDetailBodyV2(
   );
 
   return {
-    title: `${candidate.candidate_id} / ${candidate.name}`,
+    title: `${candidate.candidate_id} / ${formatCandidateName(candidate)}`,
     headerMeta: (
       <>
         <Tag tone={candidate.latest_result === 0 ? "danger" : candidate.accepted_date ? "success" : "teal"}>{processLabel(candidate.latest_process, language)}</Tag>
@@ -3145,7 +3128,7 @@ function buildDetailBodyV2(
     ),
       headerActions: (
         <RecordActionGroup
-          label={candidate.name}
+          label={formatCandidateName(candidate)}
           primary={{ id: "workspace", label: "Open workspace", href: href(`/workspace?type=${candidate.group_id ? "group" : "requisition"}&id=${encodeURIComponent(candidate.group_id ?? candidate.doc_ids[0] ?? "")}&section=overview`), tone: "primary", iconOnly: true }}
           items={[
             ...(canWrite ? [{ id: "change-record", label: translate(language, "changeRecord"), onSelect: () => onChangeCandidate(candidate.candidate_id) }] : []),
@@ -3187,7 +3170,8 @@ function buildDetailBodyV2(
           </div>
         </DetailDisclosure>
         <DetailGrid rows={[
-          ["Phone", candidate.phone_no ?? "-"],
+          [translate(language, "phoneNo"), formatThaiMobilePhone(candidate.phone_no)],
+          [translate(language, "nickname"), candidate.nickname ?? "-"],
           ["Group ID", candidate.group_id ?? candidate.doc_group_id],
           ["Doc IDs", candidate.doc_ids.join(", ") || "-"],
           ["Group Position", candidate.group_position ?? "-"],
@@ -3346,7 +3330,7 @@ function buildDetailBody(detail: { type: "requisition" | "candidate"; id: string
             subtitle="Historical stage touches, de-duplicated per candidate per stage"
             totalValue={applicantTotal}
           />
-          <DetailList title={translate(language, "candidates")} rows={candidates.map((row) => optionLabel([row.candidate_id, row.name, processLabel(row.latest_process, language)]))} />
+          <DetailList title={translate(language, "candidates")} rows={candidates.map((row) => optionLabel([row.candidate_id, formatCandidateName(row), processLabel(row.latest_process, language)]))} />
           <DetailList title={translate(language, "offers")} rows={offers.map((row) => `${row.candidate_id} - ${translate(language, "acceptedLower")} ${formatDate(row.accepted_date, language)}`)} />
         </div>
       )
@@ -3361,7 +3345,7 @@ function buildDetailBody(detail: { type: "requisition" | "candidate"; id: string
   const issues = deriveDataQualityIssues(data).filter((issue) => issue.entityId === candidate.candidate_id || offers.some((offer) => String(offer.offer_id) === issue.entityId));
 
   return {
-    title: `${candidate.candidate_id} · ${candidate.name}`,
+    title: `${candidate.candidate_id} · ${formatCandidateName(candidate)}`,
     body: (
       <div className="grid gap-5">
         {!updateDisabledReason.blocked ? (
@@ -3386,7 +3370,7 @@ function buildDetailBody(detail: { type: "requisition" | "candidate"; id: string
         ) : null}
         <InlineDataQualityIssues issues={issues} language={language} />
         <RecordActionGroup
-          label={candidate.name}
+          label={formatCandidateName(candidate)}
           primary={{ id: "workspace", href: `/workspace?type=${candidate.group_id ? "group" : "requisition"}&id=${encodeURIComponent(candidate.group_id ?? candidate.doc_ids[0] ?? "")}`, label: "Open workspace", tone: "primary", iconOnly: true }}
           items={[
             ...(candidate.doc_ids[0] ? [{ id: "requisition", href: `/requisitions?detailType=requisition&detailId=${encodeURIComponent(candidate.doc_ids[0])}`, label: "View requisition", tone: "primary" as const }] : []),
@@ -3395,7 +3379,8 @@ function buildDetailBody(detail: { type: "requisition" | "candidate"; id: string
           ]}
         />
         <DetailGrid rows={[
-          ["Phone", candidate.phone_no ?? "-"],
+          [translate(language, "phoneNo"), formatThaiMobilePhone(candidate.phone_no)],
+          [translate(language, "nickname"), candidate.nickname ?? "-"],
           ["Group ID", candidate.group_id ?? candidate.doc_group_id],
           ["Doc IDs", candidate.doc_id ?? "-"],
           ["Group Position", candidate.group_position ?? "-"],

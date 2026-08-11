@@ -238,8 +238,11 @@ Candidates:
 - Candidate channel is a dropdown filtered by the selected group’s marked sourcing channels.
 - New Candidate lists only Group IDs linked to ongoing requisitions with remaining headcount. Site Recruiters additionally require their assigned Site and PIC; Admin Recruiter and System Admin retain all eligible groups. `app_upsert_candidate` enforces the same new-record rule.
 - Candidate required fields are Name, Phone, Group ID, Channel, and First Contact Date. Candidate ID remains optional in New mode because it is generated.
+- Name remains the official required identity; Nickname is optional, stored as nullable text, and every candidate label uses `Full name (nickname)` when a nickname exists (otherwise the full name alone).
+- New and Change Candidate use localized identity placeholders. Thai Name is `โปรดใส่ชื่อจริง นามสกุล (เช่น จริงใจ กล้าหาญ)` and Thai Phone is `โปรดหมายเลขโทรศัพท์ 10 หลัก (เช่น 0941231234)`; the Name example is guidance only.
+- Phone No. is stored only as exactly ten digits matching `^0[0-9]{9}$`. New and Change writes validate the same rule in the client and `app_upsert_candidate`; valid values display as `000-000-0000`. Existing invalid legacy values remain readable unchanged but must be corrected before a Change save.
 - Reference Name is visible and required only when Channel is `Referral`; changing to another channel omits `ref_name` from the submitted candidate payload.
-- First Contact Date cannot be before the oldest non-null PR Approved Date among requisitions linked to the selected group. If no linked requisition has a PR Approved Date, only the required-date check applies.
+- Candidate contact and Pipeline stage dates may precede PR Approved Date, so recruiters can record pre-approval outreach. They still follow the existing Pipeline chronology and Bangkok-business-date rules.
 - Candidate folder URL is stored in `candidate_folder_url` and shown as an external link in candidate detail.
 - Candidate detail shows a pipeline journey above the timeline.
 - Candidate Pipeline Journey includes a derived first `Resume Screening` dot. It is shown as passed for recorded candidates, but it is not stored in `recruitment_logs` and is not an active Pipeline board column.

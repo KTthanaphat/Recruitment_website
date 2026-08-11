@@ -92,6 +92,7 @@ export type DocumentGroup = {
 export type Candidate = {
   candidate_id: string;
   name: string;
+  nickname: string | null;
   phone_no: string | null;
   doc_group_id: string;
   channel: string | null;

@@ -1,6 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-type Candidate = { candidate_id: string; name: string };
+type Candidate = { candidate_id: string; name: string; nickname?: string | null };
 type Responsibility = { site: string; person_in_charge: string; responsible_vacancy: number; open_requisition_count: number; candidate_states: Record<string, number> };
 type MovementRow = { doc_id: string; site: string; position: string; person_in_charge: string; new_candidates?: Candidate[] };
 type NewCandidateRow = MovementRow & Candidate;
@@ -38,6 +38,7 @@ function escapeHtml(value: string | number | null | undefined) {
 }
 
 function siteColour(site: string) { return siteColours[site.trim().toUpperCase()] ?? BRAND_BLUE; }
+function candidateLabel(candidate: Candidate) { return candidate.nickname?.trim() ? `${candidate.name} (${candidate.nickname.trim()})` : candidate.name; }
 
 const stageColumns = [
   { label: "Screening", match: "Phone Screen" },
@@ -76,7 +77,7 @@ function movementRows(rows: MovementRow[], includeCandidates = false) {
   if (!rows.length) return `<tr><td colspan="${includeCandidates ? 5 : 4}" style="padding:13px 10px;color:${MUTED}">None</td></tr>`;
   return rows.map((row) => {
     const candidates = row.new_candidates?.length
-      ? row.new_candidates.map((candidate) => `<div style="margin:0 0 3px"><strong>${escapeHtml(candidate.name)}</strong> <span style="color:${MUTED}">(${escapeHtml(candidate.candidate_id)})</span></div>`).join("")
+      ? row.new_candidates.map((candidate) => `<div style="margin:0 0 3px"><strong>${escapeHtml(candidateLabel(candidate))}</strong> <span style="color:${MUTED}">(${escapeHtml(candidate.candidate_id)})</span></div>`).join("")
       : `<span style="color:${MUTED}">No new candidates</span>`;
     return `<tr><td style="padding:11px 10px;border-top:1px solid ${BORDER};font-weight:700;color:${NAVY}">${escapeHtml(row.doc_id)}</td><td style="padding:11px 10px;border-top:1px solid ${BORDER};border-left:3px solid ${siteColour(row.site)};color:${NAVY}">${escapeHtml(row.site)}</td><td style="padding:11px 10px;border-top:1px solid ${BORDER};color:${NAVY}">${escapeHtml(row.position)}</td><td style="padding:11px 10px;border-top:1px solid ${BORDER};color:${NAVY}">${escapeHtml(row.person_in_charge)}</td>${includeCandidates ? `<td style="padding:11px 10px;border-top:1px solid ${BORDER};color:${NAVY}">${candidates}</td>` : ""}</tr>`;
   }).join("");
@@ -87,7 +88,7 @@ function movementTable(title: string, rows: MovementRow[], includeCandidates = f
 }
 
 function newCandidateTable(rows: NewCandidateRow[]) {
-  const content = rows.length ? rows.map((row) => `<tr><td style="padding:11px 10px;border-top:1px solid ${BORDER};font-weight:700;color:${NAVY}">${escapeHtml(row.name)}</td><td style="padding:11px 10px;border-top:1px solid ${BORDER};color:${MUTED}">${escapeHtml(row.candidate_id)}</td><td style="padding:11px 10px;border-top:1px solid ${BORDER};background:${siteColour(row.site)};font-weight:700;color:#ffffff">${escapeHtml(row.site)}</td><td style="padding:11px 10px;border-top:1px solid ${BORDER};color:${NAVY}">${escapeHtml(row.position)}</td><td style="padding:11px 10px;border-top:1px solid ${BORDER};color:${NAVY}">${escapeHtml(row.person_in_charge)}</td></tr>`).join("") : `<tr><td colspan="5" style="padding:13px 10px;color:${MUTED}">None</td></tr>`;
+  const content = rows.length ? rows.map((row) => `<tr><td style="padding:11px 10px;border-top:1px solid ${BORDER};font-weight:700;color:${NAVY}">${escapeHtml(candidateLabel(row))}</td><td style="padding:11px 10px;border-top:1px solid ${BORDER};color:${MUTED}">${escapeHtml(row.candidate_id)}</td><td style="padding:11px 10px;border-top:1px solid ${BORDER};background:${siteColour(row.site)};font-weight:700;color:#ffffff">${escapeHtml(row.site)}</td><td style="padding:11px 10px;border-top:1px solid ${BORDER};color:${NAVY}">${escapeHtml(row.position)}</td><td style="padding:11px 10px;border-top:1px solid ${BORDER};color:${NAVY}">${escapeHtml(row.person_in_charge)}</td></tr>`).join("") : `<tr><td colspan="5" style="padding:13px 10px;color:${MUTED}">None</td></tr>`;
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:20px;border:1px solid ${BORDER};border-radius:10px;border-collapse:separate;border-spacing:0;overflow:hidden;font-size:13px"><tr><td style="padding:12px 14px;border-radius:9px 9px 0 0;background:${BRAND_BLUE};color:#ffffff;font-size:15px;font-weight:700">Newly added candidates</td></tr><tr><td><table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;color:${NAVY}"><thead><tr style="background:#F8FAFD"><th align="left" style="padding:10px">Candidate</th><th align="left" style="padding:10px">Candidate ID</th><th align="left" style="padding:10px">Site</th><th align="left" style="padding:10px">Position</th><th align="left" style="padding:10px">PiC</th></tr></thead><tbody>${content}</tbody></table></td></tr></table>`;
 }
 
