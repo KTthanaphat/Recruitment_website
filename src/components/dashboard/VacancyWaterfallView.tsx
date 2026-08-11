@@ -4,6 +4,7 @@ import { CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, Download, 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { CommandMonthSelector, CommandSelector } from "@/components/ui/CommandSelector";
 import { Field, TextInput } from "@/components/ui/Field";
 import { OperationalSummaryStrip } from "@/components/ui/Operations";
 import { PipelineFunnel, type PipelineFunnelRow } from "@/components/ui/PipelineFunnel";
@@ -83,9 +84,6 @@ export function VacancyWaterfallView({
   const [reportMonth, setReportMonth] = useState(today().slice(0, 7));
   const [customStartDate, setCustomStartDate] = useState("");
   const [customEndDate, setCustomEndDate] = useState("");
-  const [viewMenuOpen, setViewMenuOpen] = useState(false);
-  const [monthPickerOpen, setMonthPickerOpen] = useState(false);
-  const [monthPickerYear, setMonthPickerYear] = useState(() => Number(today().slice(0, 4)));
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [funnelStartDate, setFunnelStartDate] = useState(`${today().slice(0, 4)}-01-01`);
   const [funnelEndDate, setFunnelEndDate] = useState(today());
@@ -96,8 +94,6 @@ export function VacancyWaterfallView({
   const [exportPreparing, setExportPreparing] = useState(false);
   const [urlStateReady, setUrlStateReady] = useState(false);
   const printFallbackTimer = useRef<number | null>(null);
-  const viewMenuRef = useRef<HTMLDivElement | null>(null);
-  const monthPickerRef = useRef<HTMLDivElement | null>(null);
   const { startDate, endDate } = useMemo(
     () => reportRange(reportView, reportMonth, customStartDate, customEndDate),
     [customEndDate, customStartDate, reportMonth, reportView]
@@ -138,25 +134,6 @@ export function VacancyWaterfallView({
     if (params.get("funnel") === "open") setFunnelOpen(true);
     if (params.get("funnel") === "closed") setFunnelOpen(false);
     setUrlStateReady(true);
-  }, []);
-
-  useEffect(() => {
-    const closePickers = (event: MouseEvent) => {
-      if (!viewMenuRef.current?.contains(event.target as Node)) setViewMenuOpen(false);
-      if (!monthPickerRef.current?.contains(event.target as Node)) setMonthPickerOpen(false);
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setViewMenuOpen(false);
-        setMonthPickerOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", closePickers);
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("mousedown", closePickers);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
   }, []);
 
   useEffect(() => {
@@ -238,12 +215,6 @@ export function VacancyWaterfallView({
       setCustomEndDate(endDate);
     }
     setReportView(nextView);
-    setViewMenuOpen(false);
-  }
-
-  function selectReportMonth(month: number) {
-    setReportMonth(`${monthPickerYear}-${String(month).padStart(2, "0")}`);
-    setMonthPickerOpen(false);
   }
 
   return (
@@ -263,50 +234,14 @@ export function VacancyWaterfallView({
           </div>
           <div className="mt-4 rounded-2xl border border-[#D7E2F1] bg-[linear-gradient(135deg,#F8FAFD_0%,#F1F6FC_100%)] p-3 shadow-[0_8px_20px_rgba(11,19,43,0.04)]">
             <div className={`grid gap-3 lg:items-end ${reportView === "custom" ? "lg:grid-cols-[14rem_10rem_10rem_auto]" : "lg:grid-cols-[14rem_10rem_auto]"}`}>
-            <div ref={viewMenuRef} className="grid gap-1.5 text-sm font-medium text-navy">
+            <div className="grid gap-1.5 text-sm font-medium text-navy">
               <span className="text-xs font-semibold text-slate">{translate(language, "metricView")}</span>
-              <div className="relative">
-                <button type="button" className="flex min-h-11 w-full items-center gap-2 rounded-xl border border-[#B8CCE4] bg-white px-3 text-left text-sm font-semibold text-navy shadow-sm transition hover:border-primary/60 hover:bg-[#FBFDFF] focus:outline-none focus:ring-2 focus:ring-primary/20" aria-haspopup="listbox" aria-expanded={viewMenuOpen} aria-controls="dashboard-report-view-options" onClick={() => setViewMenuOpen((open) => !open)}>
-                  <SlidersHorizontal size={16} className="shrink-0 text-primary" aria-hidden="true" />
-                  <span className="min-w-0 flex-1 truncate">{reportViewLabel(reportView, language)}</span>
-                  <ChevronDown size={17} className={`shrink-0 text-slate transition-transform ${viewMenuOpen ? "rotate-180" : ""}`} aria-hidden="true" />
-                </button>
-                {viewMenuOpen ? <div id="dashboard-report-view-options" role="listbox" aria-label={translate(language, "metricView")} className="absolute z-30 mt-2 grid w-full min-w-[13rem] grid-cols-1 gap-1.5 rounded-2xl border border-[#C9D5E6] bg-white p-2 shadow-[0_18px_40px_rgba(11,19,43,0.18)]">
-                  {(["mtd", "ytd", "pim", "custom"] as ReportView[]).map((view) => {
-                    const selected = reportView === view;
-                    return <button key={view} type="button" role="option" aria-selected={selected} className={`relative min-h-11 rounded-xl border px-3 py-2.5 text-left text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-primary/30 ${selected ? "border-primary bg-primary text-white shadow-sm" : "border-[#E4E9F2] bg-[#F8FAFD] text-navy hover:border-[#8AAED8] hover:bg-white"}`} onClick={() => changeReportView(view)}>
-                      <span className="block pr-5 leading-snug">{reportViewLabel(view, language)}</span>
-                      {selected ? <Check size={16} className="absolute right-3 top-3" aria-hidden="true" /> : null}
-                    </button>;
-                  })}
-                </div> : null}
-              </div>
+              <CommandSelector ariaLabel={translate(language, "metricView")} emptyLabel={translate(language, "metricView")} options={(["mtd", "ytd", "pim", "custom"] as ReportView[]).map((value) => ({ value, label: reportViewLabel(value, language) }))} value={reportView} onValueChange={(value) => changeReportView(value as ReportView)} />
             </div>
             {reportView === "custom" ? <>
               <DashboardDateFilter label={translate(language, "startDate")} value={customStartDate} onChange={setCustomStartDate} language={language} />
               <DashboardDateFilter label={translate(language, "endDate")} value={customEndDate} onChange={setCustomEndDate} language={language} />
-            </> : <Field label={translate(language, "reportMonth")} className="text-xs font-semibold text-slate">
-              <div ref={monthPickerRef} className="relative">
-                <button type="button" className="flex min-h-11 w-full items-center gap-2 rounded-xl border border-[#B8CCE4] bg-white px-3 text-left text-sm font-semibold text-navy shadow-sm transition hover:border-primary/60 hover:bg-[#FBFDFF] focus:outline-none focus:ring-2 focus:ring-primary/20" aria-haspopup="dialog" aria-expanded={monthPickerOpen} aria-controls="dashboard-report-month-picker" onClick={() => { setMonthPickerYear(Number(reportMonth.slice(0, 4))); setMonthPickerOpen((open) => !open); }}>
-                  <CalendarDays size={16} className="shrink-0 text-primary" aria-hidden="true" />
-                  <span className="min-w-0 flex-1 truncate tabular-nums">{monthPickerLabel(reportMonth, language)}</span>
-                  <ChevronDown size={17} className={`shrink-0 text-slate transition-transform ${monthPickerOpen ? "rotate-180" : ""}`} aria-hidden="true" />
-                </button>
-                {monthPickerOpen ? <div id="dashboard-report-month-picker" role="dialog" aria-label={translate(language, "reportMonth")} className="absolute z-30 mt-2 w-[19rem] rounded-2xl border border-[#C9D5E6] bg-white p-3 shadow-[0_18px_40px_rgba(11,19,43,0.18)]">
-                  <div className="mb-3 flex items-center justify-between rounded-xl bg-[#F8FAFD] p-1">
-                    <button type="button" className="grid size-8 place-items-center rounded-lg text-slate transition hover:bg-white hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary/20" aria-label={translate(language, "previousYear")} onClick={() => setMonthPickerYear((year) => year - 1)}><ChevronLeft size={17} /></button>
-                    <span className="text-sm font-semibold tabular-nums text-navy">{monthPickerYear}</span>
-                    <button type="button" className="grid size-8 place-items-center rounded-lg text-slate transition hover:bg-white hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary/20" aria-label={translate(language, "nextYear")} onClick={() => setMonthPickerYear((year) => year + 1)}><ChevronRight size={17} /></button>
-                  </div>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    {Array.from({ length: 12 }, (_, index) => index + 1).map((month) => {
-                      const selected = reportMonth === `${monthPickerYear}-${String(month).padStart(2, "0")}`;
-                      return <button key={month} type="button" className={`min-h-10 rounded-xl border px-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-primary/30 ${selected ? "border-primary bg-primary text-white shadow-sm" : "border-[#E4E9F2] bg-[#F8FAFD] text-navy hover:border-[#8AAED8] hover:bg-white"}`} aria-pressed={selected} onClick={() => selectReportMonth(month)}>{monthPickerMonthLabel(month, language)}</button>;
-                    })}
-                  </div>
-                </div> : null}
-              </div>
-            </Field>}
+            </> : <Field label={translate(language, "reportMonth")} className="text-xs font-semibold text-slate"><CommandMonthSelector ariaLabel={translate(language, "reportMonth")} monthLabel={(month) => monthPickerMonthLabel(month, language)} previousYearLabel={translate(language, "previousYear")} nextYearLabel={translate(language, "nextYear")} value={reportMonth} onValueChange={setReportMonth} /></Field>}
             <div className="flex flex-wrap items-end gap-2 print:hidden lg:justify-end">
               <Button type="button" size="sm" variant="secondary" icon={<Download size={16} />} disabled={exportPreparing || !validReportRange} onClick={() => exportPdf("chart")}>{translate(language, "exportPdf")}</Button>
             </div>

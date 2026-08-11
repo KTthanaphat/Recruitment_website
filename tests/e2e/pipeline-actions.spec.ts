@@ -61,22 +61,28 @@ test("Pass stage preserves Pending details and sends only editable Outcome plus 
   await expect(dialog.locator('input[name="pending_interviewer"]:not([type="hidden"])')).toHaveCount(0);
   await expect(dialog.locator('textarea[name="pending_remark"]')).toHaveCount(0);
   await expect(dialog.locator('input[name="outcome_date"]')).toHaveValue("2026-07-24");
-  await expect(dialog.locator('input[name="next_opened_date"]')).toHaveValue("2026-07-24");
+  await expect(dialog.locator('input[name="next_opened_date"]')).toHaveCount(0);
+  await expect(dialog.getByText(/Next pending date: 2026-07-24/)).toBeVisible();
+  await dialog.locator('input[name="outcome_date"]').fill("2026-07-23");
+  await expect(dialog.getByText(/Next pending date: 2026-07-23/)).toBeVisible();
   await dialog.locator('textarea[name="outcome_remark"]').fill("Strong phone screen");
   await dialog.getByRole("button", { name: "Review changes" }).click();
   await page.getByRole("button", { name: "Save changes" }).click();
 
   await expect.poll(() => mock.rpcCalls.at(-1)?.endpoint).toBe("app_complete_pipeline_stage_v2");
+  await expect(page.getByRole("dialog", { name: "Offer stage passed" })).toHaveCount(0);
   expect(mock.rpcCalls.at(-1)?.payload).toMatchObject({
     candidate_id: "C-PHONE",
     stage_instance_id: "00000000-0000-4000-8000-000000000001",
     pending: { opened_date: "2026-07-09", interviewer: "QA Interviewer", remark: "QA Phone Screen" },
-    outcome: { result: "pass", date: "2026-07-24", interviewer: "QA Interviewer", remark: "Strong phone screen" },
-    next_pending: { stage: "HR Interview", round: 1, opened_date: "2026-07-24" }
+    outcome: { result: "pass", date: "2026-07-23", interviewer: "QA Interviewer", remark: "Strong phone screen" },
+    next_pending: { stage: "HR Interview", round: 1 }
   });
+  expect(mock.rpcCalls.at(-1)?.payload.next_pending).not.toHaveProperty("opened_date");
   const stages = mock.data.recruitment_logs.filter((row) => row.candidate_id === "C-PHONE" && row.superseded_at === null);
   expect(stages.find((row) => row.log_id === 1)?.result).toBe(1);
   expect(stages.filter((row) => row.result === null)).toHaveLength(1);
+  expect(stages.find((row) => row.result === null)?.log_date).toBe("2026-07-23");
 });
 
 test("system admin can edit Pending details outside Site and PIC scope", async ({ page }) => {
@@ -142,6 +148,23 @@ test("Test has a separate next-round action while Pass stage exits to Reference 
   });
 });
 
+test("passing Line Interview starts Test at round 1", async ({ page }) => {
+  const mock = await installMockSupabase(page, { role: "admin_recruiter" });
+  const lineInterview = mock.data.recruitment_logs.find((row) => row.candidate_id === "C-PHONE" && row.recruitment_process === "Phone Screen");
+  if (!lineInterview) throw new Error("Pipeline fixture is missing the current stage.");
+  lineInterview.recruitment_process = "Line Interview";
+  await page.goto("/pipeline");
+  await expectWorkspaceReady(page);
+
+  const menu = await openPatMenu(page);
+  await menu.getByRole("menuitem").filter({ hasText: "Pass stage" }).click();
+  await page.getByRole("button", { name: "Review changes" }).click();
+  await page.getByRole("button", { name: "Save changes" }).click();
+
+  await expect.poll(() => mock.rpcCalls.at(-1)?.endpoint).toBe("app_complete_pipeline_stage_v2");
+  expect(mock.rpcCalls.at(-1)?.payload.next_pending).toMatchObject({ stage: "Test", round: 1 });
+});
+
 test("forward menu jump opens confirmation without a write and submits paired pass records plus target pending", async ({ page }) => {
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
@@ -156,7 +179,7 @@ test("forward menu jump opens confirmation without a write and submits paired pa
   expect(pageErrors).toEqual([]);
   const dialog = page.getByRole("dialog", { name: /Confirm Passed Stages|Move to Line Interview/i });
   await expect(dialog).toBeVisible();
-  expect(mock.rpcCalls).toHaveLength(0);
+  expect(mock.rpcCalls.filter((call) => call.endpoint === "app_pass_pipeline_jump_v2")).toHaveLength(0);
   await expect(dialog.getByText(/Phone Screening/).first()).toBeVisible();
   await expect(dialog.getByText(/HR Interview/).first()).toBeVisible();
   await dialog.getByRole("button", { name: "Review changes" }).click();
@@ -199,7 +222,7 @@ test("Reference Check requires available references to be checked before Pass", 
   await menu.getByRole("menuitem", { name: "Manage reference checks" }).click();
 
   const detail = page.getByRole("dialog", { name: /C-REF/ });
-  await expect(detail.getByText("References")).toBeVisible();
+  await expect(detail.getByText("Contact references", { exact: true })).toBeVisible();
   await detail.getByRole("button", { name: "Record check" }).click();
   const checkDialog = page.getByRole("dialog", { name: /Reference check/i });
   await checkDialog.getByLabel("Conversation duration (minutes)").fill("18");

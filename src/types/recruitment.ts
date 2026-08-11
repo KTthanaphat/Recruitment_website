@@ -386,7 +386,7 @@ export type WorkspaceActionRequest =
   | { kind: "group.create"; docId?: string }
   | { kind: "group.match"; docId: string; groupId?: string }
   | { kind: "sourcing.update"; groupId: string; weekStart: string; payload?: Record<string, unknown> }
-  | { kind: "candidate.create"; docGroupId: string }
+  | { kind: "candidate.create"; docGroupIds: string[] }
   | {
       kind: "candidate.process";
       candidateId: string;
@@ -400,4 +400,10 @@ export type RpcResult = {
   ok: boolean;
   id?: string;
   error?: string;
+  offer_handoff?: {
+    candidate_id: string;
+    passed_date: string;
+    group_id?: string | null;
+    requisitions?: Array<{ doc_id: string }>;
+  } | null;
 };

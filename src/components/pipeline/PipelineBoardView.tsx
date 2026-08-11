@@ -79,7 +79,7 @@ export function PipelineBoardView({
   const activeFilterCount = Number(Boolean(pipelineSearch.trim())) + Number(boardFilter !== "all");
   const activeRowsBase = rows.filter((row) => row.latest_result !== 0 && !(row.latest_process === "Offer" && row.latest_result === 1));
   const activeRows = filterBoardRows(filterPipelineRows(activeRowsBase, pipelineSearch), boardFilter);
-  const failedGroups = failedCandidatesByStage(filterPipelineRows(rows, pipelineSearch));
+  const failedGroups = failedCandidatesByStage(filterPipelineRows(rows, pipelineSearch), recruitmentLogs);
   const passedOfferRows = passedOfferCandidates(filterPipelineRows(rows, pipelineSearch));
   const agingRows = activeRows.filter(isCandidateAging);
   const noActivityRows = activeRows.filter((row) => row.latest_process === "No activity");
@@ -152,18 +152,10 @@ export function PipelineBoardView({
   return (
     <div className="grid gap-5">
       <Panel variant={embedded ? "workspace" : "primary"} className={embedded ? "shadow-none" : ""}>
-        {!embedded ? (
-          <SectionTitle
-            title={translate(language, "candidatePipeline")}
-            action={
-              canWrite && onNewCandidate ? (
-                <>
-                  {onNewCandidate ? <Button type="button" size="sm" icon={<Plus size={16} />} onClick={onNewCandidate}>{translate(language, "newCandidate")}</Button> : null}
-                </>
-              ) : null
-            }
-          />
-        ) : null}
+        <SectionTitle
+          title={translate(language, "candidatePipeline")}
+          action={canWrite && onNewCandidate ? <Button type="button" size="sm" icon={<Plus size={16} />} onClick={onNewCandidate}>{translate(language, "newCandidate")}</Button> : null}
+        />
         <div className="mb-3 grid gap-3">
           <OperationalSummaryStrip
             density="compact"
@@ -400,13 +392,16 @@ export function PipelineBoardView({
   );
 }
 
-function failedCandidatesByStage(rows: EnrichedCandidate[]) {
+function failedCandidatesByStage(rows: EnrichedCandidate[], recruitmentLogs: RecruitmentLog[]) {
   const cutoff = recentCutoffDate();
   const groups = new Map<ProcessStage, EnrichedCandidate[]>(ACTIVE_PIPELINE_STAGES.map((stage) => [stage, []]));
 
   for (const row of rows) {
-    if (row.latest_result !== 0 || row.latest_process === "No activity" || !row.latest_log_date) continue;
-    if (row.latest_log_date < cutoff) continue;
+    if (row.latest_result !== 0 || row.latest_process === "No activity") continue;
+    const failureDate = recruitmentLogs
+      .filter((log) => log.candidate_id === row.candidate_id && log.superseded_at === null && log.result === 0)
+      .sort((a, b) => b.log_id - a.log_id)[0]?.outcome_date;
+    if (!failureDate || failureDate < cutoff) continue;
     groups.set(row.latest_process, [...(groups.get(row.latest_process) ?? []), row]);
   }
 

@@ -167,7 +167,7 @@ select public.app_complete_pipeline_stage_v2(jsonb_build_object(
   'next_pending', jsonb_build_object(
     'stage', 'HR Interview',
     'round', 1,
-    'opened_date', app_private.pipeline_business_date() - 1
+    'opened_date', app_private.pipeline_business_date() - 2
   )
 ));
 
@@ -180,12 +180,12 @@ select pg_temp.assert_true(
   'completion must keep one canonical stage row and permit a blank Outcome interviewer'
 );
 select pg_temp.assert_true(
-  (select count(*) = 1
+  (select count(*) = 1 and min(log_date) = app_private.pipeline_business_date() - 1
    from public.recruitment_logs
    where candidate_id = '__paired_pipeline_candidate'
      and recruitment_process = 'HR Interview'
      and result is null and superseded_at is null),
-  'a Pass must create exactly one next Pending stage'
+  'a Pass must create the next Pending stage on the Outcome date, ignoring legacy client input'
 );
 
 create temporary table _paired_pipeline_before_correction on commit drop as

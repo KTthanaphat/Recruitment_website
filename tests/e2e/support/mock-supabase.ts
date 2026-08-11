@@ -80,7 +80,12 @@ export async function installMockSupabase(page: Page, options: MockSupabaseOptio
     const payload = body?.payload ?? {};
     rpcCalls.push({ endpoint, payload });
     applyRpcMutation(data, endpoint, payload);
-    await json(route, { ok: true, id: generatedIdForEndpoint(endpoint) });
+    const completedOffer = endpoint === "app_complete_pipeline_stage_v2"
+      && asRecord(payload.outcome).result === "pass"
+      && data.recruitment_logs.find((row) => row.stage_instance_id === payload.stage_instance_id)?.recruitment_process === "Offer";
+    await json(route, completedOffer
+      ? { ok: true, id: generatedIdForEndpoint(endpoint), offer_handoff: { candidate_id: payload.candidate_id, passed_date: asRecord(payload.outcome).date, requisitions: [{ doc_id: "REQ-HQ-1" }] } }
+      : { ok: true, id: generatedIdForEndpoint(endpoint) });
   });
 
   await page.route("**/rest/v1/**", async (route) => {
@@ -351,7 +356,7 @@ function applyRpcMutation(data: DashboardData, endpoint: string, payload: Record
     current.outcome_recorded_at = "2026-07-24T05:00:00.000Z";
     current.updated_at = "2026-07-24T05:00:00.000Z";
     const next = asRecord(payload.next_pending);
-    if (current.result === 1 && Object.keys(next).length) addCanonicalPending(data, candidateId, next);
+    if (current.result === 1 && Object.keys(next).length) addCanonicalPending(data, candidateId, { ...next, opened_date: current.outcome_date });
     appendPipelineAudit(data, current.log_id, "pipeline:completion", current);
   }
   if (endpoint === "app_pass_pipeline_jump_v2") {

@@ -80,6 +80,18 @@ Absent historical stages are not invented. A legacy-only candidate keeps no acti
 
 ## Public model and RPCs
 
+### 2026-08-11 completion-date and Offer-handoff adjustment
+
+- On a non-Offer Pass, `app_complete_pipeline_stage_v2` derives the immediate next Pending `log_date` from `outcome.date`; legacy `next_pending.opened_date` input is ignored.
+- The completion form shows that derived same-day date but does not submit an editable next-date field.
+- The client opens the Offer handoff prompt only from the RPC's `offer_handoff` response, which is returned only by a successful Offer-stage Pass.
+
+### 2026-08-11 Workspace candidate creation
+
+- Embedded Workspace Pipeline renders a visible New Candidate command only with eligible active document-group links. The modal uses the shared CommandSelector: it locks one contextual Group ID or scopes its list to multiple contextual links.
+- New candidate creation accepts only ongoing requisition links with remaining headcount; Site Recruiters must also own the linked Site/PIC. `app_upsert_candidate` is the authoritative check; migration `202608110002_candidate_creation_group_eligibility.sql` applies it.
+- Coverage: `tests/e2e/workspace-lifecycle.spec.ts` and targeted candidate-RPC SQL checks.
+
 Shared model: `ActiveProcessStage`, `PendingStatusDetail`, `OutcomeStatusDetail`, and `PipelineStageRecord` in `src/types/recruitment.ts`.
 
 | RPC | Purpose | Key guarantees |

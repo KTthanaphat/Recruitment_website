@@ -215,8 +215,6 @@ set search_path = public
 as $$
 declare
   v_doc_group_id text := nullif(payload ->> 'doc_group_id', '');
-  v_references jsonb := coalesce(payload -> 'references', '[]'::jsonb);
-  v_reference jsonb;
   v_doc_id text := nullif(payload ->> 'doc_id', '');
   v_group_id text := nullif(payload ->> 'group_id', '');
   v_match public.document_groups%rowtype;
@@ -451,11 +449,27 @@ declare
   v_mode text := coalesce(payload ->> 'mode', 'new');
   v_candidate_id text := nullif(payload ->> 'candidate_id', '');
   v_doc_group_id text := nullif(payload ->> 'doc_group_id', '');
+  v_references jsonb := coalesce(payload -> 'references', '[]'::jsonb);
+  v_reference jsonb;
   v_exists boolean;
   v_initial_log_date date;
 begin
   perform app_private.assert_recruitment_writer();
   if not app_private.can_manage_doc_group(v_doc_group_id) then raise exception 'You can create candidates only for requisitions where you are person in charge.'; end if;
+
+  if v_mode = 'new' and not exists (
+    select 1
+    from public.document_groups dg
+    join public.requisitions r on r.doc_id = dg.doc_id
+    left join lateral (
+      select count(*)::integer accepted_count from public.offers o where o.doc_id = r.doc_id and o.accepted_date is not null
+    ) accepted on true
+    where dg.doc_group_id = v_doc_group_id
+      and r.status = 'ongoing'
+      and greatest(r.head_count - coalesce(accepted.accepted_count, 0), 0) > 0
+  ) then
+    raise exception 'CANDIDATE_GROUP_NOT_AVAILABLE: Group ID must be linked to an ongoing requisition with remaining headcount.';
+  end if;
 
   if v_mode = 'new' then
     v_candidate_id := app_private.next_app_id('candidates', 'CAN');
@@ -1146,7 +1160,7 @@ declare
   v_result smallint := case lower(coalesce(v_outcome ->> 'result', '')) when 'pass' then 1 when '1' then 1 when 'fail' then 0 when '0' then 0 else null end;
   v_next_stage text := nullif(v_next ->> 'stage', '');
   v_next_round integer := coalesce(nullif(v_next ->> 'round', '')::integer, 1);
-  v_next_opened_date date := nullif(v_next ->> 'opened_date', '')::date;
+  v_next_opened_date date;
   v_expected_next_stage text;
   v_previous_outcome_date date;
   v_row public.recruitment_logs%rowtype;
@@ -1198,9 +1212,9 @@ begin
   end if;
 
   if v_result = 1 and v_row.recruitment_process <> 'Offer' then
-    if v_next_opened_date is null or v_next_opened_date < v_outcome_date or v_next_opened_date > app_private.pipeline_business_date() then
-      raise exception 'PIPELINE_DATE_ORDER: Next Pending opened date must be between the Outcome and Bangkok business date.';
-    end if;
+    -- The next Pending is created as part of this completion, so its date is
+    -- always the selected Outcome date. Ignore legacy client-supplied values.
+    v_next_opened_date := v_outcome_date;
   end if;
 
   perform set_config('app.action', case when v_result = 1 then 'pipeline:pass' else 'pipeline:fail' end, true);

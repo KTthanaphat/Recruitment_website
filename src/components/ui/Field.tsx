@@ -1,4 +1,5 @@
-import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
+import { Children, isValidElement, useEffect, useState, type ChangeEvent, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
+import { CommandSelector, type CommandOption } from "@/components/ui/CommandSelector";
 
 export function Field({
   label,
@@ -26,6 +27,32 @@ export function TextInput(props: InputHTMLAttributes<HTMLInputElement>) {
 
 export function SelectInput(props: SelectHTMLAttributes<HTMLSelectElement>) {
   return <select className={fieldClass} {...props} />;
+}
+
+/** Shared command-selector field that keeps the existing FormData shape. */
+export function CreateSelectInput({ children, defaultValue, disabled, name, onChange, value, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
+  const controlledValue = value === undefined ? undefined : String(value);
+  const [internalValue, setInternalValue] = useState(controlledValue ?? String(defaultValue ?? ""));
+  useEffect(() => { if (controlledValue !== undefined) setInternalValue(controlledValue); }, [controlledValue]);
+  const options: CommandOption[] = Children.toArray(children).flatMap((child) => {
+    if (!isValidElement<{ value?: string; children?: ReactNode; disabled?: boolean }>(child)) return [];
+    const optionValue = child.props.value ?? "";
+    const optionLabel = typeof child.props.children === "string" || typeof child.props.children === "number" ? String(child.props.children) : optionValue;
+    return [{ value: optionValue, label: optionLabel, disabled: child.props.disabled }];
+  });
+  const selectorValue = controlledValue ?? internalValue;
+  return <CommandSelector
+    ariaLabel={String(props["aria-label"] ?? name ?? "Select option")}
+    disabled={disabled}
+    emptyLabel={options.find((option) => option.value === "")?.label ?? "Select option"}
+    name={name}
+    onValueChange={(nextValue) => {
+      if (controlledValue === undefined) setInternalValue(nextValue);
+      onChange?.({ target: { value: nextValue, name }, currentTarget: { value: nextValue, name } } as unknown as ChangeEvent<HTMLSelectElement>);
+    }}
+    options={options}
+    value={selectorValue}
+  />;
 }
 
 export function TextArea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {

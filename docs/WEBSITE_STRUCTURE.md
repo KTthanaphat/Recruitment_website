@@ -105,6 +105,7 @@ Hiring Workspace behavior:
 - Workspace targets are active open work only: requisitions must be ongoing with remaining open headcount, and groups must include at least one such requisition. Filtered-out direct URLs show the invalid-target picker state.
 - The selected workspace context is a sticky command header. It shows breadcrumbs, group/requisition title, meta, readiness/SLA, actions, and summary metrics; after page scroll, the summary collapses into compact metric chips while the selected case stays visible.
 - Workspace section navigation uses connected browser-style tabs attached to the selected content panel. The selected tab visually merges with the content underneath; URL `section` state remains unchanged.
+- Workspace Pipeline exposes New Candidate whenever the selected context has an eligible document-group link. One eligible Group ID is locked; multiple eligible links remain selectable only within that workspace context.
 
 Sidebar order:
 
@@ -224,6 +225,9 @@ Sourcing:
 - Weekly sourcing updates only show channels marked on the group or match snapshot.
 - Weekly sourcing saves applicant counts only. It does not clear or change channel booleans; channel marking is changed through sourcing setup. Unsaved weeks prefill applicant inputs from the latest saved group update.
 - The Sourcing Conversion Quality panel is collapsible in Records > Sourcing and collapsed by default there.
+- AppShell's compact top-right Site and Person in Charge selectors are the only Site/PIC controls. Shared `site` and `pic` URL parameters filter Records > Sourcing and Workspace > Sourcing; legacy `sourcingSite` and `sourcingOwner` links are read only when shared values are absent, then replaced without browser history. The filters constrain weekly cards, bulk scope, and the read-only Sourcing Groups table; Workspace also intersects them with its selected hiring case. Site Recruiters cannot widen their authorized scope.
+  - The Sourcing Groups table is a selected-week operational summary: Group ID (linked to Workspace), position, Site, PIC, requisitions, open headcount, candidate count, weekly applicants, and last saved time. It is not an editing or history surface.
+  - Sourcing Groups has a table-local Advanced Filters panel for text search, position, weekly-save status, and applicant-total state. It narrows only the summary table after the existing header Site/PIC and responsibility scope are applied; Clear restores the scoped table.
 - Add Match shows only requisitions that do not already have any `document_groups` match.
 - Doc ID options include position context, for example `DOC-001 - Accountant`.
 - Unmatch removes one `document_groups` link between a requisition and a sourcing group. It is blocked when candidates reference that match.
@@ -232,6 +236,7 @@ Candidates:
 
 - Candidates remain linked by `doc_group_id`; the UI resolves that to group-level context.
 - Candidate channel is a dropdown filtered by the selected group’s marked sourcing channels.
+- New Candidate lists only Group IDs linked to ongoing requisitions with remaining headcount. Site Recruiters additionally require their assigned Site and PIC; Admin Recruiter and System Admin retain all eligible groups. `app_upsert_candidate` enforces the same new-record rule.
 - Candidate required fields are Name, Phone, Group ID, Channel, and First Contact Date. Candidate ID remains optional in New mode because it is generated.
 - Reference Name is visible and required only when Channel is `Referral`; changing to another channel omits `ref_name` from the submitted candidate payload.
 - First Contact Date cannot be before the oldest non-null PR Approved Date among requisitions linked to the selected group. If no linked requisition has a PR Approved Date, only the required-date check applies.
@@ -271,7 +276,7 @@ Pipeline:
 - Do not show SLA/pass/fail/latest metric text under Pipeline stage names.
 - Empty active Pipeline stage columns and empty Failed Candidates stage columns keep their body blank; only the all-empty Failed Candidates panel shows an empty message.
 - A current Pending card menu orders `Pass stage`, `Fail stage`, Test-only `Add another Test round`, forward-jump targets beyond the immediate next stage, then `Edit pending details`. The menu is a viewport overlay above board cards; its immediate next-stage command is omitted because Pass performs that transition. Pending date/interviewer/remark are editable only on the current unresolved canonical record, guarded by `expected_updated_at`, and audited as `pipeline:pending-edit`. System Admin and Admin Recruiter can use this edit for every manageable candidate; Site Recruiter remains limited to matching Site and PIC.
-- Pass shows locked stage/round context, editable Pass Outcome, and the required derived Next Pending (except Offer); it submits the stored Current Pending values unchanged. Fail continues to show editable Current Pending details plus a locked-result Fail Outcome. Outcome date defaults to Bangkok today, interviewer defaults from Pending, and Outcome remark starts blank. A non-Offer Pass requires the immediate next Pending in the same transaction; Fail creates none and is terminal. Offer Pass creates no next stage and returns candidate/group/eligible-requisition handoff context.
+- Pass shows locked stage/round context, editable Pass Outcome, and the required derived Next Pending (except Offer); it submits the stored Current Pending values unchanged. The Next Pending date is read-only, equals the selected Outcome date, and is derived server-side (legacy client date input is ignored). Fail continues to show editable Current Pending details plus a locked-result Fail Outcome. Outcome date defaults to Bangkok today, interviewer defaults from Pending, and Outcome remark starts blank. A non-Offer Pass requires the immediate next Pending in the same transaction; Fail creates none and is terminal. Offer Pass creates no next stage and returns candidate/group/eligible-requisition handoff context; only that RPC response opens the offer-creation prompt.
 - Reference Check Pass requires every currently Available candidate reference to have a saved final check; zero references, unavailable references, and archived references do not block. Reference Check Fail stays available. The same database trigger prevents a forward jump from bypassing this requirement.
 - Forward jumps from drag/drop and card actions open the same confirmation without writing immediately. Every crossed stage has Pending plus Pass details, the target has required Pending details, crossed stages must be consecutive and Pass-only, and the entire jump commits or rolls back atomically.
 - Date order is `previous Outcome <= current Pending <= current Outcome <= next Pending <= Asia/Bangkok business date`; same-day transitions are valid.
@@ -412,7 +417,9 @@ Shared UI behavior:
 - Language is `Language = "en" | "th"` and persists through `localStorage["recruitment_lang"]` plus the `lang` URL parameter in authenticated navigation.
 - Login is outside `AppShell` but still reads and writes `recruitment_lang`; check `/login` after language, theme, Tailwind, Button, Field, or Tag changes.
 - Translate UI/application text only. Do not translate stored HR data, names, emails, URLs, IDs, site codes (`HQ`, `KT1`, `KT2`), Doc IDs, Group IDs, or database free text.
+- Thai mode translates all static user-visible UI text. Familiar workflow terms (`Pipeline`, `Offer`, `Test`, and `LINE`) remain English within Thai copy.
 - Use helper labels for roles, request types, requisition statuses, process stages, results, and repeated timeline phrases. Keep Thai short, recruiter-friendly, and compact for tables/cards.
+- `CommandSelector` is the shared selector system for AppShell filters, Vacancy Waterfall Metric view, Report Month, and create-form choices. Its triggers share icon, selected label, chevron, rounded border, hover/disabled/focus states, and selected-row checkmark. Compact density is header-only; Dashboard and create forms use regular density. Option-list selectors use listbox semantics; Report Month has the same shell and lifecycle with a year-navigable month grid. Enter, Space, or Arrow keys open; arrows move the active choice; Home/End jump; Enter/Space select; Escape closes and restores trigger focus; outside click dismisses. Create selectors preserve current form/RPC contracts through a hidden named input; a contextual Workspace Group ID can be locked read-only.
 
 Login/theme check:
 

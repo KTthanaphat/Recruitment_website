@@ -66,6 +66,15 @@ git push origin develop
 
 Do not use `git push --force` for normal product work.
 
+## Supabase Branch Mapping
+
+| Git branch | Supabase project |
+| --- | --- |
+| `develop` | `https://mppnlkldlctvketcsald.supabase.co` |
+| `main` | `https://sawiklexaafczfmzqhnr.supabase.co` |
+
+Apply and verify database migrations in the project that corresponds to the branch being deployed.
+
 ## Required Supabase Setup
 
 1. Create a Supabase project.
