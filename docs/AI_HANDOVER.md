@@ -255,7 +255,7 @@ New requisition saved
 
 Each step should prefill values from the previous step.
 
-The requisition flow is now treated as a group-scope journey. New group creation, group matching, and downstream candidate setup all share the same document-group context.
+The requisition flow is now treated as a group-scope journey. New group creation, group matching, and downstream candidate setup all share the same document-group context. The canonical picker-action, placeholder, and day-date-selector rules are in `docs/WEBSITE_STRUCTURE.md` to avoid duplicating implementation detail here.
 
 ## Sourcing Rules
 

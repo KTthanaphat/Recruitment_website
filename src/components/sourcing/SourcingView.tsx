@@ -1,5 +1,5 @@
-import { AlertTriangle, Link2, Plus, Save, SlidersHorizontal, Trash2, Unlink } from "lucide-react";
-import { FormEvent, useEffect, useState } from "react";
+import { AlertTriangle, ArrowDown, ArrowDownUp, ArrowUp, Link2, Plus, Save, SlidersHorizontal, Trash2, Unlink } from "lucide-react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, TextInput } from "@/components/ui/Field";
@@ -62,10 +62,12 @@ export function SourcingView({
   const [urlFilters, setUrlFilters] = useState({ sourceSearch: "", reqSearch: "" });
   const [tableFiltersOpen, setTableFiltersOpen] = useState(false);
   const [tableFilters, setTableFilters] = useState({ search: "", position: "", updateState: "all", applicantState: "all" });
+  const [tableSort, setTableSort] = useState<{ key: SourcingGroupSortKey | null; direction: "asc" | "desc" | null }>({ key: null, direction: null });
   const scopedGroups = scopeSourcingGroups(enrichSourcingGroups(data, weekStart), groupIds, docIds);
   const allGroups = visibleSourcingGroups(scopedGroups, profile);
   const groups = filterSourcingGroups(allGroups, { ...urlFilters, site: siteFilter, owner: ownerFilter });
-  const tableGroups = filterSourcingGroupTable(groups, tableFilters);
+  const filteredTableGroups = filterSourcingGroupTable(groups, tableFilters);
+  const tableGroups = useMemo(() => sortSourcingGroupTable(filteredTableGroups, tableSort), [filteredTableGroups, tableSort]);
   const tablePositionOptions = Array.from(new Set(groups.map((group) => group.group_position))).sort((a, b) => a.localeCompare(b));
   const hasTableFilters = Boolean(tableFilters.search || tableFilters.position || tableFilters.updateState !== "all" || tableFilters.applicantState !== "all");
   const unmatchedGroups = !embedded && canManageSetup ? filterUnmatchedGroups(enrichUnmatchedSourcingGroups(data), urlFilters) : [];
@@ -76,6 +78,12 @@ export function SourcingView({
   const [bulkResult, setBulkResult] = useState<BulkActionResult | null>(null);
   const selectedGroups = groups.filter((group) => selectedGroupIds.includes(group.group_id));
   const bulkDisabledReason = bulkActionDisabledReason({ entity: "sourcing", ids: selectedGroupIds }, "copy previous sourcing week", profile);
+
+  function toggleTableSort(key: SourcingGroupSortKey) {
+    setTableSort((current) => current.key !== key
+      ? { key, direction: "asc" }
+      : { key, direction: current.direction === "asc" ? "desc" : current.direction === "desc" ? null : "asc" });
+  }
 
   useEffect(() => {
     if (embedded) return;
@@ -369,7 +377,7 @@ export function SourcingView({
         <div className="table-scroll overflow-x-auto">
           <table className="w-full min-w-[960px] border-collapse text-left text-sm">
             <thead className="bg-[#F1F6FC] text-xs font-semibold uppercase tracking-wide text-slate">
-              <tr>{["groupId", "position", "site", "personInCharge", "requisitions", "openHeadcount", "candidateCount", "weeklyApplicants", "lastSaved"].map((key) => <th key={key} className="border-b border-[#D7E2F1] px-3 py-3">{translate(language, key)}</th>)}</tr>
+              <tr>{(["groupId", "position", "site", "personInCharge", "requisitions", "openHeadcount", "candidateCount", "weeklyApplicants", "lastSaved"] as SourcingGroupSortKey[]).map((key) => <SortableSourcingHeader key={key} label={translate(language, key)} language={language} sortKey={key} sortState={tableSort} onSort={toggleTableSort} />)}</tr>
             </thead>
             <tbody>
               {tableGroups.map((group) => <tr key={group.group_id} className="border-b border-[#E4E9F2] text-navy last:border-0">
@@ -388,6 +396,50 @@ export function SourcingView({
 
 export function EmbeddedSourcingEditor({ groupIds, ...props }: SourcingViewProps & { groupIds: readonly string[] }) {
   return <SourcingView {...props} groupIds={groupIds} embedded />;
+}
+
+type SourcingGroupSortKey = "groupId" | "position" | "site" | "personInCharge" | "requisitions" | "openHeadcount" | "candidateCount" | "weeklyApplicants" | "lastSaved";
+
+function SortableSourcingHeader({ label, language, onSort, sortKey, sortState }: {
+  label: string;
+  language: Language;
+  onSort: (key: SourcingGroupSortKey) => void;
+  sortKey: SourcingGroupSortKey;
+  sortState: { key: SourcingGroupSortKey | null; direction: "asc" | "desc" | null };
+}) {
+  const direction = sortState.key === sortKey ? sortState.direction : null;
+  const Icon = direction === "asc" ? ArrowUp : direction === "desc" ? ArrowDown : ArrowDownUp;
+  return <th className="border-b border-[#D7E2F1] px-3 py-3">
+    <button type="button" aria-label={translate(language, "sortLabel", { label })} aria-pressed={Boolean(direction)} onClick={() => onSort(sortKey)} className="flex w-full items-center justify-between gap-2 text-left transition-colors hover:text-navy focus:outline-none focus:ring-2 focus:ring-primary/25">
+      <span>{label}</span><Icon size={14} aria-hidden="true" />
+    </button>
+  </th>;
+}
+
+function sortSourcingGroupTable(groups: EnrichedSourcingGroup[], sort: { key: SourcingGroupSortKey | null; direction: "asc" | "desc" | null }) {
+  if (!sort.key || !sort.direction) return groups;
+  const valueFor = (group: EnrichedSourcingGroup): string | number => {
+    switch (sort.key) {
+      case "groupId": return group.group_id;
+      case "position": return group.group_position;
+      case "site": return group.sites.join(", ");
+      case "personInCharge": return group.owners.join(", ");
+      case "requisitions": return group.doc_ids.join(", ");
+      case "openHeadcount": return group.open_headcount;
+      case "candidateCount": return group.candidate_count;
+      case "weeklyApplicants": return sourcingApplicants(group.latest_update);
+      case "lastSaved": return group.latest_update?.updated_at ?? "";
+      default: return group.group_id;
+    }
+  };
+  return [...groups].sort((left, right) => {
+    const leftValue = valueFor(left);
+    const rightValue = valueFor(right);
+    const delta = typeof leftValue === "number" && typeof rightValue === "number"
+      ? leftValue - rightValue
+      : String(leftValue).localeCompare(String(rightValue), undefined, { numeric: true, sensitivity: "base" });
+    return sort.direction === "asc" ? delta : -delta;
+  });
 }
 
 function scopeSourcingGroups(groups: EnrichedSourcingGroup[], groupIds?: readonly string[], docIds?: readonly string[]) {

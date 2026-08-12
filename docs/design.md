@@ -303,6 +303,10 @@ Use elevation sparingly. Structure should come primarily from spacing, borders, 
 
 Icons must not carry meaning through color alone. Pair important icons with text labels.
 
+### Shared day-date selector
+
+Audience: recruiters completing compact operational forms. Primary workflow: choose a precise date without changing the stored ISO value. The selector uses a calendar-icon trigger, Gregorian `DD/MM/YYYY` display, a compact month popover, and visible selected/today/focus states. It must remain keyboard-operable, use localized labels, return focus on close, and fit narrow modal widths without horizontal overflow.
+
 ---
 
 ## 11. Illustration system

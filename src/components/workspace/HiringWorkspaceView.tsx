@@ -90,6 +90,7 @@ export function HiringWorkspaceView({
   onOpenCandidate,
   onOpenRequisition,
   canWrite = data.profile?.role !== "viewer",
+  canManageSetup = false,
   profile = data.profile,
   onDispatchAction,
   pipelineSlot,
@@ -104,6 +105,7 @@ export function HiringWorkspaceView({
   onOpenCandidate: (candidateId: string) => void;
   onOpenRequisition: (docId: string) => void;
   canWrite?: boolean;
+  canManageSetup?: boolean;
   profile?: Profile | null;
   onDispatchAction?: (request: WorkspaceActionRequest) => void;
   pipelineSlot?: ReactNode;
@@ -307,7 +309,7 @@ export function HiringWorkspaceView({
       ) : null}
 
       {pickerOpen || !context ? (
-        <WorkspacePicker candidates={candidates} canCreate={canWrite && Boolean(onDispatchAction)} groups={activeOpenGroups} invalidTarget={Boolean(selectedTarget.type && selectedTarget.id && !context)} language={language} mode={pickerMode} onCreate={() => onDispatchAction?.({ kind: "requisition.create" })} onModeChange={setPickerMode} onSelect={selectTarget} requisitions={activeOpenRequisitions} />
+        <WorkspacePicker candidates={candidates} canCreateRequisition={canWrite && Boolean(onDispatchAction)} canManageSetup={canManageSetup && Boolean(onDispatchAction)} groups={activeOpenGroups} invalidTarget={Boolean(selectedTarget.type && selectedTarget.id && !context)} language={language} mode={pickerMode} onCreateGroup={() => onDispatchAction?.({ kind: "group.create" })} onCreateRequisition={() => onDispatchAction?.({ kind: "requisition.create" })} onLinkGroup={() => onDispatchAction?.({ kind: "group.match", docId: "" })} onModeChange={setPickerMode} onSelect={selectTarget} requisitions={activeOpenRequisitions} />
       ) : (
         <div id={`workspace-panel-${urlState.section}`} role="tabpanel" aria-labelledby={`workspace-tab-${urlState.section}`} className="min-w-0 rounded-b-2xl rounded-tr-2xl border border-[#C9D5E6] border-t-0 bg-white p-4 shadow-[0_8px_24px_rgba(11,19,43,0.05)]">
           {hasMultipleGroupDocuments ? <GroupDocumentSelector language={language} requisitions={context.requisitions} selectedDocId={context.primaryRequisition?.doc_id ?? null} onSelect={selectGroupDocument} /> : null}
@@ -455,7 +457,7 @@ function GroupDocumentSelector({ language, requisitions, selectedDocId, onSelect
   );
 }
 
-function WorkspacePicker({ candidates, canCreate, groups, invalidTarget, language, mode, onCreate, onModeChange, onSelect, requisitions }: { candidates: EnrichedCandidate[]; canCreate: boolean; groups: EnrichedSourcingGroup[]; invalidTarget: boolean; language: Language; mode: PickerMode; onCreate: () => void; onModeChange: (mode: PickerMode) => void; onSelect: (target: SelectedWorkspaceTarget) => void; requisitions: EnrichedRequisition[] }) {
+function WorkspacePicker({ candidates, canCreateRequisition, canManageSetup, groups, invalidTarget, language, mode, onCreateGroup, onCreateRequisition, onLinkGroup, onModeChange, onSelect, requisitions }: { candidates: EnrichedCandidate[]; canCreateRequisition: boolean; canManageSetup: boolean; groups: EnrichedSourcingGroup[]; invalidTarget: boolean; language: Language; mode: PickerMode; onCreateGroup: () => void; onCreateRequisition: () => void; onLinkGroup: () => void; onModeChange: (mode: PickerMode) => void; onSelect: (target: SelectedWorkspaceTarget) => void; requisitions: EnrichedRequisition[] }) {
   const [query, setQuery] = useState("");
   const normalizedQuery = query.trim().toLowerCase();
   const filteredRequisitions = requisitions.filter((row) => !normalizedQuery || [row.doc_id, row.position, row.level, row.site, row.department, row.person_in_charge].filter(Boolean).join(" ").toLowerCase().includes(normalizedQuery));
@@ -463,7 +465,7 @@ function WorkspacePicker({ candidates, canCreate, groups, invalidTarget, languag
   const rows = mode === "requisitions" ? filteredRequisitions.slice(0, 12) : filteredGroups.slice(0, 12);
   return (
     <Panel className="min-w-0">
-      <div className="mb-4 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-xs font-medium uppercase tracking-normal text-slate">{translate(language, "workspacePicker")}</p><h2 className="mt-1 text-lg font-semibold text-navy">{translate(language, "workspaceSelectTitle")}</h2>{invalidTarget ? <p className="mt-1 text-sm font-medium text-orange">{translate(language, "workspaceUrlNotFound")}</p> : null}</div><div className="flex flex-wrap items-center gap-2">{canCreate ? <Button type="button" size="sm" onClick={onCreate}>{translate(language, "newRequisition")}</Button> : null}<div className="inline-flex w-fit rounded-xl border border-[#C9D5E6] bg-[#F8FAFD] p-1" aria-label={translate(language, "workspaceRecordType")}>{(["requisitions", "groups"] as PickerMode[]).map((item) => <button key={item} type="button" className={`min-h-8 rounded-lg px-3 text-sm font-semibold transition-colors ${mode === item ? "bg-white text-primary shadow-sm" : "text-slate hover:text-navy"}`} aria-pressed={mode === item} onClick={() => onModeChange(item)}>{item === "requisitions" ? translate(language, "requisitions") : translate(language, "workspaceGroups")}</button>)}</div></div></div>
+      <div className="mb-4 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-xs font-medium uppercase tracking-normal text-slate">{translate(language, "workspacePicker")}</p><h2 className="mt-1 text-lg font-semibold text-navy">{translate(language, "workspaceSelectTitle")}</h2>{invalidTarget ? <p className="mt-1 text-sm font-medium text-orange">{translate(language, "workspaceUrlNotFound")}</p> : null}</div><div className="flex flex-wrap items-center gap-2">{mode === "requisitions" && canCreateRequisition ? <Button type="button" size="sm" onClick={onCreateRequisition}>{translate(language, "newRequisition")}</Button> : null}{mode === "groups" && canManageSetup ? <><Button type="button" size="sm" onClick={onCreateGroup}>{translate(language, "newGroup")}</Button><Button type="button" size="sm" variant="secondary" onClick={onLinkGroup}>{translate(language, "linkGroup")}</Button></> : null}<div className="inline-flex w-fit rounded-xl border border-[#C9D5E6] bg-[#F8FAFD] p-1" aria-label={translate(language, "workspaceRecordType")}>{(["requisitions", "groups"] as PickerMode[]).map((item) => <button key={item} type="button" className={`min-h-8 rounded-lg px-3 text-sm font-semibold transition-colors ${mode === item ? "bg-white text-primary shadow-sm" : "text-slate hover:text-navy"}`} aria-pressed={mode === item} onClick={() => onModeChange(item)}>{item === "requisitions" ? translate(language, "requisitions") : translate(language, "workspaceGroups")}</button>)}</div></div></div>
       <label className="grid gap-1 text-sm font-semibold text-navy">{translate(language, "workspaceSearch")}<input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={translate(language, "workspaceSearchPlaceholder")} className="min-h-10 w-full min-w-0 rounded-xl border border-[#C9D5E6] bg-white px-3 text-sm font-medium text-navy outline-none placeholder:text-cool focus:border-primary focus:ring-2 focus:ring-primary/20" /></label>
       <div className="mt-3 grid min-w-0 gap-2 sm:grid-cols-2 xl:grid-cols-3">
         {rows.length === 0 ? <EmptyState message={translate(language, "noMatchingWorkspaces")} /> : null}

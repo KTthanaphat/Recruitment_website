@@ -103,3 +103,26 @@ test("empty workspace picker keeps New Requisition available", async ({ page }) 
   await expect(page.getByRole("dialog", { name: "Create Requisition" })).toBeVisible();
   await expect(picker).toBeVisible();
 });
+
+test("workspace picker exposes contextual group setup actions only to setup managers", async ({ page }) => {
+  await installMockSupabase(page, { role: "admin_recruiter" });
+  await page.goto("/workspace");
+  await expectWorkspaceReady(page);
+
+  await page.getByRole("button", { name: "Groups" }).click();
+  await expect(page.getByRole("button", { name: "New Requisition" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "New Group" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Link Group" })).toBeVisible();
+  await page.getByRole("button", { name: "New Group" }).click();
+  await expect(page.getByRole("dialog", { name: "Create Position Group" })).toBeVisible();
+  await page.getByRole("button", { name: "Close" }).click();
+  await page.getByRole("button", { name: "Link Group" }).click();
+  await expect(page.getByRole("dialog", { name: "Match Requisition and Group" })).toBeVisible();
+
+  await installMockSupabase(page, { role: "viewer" });
+  await page.goto("/workspace");
+  await expectWorkspaceReady(page);
+  await page.getByRole("button", { name: "Groups" }).click();
+  await expect(page.getByRole("button", { name: "New Group" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Link Group" })).toHaveCount(0);
+});

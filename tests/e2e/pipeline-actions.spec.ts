@@ -63,7 +63,8 @@ test("Pass stage preserves Pending details and sends only editable Outcome plus 
   await expect(dialog.locator('input[name="outcome_date"]')).toHaveValue("2026-07-24");
   await expect(dialog.locator('input[name="next_opened_date"]')).toHaveCount(0);
   await expect(dialog.getByText(/Next pending date: 2026-07-24/)).toBeVisible();
-  await dialog.locator('input[name="outcome_date"]').fill("2026-07-23");
+  await dialog.getByRole("button", { name: "Outcome date" }).click();
+  await dialog.getByRole("button", { name: "23/07/2026" }).click();
   await expect(dialog.getByText(/Next pending date: 2026-07-23/)).toBeVisible();
   await dialog.locator('textarea[name="outcome_remark"]').fill("Strong phone screen");
   await dialog.getByRole("button", { name: "Review changes" }).click();

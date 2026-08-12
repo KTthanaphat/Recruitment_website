@@ -16,7 +16,7 @@ import { WorkspaceOfferSection } from "@/components/workspace/WorkspaceOfferSect
 import { HiringWorkspaceView } from "@/components/workspace/HiringWorkspaceView";
 import { Button } from "@/components/ui/Button";
 import { Drawer } from "@/components/ui/Drawer";
-import { CreateSelectInput, Field, SelectInput, TextArea, TextInput } from "@/components/ui/Field";
+import { CreateSelectInput, DayDateSelector, Field, SelectInput, TextArea, TextInput } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { CommandSelector } from "@/components/ui/CommandSelector";
 import { OperationalSummaryStrip, RecordActionGroup } from "@/components/ui/Operations";
@@ -1058,6 +1058,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
 
       {initialView === "workspace" ? (
         <HiringWorkspaceView
+          canManageSetup={canManageSetup}
           canWrite={canWrite}
           data={data}
           language={language}
@@ -1828,10 +1829,10 @@ function RequisitionFields({
             {data.requisitions.map((row) => <option key={row.doc_id} value={row.doc_id}>{requisitionOptionLabel(row)}</option>)}
           </SelectInput>
         ) : (
-          <TextInput name="doc_id" list="doc-id-options" required />
+          <TextInput name="doc_id" list="doc-id-options" required placeholder={translate(language, "requisitionDocIdPlaceholder")} />
         )}
       </Field>
-      <Field label={translate(language, "prApprovedDate")}><TextInput name="pr_approved_date" type="date" defaultValue={selected?.pr_approved_date ?? ""} /></Field>
+      <Field label={translate(language, "prApprovedDate")}><DayDateSelector ariaLabel={translate(language, "prApprovedDate")} language={language} name="pr_approved_date" nextMonthLabel={translate(language, "nextMonth")} previousMonthLabel={translate(language, "previousMonth")} defaultValue={selected?.pr_approved_date ?? ""} /></Field>
       <Field label={translate(language, "requestType")}>
         <CreateSelectInput name="request_type" value={requestType} onChange={(event) => setRequestType(event.target.value as RequisitionRequestType)}>
           <option value="New">{requestTypeLabel(language, "New")}</option>
@@ -1896,7 +1897,7 @@ function RequisitionFields({
           {personOptions.map((person) => <option key={person} value={person}>{person}</option>)}
         </CreateSelectInput>
       </Field>
-      <Field label={translate(language, "lineManager")}><TextInput name="line_manager" list="manager-options" defaultValue={selected?.line_manager ?? ""} /></Field>
+      <Field label={translate(language, "lineManager")}><TextInput name="line_manager" list="manager-options" placeholder={mode === "new" ? translate(language, "lineManagerPlaceholder") : undefined} defaultValue={selected?.line_manager ?? ""} /></Field>
       <Field label={translate(language, "status")}>
         <SelectInput name="status" defaultValue={selected?.status === "filled" ? "ongoing" : selected?.status ?? "ongoing"}>{WRITABLE_REQUISITION_STATUSES.map((status) => <option key={status} value={status}>{requisitionStatusLabel(language, status)}</option>)}</SelectInput>
       </Field>
@@ -2110,7 +2111,7 @@ function CandidatePrefillFields({
           </div>;
         })}</div> : null}
       </div>
-      <Field label={translate(language, "firstContactDate")}><TextInput name="first_contact_date" required type="date" defaultValue={firstContactDate} /></Field>
+      <Field label={translate(language, "firstContactDate")}><DayDateSelector ariaLabel={translate(language, "firstContactDate")} language={language} name="first_contact_date" nextMonthLabel={translate(language, "nextMonth")} previousMonthLabel={translate(language, "previousMonth")} required defaultValue={firstContactDate} /></Field>
       <Field label={translate(language, "candidateFolderLink")} className="md:col-span-2"><TextInput name="candidate_folder_url" type="url" defaultValue={selected?.candidate_folder_url ?? ""} /></Field>
       <DataLists data={data} />
     </div>
@@ -2228,7 +2229,7 @@ function PendingEditFields({ defaults, language }: { defaults: ProcessDefaults; 
       <Field label={translate(language, "round")}><TextInput value={defaults.round ?? 1} readOnly /></Field>
       <Field label="Pending date"><TextInput autoFocus name="opened_date" type="date" defaultValue={defaults.pending_log_date ?? today()} required /></Field>
       <Field label={translate(language, "interviewer")}><TextInput name="interviewer" defaultValue={defaults.pending_interviewer ?? ""} /></Field>
-      <Field label={translate(language, "remark")} className="md:col-span-2"><TextArea name="remark" rows={3} defaultValue={defaults.pending_remark ?? ""} /></Field>
+      <Field label={translate(language, "remark")} className="md:col-span-2"><TextArea name="remark" rows={3} placeholder={translate(language, "pipelinePendingRemarkPlaceholder", { stage: processLabel(defaults.recruitment_process as ProcessStage, language) })} defaultValue={defaults.pending_remark ?? ""} /></Field>
     </div>
   );
 }
@@ -2240,7 +2241,7 @@ function PipelineStartFields({ defaults, language }: { defaults: ProcessDefaults
       <div className="rounded-md border border-[#D7DEE8] bg-lightgray p-3 text-sm font-semibold text-navy md:col-span-2">{translate(language, "startPhoneScreen")}</div>
       <Field label="Pending date"><TextInput autoFocus name="opened_date" type="date" defaultValue={defaults.pending_log_date ?? today()} required /></Field>
       <Field label={translate(language, "interviewer")}><TextInput name="interviewer" list="interviewer-options" defaultValue={defaults.pending_interviewer ?? ""} /></Field>
-      <Field label={translate(language, "remark")} className="md:col-span-2"><TextArea name="remark" rows={3} defaultValue={defaults.pending_remark ?? ""} /></Field>
+      <Field label={translate(language, "remark")} className="md:col-span-2"><TextArea name="remark" rows={3} placeholder={translate(language, "pipelinePendingRemarkPlaceholder", { stage: processLabel("Phone Screen", language) })} defaultValue={defaults.pending_remark ?? ""} /></Field>
     </div>
   );
 }
@@ -2266,18 +2267,18 @@ function StageOutcomeFields({ defaults, language }: { defaults: ProcessDefaults;
         <div className="border-b border-[#D7DEE8] pb-2 text-sm font-semibold text-navy md:col-span-2">{translate(language, "pendingDetails")}</div>
         <Field label="Pending opened date"><TextInput autoFocus name="pending_opened_date" type="date" defaultValue={defaults.pending_log_date ?? today()} required /></Field>
         <Field label={translate(language, "interviewer")}><TextInput name="pending_interviewer" list="interviewer-options" defaultValue={defaults.pending_interviewer ?? ""} /></Field>
-        <Field label={translate(language, "remark")} className="md:col-span-2"><TextArea name="pending_remark" rows={3} defaultValue={defaults.pending_remark ?? ""} /></Field>
+        <Field label={translate(language, "remark")} className="md:col-span-2"><TextArea name="pending_remark" rows={3} placeholder={translate(language, "pipelinePendingRemarkPlaceholder", { stage: processLabel(defaults.recruitment_process as ProcessStage, language) })} defaultValue={defaults.pending_remark ?? ""} /></Field>
       </>}
       <div className="border-b border-[#D7DEE8] pb-2 text-sm font-semibold text-navy md:col-span-2">{translate(language, "outcome")}</div>
-      <Field label={translate(language, "outcomeDate")}><TextInput name="outcome_date" type="date" value={outcomeDate} onChange={(event) => setOutcomeDate(event.target.value)} required /></Field>
+      <Field label={translate(language, "outcomeDate")}><DayDateSelector ariaLabel={translate(language, "outcomeDate")} language={language} name="outcome_date" nextMonthLabel={translate(language, "nextMonth")} previousMonthLabel={translate(language, "previousMonth")} value={outcomeDate} onChange={(event) => setOutcomeDate(event.target.value)} required /></Field>
       <Field label={translate(language, "interviewer")}><TextInput name="outcome_interviewer" list="interviewer-options" defaultValue={defaults.pending_interviewer ?? ""} /></Field>
-      <Field label={translate(language, "remark")} className="md:col-span-2"><TextArea name="outcome_remark" rows={3} /></Field>
+      <Field label={translate(language, "remark")} className="md:col-span-2"><TextArea name="outcome_remark" rows={3} placeholder={translate(language, "pipelineOutcomeRemarkPlaceholder", { stage: processLabel(defaults.recruitment_process as ProcessStage, language) })} /></Field>
       {hasNextPending ? <>
         <div className="border-t border-[#D7DEE8] pt-3 text-sm font-semibold text-navy md:col-span-2">{translate(language, "nextPendingStage")}: {processLabel(defaults.target_stage as ProcessStage, language)}</div>
         <input type="hidden" name="next_round" value={defaults.recruitment_process === "Test" && defaults.target_stage === "Test" ? (defaults.round ?? 1) + 1 : 1} />
         <p className="text-sm font-medium text-slate md:col-span-2">{translate(language, "nextPendingDateDerived", { date: outcomeDate || translate(language, "notSet") })}</p>
         <Field label={translate(language, "interviewer")}><TextInput name="next_interviewer" list="interviewer-options" defaultValue="" /></Field>
-        <Field label={translate(language, "remark")} className="md:col-span-2"><TextArea name="next_remark" rows={3} /></Field>
+        <Field label={translate(language, "remark")} className="md:col-span-2"><TextArea name="next_remark" rows={3} placeholder={translate(language, "pipelinePendingRemarkPlaceholder", { stage: processLabel(defaults.target_stage as ProcessStage, language) })} /></Field>
       </> : null}
     </div>
   );
@@ -2304,7 +2305,7 @@ function PipelinePassFields({ data, defaults, language }: { data: DashboardData;
           <Field label="Next pending date"><TextInput name="target_pending_opened_date" type="date" defaultValue={today()} required /></Field>
           <Field label={translate(language, "round")}><TextInput name="target_pending_round" type="number" min={1} defaultValue={1} required /></Field>
           <Field label={translate(language, "interviewer")}><TextInput name="target_pending_interviewer" list="interviewer-options" defaultValue="" /></Field>
-          <Field label={translate(language, "remark")}><TextArea name="target_pending_remark" rows={2} defaultValue="" /></Field>
+          <Field label={translate(language, "remark")}><TextArea name="target_pending_remark" rows={2} placeholder={translate(language, "pipelinePendingRemarkPlaceholder", { stage: processLabel(defaults.target_stage as ProcessStage, language) })} defaultValue="" /></Field>
         </div>
       )}
       {stages.map((stage, index) => (
@@ -2316,10 +2317,10 @@ function PipelinePassFields({ data, defaults, language }: { data: DashboardData;
           <Field label="Pending date"><TextInput name={`pending_date_${index}`} type="date" defaultValue={index === 0 ? (defaults.pending_log_date ?? today()) : today()} required /></Field>
           <Field label={translate(language, "round")}><TextInput name={`round_${index}`} type="number" min={1} value={isTestExit && stage === "Test" ? currentRound : undefined} defaultValue={isTestExit && stage === "Test" ? undefined : 1} readOnly={isTestExit && stage === "Test"} required /></Field>
           <Field label={translate(language, "interviewer")}><TextInput name={`pending_interviewer_${index}`} list="interviewer-options" defaultValue={index === 0 ? (defaults.pending_interviewer ?? "") : ""} /></Field>
-          <Field label={translate(language, "remark")}><TextArea name={`pending_remark_${index}`} rows={2} defaultValue={index === 0 ? (defaults.pending_remark ?? "") : ""} /></Field>
+          <Field label={translate(language, "remark")}><TextArea name={`pending_remark_${index}`} rows={2} placeholder={translate(language, "pipelinePendingRemarkPlaceholder", { stage: processLabel(stage, language) })} defaultValue={index === 0 ? (defaults.pending_remark ?? "") : ""} /></Field>
           <Field label="Outcome date"><TextInput name={`outcome_date_${index}`} type="date" defaultValue={today()} required /></Field>
           <Field label={translate(language, "interviewer")}><TextInput name={`outcome_interviewer_${index}`} list="interviewer-options" defaultValue={index === 0 ? (defaults.pending_interviewer ?? "") : ""} /></Field>
-          <Field label={translate(language, "remark")} className="md:col-span-2"><TextArea name={`outcome_remark_${index}`} rows={2} defaultValue="" /></Field>
+          <Field label={translate(language, "remark")} className="md:col-span-2"><TextArea name={`outcome_remark_${index}`} rows={2} placeholder={translate(language, "pipelineOutcomeRemarkPlaceholder", { stage: processLabel(stage, language) })} defaultValue="" /></Field>
         </div>
       ))}
       <DataLists data={data} />

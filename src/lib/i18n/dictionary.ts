@@ -113,6 +113,7 @@ const en: Dictionary = {
   manageUser: "Manage User",
   setup: "Setup",
   newGroup: "New Group",
+  linkGroup: "Link Group",
   addMatch: "Add Match",
   weeklySourcingUpdates: "Weekly Sourcing Updates",
   sourcingGroupsTable: "Sourcing Groups",
@@ -886,6 +887,11 @@ Object.assign(en, { referenceCheckSummary: "Checked {date} / {minutes} min — {
 Object.assign(th, { referenceCheckSummary: "ตรวจสอบเมื่อ {date} / {minutes} นาที — {summary}" });
 
 Object.assign(th, {
+  linkGroup: "เชื่อมโยงกลุ่ม",
+  requisitionDocIdPlaceholder: "RMP-0000-00-00-0000",
+  lineManagerPlaceholder: "โปรดใส่ชื่อจริง นามสกุล (เช่น จริงใจ กล้าหาญ)",
+  pipelinePendingRemarkPlaceholder: "โปรดระบุรายละเอียดการ{stage}",
+  pipelineOutcomeRemarkPlaceholder: "โปรดระบุรายละเอียดจากผลการ{stage}",
   noActiveRequisitionsInRange: "ไม่มีคำขอที่มีผลในช่วงวันที่เลือก ปรับช่วงวันที่เพื่อตรวจสอบช่วงอื่น",
   activeRequisitionsSelectedRange: "คำขอที่มีผลในช่วงวันที่เลือก",
   activeRequisitionsSheet: "คำขอที่มีผล",
@@ -1095,6 +1101,10 @@ Object.assign(en, {
   nickname: "Nickname",
   candidateNamePlaceholder: "Enter first and last name (e.g. Jai Dee Klahan)",
   candidatePhonePlaceholder: "Enter a 10-digit phone number (e.g. 0941231234)",
+  requisitionDocIdPlaceholder: "RMP-0000-00-00-0000",
+  lineManagerPlaceholder: "Enter first and last name (e.g. Jane Smith)",
+  pipelinePendingRemarkPlaceholder: "Enter details for {stage}.",
+  pipelineOutcomeRemarkPlaceholder: "Enter details from the {stage} outcome.",
   candidatePhoneInvalid: "Phone No. must be exactly 10 digits beginning with 0.",
   groupId: "Group ID",
   referenceName: "Reference Name",

@@ -1,6 +1,17 @@
 import { expect, test } from "@playwright/test";
 import { expectWorkspaceReady, installMockSupabase } from "./support/mock-supabase";
 
+async function setDateValue(page: Parameters<typeof installMockSupabase>[0], name: string, value: string) {
+  await page.locator(`input[name="${name}"]`).evaluate((input, nextValue) => {
+    (input as HTMLInputElement).value = String(nextValue);
+  }, value);
+}
+
+async function selectCommandOption(page: Parameters<typeof installMockSupabase>[0], fieldName: string, option: string) {
+  await page.locator(`button[aria-label="${fieldName}"]`).click();
+  await page.getByRole("option").filter({ hasText: option }).click();
+}
+
 test("candidate creation form enforces required fields before review", async ({ page }) => {
   await installMockSupabase(page, { role: "admin_recruiter" });
   await page.goto("/candidates");
@@ -15,9 +26,9 @@ test("candidate creation form enforces required fields before review", async ({ 
 
   await dialog.getByRole("textbox", { name: "Name", exact: true }).fill("QA Candidate");
   await dialog.getByLabel("Phone No.").fill("0812345678");
-  await dialog.getByLabel("Group ID").selectOption("DG-HQ-ENG");
-  await dialog.getByLabel("Channel").selectOption("Facebook");
-  await dialog.getByLabel("First Contact Date").fill("2026-05-31");
+  await selectCommandOption(page, "doc_group_id", "DG-HQ-ENG");
+  await selectCommandOption(page, "channel", "Facebook");
+  await setDateValue(page, "first_contact_date", "2026-05-31");
 
   await dialog.getByRole("button", { name: "Review changes" }).click();
   await expect(page.getByRole("dialog", { name: "Confirm Save" })).toBeVisible();
@@ -51,9 +62,9 @@ test("candidate reference name is required only for Referral channel", async ({ 
 
   await dialog.getByRole("textbox", { name: "Name", exact: true }).fill("Referral Candidate");
   await dialog.getByLabel("Phone No.").fill("0899999999");
-  await dialog.getByLabel("Group ID").selectOption("DG-HQ-ENG");
-  await dialog.getByLabel("First Contact Date").fill("2026-06-02");
-  await dialog.getByLabel("Channel").selectOption("Referral");
+  await selectCommandOption(page, "doc_group_id", "DG-HQ-ENG");
+  await setDateValue(page, "first_contact_date", "2026-06-02");
+  await selectCommandOption(page, "channel", "Referral");
   await expect(dialog.getByLabel("Reference Name")).toBeVisible();
 
   await dialog.getByRole("button", { name: "Review changes" }).click();
