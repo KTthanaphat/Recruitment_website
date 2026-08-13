@@ -118,7 +118,15 @@ Sidebar order:
 
 Records is an expandable sidebar parent, not a route. It uses the pencil icon and contains Requisitions, Sourcing, Candidates, Pipeline, and Offers while preserving the existing page URLs. Administration remains visible only to `system_admin` near the control/audit area.
 
-Desktop sidebar still supports the persisted icon-only collapsed rail. If Records is expanded while collapsed, the child page icons render vertically under the Records icon. On mobile, the grouped sidebar remains a horizontal scrollable navigation row so the main destinations stay reachable without expanding the page vertically.
+Desktop sidebar still supports the persisted icon-only collapsed rail. If Records is expanded while collapsed, the child page icons render vertically under the Records icon. On phones (360–430px), it is replaced by a fixed safe-area bottom bar: Home, Workspace, Pipeline, Candidates, and More. More is a focus-managed bottom sheet containing Requisitions, Sourcing, Offers, Dashboard, Audit Log, and Administration only for `system_admin`; links retain the current contextual query parameters. The desktop sidebar, URLs, and role visibility do not change.
+
+### Phone-first recruiter operations
+
+- Phones prioritize the next update: compact headers, one-column forms, full-width detail drawers, and a sticky Cancel/Review or Save footer. Desktop grids and sticky table headers start at `md`.
+- Records use cards on phones; filters and secondary actions use bottom sheets. Wide report tables and the Pipeline board may scroll **inside their own surfaces only**, never at page level.
+- Pipeline keeps its horizontal stage board and adds a stage-jump selector. Stage headers remain visible while a column is read; candidate actions remain behind one touch-safe action control.
+- Sourcing weekly forms stay one column. The Selected-week Group Summary is mobile cards (identity, site/PIC, requisition/open-headcount/candidate/applicant metrics and save state) and remains the sortable table on desktop.
+- Shared date selectors become viewport-safe phone sheets/popovers while preserving `DD/MM/YYYY` display, Bangkok defaults, and submitted ISO values.
 
 ## Home Page
 
@@ -222,7 +230,9 @@ Sourcing:
 
 - Supported channels: Facebook, JobThai, JobTopGun, JobDB, LinkedIn, Walk-in, Referral, Others.
 - Workspace > Sourcing reuses the embedded weekly sourcing editor, so recruiters can update applicant counts for the related group or requisition without leaving `/workspace`.
-- Records > Sourcing shows unmatched sourcing groups in a separate warning section above weekly update cards. Users must match these groups to a requisition before weekly sourcing updates are available.
+- A `group_id` is single-site: it may link only to requisitions from one site. Cross-site matches are rejected.
+- Records > Sourcing shows unmatched sourcing groups in a separate warning section above weekly update cards for System Admins and Admin Recruiters only. Site Recruiters use Create & Match Group for their own unmatched open requisitions, so they do not leave setup exceptions behind.
+- Site Recruiters can inspect every linked open group at their assigned site. Peer-owned cards remain read-only; only a PIC of an active, open linked requisition can save sourcing data or alter that group's matches.
 - Weekly sourcing updates only show channels marked on the group or match snapshot.
 - Weekly sourcing saves applicant counts only. It does not clear or change channel booleans; channel marking is changed through sourcing setup. Unsaved weeks prefill applicant inputs from the latest saved group update.
 - The Sourcing Conversion Quality panel is collapsible in Records > Sourcing and collapsed by default there.

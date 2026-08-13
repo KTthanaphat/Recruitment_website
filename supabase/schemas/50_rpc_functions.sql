@@ -189,6 +189,7 @@ begin
   if exists(select 1 from public.document_groups where doc_id = v_doc_id) then
     raise exception 'This requisition is already matched.';
   end if;
+  perform app_private.assert_group_site_match(v_group_id, v_doc_id);
 
   v_doc_group_id := app_private.next_app_id('document_groups', 'DGRP');
   perform set_config('app.action', 'document_group:new', true);
@@ -204,6 +205,71 @@ begin
   );
 
   return jsonb_build_object('ok', true, 'id', v_doc_group_id);
+end;
+$$;
+
+create or replace function public.app_create_and_match_sourcing_group(payload jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_doc_id text := nullif(payload ->> 'doc_id', '');
+  v_group_position text := nullif(payload ->> 'group_position', '');
+  v_group_id text;
+  v_doc_group_id text;
+begin
+  perform app_private.assert_recruitment_writer();
+  if v_doc_id is null or not exists(select 1 from public.requisitions where doc_id = v_doc_id) then
+    raise exception 'Requisition does not exist.';
+  end if;
+  if not app_private.can_manage_requisition(v_doc_id) then
+    raise exception 'You can create and match only requisitions where you are person in charge.';
+  end if;
+  if v_group_position is null then raise exception 'Group Position is required.'; end if;
+  if exists(select 1 from public.document_groups where doc_id = v_doc_id) then
+    raise exception 'This requisition is already matched.';
+  end if;
+  if not exists (
+    select 1 from public.requisitions r
+    left join lateral (
+      select count(*)::integer as accepted_count from public.offers o
+      where o.doc_id = r.doc_id and o.accepted_date is not null
+    ) accepted on true
+    where r.doc_id = v_doc_id
+      and r.status = 'ongoing'
+      and greatest(r.head_count - coalesce(accepted.accepted_count, 0), 0) > 0
+  ) then
+    raise exception 'Requisition must be ongoing with open headcount.';
+  end if;
+
+  v_group_id := app_private.next_app_id('position_groups', 'GRP');
+  v_doc_group_id := app_private.next_app_id('document_groups', 'DGRP');
+  perform set_config('app.action', 'position_group:create_and_match', true);
+  insert into public.position_groups (
+    group_id, group_position, channel_fb, channel_jobthai, channel_jobtopgun, channel_jobdb,
+    channel_linkedin, channel_walkin, channel_referral, channel_others
+  ) values (
+    v_group_id, v_group_position,
+    coalesce((payload ->> 'channel_fb')::boolean, false),
+    coalesce((payload ->> 'channel_jobthai')::boolean, false),
+    coalesce((payload ->> 'channel_jobtopgun')::boolean, false),
+    coalesce((payload ->> 'channel_jobdb')::boolean, false),
+    coalesce((payload ->> 'channel_linkedin')::boolean, false),
+    coalesce((payload ->> 'channel_walkin')::boolean, false),
+    coalesce((payload ->> 'channel_referral')::boolean, false),
+    coalesce((payload ->> 'channel_others')::boolean, false)
+  );
+  insert into public.document_groups (
+    doc_group_id, doc_id, group_id, group_position, channel_fb, channel_jobthai, channel_jobtopgun,
+    channel_jobdb, channel_linkedin, channel_walkin, channel_referral, channel_others
+  )
+  select v_doc_group_id, v_doc_id, v_group_id, group_position, channel_fb, channel_jobthai,
+    channel_jobtopgun, channel_jobdb, channel_linkedin, channel_walkin, channel_referral, channel_others
+  from public.position_groups where group_id = v_group_id;
+
+  return jsonb_build_object('ok', true, 'id', v_group_id, 'doc_group_id', v_doc_group_id);
 end;
 $$;
 

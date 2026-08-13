@@ -196,6 +196,23 @@ test("sourcing shows unmatched groups with match action and no weekly save field
   await expect(matchDialog.getByLabel("Doc ID")).toContainText("Senior Procurement Operations and Supplier Development Specialist — REQ-UNMATCHED-1");
 });
 
+test("site recruiters can inspect peer groups at their site but cannot change them", async ({ page }) => {
+  await installMockSupabase(page, { role: "site_recruiter" });
+  await page.goto("/sourcing?sourcingWeek=2026-07-06");
+  await expectWorkspaceReady(page);
+
+  await expect(page.getByRole("button", { name: "Create & Match Group" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Unmatched sourcing groups" })).toHaveCount(0);
+
+  const peerGroup = page.locator("#sourcing-group-GRP-KT1-PEER");
+  await expect(peerGroup).toBeVisible();
+  await expect(peerGroup).toContainText("Read-only — assigned to Nina");
+  await expect(peerGroup.getByLabel("Applicants").first()).toBeDisabled();
+  await expect(peerGroup.getByRole("button", { name: /Save sourcing week/ })).toHaveCount(0);
+  await expect(peerGroup.getByRole("checkbox", { name: /Select sourcing group/ })).toHaveCount(0);
+  await expect(peerGroup.getByRole("menuitem", { name: "Copy Previous Week" })).toHaveCount(0);
+});
+
 test("sourcing unmatch uses destructive confirmation and RPC", async ({ page }) => {
   const mock = await installMockSupabase(page, { role: "admin_recruiter" });
   await page.goto("/sourcing?sourcingWeek=2026-07-06");
@@ -239,9 +256,10 @@ test("pipeline URL search focuses a candidate and Actions is keyboard dismissibl
   const actions = card.getByRole("button", { name: "Candidate actions for Pat Phone" });
   await actions.focus();
   await page.keyboard.press("Enter");
-  await expect(card.getByRole("menu", { name: "Actions for Pat Phone" })).toBeVisible();
+  const menu = page.getByRole("menu", { name: "Candidate actions for Pat Phone" });
+  await expect(menu).toBeVisible();
   await page.keyboard.press("Escape");
-  await expect(card.getByRole("menu", { name: "Actions for Pat Phone" })).toHaveCount(0);
+  await expect(menu).toHaveCount(0);
   await expect(actions).toBeFocused();
 });
 

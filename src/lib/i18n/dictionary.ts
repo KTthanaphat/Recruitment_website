@@ -56,6 +56,7 @@ const en: Dictionary = {
   view: "View",
   detail: "Detail",
   close: "Close",
+  more: "More",
   addUpdate: "Add Update",
   readonly: "Read-only",
   adminOnly: "Admin only",
@@ -456,6 +457,7 @@ const en: Dictionary = {
 };
 
 const th: Dictionary = {
+  more: "เพิ่มเติม",
   home: "หน้าแรก",
   homeRecords: "รายการสรรหา",
   homeRecordTabs: "หมวดหมู่รายการสรรหา",
@@ -900,6 +902,15 @@ Object.assign(th, {
   activeRequisitionsInRangeHelper: "คำขอที่มีผลในช่วงวันที่",
   vacancyActiveInPeriod: "อัตราที่มีผลในช่วงเวลา",
   vacancyActiveInPeriodHelper: "อัตราตามคำขอที่มีผลในช่วงวันที่"
+});
+
+Object.assign(en, {
+  createAndMatchGroup: "Create & Match Group",
+  peerGroupReadOnly: "Read-only — assigned to {owners}"
+});
+Object.assign(th, {
+  createAndMatchGroup: "สร้างและจับคู่กลุ่ม",
+  peerGroupReadOnly: "ดูได้อย่างเดียว — ผู้รับผิดชอบ {owners}"
 });
 
 export const dictionaries = { en, th };

@@ -519,9 +519,8 @@ export function sourcingUpdateDisabledReason(group: EnrichedSourcingGroup, profi
   if (!canProfileWrite(profile)) return disabled("readonly_role", "Read-only role", "Your role can inspect sourcing but cannot save weekly updates.", "Ask a recruiter with write access.");
   if (profile?.role === "site_recruiter") {
     const nickname = profile.nickname ?? profile.full_name ?? "";
-    const site = profile.site ?? "";
-    if (!group.owners.includes(nickname) && !group.sites.includes(site)) {
-      return disabled("permission_scope", "Outside responsibility", "This sourcing group is outside your site or responsibility.", "Open a group assigned to your site or ask an admin recruiter.");
+    if (!group.owners.includes(nickname)) {
+      return disabled("permission_scope", "Read-only peer group", "This sourcing group belongs to another recruiter at your site.", "Ask the assigned recruiter or an admin recruiter to update it.");
     }
   }
   return { blocked: false };

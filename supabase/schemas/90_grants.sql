@@ -45,6 +45,8 @@ revoke all on function public.app_upsert_position_group(jsonb) from public, anon
 grant execute on function public.app_upsert_position_group(jsonb) to authenticated;
 revoke all on function public.app_create_group_match(jsonb) from public, anon, authenticated;
 grant execute on function public.app_create_group_match(jsonb) to authenticated;
+revoke all on function public.app_create_and_match_sourcing_group(jsonb) from public, anon, authenticated;
+grant execute on function public.app_create_and_match_sourcing_group(jsonb) to authenticated;
 revoke all on function public.app_unmatch_group_requisition(jsonb) from public, anon, authenticated;
 grant execute on function public.app_unmatch_group_requisition(jsonb) to authenticated;
 revoke all on function public.app_delete_recruitment_record(jsonb) from public, anon, authenticated;

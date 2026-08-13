@@ -96,6 +96,7 @@ type ModalName =
   | "pipeline_pass"
   | "offer"
   | "group"
+  | "group_match"
   | "match"
   | "snapshot"
   | "user"
@@ -233,6 +234,7 @@ const rpcByModal: Record<Exclude<ModalName, null | "user">, string> = {
   pipeline_pass: "app_pass_pipeline_jump_v2",
   offer: "app_upsert_offer",
   group: "app_upsert_position_group",
+  group_match: "app_create_and_match_sourcing_group",
   match: "app_create_group_match",
   snapshot: "app_upsert_vacancy_weekly_snapshot"
 };
@@ -509,8 +511,8 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
 
   function openGuidedGroup() {
     setGuideStep("create_group");
-    setModalDefaults({ group_position: guideContext.position ?? "" });
-    setActiveModal("group");
+    setModalDefaults({ group_position: guideContext.position ?? "", doc_id: guideContext.doc_id ?? "" });
+    setActiveModal(data.profile?.role === "site_recruiter" ? "group_match" : "group");
   }
 
   function openGuidedCandidate() {
@@ -1158,6 +1160,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
           onWeekChange={setSourcingWeek}
           onSaveSourcing={(payload, summary) => prepareRpcAction("app_upsert_sourcing_weekly_update", payload, summary)}
           onGroup={() => setActiveModal("group")}
+          onCreateAndMatch={() => setActiveModal("group_match")}
           onMatch={(defaults) => {
             setModalDefaults(defaults ?? {});
             setActiveModal("match");
@@ -1465,6 +1468,19 @@ function buildPayload(modal: Exclude<ModalName, null>, formData: FormData) {
     return payload;
   }
 
+  if (modal === "group_match") {
+    const channelPayload = Object.fromEntries(
+      SOURCING_CHANNELS.map((channel) => [channel.enabled, boolFromForm(formData.get(channel.enabled))])
+    );
+    const payload = {
+      doc_id: emptyToNull(formData.get("doc_id")),
+      group_position: emptyToNull(formData.get("group_position")),
+      ...channelPayload
+    };
+    requireFields(payload, ["doc_id", "group_position"]);
+    return payload;
+  }
+
   if (modal === "match") {
     const payload = {
       doc_id: emptyToNull(formData.get("doc_id")),
@@ -1689,12 +1705,13 @@ function RecordModal({
         {modal === "pipeline_pass" ? <PipelinePassFields data={data} defaults={processDefaults} language={language} /> : null}
         {modal === "offer" ? <OfferPrefillFields data={data} language={language} mode={mode} selectedId={selectedId} selected={selectedRecords.offer} defaults={modalDefaults} onSelect={setSelectedId} /> : null}
         {modal === "group" ? <GroupPrefillFields data={data} language={language} mode={mode} selectedId={selectedId} selected={selectedRecords.group} defaults={modalDefaults} onSelect={setSelectedId} /> : null}
+        {modal === "group_match" ? <CreateAndMatchGroupFields data={data} defaults={modalDefaults} language={language} profile={profile} /> : null}
         {modal === "match" ? <MatchFields data={data} defaults={modalDefaults} language={language} /> : null}
         {modal === "snapshot" ? <SnapshotFields data={data} language={language} /> : null}
         {modal === "user" ? <UserPrefillFields canManageUsers={canManageUsers} data={data} language={language} mode={mode} selectedId={selectedId} selected={selectedRecords.profile} onSelect={setSelectedId} /> : null}
-        <div className="flex justify-end gap-2 border-t border-[#D7DEE8] pt-4">
-          <Button type="button" variant="secondary" onClick={onClose}>{translate(language, "cancel")}</Button>
-          <Button type="submit">{translate(language, "reviewChanges")}</Button>
+        <div className="sticky bottom-0 -mx-4 flex justify-end gap-2 border-t border-[#D7DEE8] bg-white px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 sm:static sm:mx-0 sm:bg-transparent sm:px-0 sm:pb-0 sm:pt-4">
+          <Button type="button" variant="secondary" className="min-h-11 flex-1 sm:flex-none" onClick={onClose}>{translate(language, "cancel")}</Button>
+          <Button type="submit" className="min-h-11 flex-1 sm:flex-none">{translate(language, "reviewChanges")}</Button>
         </div>
       </form>
     </Modal>
@@ -2401,8 +2418,8 @@ function MatchFields({ data, defaults, language }: { data: DashboardData; defaul
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      <Field label={translate(language, "docId")}><CreateSelectInput name="doc_id" required defaultValue={defaults.doc_id ?? ""}>{docOptions.map((row) => <option key={row.doc_id} value={row.doc_id}>{requisitionOptionLabel(row)}</option>)}</CreateSelectInput></Field>
-      <Field label={translate(language, "groupId")}><CreateSelectInput name="group_id" required defaultValue={defaults.group_id ?? ""}>{data.position_groups.map((row) => <option key={row.group_id} value={row.group_id}>{positionGroupOptionLabel(row)}</option>)}</CreateSelectInput></Field>
+      <Field label={translate(language, "docId")}><SelectInput name="doc_id" required defaultValue={defaults.doc_id ?? ""}>{docOptions.map((row) => <option key={row.doc_id} value={row.doc_id}>{requisitionOptionLabel(row)}</option>)}</SelectInput></Field>
+      <Field label={translate(language, "groupId")}><SelectInput name="group_id" required defaultValue={defaults.group_id ?? ""}>{data.position_groups.map((row) => <option key={row.group_id} value={row.group_id}>{positionGroupOptionLabel(row)}</option>)}</SelectInput></Field>
     </div>
   );
 }
@@ -2787,6 +2804,29 @@ function isAcceptedThisCalendarMonth(value: string | null | undefined) {
   const today = todayDate();
   const monthStart = `${today.slice(0, 7)}-01`;
   return acceptedDate >= monthStart && acceptedDate <= today;
+}
+
+function CreateAndMatchGroupFields({ data, defaults, language, profile }: { data: DashboardData; defaults: ModalDefaults; language: Language; profile: DashboardData["profile"] }) {
+  const nickname = profile?.nickname ?? profile?.full_name ?? "";
+  const site = profile?.site ?? "";
+  const matchedDocIds = new Set(data.document_groups.map((group) => group.doc_id));
+  const eligibleRequisitions = enrichRequisitions(data).filter((row) => (
+    row.status === "ongoing"
+      && row.open_headcount > 0
+      && !matchedDocIds.has(row.doc_id)
+      && row.site === site
+      && row.person_in_charge === nickname
+  ));
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      <Field label={translate(language, "docId")}><CreateSelectInput name="doc_id" required defaultValue={defaults.doc_id ?? ""}><option value="">{translate(language, "selectRequisitionOption")}</option>{eligibleRequisitions.map((row) => <option key={row.doc_id} value={row.doc_id}>{requisitionOptionLabel(row)}</option>)}</CreateSelectInput></Field>
+      <Field label={translate(language, "groupPosition")}><TextInput name="group_position" list="group-position-options" required defaultValue={defaults.group_position ?? ""} /></Field>
+      <div className="grid gap-2 rounded-md border border-[#D7DEE8] bg-lightgray p-3 text-sm font-bold text-navy md:col-span-2 md:grid-cols-4">
+        {SOURCING_CHANNELS.map((channel) => <label key={channel.enabled} className="flex items-center gap-2"><input name={channel.enabled} type="checkbox" /> {channel.label}</label>)}
+      </div>
+      <DataLists data={data} />
+    </div>
+  );
 }
 
 function isPimEligible(requisition: EnrichedRequisition, offers: DashboardData["offers"], logs: DashboardData["requisition_logs"]) {
@@ -3535,6 +3575,7 @@ function modalTitle(modal: ModalName) {
     pipeline_pass: "Confirm Passed Stages",
     offer: "Offer",
     group: "Position Group",
+    group_match: "Create & Match Group",
     match: "Match Requisition and Group",
     snapshot: "Vacancy Snapshot",
     user: "Manage User"
@@ -3552,6 +3593,7 @@ function modalDialogTitle(language: Language, modal: ModalName, mode: "new" | "c
     reference_check: translate(language, "referenceCheck"),
     offer: "Offer",
     group: "Position Group",
+    group_match: "Sourcing Group",
     user: "User"
   };
   const label = editableLabels[modal];

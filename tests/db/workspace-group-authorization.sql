@@ -51,6 +51,7 @@ select pg_temp.assert_true(
     where p.oid in (
       'public.app_upsert_position_group(jsonb)'::regprocedure,
       'public.app_create_group_match(jsonb)'::regprocedure,
+      'public.app_create_and_match_sourcing_group(jsonb)'::regprocedure,
       'public.app_unmatch_group_requisition(jsonb)'::regprocedure,
       'public.app_delete_recruitment_record(jsonb)'::regprocedure,
       'public.app_start_pipeline_stage_v2(jsonb)'::regprocedure,
@@ -67,6 +68,7 @@ select pg_temp.assert_true(
 select pg_temp.assert_true(
   not has_function_privilege('anon', 'public.app_upsert_position_group(jsonb)', 'EXECUTE')
     and not has_function_privilege('anon', 'public.app_create_group_match(jsonb)', 'EXECUTE')
+    and not has_function_privilege('anon', 'public.app_create_and_match_sourcing_group(jsonb)', 'EXECUTE')
     and not has_function_privilege('anon', 'public.app_unmatch_group_requisition(jsonb)', 'EXECUTE')
     and not has_function_privilege('anon', 'public.app_delete_recruitment_record(jsonb)', 'EXECUTE')
     and not has_function_privilege('anon', 'public.app_start_pipeline_stage_v2(jsonb)', 'EXECUTE')
@@ -79,6 +81,7 @@ select pg_temp.assert_true(
 select pg_temp.assert_true(
   has_function_privilege('authenticated', 'public.app_upsert_position_group(jsonb)', 'EXECUTE')
     and has_function_privilege('authenticated', 'public.app_create_group_match(jsonb)', 'EXECUTE')
+    and has_function_privilege('authenticated', 'public.app_create_and_match_sourcing_group(jsonb)', 'EXECUTE')
     and has_function_privilege('authenticated', 'public.app_unmatch_group_requisition(jsonb)', 'EXECUTE')
     and has_function_privilege('authenticated', 'public.app_delete_recruitment_record(jsonb)', 'EXECUTE')
     and has_function_privilege('authenticated', 'public.app_start_pipeline_stage_v2(jsonb)', 'EXECUTE')
@@ -94,7 +97,9 @@ values
   ('a1100000-0000-0000-0000-000000000001', 'workspace-scope-owner@example.test', '{"nickname":"Scope Owner"}'::jsonb),
   ('a1100000-0000-0000-0000-000000000002', 'workspace-scope-admin@example.test', '{"nickname":"Scope Admin"}'::jsonb),
   ('a1100000-0000-0000-0000-000000000003', 'workspace-scope-viewer@example.test', '{"nickname":"Scope Viewer"}'::jsonb),
-  ('a1100000-0000-0000-0000-000000000004', 'workspace-scope-system@example.test', '{"nickname":"Scope System"}'::jsonb);
+  ('a1100000-0000-0000-0000-000000000004', 'workspace-scope-system@example.test', '{"nickname":"Scope System"}'::jsonb),
+  ('a1100000-0000-0000-0000-000000000005', 'workspace-scope-peer@example.test', '{"nickname":"Peer Owner"}'::jsonb),
+  ('a1100000-0000-0000-0000-000000000006', 'workspace-scope-other-site@example.test', '{"nickname":"Other Site Owner"}'::jsonb);
 
 update public.profiles
 set site = '__authz_test_site', role = 'site_recruiter'
@@ -112,6 +117,14 @@ update public.profiles
 set site = '__authz_test_site', role = 'system_admin'
 where id = 'a1100000-0000-0000-0000-000000000004';
 
+update public.profiles
+set site = '__authz_test_site', role = 'site_recruiter'
+where id = 'a1100000-0000-0000-0000-000000000005';
+
+update public.profiles
+set site = '__authz_other_site', role = 'site_recruiter'
+where id = 'a1100000-0000-0000-0000-000000000006';
+
 insert into public.requisitions (
   doc_id, site, position, department, person_in_charge, status
 )
@@ -122,7 +135,11 @@ values
   ('__authz_test_edit_foreign', '__authz_test_site', 'Foreign edit', 'Test', 'Other Owner', 'ongoing'),
   ('__authz_test_unmatch_empty', '__authz_test_site', 'Owned unmatch', 'Test', 'Scope Owner', 'ongoing'),
   ('__authz_test_unmatch_blocked', '__authz_test_site', 'Blocked unmatch', 'Test', 'Scope Owner', 'ongoing'),
-  ('__authz_test_admin_unmatch', '__authz_test_site', 'Admin unmatch', 'Test', 'Other Owner', 'ongoing');
+  ('__authz_test_admin_unmatch', '__authz_test_site', 'Admin unmatch', 'Test', 'Other Owner', 'ongoing'),
+  ('__authz_test_peer', '__authz_test_site', 'Peer owned group', 'Test', 'Peer Owner', 'ongoing'),
+  ('__authz_test_other_site', '__authz_other_site', 'Other site group', 'Test', 'Other Site Owner', 'ongoing'),
+  ('__authz_test_atomic', '__authz_test_site', 'Atomic group', 'Test', 'Scope Owner', 'ongoing'),
+  ('__authz_test_cross_site_owned', '__authz_test_site', 'Cross-site match', 'Test', 'Scope Owner', 'ongoing');
 
 insert into public.position_groups (group_id, group_position)
 values
@@ -133,7 +150,9 @@ values
   ('__authz_test_unmatch_group', 'Unmatch group'),
   ('__authz_test_unmatch_blocked_group', 'Blocked unmatch group'),
   ('__authz_test_admin_unmatch_group', 'Admin unmatch group'),
-  ('__authz_test_delete_group', 'Delete target group');
+  ('__authz_test_delete_group', 'Delete target group'),
+  ('__authz_test_peer_group', 'Peer owned group'),
+  ('__authz_test_other_site_group', 'Other site group');
 
 insert into public.document_groups (doc_group_id, doc_id, group_id, group_position)
 values
@@ -141,7 +160,12 @@ values
   ('__authz_test_foreign_link', '__authz_test_edit_foreign', '__authz_test_foreign_group', 'Foreign group'),
   ('__authz_test_unmatch_link', '__authz_test_unmatch_empty', '__authz_test_unmatch_group', 'Unmatch group'),
   ('__authz_test_unmatch_blocked_link', '__authz_test_unmatch_blocked', '__authz_test_unmatch_blocked_group', 'Blocked unmatch group'),
-  ('__authz_test_admin_unmatch_link', '__authz_test_admin_unmatch', '__authz_test_admin_unmatch_group', 'Admin unmatch group');
+  ('__authz_test_admin_unmatch_link', '__authz_test_admin_unmatch', '__authz_test_admin_unmatch_group', 'Admin unmatch group'),
+  ('__authz_test_peer_link', '__authz_test_peer', '__authz_test_peer_group', 'Peer owned group'),
+  ('__authz_test_other_site_link', '__authz_test_other_site', '__authz_test_other_site_group', 'Other site group');
+
+insert into public.sourcing_weekly_updates (group_id, week_start, applicants_fb)
+values ('__authz_test_peer_group', current_date, 4);
 
 insert into public.candidates (candidate_id, name, phone_no, doc_group_id, channel, first_contact_date)
 values
@@ -170,10 +194,42 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub', 'a1100000-0000-0000-0000-000000000001', true);
 
 select pg_temp.assert_true(
+  exists (select 1 from public.position_groups where group_id = '__authz_test_peer_group')
+  and exists (select 1 from public.sourcing_weekly_updates where group_id = '__authz_test_peer_group'),
+  'a site recruiter can read a peer-owned group and its weekly update at the same site'
+);
+
+select pg_temp.assert_true(
+  not exists (select 1 from public.position_groups where group_id in ('__authz_test_other_site_group', '__authz_test_unlinked_group')),
+  'a site recruiter cannot read other-site or unmatched groups'
+);
+
+select pg_temp.assert_true(
   (public.app_upsert_position_group(
     '{"mode":"new","group_position":"Writer-created group"}'::jsonb
   ) ->> 'ok')::boolean,
   'a recruitment writer can create a new unlinked group'
+);
+
+select pg_temp.expect_error(
+  $sql$
+    select public.app_upsert_sourcing_weekly_update('{"group_id":"__authz_test_peer_group","week_start":"2026-08-10"}'::jsonb)
+  $sql$,
+  'You can update only sourcing groups where you are responsible.'
+);
+
+select pg_temp.expect_error(
+  $sql$
+    select public.app_create_group_match('{"doc_id":"__authz_test_cross_site_owned","group_id":"__authz_test_other_site_group"}'::jsonb)
+  $sql$,
+  'Group ID can only be matched to requisitions at one site.'
+);
+
+select pg_temp.assert_true(
+  (public.app_create_and_match_sourcing_group(
+    '{"doc_id":"__authz_test_atomic","group_position":"Atomic group","channel_fb":true}'::jsonb
+  ) ->> 'ok')::boolean,
+  'a site recruiter can atomically create and match a group for an owned open requisition'
 );
 
 select pg_temp.assert_true(

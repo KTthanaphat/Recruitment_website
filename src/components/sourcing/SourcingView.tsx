@@ -6,6 +6,7 @@ import { Field, TextInput } from "@/components/ui/Field";
 import { CommandSelector } from "@/components/ui/CommandSelector";
 import { OperationalSummaryStrip, RecordActionGroup } from "@/components/ui/Operations";
 import { Panel, SectionTitle } from "@/components/ui/Panel";
+import { MobileBottomSheet } from "@/components/ui/MobileBottomSheet";
 import { Tag } from "@/components/ui/Tag";
 import { BulkActionToolbar, BulkReviewModal, DisabledReasonHint, SourcingConversionPanel } from "@/components/ui/Workflow";
 import { SOURCING_CHANNELS } from "@/lib/constants";
@@ -25,6 +26,7 @@ export type SourcingViewProps = {
   onWeekChange: (value: string) => void;
   onSaveSourcing: (payload: Record<string, unknown>, summary: string) => void;
   onGroup?: () => void;
+  onCreateAndMatch?: () => void;
   onMatch?: (defaults?: { doc_id?: string; group_id?: string }) => void;
   onUnmatch?: (payload: Record<string, unknown>, summary: string) => void;
   onDeleteRecord?: (payload: Record<string, unknown>, summary: string) => void;
@@ -49,6 +51,7 @@ export function SourcingView({
   onWeekChange,
   onSaveSourcing,
   onGroup,
+  onCreateAndMatch,
   onMatch,
   onUnmatch,
   onDeleteRecord,
@@ -70,7 +73,9 @@ export function SourcingView({
   const tableGroups = useMemo(() => sortSourcingGroupTable(filteredTableGroups, tableSort), [filteredTableGroups, tableSort]);
   const tablePositionOptions = Array.from(new Set(groups.map((group) => group.group_position))).sort((a, b) => a.localeCompare(b));
   const hasTableFilters = Boolean(tableFilters.search || tableFilters.position || tableFilters.updateState !== "all" || tableFilters.applicantState !== "all");
-  const unmatchedGroups = !embedded && canManageSetup ? filterUnmatchedGroups(enrichUnmatchedSourcingGroups(data), urlFilters) : [];
+  const canManageGlobalSetup = profile?.role === "system_admin" || profile?.role === "admin_recruiter";
+  const isSiteRecruiter = profile?.role === "site_recruiter";
+  const unmatchedGroups = !embedded && canManageGlobalSetup ? filterUnmatchedGroups(enrichUnmatchedSourcingGroups(data), urlFilters) : [];
   const groupScopeKey = groups.map((group) => group.group_id).join("|");
   const focusedGroupId = urlFilters.sourceSearch || urlFilters.reqSearch ? groups[0]?.group_id ?? null : null;
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
@@ -135,15 +140,16 @@ export function SourcingView({
 
   return (
     <div className="grid gap-4">
-      {canManageSetup && (onGroup || onMatch) ? (
+      {(canManageGlobalSetup && (onGroup || onMatch)) || (isSiteRecruiter && onCreateAndMatch) ? (
         <Panel>
           <SectionTitle
             title="Sourcing Setup"
             eyebrow="Groups and requisition matching"
             action={
               <>
-                {onGroup ? <Button type="button" size="sm" icon={<Plus size={16} />} onClick={onGroup}>New Group</Button> : null}
-                {onMatch ? <Button type="button" size="sm" variant="secondary" icon={<Link2 size={16} />} onClick={() => onMatch()}>{translate(language, "addMatch")}</Button> : null}
+                {canManageGlobalSetup && onGroup ? <Button type="button" size="sm" icon={<Plus size={16} />} onClick={onGroup}>New Group</Button> : null}
+                {canManageGlobalSetup && onMatch ? <Button type="button" size="sm" variant="secondary" icon={<Link2 size={16} />} onClick={() => onMatch()}>{translate(language, "addMatch")}</Button> : null}
+                {isSiteRecruiter && onCreateAndMatch ? <Button type="button" size="sm" icon={<Plus size={16} />} onClick={onCreateAndMatch}>{translate(language, "createAndMatchGroup")}</Button> : null}
               </>
             }
           />
@@ -224,6 +230,11 @@ export function SourcingView({
               const groupMatches = data.document_groups
                 .filter((match) => match.group_id === group.group_id && group.doc_ids.includes(match.doc_id))
                 .sort((a, b) => a.doc_id.localeCompare(b.doc_id));
+              const disabledReason = sourcingUpdateDisabledReason(group, profile);
+              const canEditGroup = canWrite && !disabledReason.blocked;
+              const actionableMatches = canManageGlobalSetup
+                ? groupMatches
+                : groupMatches.filter((match) => data.requisitions.find((row) => row.doc_id === match.doc_id)?.person_in_charge === (profile?.nickname ?? profile?.full_name ?? ""));
               return (
               <form id={`sourcing-group-${group.group_id}`} key={group.group_id} tabIndex={focusedGroupId === group.group_id ? -1 : undefined} className={`rounded-lg border bg-white p-4 shadow-[0_4px_14px_rgba(11,19,43,0.025)] focus:outline-none focus:ring-2 focus:ring-primary/30 ${focusedGroupId === group.group_id ? "border-primary ring-2 ring-primary/25" : "border-[#D7DEE8]"}`} onSubmit={(event) => saveGroup(event, group)}>
                 {(() => {
@@ -232,19 +243,18 @@ export function SourcingView({
                   const thisWeekApplicants = sourcingApplicants(group.latest_update);
                   const previousApplicants = sourcingApplicants(previousUpdate);
                   const activeChannels = SOURCING_CHANNELS.filter((channel) => group[channel.enabled]).length;
-                  const disabledReason = sourcingUpdateDisabledReason(group, profile);
                   const conversionMetrics = deriveSourcingConversionMetrics(data, group.group_id, weekStart);
                   return (
                     <>
                 <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <input
+                      {canEditGroup ? <input
                         aria-label={translate(language, "selectSourcingGroup", { id: group.group_id })}
                         type="checkbox"
                         checked={selectedGroupIds.includes(group.group_id)}
                         onChange={(event) => setSelectedGroupIds((current) => event.target.checked ? [...current, group.group_id] : current.filter((id) => id !== group.group_id))}
-                      />
+                      /> : null}
                       <strong className="text-lg text-navy">{group.group_id}</strong>
                       <Tag tone="teal">{group.group_position}</Tag>
                       <Tag tone="warning">{translate(language, "openCount", { count: group.open_headcount })}</Tag>
@@ -255,9 +265,10 @@ export function SourcingView({
                     <p className="mt-1 text-xs font-medium text-cool">
                       {translate(language, "candidates")}: {group.candidate_count} | {translate(language, "lastSaved")}: {group.latest_update?.updated_at ? formatDate(group.latest_update.updated_at, language) : translate(language, "notUpdatedThisWeek")}
                     </p>
+                    {!canEditGroup ? <p className="mt-2 text-xs font-semibold text-slate">{translate(language, "peerGroupReadOnly", { owners: group.owners.join(", ") || translate(language, "unassigned") })}</p> : null}
                   </div>
                   <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-                    {canWrite ? (
+                    {canEditGroup ? (
                       <Button
                         type="submit"
                         size="icon-sm"
@@ -268,14 +279,14 @@ export function SourcingView({
                       >
                         <span className="sr-only">{translate(language, "save")}</span>
                       </Button>
-                    ) : (
+                    ) : !canWrite ? (
                       <Tag tone="muted">{translate(language, "readonly")}</Tag>
-                    )}
+                    ) : null}
                     <RecordActionGroup
                       label={`${translate(language, "sourcingGroup")} ${group.group_id}`}
                       items={[
-                        ...(canWrite ? [{ id: "copy-previous", label: "Copy Previous Week", onSelect: () => copyPreviousWeek(document.getElementById(`sourcing-group-${group.group_id}`) as HTMLFormElement | null, previousUpdate), disabledReason: { blocked: !previousUpdate || disabledReason.blocked, label: "Copy unavailable", detail: disabledReason.blocked ? disabledReason.detail : "No previous week update is available." } }] : []),
-                        ...(canManageSetup && onUnmatch ? groupMatches.map((match) => ({
+                        ...(canEditGroup ? [{ id: "copy-previous", label: "Copy Previous Week", onSelect: () => copyPreviousWeek(document.getElementById(`sourcing-group-${group.group_id}`) as HTMLFormElement | null, previousUpdate), disabledReason: { blocked: !previousUpdate, label: "Copy unavailable", detail: "No previous week update is available." } }] : []),
+                        ...(canEditGroup && canManageSetup && onUnmatch ? actionableMatches.map((match) => ({
                           id: `unmatch-${match.doc_group_id}`,
                           label: translate(language, "unmatchRequisition", { id: match.doc_id }),
                           icon: <Unlink size={16} />,
@@ -319,7 +330,8 @@ export function SourcingView({
                           type="number"
                           min={0}
                           defaultValue={String(defaultUpdate?.[channel.count] ?? 0)}
-                          readOnly={!canWrite}
+                          disabled={!canEditGroup}
+                          readOnly={!canEditGroup}
                         />
                       </Field>
                     </div>
@@ -366,15 +378,34 @@ export function SourcingView({
           eyebrow={translate(language, "selectedWeekGroupSummary")}
           action={<Button type="button" size="sm" variant="secondary" icon={<SlidersHorizontal size={16} />} onClick={() => setTableFiltersOpen((current) => !current)} aria-expanded={tableFiltersOpen}>{translate(language, "advancedFilters")}</Button>}
         />
-        {tableFiltersOpen ? <div className="mb-3 grid gap-3 rounded-xl border border-[#D7E2F1] bg-[#F8FAFD] p-3 sm:grid-cols-2 xl:grid-cols-[minmax(13rem,1fr)_minmax(11rem,0.8fr)_minmax(11rem,0.8fr)_minmax(11rem,0.8fr)_auto] xl:items-end">
+        {tableFiltersOpen ? <>
+          <div className="mb-3 hidden gap-3 rounded-xl border border-[#D7E2F1] bg-[#F8FAFD] p-3 md:grid md:grid-cols-2 xl:grid-cols-[minmax(13rem,1fr)_minmax(11rem,0.8fr)_minmax(11rem,0.8fr)_minmax(11rem,0.8fr)_auto] xl:items-end">
           <Field label={translate(language, "searchSourcingGroups")}><TextInput value={tableFilters.search} onChange={(event) => setTableFilters((current) => ({ ...current, search: event.target.value }))} placeholder={translate(language, "searchSourcingGroupsPlaceholder")} /></Field>
           <Field label={translate(language, "position")}><CommandSelector ariaLabel={translate(language, "position")} emptyLabel={translate(language, "allPositions")} options={[{ value: "", label: translate(language, "allPositions") }, ...tablePositionOptions.map((value) => ({ value, label: value }))]} value={tableFilters.position} onValueChange={(position) => setTableFilters((current) => ({ ...current, position }))} /></Field>
           <Field label={translate(language, "sourcingUpdateState")}><CommandSelector ariaLabel={translate(language, "sourcingUpdateState")} emptyLabel={translate(language, "allUpdateStates")} options={[{ value: "all", label: translate(language, "allUpdateStates") }, { value: "saved", label: translate(language, "savedThisWeek") }, { value: "missing", label: translate(language, "notSavedThisWeek") }]} value={tableFilters.updateState} onValueChange={(updateState) => setTableFilters((current) => ({ ...current, updateState }))} /></Field>
           <Field label={translate(language, "weeklyApplicants")}><CommandSelector ariaLabel={translate(language, "weeklyApplicants")} emptyLabel={translate(language, "allApplicantStates")} options={[{ value: "all", label: translate(language, "allApplicantStates") }, { value: "has-applicants", label: translate(language, "hasApplicants") }, { value: "zero-applicants", label: translate(language, "zeroApplicants") }]} value={tableFilters.applicantState} onValueChange={(applicantState) => setTableFilters((current) => ({ ...current, applicantState }))} /></Field>
           <Button type="button" size="sm" variant="secondary" disabled={!hasTableFilters} onClick={() => setTableFilters({ search: "", position: "", updateState: "all", applicantState: "all" })}>{translate(language, "clear")}</Button>
-        </div> : null}
+          </div>
+          <MobileBottomSheet open={tableFiltersOpen} title={translate(language, "advancedFilters")} closeLabel={translate(language, "close")} onClose={() => setTableFiltersOpen(false)}>
+            <div className="grid gap-3">
+              <Field label={translate(language, "searchSourcingGroups")}><TextInput value={tableFilters.search} onChange={(event) => setTableFilters((current) => ({ ...current, search: event.target.value }))} placeholder={translate(language, "searchSourcingGroupsPlaceholder")} /></Field>
+              <Field label={translate(language, "position")}><CommandSelector ariaLabel={translate(language, "position")} emptyLabel={translate(language, "allPositions")} options={[{ value: "", label: translate(language, "allPositions") }, ...tablePositionOptions.map((value) => ({ value, label: value }))]} value={tableFilters.position} onValueChange={(position) => setTableFilters((current) => ({ ...current, position }))} /></Field>
+              <Field label={translate(language, "sourcingUpdateState")}><CommandSelector ariaLabel={translate(language, "sourcingUpdateState")} emptyLabel={translate(language, "allUpdateStates")} options={[{ value: "all", label: translate(language, "allUpdateStates") }, { value: "saved", label: translate(language, "savedThisWeek") }, { value: "missing", label: translate(language, "notSavedThisWeek") }]} value={tableFilters.updateState} onValueChange={(updateState) => setTableFilters((current) => ({ ...current, updateState }))} /></Field>
+              <Field label={translate(language, "weeklyApplicants")}><CommandSelector ariaLabel={translate(language, "weeklyApplicants")} emptyLabel={translate(language, "allApplicantStates")} options={[{ value: "all", label: translate(language, "allApplicantStates") }, { value: "has-applicants", label: translate(language, "hasApplicants") }, { value: "zero-applicants", label: translate(language, "zeroApplicants") }]} value={tableFilters.applicantState} onValueChange={(applicantState) => setTableFilters((current) => ({ ...current, applicantState }))} /></Field>
+              <div className="grid grid-cols-2 gap-2 border-t border-[#D7DEE8] pt-3"><Button type="button" variant="secondary" disabled={!hasTableFilters} onClick={() => setTableFilters({ search: "", position: "", updateState: "all", applicantState: "all" })}>{translate(language, "clear")}</Button><Button type="button" onClick={() => setTableFiltersOpen(false)}>{translate(language, "confirm")}</Button></div>
+            </div>
+          </MobileBottomSheet>
+        </> : null}
         <p className="mb-3 text-sm font-medium text-slate" role="status">{translate(language, "sourcingGroupsShown", { shown: tableGroups.length, total: groups.length })}</p>
-        <div className="table-scroll overflow-x-auto">
+        <div className="grid gap-3 md:hidden">
+          {tableGroups.map((group) => <article key={group.group_id} className="rounded-xl border border-[#D7DEE8] bg-white p-3">
+            <div className="flex items-start justify-between gap-3"><div className="min-w-0"><a className="font-semibold text-primary underline-offset-2 hover:underline" href={`/workspace?type=group&id=${encodeURIComponent(group.group_id)}`}>{group.group_id}</a><p className="mt-1 truncate text-sm font-medium text-navy">{group.group_position}</p></div><Tag tone={group.latest_update?.updated_at ? "success" : "warning"}>{group.latest_update?.updated_at ? translate(language, "savedThisWeek") : translate(language, "notSavedThisWeek")}</Tag></div>
+            <p className="mt-2 text-xs font-medium text-slate">{group.sites.join(", ") || "-"} · {group.owners.join(", ") || "-"}</p>
+            <dl className="mt-3 grid grid-cols-3 gap-2 border-t border-[#E4E9F2] pt-3 text-xs"><div><dt className="text-cool">{translate(language, "requisitions")}</dt><dd className="mt-1 font-semibold text-navy tabular-nums">{group.doc_ids.length}</dd></div><div><dt className="text-cool">{translate(language, "openHeadcount")}</dt><dd className="mt-1 font-semibold text-navy tabular-nums">{group.open_headcount}</dd></div><div><dt className="text-cool">{translate(language, "candidateCount")}</dt><dd className="mt-1 font-semibold text-navy tabular-nums">{group.candidate_count}</dd></div><div><dt className="text-cool">{translate(language, "weeklyApplicants")}</dt><dd className="mt-1 font-semibold text-navy tabular-nums">{sourcingApplicants(group.latest_update)}</dd></div><div className="col-span-2"><dt className="text-cool">{translate(language, "lastSaved")}</dt><dd className="mt-1 font-semibold text-navy">{group.latest_update?.updated_at ? formatDate(group.latest_update.updated_at, language) : translate(language, "notUpdatedThisWeek")}</dd></div></dl>
+          </article>)}
+          {tableGroups.length === 0 ? <EmptyState variant="quiet" message={translate(language, "noData")} /> : null}
+        </div>
+        <div className="table-scroll hidden overflow-x-auto md:block">
           <table className="w-full min-w-[960px] border-collapse text-left text-sm">
             <thead className="bg-[#F1F6FC] text-xs font-semibold uppercase tracking-wide text-slate">
               <tr>{(["groupId", "position", "site", "personInCharge", "requisitions", "openHeadcount", "candidateCount", "weeklyApplicants", "lastSaved"] as SourcingGroupSortKey[]).map((key) => <SortableSourcingHeader key={key} label={translate(language, key)} language={language} sortKey={key} sortState={tableSort} onSort={toggleTableSort} />)}</tr>
@@ -483,8 +514,7 @@ function downloadCsv(filename: string, rows: Array<Record<string, string | numbe
 
 function visibleSourcingGroups(groups: EnrichedSourcingGroup[], profile: Profile | null) {
   if (profile?.role !== "site_recruiter") return groups;
-  const nickname = profile.nickname ?? profile.full_name ?? "";
-  return groups.filter((group) => group.owners.includes(nickname));
+  return groups.filter((group) => group.sites.includes(profile.site ?? ""));
 }
 
 function latestSourcingUpdateForGroup(data: DashboardData, groupId: string) {

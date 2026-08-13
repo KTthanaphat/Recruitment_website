@@ -122,6 +122,7 @@ function createRecruitmentDataset(activeRole: MockUserRole): DashboardData {
       requisition("REQ-HQ-1", "HQ", "Engineer", "Operations", "Alice", 5, "2026-06-01"),
       requisition("REQ-HQ-2", "HQ", "Engineer", "Operations", "Alice", 1, "2026-06-10", "ongoing", "4"),
       requisition("REQ-KT1-1", "KT1", "Technician", "Production", "Bob", 3, "2026-06-03"),
+      requisition("REQ-KT1-PEER", "KT1", "Line Technician", "Production", "Nina", 2, "2026-06-04"),
       requisition("REQ-KT2-1", "KT2", "Analyst", "Planning", "Alice", 2, "2026-06-05"),
       requisition("REQ-UNMATCHED-1", "HQ", "Senior Procurement Operations and Supplier Development Specialist", "Procurement", "Alice", 1, "2026-07-08", "ongoing", null),
       requisition("REQ-CLOSED-1", "HQ", "Closed Role", "Operations", "Alice", 1, "2026-06-07", "filled")
@@ -130,6 +131,7 @@ function createRecruitmentDataset(activeRole: MockUserRole): DashboardData {
     position_groups: [
       positionGroup("GRP-ENG", "Engineer"),
       positionGroup("GRP-TECH", "Technician"),
+      positionGroup("GRP-KT1-PEER", "Line Technician"),
       positionGroup("GRP-ANL", "Analyst"),
       positionGroup("GRP-BUY", "Buyer")
     ],
@@ -137,6 +139,7 @@ function createRecruitmentDataset(activeRole: MockUserRole): DashboardData {
       documentGroup("DG-HQ-ENG", "REQ-HQ-1", "GRP-ENG", "Engineer"),
       documentGroup("DG-HQ2-ENG", "REQ-HQ-2", "GRP-ENG", "Engineer"),
       documentGroup("DG-KT1-TECH", "REQ-KT1-1", "GRP-TECH", "Technician"),
+      documentGroup("DG-KT1-PEER", "REQ-KT1-PEER", "GRP-KT1-PEER", "Line Technician"),
       documentGroup("DG-KT2-ANL", "REQ-KT2-1", "GRP-ANL", "Analyst"),
       documentGroup("DG-CLOSED", "REQ-CLOSED-1", "GRP-CLOSED", "Closed Role")
     ],
@@ -212,6 +215,7 @@ function createRecruitmentDataset(activeRole: MockUserRole): DashboardData {
       sourcingUpdate("GRP-TECH", "2026-06-29", 4),
       sourcingUpdate("GRP-ENG", "2026-07-06", 12),
       sourcingUpdate("GRP-TECH", "2026-07-06", 7),
+      sourcingUpdate("GRP-KT1-PEER", "2026-07-06", 3),
       sourcingUpdate("GRP-ANL", "2026-07-06", 5)
     ],
     vacancy_weekly_snapshots: [],

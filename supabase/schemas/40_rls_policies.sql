@@ -46,7 +46,7 @@ using (app_private.can_read_requisition(doc_id));
 drop policy if exists position_groups_read on public.position_groups;
 create policy position_groups_read on public.position_groups
 for select to authenticated
-using (app_private.is_recruitment_reader());
+using (app_private.can_read_position_group(group_id));
 
 drop policy if exists document_groups_read on public.document_groups;
 create policy document_groups_read on public.document_groups
