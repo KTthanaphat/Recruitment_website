@@ -33,14 +33,14 @@ import type {
 
 const detailStages = ACTIVE_PIPELINE_STAGES;
 const funnelLevelOptions: Array<{ value: FunnelLevelBand; label: string }> = [
-  { value: "all", label: "All levels" },
   { value: "0-3", label: "L0-L3" },
-  { value: "4-9", label: "L4-L9" },
+  { value: "4-6", label: "L4-L6" },
+  { value: "7-9", label: "L7-L9" },
   { value: "10-14", label: "L10-L14" }
 ];
 
 type PrintTarget = "chart" | "requisition-detail" | "pipeline-funnel";
-type FunnelLevelBand = "all" | "0-3" | "4-9" | "10-14";
+type FunnelLevelBand = "0-3" | "4-6" | "7-9" | "10-14";
 type FunnelChannelFilter = "all" | string;
 type FunnelStageCounts = Record<PipelineDisplayStage, number>;
 type ReportView = "mtd" | "ytd" | "pim" | "custom";
@@ -87,7 +87,7 @@ export function VacancyWaterfallView({
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [funnelStartDate, setFunnelStartDate] = useState(`${today().slice(0, 4)}-01-01`);
   const [funnelEndDate, setFunnelEndDate] = useState(today());
-  const [funnelLevelBand, setFunnelLevelBand] = useState<FunnelLevelBand>("all");
+  const [funnelLevelBands, setFunnelLevelBands] = useState<FunnelLevelBand[]>([]);
   const [funnelChannel, setFunnelChannel] = useState<FunnelChannelFilter>("all");
   const [funnelOpen, setFunnelOpen] = useState(false);
   const [printTarget, setPrintTarget] = useState<PrintTarget | null>(null);
@@ -109,8 +109,8 @@ export function VacancyWaterfallView({
     [data, endDate, reportView, requisitions, startDate]
   );
   const funnelRows = useMemo(
-    () => buildDashboardPipelineFunnelRows(data, requisitions, funnelStartDate, funnelEndDate, funnelLevelBand, funnelChannel, language),
-    [data, funnelChannel, funnelEndDate, funnelLevelBand, funnelStartDate, language, requisitions]
+    () => buildDashboardPipelineFunnelRows(data, requisitions, funnelStartDate, funnelEndDate, funnelLevelBands, funnelChannel, language),
+    [data, funnelChannel, funnelEndDate, funnelLevelBands, funnelStartDate, language, requisitions]
   );
   const funnelApplicantTotal = funnelRows[0]?.count ?? 0;
   const funnelChannelOptions = useMemo(() => buildFunnelChannelOptions(data, language), [data, language]);
@@ -129,7 +129,8 @@ export function VacancyWaterfallView({
     if (params.get("details") === "closed") setDetailsOpen(false);
     if (params.get("funnelStart")) setFunnelStartDate(params.get("funnelStart")!);
     if (params.get("funnelEnd")) setFunnelEndDate(params.get("funnelEnd")!);
-    if (isFunnelLevelBand(params.get("funnelLevel"))) setFunnelLevelBand(params.get("funnelLevel") as FunnelLevelBand);
+    const savedLevelBands = (params.get("funnelLevel") ?? "").split(",").filter(isFunnelLevelBand);
+    if (savedLevelBands.length > 0) setFunnelLevelBands(savedLevelBands);
     if (params.get("funnelChannel")) setFunnelChannel(params.get("funnelChannel")!);
     if (params.get("funnel") === "open") setFunnelOpen(true);
     if (params.get("funnel") === "closed") setFunnelOpen(false);
@@ -146,11 +147,11 @@ export function VacancyWaterfallView({
       details: detailsOpen ? "open" : "closed",
       funnelStart: funnelStartDate,
       funnelEnd: funnelEndDate,
-      funnelLevel: funnelLevelBand,
+      funnelLevel: funnelLevelBands.length > 0 ? funnelLevelBands.join(",") : null,
       funnelChannel,
       funnel: funnelOpen ? "open" : "closed"
     });
-  }, [customEndDate, customStartDate, detailsOpen, funnelChannel, funnelEndDate, funnelLevelBand, funnelOpen, funnelStartDate, reportMonth, reportView, urlStateReady]);
+  }, [customEndDate, customStartDate, detailsOpen, funnelChannel, funnelEndDate, funnelLevelBands, funnelOpen, funnelStartDate, reportMonth, reportView, urlStateReady]);
 
   useEffect(() => {
     const clearPrintTarget = () => {
@@ -301,7 +302,7 @@ export function VacancyWaterfallView({
             <span>
               <strong className="block text-lg font-semibold text-navy">{translate(language, "recruitmentPipelineHealthSelectedRange")}</strong>
               <span className="text-sm font-medium text-slate">
-                {translate(language, "applicantsInRange", { count: formatNumber(funnelApplicantTotal, language), start: formatDate(funnelStartDate, language), end: formatDate(funnelEndDate, language), level: funnelLevelLabel(funnelLevelBand, language), channel: funnelChannelLabel })}
+                {translate(language, "applicantsInRange", { count: formatNumber(funnelApplicantTotal, language), start: formatDate(funnelStartDate, language), end: formatDate(funnelEndDate, language), level: funnelLevelLabel(funnelLevelBands, language), channel: funnelChannelLabel })}
               </span>
             </span>
             <ChevronDown className={`shrink-0 transition-transform motion-reduce:transition-none ${funnelOpen ? "rotate-180" : ""}`} size={20} />
@@ -329,7 +330,7 @@ export function VacancyWaterfallView({
                   onChange={(event) => setFunnelEndDate(event.target.value)}
                 />
               </Field>
-              <DashboardFilterPicker id="funnel-level-options" label={translate(language, "level")} options={localizedFunnelLevelOptions} value={funnelLevelBand} onValueChange={(value) => setFunnelLevelBand(value as FunnelLevelBand)} />
+              <DashboardMultiFilterPicker id="funnel-level-options" label={translate(language, "level")} language={language} options={localizedFunnelLevelOptions} values={funnelLevelBands} onValuesChange={(values) => setFunnelLevelBands(values as FunnelLevelBand[])} />
               <DashboardFilterPicker id="funnel-channel-options" label={translate(language, "channel")} options={funnelChannelOptions} value={funnelChannel} onValueChange={setFunnelChannel} />
             </div>
             <PipelineFunnel
@@ -337,7 +338,7 @@ export function VacancyWaterfallView({
               rows={funnelRows}
               title={translate(language, "recruitmentPipelineHealth")}
               subtitle={translate(language, "funnelSubtitle")}
-              meta={`${funnelLevelLabel(funnelLevelBand, language)} - ${funnelChannelLabel}`}
+              meta={`${funnelLevelLabel(funnelLevelBands, language)} - ${funnelChannelLabel}`}
               totalValue={funnelApplicantTotal}
             />
             <p className="text-sm font-medium text-slate">{funnelApplicantTotal === 0 ? translate(language, "noApplicantsMatchFunnelFilters") : translate(language, "topBottleneck", { value: topFunnelBottleneck(funnelRows, language) })}</p>
@@ -352,13 +353,13 @@ export function VacancyWaterfallView({
 
       <div data-print-section="pipeline-funnel" className="print-report-only print-funnel-report">
         <ReportHeader language={language} title={translate(language, "recruitmentPipelineHealthSelectedRange")} startDate={funnelStartDate} endDate={funnelEndDate} />
-        <p className="px-4 pb-3 text-sm font-medium text-slate sm:px-6 lg:px-8">{translate(language, "levelMeta")}: {funnelLevelLabel(funnelLevelBand, language)} - {translate(language, "channelMeta")}: {funnelChannelLabel}</p>
+        <p className="px-4 pb-3 text-sm font-medium text-slate sm:px-6 lg:px-8">{translate(language, "levelMeta")}: {funnelLevelLabel(funnelLevelBands, language)} - {translate(language, "channelMeta")}: {funnelChannelLabel}</p>
         <PipelineFunnel
           language={language}
           rows={funnelRows}
           title={translate(language, "recruitmentPipelineHealth")}
           subtitle={translate(language, "funnelSubtitle")}
-          meta={`${funnelLevelLabel(funnelLevelBand, language)} - ${funnelChannelLabel}`}
+          meta={`${funnelLevelLabel(funnelLevelBands, language)} - ${funnelChannelLabel}`}
           totalValue={funnelApplicantTotal}
         />
       </div>
@@ -426,6 +427,30 @@ function DashboardFilterPicker({
       </div> : null}
     </div>
   );
+}
+
+function DashboardMultiFilterPicker({ id, label, language, options, values, onValuesChange }: { id: string; label: string; language: Language; options: Array<{ value: string; label: string }>; values: string[]; onValuesChange: (values: string[]) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+  const allSelected = values.length === options.length;
+  const selectedLabel = values.length === 0 ? translate(language, "allLevels") : options.filter((option) => values.includes(option.value)).map((option) => option.label).join(", ");
+
+  useEffect(() => {
+    const close = (event: MouseEvent) => { if (!ref.current?.contains(event.target as Node)) setOpen(false); };
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", closeOnEscape); };
+  }, []);
+
+  return <div ref={ref} className="relative grid gap-1.5 text-sm font-medium text-navy">
+    <span className="text-xs font-semibold text-slate">{label}</span>
+    <button type="button" className="flex min-h-10 w-full items-center gap-2 rounded-xl border border-[#B8CCE4] bg-white px-3 text-left text-sm font-semibold text-navy shadow-sm transition hover:border-primary/60 hover:bg-[#FBFDFF] focus:outline-none focus:ring-2 focus:ring-primary/20" aria-haspopup="listbox" aria-expanded={open} aria-controls={id} onClick={() => setOpen((current) => !current)}><SlidersHorizontal size={15} className="shrink-0 text-primary" aria-hidden="true" /><span className="min-w-0 flex-1 truncate">{selectedLabel}</span><ChevronDown size={16} className={`shrink-0 text-slate transition-transform ${open ? "rotate-180" : ""}`} aria-hidden="true" /></button>
+    {open ? <div id={id} role="listbox" aria-multiselectable="true" aria-label={label} className="absolute z-30 mt-[4.45rem] grid w-full min-w-[12rem] grid-cols-1 gap-1.5 rounded-2xl border border-[#C9D5E6] bg-white p-2 shadow-[0_18px_40px_rgba(11,19,43,0.18)]">
+      <label className="flex min-h-9 items-center gap-2 border-b border-[#E4E9F2] pb-1.5 text-sm font-semibold"><input type="checkbox" checked={allSelected} onChange={(event) => onValuesChange(event.target.checked ? options.map((option) => option.value) : [])} />{translate(language, "selectAll")}</label>
+      {options.map((option) => <label key={option.value} role="option" aria-selected={values.includes(option.value)} className="flex min-h-9 items-center gap-2 rounded-lg px-1 text-sm font-semibold hover:bg-[#F8FAFD]"><input type="checkbox" checked={values.includes(option.value)} onChange={(event) => onValuesChange(event.target.checked ? [...values, option.value] : values.filter((value) => value !== option.value))} />{option.label}</label>)}
+    </div> : null}
+  </div>;
 }
 
 function ReportHeader({ language, title, startDate, endDate }: { language: Language; title: string; startDate: string; endDate: string }) {
@@ -970,14 +995,14 @@ function buildDashboardPipelineFunnelRows(
   requisitions: EnrichedRequisition[],
   startDate: string,
   endDate: string,
-  levelBand: FunnelLevelBand,
+  levelBands: FunnelLevelBand[],
   channelFilter: FunnelChannelFilter,
   language: Language
 ): PipelineFunnelRow[] {
   if (!startDate || !endDate || startDate > endDate) return buildPipelineFunnelRows(0, emptyFunnelStageCounts(), language);
 
   const eligibleRequisitions = requisitions.filter((requisition) =>
-    requisition.status !== "cancel" && levelMatchesBand(requisition.level, levelBand)
+    requisition.status !== "cancel" && levelMatchesBands(requisition.level, levelBands)
   );
   const eligibleDocIds = new Set(eligibleRequisitions.map((requisition) => requisition.doc_id));
   const groupIds = new Set<string>();
@@ -1117,28 +1142,26 @@ function channelMatchesFilter(channel: string | null | undefined, filter: Funnel
   return filter === "all" || channel?.trim() === filter;
 }
 
-function isFunnelLevelBand(value: string | null): value is FunnelLevelBand {
-  return value === "all" || value === "0-3" || value === "4-9" || value === "10-14";
+function isFunnelLevelBand(value: string | null | undefined): value is FunnelLevelBand {
+  return value === "0-3" || value === "4-6" || value === "7-9" || value === "10-14";
 }
 
 function buildFunnelLevelOptions(language: Language): Array<{ value: FunnelLevelBand; label: string }> {
-  return funnelLevelOptions.map((option) => ({
-    ...option,
-    label: option.value === "all" ? translate(language, "allLevels") : option.label
-  }));
+  return funnelLevelOptions;
 }
 
-function funnelLevelLabel(value: FunnelLevelBand, language: Language) {
-  return buildFunnelLevelOptions(language).find((option) => option.value === value)?.label ?? translate(language, "allLevels");
+function funnelLevelLabel(values: FunnelLevelBand[], language: Language) {
+  return values.length === 0 ? translate(language, "allLevels") : buildFunnelLevelOptions(language).filter((option) => values.includes(option.value)).map((option) => option.label).join(", ");
 }
 
-function levelMatchesBand(level: string | null | undefined, band: FunnelLevelBand) {
-  if (band === "all") return true;
+function levelMatchesBands(level: string | null | undefined, bands: FunnelLevelBand[]) {
+  if (bands.length === 0) return true;
   const numericLevel = Number.parseInt(String(level ?? "").replace(/^L/i, ""), 10);
   if (!Number.isFinite(numericLevel)) return false;
-  if (band === "0-3") return numericLevel >= 0 && numericLevel <= 3;
-  if (band === "4-9") return numericLevel >= 4 && numericLevel <= 9;
-  return numericLevel >= 10 && numericLevel <= 14;
+  return bands.some((band) => (band === "0-3" && numericLevel >= 0 && numericLevel <= 3)
+    || (band === "4-6" && numericLevel >= 4 && numericLevel <= 6)
+    || (band === "7-9" && numericLevel >= 7 && numericLevel <= 9)
+    || (band === "10-14" && numericLevel >= 10 && numericLevel <= 14));
 }
 
 function compareRequisitionDetailRows(a: RequisitionDetailRow, b: RequisitionDetailRow) {

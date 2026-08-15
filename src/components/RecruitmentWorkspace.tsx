@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { AlertTriangle } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AdminView } from "@/components/admin/AdminView";
 import { AuditView } from "@/components/audit/AuditView";
@@ -257,6 +258,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("Loading recruitment records...");
   const [error, setError] = useState<string | null>(null);
+  const [updateDenial, setUpdateDenial] = useState<string | null>(null);
   const [filters, setFilters] = useState({ site: "", owner: "" });
   const [sourcingWeek, setSourcingWeek] = useState(currentWeekStart());
   const [activeModal, setActiveModal] = useState<ModalName>(null);
@@ -272,6 +274,11 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [urlStateReady, setUrlStateReady] = useState(false);
+
+  function showUpdateDenial(reason: string) {
+    setStatus("Recruitment records loaded.");
+    setUpdateDenial(reason);
+  }
 
   const loadData = useCallback(async () => {
     if (!supabase) {
@@ -547,14 +554,14 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     const logs = latestLogsForCandidate(data, candidate.candidate_id);
     const blockedReason = processUpdateBlockReason(logs);
     if (blockedReason) {
-      setStatus(blockedReason);
+      showUpdateDenial(blockedReason);
       return;
     }
     const currentIndex = ACTIVE_PIPELINE_STAGES.indexOf(candidate.latest_process as ProcessStage);
     const targetIndex = ACTIVE_PIPELINE_STAGES.indexOf(nextStage);
     if (currentIndex === -1 || targetIndex <= currentIndex) return;
     if (candidate.latest_result !== null) {
-      setStatus("Pipeline movement requires a pending current stage. Open the next pending stage before jumping farther.");
+      showUpdateDenial("Pipeline movement requires a pending current stage. Open the next pending stage before jumping farther.");
       return;
     }
     const passedStages = ACTIVE_PIPELINE_STAGES.slice(currentIndex, targetIndex);
@@ -583,7 +590,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     if (!active) return;
     const pending = logs.find((row) => row.stage_instance_id === active.stageInstanceId);
     if (!pending || !candidatePipelineCapability(candidate, logs, data.profile).canWrite) {
-      setStatus("This pending stage is outside your update responsibility.");
+      showUpdateDenial("This pending stage is outside your update responsibility.");
       return;
     }
     setProcessDefaults({ candidate_id: candidate.candidate_id, recruitment_process: active.stage, round: active.round, pending_log_id: active.pendingLogId, stage_instance_id: active.stageInstanceId, expected_updated_at: active.updatedAt, pending_log_date: pending.log_date, pending_estimated_action_date: pending.estimated_action_date, pending_interviewer: pending.interviewer, pending_remark: pending.remark });
@@ -625,7 +632,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     const logs = latestLogsForCandidate(data, candidate.candidate_id);
     const blockedReason = processUpdateBlockReason(logs);
     if (blockedReason) {
-      setStatus(blockedReason);
+      showUpdateDenial(blockedReason);
       return;
     }
     const active = activeProcessStage(logs);
@@ -643,7 +650,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
 
   function openInitialProcessUpdate(candidate: EnrichedCandidate) {
     if (!candidate.first_contact_date) {
-      setStatus("Add First Contact Date in Candidate Detail before starting Phone Screen.");
+      showUpdateDenial("Add First Contact Date in Candidate Detail before starting Phone Screen.");
       return;
     }
     setProcessDefaults({
@@ -710,11 +717,11 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       return;
     }
     if (!canWrite) {
-      setStatus("Read-only access: your role cannot update recruitment records.");
+      showUpdateDenial("Read-only access: your role cannot update recruitment records.");
       return;
     }
     if ((request.kind === "group.create" || request.kind === "group.match") && !canManageSetup) {
-      setStatus("Your role cannot change sourcing group setup.");
+      showUpdateDenial("Your role cannot change sourcing group setup.");
       return;
     }
     if (request.kind === "requisition.create") {
@@ -763,7 +770,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     if (request.kind === "candidate.process") {
       const candidate = enrichedCandidates.find((row) => row.candidate_id === request.candidateId);
       if (!candidate) {
-        setStatus("Candidate not found in this workspace.");
+        showUpdateDenial("Candidate not found in this workspace.");
         return;
       }
       if (request.intent === "start") openInitialProcessUpdate(candidate);
@@ -868,7 +875,8 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
         if (!guideContinued) setStatus("Saved successfully.");
       }
     } catch (saveError) {
-      setStatus(saveError instanceof Error ? saveError.message : "Save failed.");
+      setPendingAction(null);
+      showUpdateDenial(saveError instanceof Error ? saveError.message : translate(language, "updateDeniedFallback"));
     } finally {
       setBusy(false);
     }
@@ -900,7 +908,8 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       await loadData();
       setStatus(translate(language, "destructiveActionSucceeded"));
     } catch (saveError) {
-      setStatus(saveError instanceof Error ? saveError.message : translate(language, "destructiveActionFailed"));
+      setDestructiveAction(null);
+      showUpdateDenial(saveError instanceof Error ? saveError.message : translate(language, "destructiveActionFailed"));
     } finally {
       setBusy(false);
     }
@@ -1222,7 +1231,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
         modalDefaults={modalDefaults}
         onClose={closeRecordModal}
         onSubmit={prepareAction}
-        onValidationError={setStatus}
+        onValidationError={showUpdateDenial}
       />
 
       <GuidePrompt
@@ -1258,6 +1267,8 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
         onClose={() => setDestructiveAction(null)}
         onConfirm={confirmDestructiveAction}
       />
+
+      <UpdateDeniedModal language={language} reason={updateDenial} onClose={() => setUpdateDenial(null)} />
 
       <OfferPassHandoffPrompt
         handoff={offerPassHandoff}
@@ -3086,6 +3097,27 @@ function DestructiveConfirmModal({
           <Button type="button" variant="secondary" onClick={onClose}>{translate(language, "cancel")}</Button>
           <Button type="button" variant="danger" disabled={busy} onClick={onConfirm}>{translate(language, "confirmDestructiveButton")}</Button>
         </div>
+      </div>
+    </Modal>
+  );
+}
+
+function UpdateDeniedModal({ language, reason, onClose }: { language: Language; reason: string | null; onClose: () => void }) {
+  return (
+    <Modal open={Boolean(reason)} title={translate(language, "updateNotSaved")} closeLabel={translate(language, "close")} onClose={onClose} width="max-w-lg">
+      <div className="grid gap-4">
+        <div className="flex items-start gap-3 rounded-xl bg-danger/5 px-4 py-3 text-scarlet">
+          <AlertTriangle className="mt-0.5 shrink-0" size={20} aria-hidden="true" />
+          <div className="min-w-0">
+            <p className="font-semibold">{translate(language, "updateDenied")}</p>
+            <p className="mt-1 text-sm font-medium leading-6">{translate(language, "updateDeniedHelp")}</p>
+          </div>
+        </div>
+        <div className="rounded-xl bg-[#F8FAFD] px-4 py-3 text-sm font-medium leading-6 text-navy" role="alert">
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate">{translate(language, "denialReason")}</p>
+          <p className="break-words">{reason}</p>
+        </div>
+        <div className="flex justify-end"><Button type="button" onClick={onClose}>{translate(language, "reviewAndEdit")}</Button></div>
       </div>
     </Modal>
   );

@@ -15,7 +15,7 @@ import { ACTIVE_PIPELINE_STAGES, processIndex, processLabel } from "@/lib/consta
 import { formatLocalDateInput } from "@/lib/dates";
 import { formatCandidateName, formatDate, resultText, statusTone } from "@/lib/format";
 import { translate } from "@/lib/i18n/dictionary";
-import { candidatePipelineCapability, candidateProcessDisabledReason, candidateTouchAgeDays, deriveStageHealth, isCandidateAging, pipelineMoveDisabledReason, type DataQualityIssue } from "@/lib/operations";
+import { candidatePipelineCapability, candidateProcessDisabledReason, candidateTouchAgeDays, isCandidateAging, pipelineMoveDisabledReason, type DataQualityIssue } from "@/lib/operations";
 import { readTableUrlState, writeTableUrlValues } from "@/lib/table-url-state";
 import { updateWorkspaceUrlState } from "@/lib/workspace-url-state";
 import type { CandidateReference, CandidateReferenceCheck, EnrichedCandidate, Language, ProcessStage, Profile, RecruitmentLog } from "@/types/recruitment";
@@ -318,14 +318,13 @@ export function PipelineBoardView({
           {displayStages.map((stage) => {
             const stageRows = sortByLastUpdateAsc(activeRows.filter((row) => row.latest_process === stage));
             const isBlocked = blockedStage === stage;
-            const metrics = deriveStageHealth(stage, stageRows, recruitmentLogs);
             const groupedRows = groupPipelineRows(stageRows, groupBy, language);
 
             return (
               <section
                 key={stage}
                 data-pipeline-stage={stage}
-                className={`min-h-64 w-[calc(100vw-3.5rem)] shrink-0 rounded-xl border border-[#E4E9F2] bg-white p-2 shadow-none transition-colors md:min-h-80 md:w-[min(17rem,82vw)] md:rounded-2xl md:border-[rgb(var(--app-primary-rgb)/0.22)] md:bg-[rgb(var(--app-primary-rgb)/0.08)] md:p-2.5 md:shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] ${
+                className={`min-h-64 w-[calc(100vw-3.5rem)] shrink-0 rounded-xl border border-[#B8CCE4] bg-[#EAF3FF] p-2 shadow-none transition-colors md:min-h-80 md:w-[min(17rem,82vw)] md:rounded-2xl md:border-[rgb(var(--app-primary-rgb)/0.28)] md:p-2.5 ${
                   isBlocked ? "border-scarlet bg-[#FFF1F0]" : ""
                 }`}
                 onDragOver={(event) => {
@@ -354,11 +353,10 @@ export function PipelineBoardView({
                   setDragged(null);
                 }}
               >
-                <div className="sticky top-0 z-10 -mx-1 mb-2 flex min-w-0 items-center justify-between gap-2 border-b border-[#E4E9F2] bg-white px-1 pb-2 md:mb-3 md:border-0 md:bg-[rgb(var(--app-primary-rgb)/0.08)] md:pb-1">
-                  <h3 className={`break-words text-sm font-semibold ${metrics.overSlaCount > 0 ? "text-scarlet" : "text-navy"}`}>
+                <div className="sticky top-0 z-10 -mx-1 mb-2 min-w-0 bg-[#EAF3FF] px-1 pb-2 md:mb-3 md:pb-1">
+                  <h3 className="break-words text-sm font-semibold text-navy">
                     {processLabel(stage, language)}
                   </h3>
-                  <Tag tone={metrics.overSlaCount > 0 ? "danger" : "muted"}>{stageRows.length}</Tag>
                 </div>
                 {stageRows.length === 0 ? (
                   <EmptyState variant="board" message={translate(language, "noData")} />

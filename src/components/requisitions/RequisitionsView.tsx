@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PAGE_SIZE_OPTIONS, Pagination, paginateRows } from "@/components/ui/Pagination";
 import { Panel, SectionTitle } from "@/components/ui/Panel";
-import { SortableFilterHeader, TableToolbar, type TableColumn, useTableControls } from "@/components/ui/TableControls";
+import { SortableFilterHeader, TableToolbar, TruncatedTableText, type TableColumn, useTableControls } from "@/components/ui/TableControls";
 import { Tag } from "@/components/ui/Tag";
 import { RecordQuickActions, type RecordQuickAction } from "@/components/ui/Operations";
 import { BulkActionToolbar, BulkReviewModal } from "@/components/ui/Workflow";
@@ -47,10 +47,10 @@ export function RequisitionsView({
     { key: "doc_id", label: translate(language, "docId"), value: (row) => row.doc_id },
     { key: "position", label: translate(language, "position"), value: (row) => formatRequisitionTitle(row) },
     { key: "department", label: translate(language, "department"), value: (row) => row.department },
-    { key: "request_type", label: translate(language, "requestType"), value: (row) => requestTypeLabel(language, row.request_type) },
+    { key: "request_type", label: translate(language, "requestType"), value: (row) => requestTypeLabel(language, row.request_type), filterMode: "category" },
     { key: "section", label: translate(language, "section"), value: (row) => row.section ?? "-" },
     { key: "owner", label: translate(language, "owner"), value: (row) => row.person_in_charge ?? "-" },
-    { key: "status", label: translate(language, "status"), value: (row) => requisitionStatusLabel(language, row.status) },
+    { key: "status", label: translate(language, "status"), value: (row) => requisitionStatusLabel(language, row.status), filterMode: "category" },
     { key: "head_count", label: translate(language, "headcount"), value: (row) => row.head_count },
     { key: "accepted_count", label: translate(language, "accepted"), value: (row) => row.accepted_count },
     { key: "open_headcount", label: translate(language, "openHeadcountShort"), value: (row) => row.open_headcount },
@@ -155,6 +155,7 @@ export function RequisitionsView({
                       label={column.label}
                       onFilter={table.setFilter}
                       onSort={table.toggleSort}
+                      filterOptions={table.categoryFilterOptions(column.key)}
                       sortDirection={table.sortDirection}
                       sortKey={table.sortKey}
                       showFilter={advancedFiltersOpen}
@@ -180,11 +181,11 @@ export function RequisitionsView({
                       {row.doc_id}
                     </span>
                   </td>
-                  <td className="px-3 py-3 font-semibold text-navy">{formatRequisitionTitle(row)}</td>
-                  <td className="px-3 py-3 text-slate">{row.department}</td>
+                  <td className="px-3 py-3 font-semibold text-navy"><TruncatedTableText value={formatRequisitionTitle(row)} /></td>
+                  <td className="px-3 py-3 text-slate"><TruncatedTableText value={row.department} /></td>
                   <td className="px-3 py-3 text-slate">{requestTypeLabel(language, row.request_type)}</td>
-                  <td className="px-3 py-3 text-slate">{row.section ?? "-"}</td>
-                  <td className="px-3 py-3 text-slate">{row.person_in_charge ?? "-"}</td>
+                  <td className="px-3 py-3 text-slate"><TruncatedTableText value={row.section} /></td>
+                  <td className="px-3 py-3 text-slate"><TruncatedTableText value={row.person_in_charge} /></td>
                   <td className="px-3 py-3"><Tag tone={statusTone(row.status) as never}>{requisitionStatusLabel(language, row.status)}</Tag></td>
                   <td className="px-3 py-3 text-slate">{row.head_count}</td>
                   <td className="px-3 py-3 text-slate">{row.accepted_count}</td>

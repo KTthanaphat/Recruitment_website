@@ -3,7 +3,6 @@
 import type { CSSProperties, KeyboardEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import homeBanner from "../../../home_banner.png";
 import { RecruitmentCalendar } from "@/components/dashboard/RecruitmentCalendar";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -106,8 +105,12 @@ export function HomeView({
 
   return (
     <div className="grid gap-5">
-      <div className="relative -mx-4 aspect-[6/1] w-[calc(100%+2rem)] sm:-mx-6 sm:w-[calc(100%+3rem)] lg:-mx-7 lg:w-[calc(100%+3.5rem)]">
-        <Image src={homeBanner} alt="" fill priority sizes="100vw" className="object-cover object-center" />
+      <div className="relative -mx-4 aspect-[6/1] w-[calc(100%+2rem)] bg-[#F8FAFF] sm:-mx-6 sm:w-[calc(100%+3rem)] lg:-mx-7 lg:w-[calc(100%+3.5rem)]">
+        <img
+          src={homeBanner.src}
+          alt=""
+          className="absolute inset-0 h-full w-full object-contain object-center"
+        />
         <div className="pointer-events-none absolute inset-y-0 left-0 flex w-[52%] min-w-0 items-center px-4 sm:px-6 lg:px-7">
           <div
             className="min-w-0 rounded-xl px-3 py-2.5 backdrop-blur-md sm:px-4 sm:py-3"

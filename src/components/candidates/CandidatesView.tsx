@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PAGE_SIZE_OPTIONS, Pagination, paginateRows } from "@/components/ui/Pagination";
 import { Panel, SectionTitle } from "@/components/ui/Panel";
-import { SortableFilterHeader, TableToolbar, type TableColumn, useTableControls } from "@/components/ui/TableControls";
+import { SortableFilterHeader, TableToolbar, TruncatedTableText, type TableColumn, useTableControls } from "@/components/ui/TableControls";
 import { Tag } from "@/components/ui/Tag";
 import { RecordQuickActions, type RecordQuickAction } from "@/components/ui/Operations";
 import { BulkActionToolbar, BulkReviewModal } from "@/components/ui/Workflow";
@@ -46,10 +46,10 @@ export function CandidatesView({
     { key: "candidate_id", label: "ID", value: (row) => row.candidate_id },
     { key: "name", label: translate(language, "name"), value: (row) => formatCandidateName(row) },
     { key: "group", label: translate(language, "group"), value: (row) => row.group_position ?? "-", filterValue: (row) => [row.group_position, ...row.doc_ids].filter(Boolean).join(" ") },
-    { key: "site", label: translate(language, "site"), value: (row) => row.site ?? "-" },
-    { key: "owner", label: translate(language, "owner"), value: (row) => row.person_in_charge ?? "-" },
-    { key: "latest_process", label: translate(language, "latestProcess"), value: (row) => processLabel(row.latest_process, language) },
-    { key: "result", label: translate(language, "result"), value: (row) => resultText(row.latest_result, language) },
+    { key: "site", label: translate(language, "site"), value: (row) => row.site ?? "-", filterMode: "category" },
+    { key: "owner", label: translate(language, "owner"), value: (row) => row.person_in_charge ?? "-", filterMode: "category" },
+    { key: "latest_process", label: translate(language, "latestProcess"), value: (row) => processLabel(row.latest_process, language), filterMode: "category" },
+    { key: "result", label: translate(language, "result"), value: (row) => resultText(row.latest_result, language), filterMode: "category" },
     { key: "last_touch", label: translate(language, "lastTouch"), value: (row) => ageLabel(row), sortValue: (row) => candidateTouchAgeDays(row) ?? Number.POSITIVE_INFINITY }
   ];
   const triagedRows = useMemo(() => filterCandidatesByTriage(rows, triageFilter), [rows, triageFilter]);
@@ -156,6 +156,7 @@ export function CandidatesView({
                       label={column.label}
                       onFilter={table.setFilter}
                       onSort={table.toggleSort}
+                      filterOptions={table.categoryFilterOptions(column.key)}
                       sortDirection={table.sortDirection}
                       sortKey={table.sortKey}
                       showFilter={advancedFiltersOpen}
@@ -178,13 +179,11 @@ export function CandidatesView({
                   </td>
                   <td className="px-3 py-3 font-semibold text-navy">{row.candidate_id}</td>
                   <td className="px-3 py-3">
-                    <span className="font-bold text-navy">
-                      {formatCandidateName(row)}
-                    </span>
+                    <TruncatedTableText value={formatCandidateName(row)} className="font-bold text-navy" />
                   </td>
-                  <td className="px-3 py-3 text-slate">{row.group_position ?? "-"}</td>
-                  <td className="px-3 py-3 text-slate">{row.site ?? "-"}</td>
-                  <td className="px-3 py-3 text-slate">{row.person_in_charge ?? "-"}</td>
+                  <td className="px-3 py-3 text-slate"><TruncatedTableText value={row.group_position} /></td>
+                  <td className="px-3 py-3 text-slate"><TruncatedTableText value={row.site} /></td>
+                  <td className="px-3 py-3 text-slate"><TruncatedTableText value={row.person_in_charge} /></td>
                   <td className="px-3 py-3"><Tag tone={row.latest_process === "No activity" ? "muted" : "teal"}>{processLabel(row.latest_process, language)}</Tag></td>
                   <td className="px-3 py-3"><Tag tone={statusTone(resultText(row.latest_result).toLowerCase()) as never}>{resultText(row.latest_result, language)}</Tag></td>
                   <td className="px-3 py-3 text-slate">{ageLabel(row)}</td>

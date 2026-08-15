@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PAGE_SIZE_OPTIONS, Pagination, paginateRows } from "@/components/ui/Pagination";
 import { Panel, SectionTitle } from "@/components/ui/Panel";
-import { SortableFilterHeader, TableToolbar, type TableColumn, useTableControls } from "@/components/ui/TableControls";
+import { SortableFilterHeader, TableToolbar, TruncatedTableText, type TableColumn, useTableControls } from "@/components/ui/TableControls";
 import { Tag } from "@/components/ui/Tag";
 import { RecordQuickActions, type RecordQuickAction } from "@/components/ui/Operations";
 import { BulkActionToolbar, BulkReviewModal } from "@/components/ui/Workflow";
@@ -46,8 +46,8 @@ export function OffersView({
     { key: "candidate", label: "Candidate", value: (row) => row.candidate_name ?? row.candidate_id },
     { key: "doc_id", label: "Doc ID", value: (row) => row.doc_id },
     { key: "position", label: "Position", value: (row) => formatRequisitionTitle(row) },
-    { key: "status", label: "Offer Status", value: (row) => offerStatusLabel(language, offerStatus(row).label) },
-    { key: "impact", label: "Impact", value: (row) => offerImpact(row, allOffers, requisitions) },
+    { key: "status", label: "Offer Status", value: (row) => offerStatusLabel(language, offerStatus(row).label), filterMode: "category" },
+    { key: "impact", label: "Impact", value: (row) => offerImpact(row, allOffers, requisitions), filterMode: "category" },
     { key: "accepted", label: "Accepted", value: (row) => row.accepted_date ? formatDate(row.accepted_date, language) : translate(language, "pending"), sortValue: (row) => row.accepted_date ?? "" },
     { key: "first_working", label: "First Working", value: (row) => formatDate(row.first_working_date), sortValue: (row) => row.first_working_date ?? "" },
     { key: "age", label: "Age", value: (row) => ageLabel(row), sortValue: (row) => offerStatus(row).ageDays ?? Number.POSITIVE_INFINITY }
@@ -136,6 +136,7 @@ export function OffersView({
                       label={column.label}
                       onFilter={table.setFilter}
                       onSort={table.toggleSort}
+                      filterOptions={table.categoryFilterOptions(column.key)}
                       sortDirection={table.sortDirection}
                       sortKey={table.sortKey}
                       showFilter={advancedFiltersOpen}
@@ -157,12 +158,10 @@ export function OffersView({
                     />
                   </td>
                   <td className="px-3 py-3">
-                    <span className="font-bold text-navy">
-                      {row.candidate_name ?? row.candidate_id}
-                    </span>
+                    <TruncatedTableText value={row.candidate_name ?? row.candidate_id} className="font-bold text-navy" />
                   </td>
                   <td className="px-3 py-3 font-semibold text-navy">{row.doc_id}</td>
-                  <td className="px-3 py-3 text-slate">{formatRequisitionTitle(row)}</td>
+                  <td className="px-3 py-3 text-slate"><TruncatedTableText value={formatRequisitionTitle(row)} /></td>
                   <td className="px-3 py-3"><Tag tone={offerStatus(row).tone}>{offerStatusLabel(language, offerStatus(row).label)}</Tag></td>
                   <td className="px-3 py-3 text-slate">{offerImpact(row, allOffers, requisitions)}</td>
                   <td className="px-3 py-3">{row.accepted_date ? <Tag tone="success">{formatDate(row.accepted_date, language)}</Tag> : <Tag tone="muted">{translate(language, "pending")}</Tag>}</td>
