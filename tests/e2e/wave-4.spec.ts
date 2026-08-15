@@ -201,7 +201,9 @@ test("site recruiters can inspect peer groups at their site but cannot change th
   await page.goto("/sourcing?sourcingWeek=2026-07-06");
   await expectWorkspaceReady(page);
 
-  await expect(page.getByRole("button", { name: "Create & Match Group" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "New Group" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Link Group" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Create & Match Group" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Unmatched sourcing groups" })).toHaveCount(0);
 
   const peerGroup = page.locator("#sourcing-group-GRP-KT1-PEER");

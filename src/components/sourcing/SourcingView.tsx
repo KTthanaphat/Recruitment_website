@@ -149,7 +149,8 @@ export function SourcingView({
               <>
                 {canManageGlobalSetup && onGroup ? <Button type="button" size="sm" icon={<Plus size={16} />} onClick={onGroup}>New Group</Button> : null}
                 {canManageGlobalSetup && onMatch ? <Button type="button" size="sm" variant="secondary" icon={<Link2 size={16} />} onClick={() => onMatch()}>{translate(language, "addMatch")}</Button> : null}
-                {isSiteRecruiter && onCreateAndMatch ? <Button type="button" size="sm" icon={<Plus size={16} />} onClick={onCreateAndMatch}>{translate(language, "createAndMatchGroup")}</Button> : null}
+                {isSiteRecruiter && onCreateAndMatch ? <Button type="button" size="sm" icon={<Plus size={16} />} onClick={onCreateAndMatch}>{translate(language, "newGroup")}</Button> : null}
+                {isSiteRecruiter && onMatch ? <Button type="button" size="sm" variant="secondary" icon={<Link2 size={16} />} onClick={() => onMatch()}>{translate(language, "linkGroup")}</Button> : null}
               </>
             }
           />
