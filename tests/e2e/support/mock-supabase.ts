@@ -177,11 +177,11 @@ function createRecruitmentDataset(activeRole: MockUserRole): DashboardData {
     ],
     candidate_reference_checks: [],
     recruitment_logs: [
-      log(1, "C-PHONE", "Phone Screen", null, 1, "2026-07-09"),
+      log(1, "C-PHONE", "Phone Screen", null, 1, "2026-07-09", "2026-07-25"),
       log(28, "C-PHONE-PASS", "Phone Screen", 1, 1, "2026-07-10"),
-      log(2, "C-AGING", "Phone Screen", null, 1, "2026-06-25"),
+      log(2, "C-AGING", "Phone Screen", null, 1, "2026-06-25", "2026-07-20"),
       log(3, "C-HR", "Phone Screen", 1, 1, "2026-07-01"),
-      log(4, "C-HR", "HR Interview", null, 1, "2026-07-09"),
+      log(4, "C-HR", "HR Interview", null, 1, "2026-07-09", "2026-08-05"),
       log(5, "C-LINE", "HR Interview", 1, 1, "2026-07-02"),
       log(6, "C-LINE", "Line Interview", null, 1, "2026-07-09"),
       log(7, "C-TEST", "Line Interview", 1, 1, "2026-07-03"),
@@ -280,6 +280,7 @@ function applyRpcMutation(data: DashboardData, endpoint: string, payload: Record
     ));
     if (!current) return;
     current.log_date = String(pending.opened_date ?? current.log_date);
+    current.estimated_action_date = nullableText(pending.estimated_action_date);
     current.interviewer = nullableText(pending.interviewer);
     current.remark = nullableText(pending.remark);
     current.pending_edited_at = "2026-07-24T05:00:00.000Z";
@@ -466,6 +467,7 @@ function findCanonicalPending(data: DashboardData, candidateId: string, stageIns
 
 function applyPending(row: DashboardData["recruitment_logs"][number], pending: Record<string, unknown>) {
   row.log_date = String(pending.opened_date ?? row.log_date);
+  row.estimated_action_date = nullableText(pending.estimated_action_date);
   row.interviewer = nullableText(pending.interviewer);
   row.remark = nullableText(pending.remark);
   row.pending_edited_at = "2026-07-24T05:00:00.000Z";
@@ -475,6 +477,7 @@ function applyPending(row: DashboardData["recruitment_logs"][number], pending: R
 function addCanonicalPending(data: DashboardData, candidateId: string, pending: Record<string, unknown>) {
   const stage = String(pending.stage ?? "Phone Screen") as DashboardData["recruitment_logs"][number]["recruitment_process"];
   const row = log(nextLogId(data), candidateId, stage, null, Number(pending.round ?? 1), String(pending.opened_date ?? "2026-07-24"));
+  row.estimated_action_date = nullableText(pending.estimated_action_date);
   row.interviewer = nullableText(pending.interviewer);
   row.remark = nullableText(pending.remark);
   row.record_origin = "auto";
@@ -581,7 +584,7 @@ function candidate(candidateId: string, name: string, docGroupId: string, channe
   };
 }
 
-function log(logId: number, candidateId: string, stage: DashboardData["recruitment_logs"][number]["recruitment_process"], result: 0 | 1 | null, round: number, date: string): DashboardData["recruitment_logs"][number] {
+function log(logId: number, candidateId: string, stage: DashboardData["recruitment_logs"][number]["recruitment_process"], result: 0 | 1 | null, round: number, date: string, estimatedActionDate: string | null = null): DashboardData["recruitment_logs"][number] {
   return {
     log_id: logId,
     candidate_id: candidateId,
@@ -591,6 +594,7 @@ function log(logId: number, candidateId: string, stage: DashboardData["recruitme
     interviewer: "QA Interviewer",
     result,
     remark: `QA ${stage}`,
+    estimated_action_date: estimatedActionDate,
     created_at: `${date}T09:00:00`,
     stage_instance_id: `00000000-0000-4000-8000-${String(logId).padStart(12, "0")}`,
     outcome_date: result === null ? null : date,

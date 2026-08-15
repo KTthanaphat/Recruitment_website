@@ -16,12 +16,14 @@ import {
   ShieldCheck,
   Settings,
   Home,
-  UsersRound
+  UsersRound,
+  MoreHorizontal
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/Button";
+import { MobileBottomSheet } from "@/components/ui/MobileBottomSheet";
 import { roleLabel, translate, viewLabel } from "@/lib/i18n/dictionary";
 import { siteAccentStyle } from "@/lib/site-theme";
 import { buildContextualHref, type WorkspaceNavigationContext } from "@/lib/workspace-url-state";
@@ -101,6 +103,7 @@ export function AppShell({
   const [recordsOpen, setRecordsOpen] = useState(isRecordsActive);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarPreferenceLoaded, setSidebarPreferenceLoaded] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
 
   useEffect(() => {
     setSidebarCollapsed(localStorage.getItem("recruitment_sidebar_collapsed") === "true");
@@ -163,7 +166,7 @@ export function AppShell({
       className={`grid min-h-screen grid-cols-1 bg-offwhite ${sidebarCollapsed ? "lg:grid-cols-[72px_minmax(0,1fr)]" : "lg:grid-cols-[248px_minmax(0,1fr)]"}`}
       style={siteAccentStyle(profile?.site)}
     >
-      <aside className={`min-w-0 overflow-hidden bg-[linear-gradient(180deg,#071B61_0%,#0A3CDC_100%)] px-3 py-4 text-white sm:px-4 lg:sticky lg:top-0 lg:h-screen lg:py-5 ${sidebarCollapsed ? "lg:px-3" : ""}`}>
+      <aside className={`hidden min-w-0 overflow-hidden bg-[linear-gradient(180deg,#071B61_0%,#0A3CDC_100%)] px-3 py-4 text-white sm:px-4 lg:sticky lg:top-0 lg:block lg:h-screen lg:py-5 ${sidebarCollapsed ? "lg:px-3" : ""}`}>
         <div className={`mb-4 flex items-start gap-3 px-2 lg:mb-7 ${sidebarCollapsed ? "lg:justify-center lg:px-0" : "lg:block"}`}>
           <div className={sidebarCollapsed ? "lg:hidden" : ""}>
                 <p className="mb-1 text-xs font-medium uppercase tracking-normal text-blue-100/80">{translate(language, "internalRecruitment")}</p>
@@ -245,9 +248,9 @@ export function AppShell({
         </nav>
       </aside>
 
-      <section className="min-w-0 px-4 py-4 sm:px-6 lg:px-7">
+      <section className="min-w-0 px-4 py-4 pb-24 sm:px-6 lg:px-7 lg:pb-4">
         <header className="mb-5 flex min-w-0 flex-col gap-3 border-b border-[#E4E9F2] pb-4 lg:flex-row lg:items-start lg:justify-between">
-          <h2 className="min-w-0 text-[28px] font-semibold leading-9 tracking-normal text-navy">
+          <h2 className="min-w-0 text-2xl font-semibold leading-8 tracking-normal text-navy sm:text-[28px] sm:leading-9">
             {viewLabel(language, activeView)}
           </h2>
           <div className="flex min-w-0 flex-wrap items-center gap-2 lg:max-w-[min(76vw,72rem)] lg:justify-end" data-app-header-actions>
@@ -302,6 +305,23 @@ export function AppShell({
 
         {children}
       </section>
+      <nav aria-label={translate(language, "mainNavigation")} className="fixed inset-x-0 bottom-0 z-50 grid grid-cols-5 border-t border-[#D7DEE8] bg-white/95 px-1 pb-[max(0.35rem,env(safe-area-inset-bottom))] pt-1 shadow-[0_-5px_18px_rgba(11,19,43,0.10)] backdrop-blur lg:hidden">
+        {(["home", "workspace", "pipeline", "candidates"] as ViewId[]).map((view) => {
+          const active = pathname === paths[view] || activeView === view;
+          return <Link key={view} href={buildContextualHref(paths[view], contextualNavigation)} aria-current={active ? "page" : undefined} className={`flex min-h-11 min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg px-1 text-[11px] font-semibold focus:outline-none focus:ring-2 focus:ring-primary/30 ${active ? "text-primary" : "text-slate"}`}>
+            <span aria-hidden="true">{icons[view]}</span><span className="truncate">{viewLabel(language, view)}</span>
+          </Link>;
+        })}
+        <button type="button" onClick={() => setMoreOpen(true)} aria-expanded={moreOpen} aria-haspopup="dialog" className={`flex min-h-11 min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg px-1 text-[11px] font-semibold focus:outline-none focus:ring-2 focus:ring-primary/30 ${moreOpen ? "text-primary" : "text-slate"}`}>
+          <MoreHorizontal size={18} aria-hidden="true" /><span>{translate(language, "more")}</span>
+        </button>
+      </nav>
+      <MobileBottomSheet open={moreOpen} title={translate(language, "more")} closeLabel={translate(language, "close")} onClose={() => setMoreOpen(false)}>
+        <div className="grid gap-2">
+          {(["requisitions", "sourcing", "offers", "dashboard", "audit"] as ViewId[]).map((view) => <Link key={view} onClick={() => setMoreOpen(false)} href={buildContextualHref(paths[view], contextualNavigation)} className="flex min-h-11 items-center gap-3 rounded-xl border border-[#E4E9F2] px-3 text-sm font-semibold text-navy transition hover:bg-[#F8FAFD] focus:outline-none focus:ring-2 focus:ring-primary/30"><span className="text-primary" aria-hidden="true">{icons[view]}</span>{viewLabel(language, view)}</Link>)}
+          {profile?.role === "system_admin" ? <Link onClick={() => setMoreOpen(false)} href={buildContextualHref(paths.admin, contextualNavigation)} className="flex min-h-11 items-center gap-3 rounded-xl border border-[#E4E9F2] px-3 text-sm font-semibold text-navy transition hover:bg-[#F8FAFD] focus:outline-none focus:ring-2 focus:ring-primary/30"><span className="text-primary" aria-hidden="true">{icons.admin}</span>{viewLabel(language, "admin")}</Link> : null}
+        </div>
+      </MobileBottomSheet>
     </main>
   );
 }

@@ -245,27 +245,27 @@ export function HiringWorkspaceView({
 
   return (
     <div className="grid min-w-0 gap-5">
-      {pickerOpen || !context ? null : <section className={`sticky top-3 z-30 min-w-0 rounded-2xl border border-[#C9D5E6] bg-white/95 shadow-[0_8px_24px_rgba(11,19,43,0.07)] backdrop-blur transition-all duration-200 ${contextCompact ? "p-2.5" : "p-3"}`}>
-        <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
+      {pickerOpen || !context ? null : <section className={`z-30 min-w-0 rounded-xl border border-[#D7DEE8] bg-white lg:sticky lg:top-3 lg:rounded-2xl lg:border-[#C9D5E6] lg:bg-white/95 lg:shadow-[0_8px_24px_rgba(11,19,43,0.07)] lg:backdrop-blur lg:transition-all lg:duration-200 ${contextCompact ? "p-2.5" : "p-2.5 lg:p-3"}`}>
+        <div className="grid min-w-0 gap-2 lg:gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
           <div className="min-w-0">
-            {context ? <WorkspaceBreadcrumbs
+            {context ? <div className="hidden md:block"><WorkspaceBreadcrumbs
               language={language}
               workspace={{ label: translate(language, "workspace"), href: contextualHref("/workspace"), onSelect: showWorkspaceCatalog }}
               group={context.groups[0] ? { label: context.groups[0].group_id, href: contextualHref(`/workspace?type=group&id=${encodeURIComponent(context.groups[0].group_id)}&section=overview`), current: !context.primaryRequisition, onSelect: () => showGroup(context.groups[0].group_id) } : undefined}
               requisition={context.primaryRequisition ? { label: context.primaryRequisition.doc_id, href: context.groups[0] ? contextualHref(`/workspace?type=group&id=${encodeURIComponent(context.groups[0].group_id)}&doc=${encodeURIComponent(context.primaryRequisition.doc_id)}&section=overview`) : contextualHref(`/workspace?type=requisition&id=${encodeURIComponent(context.primaryRequisition.doc_id)}&section=overview`), current: true } : undefined}
-            /> : null}
-            <div className={`${contextCompact ? "mt-0.5" : "mt-1"} flex min-w-0 flex-wrap items-center gap-2`}>
-              <h1 className={`min-w-0 break-words font-semibold text-navy transition-all ${contextCompact ? "text-base leading-6" : "text-xl"}`}>{context?.title ?? translate(language, "workspaceSelectTitle")}</h1>
-              {readiness ? <Tag tone={readiness.tone}>{fillReadinessLabel(language, readiness.label)}</Tag> : null}
-              {sla ? <Tag tone={sla.isOverdue ? "danger" : "muted"}>{sla.label}</Tag> : null}
+            /></div> : null}
+            <div className={`${contextCompact ? "mt-0.5" : "mt-0 md:mt-1"} flex min-w-0 flex-wrap items-center gap-2`}>
+              <h1 className={`min-w-0 break-words font-semibold text-navy transition-all ${contextCompact ? "text-base leading-6" : "text-base leading-6 md:text-xl"}`}>{context?.title ?? translate(language, "workspaceSelectTitle")}</h1>
+              {readiness ? <span className="hidden md:inline-flex"><Tag tone={readiness.tone}>{fillReadinessLabel(language, readiness.label)}</Tag></span> : null}
+              {sla ? <span className="hidden md:inline-flex"><Tag tone={sla.isOverdue ? "danger" : "muted"}>{sla.label}</Tag></span> : null}
             </div>
-            {!contextCompact ? <p className="mt-1 break-words text-sm font-medium text-slate">{context?.meta ?? translate(language, "chooseWorkspacePrompt")}</p> : null}
+            {!contextCompact ? <p className="mt-1 hidden break-words text-sm font-medium text-slate md:block">{context?.meta ?? translate(language, "chooseWorkspacePrompt")}</p> : null}
           </div>
           <RecordActionGroup label={translate(language, "workspace")} primary={primaryAction} items={secondaryActions} />
         </div>
 
         {context ? (
-          <div className="mt-3 min-w-0">
+          <div className="mt-3 hidden min-w-0 md:block">
             {contextCompact ? (
               <div className="flex min-w-0 flex-wrap gap-2">
                 {summaryItems.map((item) => (
@@ -283,7 +283,7 @@ export function HiringWorkspaceView({
       </section>}
 
       {context && !pickerOpen ? (
-        <div role="tablist" aria-label={translate(language, "hiringWorkspaceSections")} className="-mb-5 flex min-w-0 gap-0 overflow-x-auto rounded-t-2xl border-b border-[#C9D5E6] bg-[#EEF3F8] px-1 pt-1">
+        <div role="tablist" aria-label={translate(language, "hiringWorkspaceSections")} className="-mb-1 flex min-w-0 gap-0 overflow-x-auto border-b border-[#D7DEE8] bg-white px-0 pt-0 md:-mb-5 md:rounded-t-2xl md:border-[#C9D5E6] md:bg-[#EEF3F8] md:px-1 md:pt-1">
           {workspaceSections.map((section) => {
             const active = urlState.section === section;
             return (
@@ -294,9 +294,9 @@ export function HiringWorkspaceView({
                 role="tab"
                 aria-selected={active}
                 aria-controls={`workspace-panel-${section}`}
-                className={`min-h-10 shrink-0 rounded-t-xl border px-4 text-sm font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-primary/25 ${
+                className={`min-h-10 shrink-0 rounded-t-lg border px-3 text-sm font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-primary/25 md:rounded-t-xl md:px-4 ${
                   active
-                    ? "relative z-10 border-[#C9D5E6] border-b-white bg-white text-navy shadow-[0_-3px_12px_rgba(11,19,43,0.05)]"
+                    ? "relative z-10 border-transparent border-b-primary bg-white text-navy shadow-none md:border-[#C9D5E6] md:border-b-white md:shadow-[0_-3px_12px_rgba(11,19,43,0.05)]"
                     : "border-transparent bg-transparent text-slate hover:bg-white/80 hover:text-navy"
                 }`}
                 onClick={() => selectSection(section)}
@@ -311,7 +311,7 @@ export function HiringWorkspaceView({
       {pickerOpen || !context ? (
         <WorkspacePicker candidates={candidates} canCreateRequisition={canWrite && Boolean(onDispatchAction)} canManageSetup={canManageSetup && Boolean(onDispatchAction)} groups={activeOpenGroups} invalidTarget={Boolean(selectedTarget.type && selectedTarget.id && !context)} language={language} mode={pickerMode} onCreateGroup={() => onDispatchAction?.({ kind: "group.create" })} onCreateRequisition={() => onDispatchAction?.({ kind: "requisition.create" })} onLinkGroup={() => onDispatchAction?.({ kind: "group.match", docId: "" })} onModeChange={setPickerMode} onSelect={selectTarget} requisitions={activeOpenRequisitions} />
       ) : (
-        <div id={`workspace-panel-${urlState.section}`} role="tabpanel" aria-labelledby={`workspace-tab-${urlState.section}`} className="min-w-0 rounded-b-2xl rounded-tr-2xl border border-[#C9D5E6] border-t-0 bg-white p-4 shadow-[0_8px_24px_rgba(11,19,43,0.05)]">
+        <div id={`workspace-panel-${urlState.section}`} role="tabpanel" aria-labelledby={`workspace-tab-${urlState.section}`} className="min-w-0 bg-transparent py-3 md:rounded-b-2xl md:rounded-tr-2xl md:border md:border-[#C9D5E6] md:border-t-0 md:bg-white md:p-4 md:shadow-[0_8px_24px_rgba(11,19,43,0.05)]">
           {hasMultipleGroupDocuments ? <GroupDocumentSelector language={language} requisitions={context.requisitions} selectedDocId={context.primaryRequisition?.doc_id ?? null} onSelect={selectGroupDocument} /> : null}
           {urlState.section === "overview" ? <OverviewSection canWrite={canWrite} context={context} contextIssues={contextIssues} journey={journey} language={language} onDispatchAction={onDispatchAction} /> : null}
           {urlState.section === "pipeline" ? pipelineSlot : null}
@@ -338,7 +338,7 @@ function OverviewSection({ canWrite, context, contextIssues, journey, language, 
   return (
     <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(300px,0.75fr)]">
       <div className="grid min-w-0 gap-4">
-        <Panel>
+        <Panel className="border-0 bg-transparent p-0 shadow-none md:border md:bg-white md:p-4 md:shadow-[0_4px_14px_rgba(11,19,43,0.025)]">
           <SectionTitle
             title={translate(language, "workspaceJourney")}
             eyebrow={translate(language, "workspaceCurrentPath")}
@@ -352,16 +352,17 @@ function OverviewSection({ canWrite, context, contextIssues, journey, language, 
           <JourneyGuide language={language} steps={journey} />
         </Panel>
       </div>
-      <DataQualityPanel compact issues={contextIssues} language={language} title={translate(language, "workspaceDataQuality")} />
+      <div className="hidden xl:block"><DataQualityPanel compact issues={contextIssues} language={language} title={translate(language, "workspaceDataQuality")} /></div>
     </div>
   );
 }
 
 function JourneyGuide({ language, steps }: { language: Language; steps: HiringJourneyStep[] }) {
+  const nextStep = steps.find((step) => step.state === "attention" || step.state === "current" || step.state === "not_started") ?? steps.at(-1);
   return (
     <ol className="grid min-w-0 gap-2 sm:grid-cols-2 xl:grid-cols-4">
       {steps.map((step, index) => (
-        <li key={step.id} className={`min-w-0 rounded-md border p-3 ${journeyClass(step.state)}`}>
+        <li key={step.id} className={`min-w-0 rounded-md border p-3 ${step.id === nextStep?.id ? "" : "hidden sm:block"} ${journeyClass(step.state)}`}>
           <div className="flex min-w-0 items-center justify-between gap-2">
             <span className="text-xs font-semibold text-slate">{index + 1}. {journeyStepLabel(language, step)}</span>
             <span className="shrink-0 text-xs font-semibold">{journeyStateLabel(language, step.state)}</span>

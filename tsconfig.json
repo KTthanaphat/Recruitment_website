@@ -33,7 +33,13 @@
     "next-env.d.ts",
     "src/**/*.ts",
     "src/**/*.tsx",
-    ".next/types/**/*.ts"
+    ".next/types/**/*.ts",
+    ".next-render-fix-verify/types/**/*.ts",
+    ".next-pipeline-table/types/**/*.ts",
+    ".next-pipeline-table-v3/types/**/*.ts",
+    ".next-pipeline-table-v4/types/**/*.ts",
+    ".next-local-pipeline-table/types/**/*.ts",
+    "next-local-cache/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"

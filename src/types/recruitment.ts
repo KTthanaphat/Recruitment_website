@@ -144,6 +144,7 @@ export type RecruitmentLog = {
   interviewer: string | null;
   result: ResultValue;
   remark: string | null;
+  estimated_action_date?: string | null;
   created_at: string;
   updated_at?: string;
   stage_instance_id?: string | null;
@@ -165,6 +166,7 @@ export type ActiveProcessStage = Extract<ProcessStage, "Phone Screen" | "HR Inte
 
 export type PendingStatusDetail = {
   openedDate: string;
+  estimatedActionDate: string | null;
   interviewer: string | null;
   remark: string | null;
   editedAt: string | null;

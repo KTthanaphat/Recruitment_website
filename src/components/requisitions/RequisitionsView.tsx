@@ -123,12 +123,11 @@ export function RequisitionsView({
                 </div>
                 <Tag tone={statusTone(row.status) as never}>{requisitionStatusLabel(language, row.status)}</Tag>
               </div>
-              <p className="text-xs font-medium text-cool">{translate(language, "requisitionId")}: {row.doc_id}</p>
-              <p className="text-sm font-medium text-slate">{row.department} - {row.site}</p>
-              <p className="text-sm font-medium text-slate">{translate(language, "requestType")}: {requestTypeLabel(language, row.request_type)}</p>
-              <p className="text-sm font-medium text-slate">{row.person_in_charge ?? "-"} - {translate(language, "openCount", { count: row.open_headcount })} - {translate(language, "candidatesCount", { count: row.candidate_count })}</p>
-              <p className="text-sm font-medium text-slate">{translate(language, "readiness")}: <ReadinessText row={row} candidates={candidates} language={language} /></p>
-              <p className="text-sm font-medium text-slate">{translate(language, "ageLabel")}: {ageLabel(row)} - {translate(language, "slaLabel")}: {getRequisitionSlaState(row, { openOnly: true }).label}</p>
+              <p className="text-sm font-medium text-slate">{row.site} · {translate(language, "openCount", { count: row.open_headcount })} · {translate(language, "candidatesCount", { count: row.candidate_count })}</p>
+              <p className="hidden text-xs font-medium text-cool md:block">{translate(language, "requisitionId")}: {row.doc_id}</p>
+              <p className="hidden text-sm font-medium text-slate md:block">{row.department} - {translate(language, "requestType")}: {requestTypeLabel(language, row.request_type)}</p>
+              <p className="hidden text-sm font-medium text-slate md:block">{row.person_in_charge ?? "-"} - {translate(language, "readiness")}: <ReadinessText row={row} candidates={candidates} language={language} /></p>
+              <p className="hidden text-sm font-medium text-slate md:block">{translate(language, "ageLabel")}: {ageLabel(row)} - {translate(language, "slaLabel")}: {getRequisitionSlaState(row, { openOnly: true }).label}</p>
               <div className="mt-3">
                 <RecordQuickActions label={translate(language, "recordActionsFor", { label: formatRequisitionOptionLabel(row) })} actions={requisitionActions(row, language, onOpen)} />
               </div>

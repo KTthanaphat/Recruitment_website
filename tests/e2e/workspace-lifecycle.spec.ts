@@ -41,8 +41,9 @@ test("embedded sourcing saves through the intercepted RPC and embedded pipeline 
   await expect(noActivityLane).toHaveCSS("border-top-color", "rgba(10, 60, 220, 0.22)");
   const card = page.locator("#pipeline-candidate-C-PHONE");
   await card.getByRole("button", { name: "Candidate actions for Pat Phone" }).click();
-  await expect(card.getByRole("menu", { name: "Actions for Pat Phone" })).toBeVisible();
-  await expect(card.getByRole("menuitem", { name: /HR Interview/ })).toBeVisible();
+  const menu = page.getByRole("menu", { name: "Candidate actions for Pat Phone" });
+  await expect(menu).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: /HR Interview/ })).toBeVisible();
 });
 
 test("workspace group sourcing tab exposes editable applicant fields", async ({ page }) => {
@@ -102,7 +103,7 @@ test("pipeline no-activity menu opens the start-process modal", async ({ page })
 
   const card = page.locator("#pipeline-candidate-C-NO-ACTIVITY");
   await card.getByRole("button", { name: "Candidate actions for Nora No Activity" }).click();
-  await card.getByRole("menuitem", { name: "Start phone screen for Nora No Activity" }).click();
+  await page.getByRole("menu", { name: "Candidate actions for Nora No Activity" }).getByRole("menuitem", { name: "Start phone screen for Nora No Activity" }).click();
   await expect(page.getByRole("dialog", { name: "Process Update" })).toBeVisible();
   await expect(page.getByRole("dialog", { name: "Process Update" }).getByLabel("Candidate")).toHaveValue("C-NO-ACTIVITY");
 });
@@ -141,7 +142,7 @@ test("passing Offer hands off to workspace offer creation with proposed accepted
 
   const card = page.locator("#pipeline-candidate-C-OFFER-READY");
   await card.getByRole("button", { name: "Candidate actions for Nina Offer Ready" }).click();
-  await page.getByRole("menuitem", { name: "Pass stage" }).click();
+  await page.getByRole("menu", { name: "Candidate actions for Nina Offer Ready" }).getByRole("menuitem", { name: "Pass stage" }).click();
   const processDialog = page.getByRole("dialog", { name: "Complete Stage" });
   const proposedAcceptedDate = await processDialog.locator('input[name="outcome_date"]').inputValue();
   await processDialog.getByRole("button", { name: "Review changes" }).click();

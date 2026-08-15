@@ -307,6 +307,12 @@ Icons must not carry meaning through color alone. Pair important icons with text
 
 Audience: recruiters completing compact operational forms. Primary workflow: choose a precise date without changing the stored ISO value. The selector uses a calendar-icon trigger, Gregorian `DD/MM/YYYY` display, a compact month popover, and visible selected/today/focus states. It must remain keyboard-operable, use localized labels, return focus on close, and fit narrow modal widths without horizontal overflow.
 
+Optional date fields expose a localized Clear command only after a value exists. Required date fields never expose Clear.
+
+### Recruitment calendar
+
+The Home recruitment calendar is an operational schedule, not a reporting chart. At normal desktop width, Today’s Work ends with the Calendar grid in a 1:3 row; its action list scrolls inside that shared height. Desktop uses 96px Sunday-first cells with date top-left, `(N)` top-right, two-line event buttons, explicit Overdue text, and the existing focus-managed detail drawer. Phone layouts retain a selected-day agenda. Business eligibility rules remain canonical in `docs/WEBSITE_STRUCTURE.md`.
+
 ---
 
 ## 11. Illustration system
@@ -833,3 +839,7 @@ Implementation mapping:
 - Pipeline keeps the horizontal process board. Stage columns and cards are neutral-first; red is reserved for aging or failed risk states.
 
 Do not treat the demo information architecture in section 4 as a replacement for the GFPT route map unless a product change explicitly requests it.
+
+## 23. Phone-first recruiter operations
+
+Audience: recruiters moving work between interviews, sourcing, and manager follow-up. The primary phone flow is review today’s task, open the record, update Pipeline, save, and return to the next task. Keep cards compact and status-led; make the current record and its next action more prominent than filters or history. Use 44px minimum primary targets, readable Thai labels, safe-area padding, focus-managed bottom sheets, and dynamic viewport-safe dialogs. At 360px and 390px there must be no page-level horizontal scrolling: only Pipeline boards and explicit detailed-data tables may scroll internally. Tablet adapts at 768px; desktop navigation, tables, and grid density resume from `md`.

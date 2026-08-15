@@ -68,6 +68,7 @@ const weekdayLabels = { en: ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"], th: ["à¸
 
 export function DayDateSelector({
   ariaLabel,
+  clearLabel = "Clear",
   defaultValue = "",
   disabled = false,
   language = "en",
@@ -79,6 +80,7 @@ export function DayDateSelector({
   value
 }: {
   ariaLabel: string;
+  clearLabel?: string;
   defaultValue?: string;
   disabled?: boolean;
   language?: "en" | "th";
@@ -118,6 +120,11 @@ export function DayDateSelector({
     onChange?.({ target: { value: nextValue, name }, currentTarget: { value: nextValue, name } } as ChangeEvent<HTMLInputElement>);
     close();
   }
+  function clearSelection() {
+    if (controlledValue === undefined) setInternalValue("");
+    onChange?.({ target: { value: "", name }, currentTarget: { value: "", name } } as ChangeEvent<HTMLInputElement>);
+    close();
+  }
   function shiftMonth(delta: number) {
     setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() + delta, 1));
   }
@@ -146,7 +153,7 @@ export function DayDateSelector({
       <CalendarDays size={16} className="shrink-0 text-primary" aria-hidden="true" />
       <span className="min-w-0 flex-1">{selectedValue ? displayDate(selectedValue) : ariaLabel}</span>
     </button>
-    {open ? <div id={`${id}-calendar`} role="dialog" aria-label={ariaLabel} className="absolute z-50 mt-2 w-[19rem] rounded-xl border border-[#C9D5E6] bg-white p-3 shadow-[0_18px_40px_rgba(11,19,43,0.18)]">
+    {open ? <div id={`${id}-calendar`} role="dialog" aria-label={ariaLabel} className="absolute z-50 mt-2 w-[19rem] rounded-xl border border-[#C9D5E6] bg-white p-3 shadow-[0_18px_40px_rgba(11,19,43,0.18)] max-md:fixed max-md:inset-x-2 max-md:bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] max-md:mt-0 max-md:w-auto">
       <div className="mb-3 flex items-center justify-between rounded-lg bg-[#F8FAFD] p-1">
         <button type="button" className="grid size-8 place-items-center rounded-md text-slate hover:bg-white hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary/20" aria-label={previousMonthLabel} onClick={() => shiftMonth(-1)}><ChevronLeft size={17} /></button>
         <span className="text-sm font-semibold tabular-nums text-navy">{monthLabels[language][month]} {year}</span>
@@ -160,6 +167,7 @@ export function DayDateSelector({
         const isToday = dayValue === todayValue;
         return <button key={dayValue} type="button" aria-label={displayDate(dayValue)} aria-pressed={selected} onClick={() => select(dayValue)} className={`grid min-h-9 place-items-center rounded-md border text-sm font-semibold tabular-nums transition focus:outline-none focus:ring-2 focus:ring-primary/30 ${selected ? "border-primary bg-primary text-white shadow-sm" : isToday ? "border-primary/40 bg-[#F1F7FF] text-primary hover:bg-white" : "border-transparent text-navy hover:border-[#C9D5E6] hover:bg-[#F8FAFD]"}`}>{day}</button>;
       })}</div>
+      {!required && selectedValue ? <div className="mt-3 flex justify-end border-t border-[#E4E9F2] pt-2"><button type="button" className="min-h-9 rounded-md px-3 text-sm font-semibold text-slate hover:bg-[#F8FAFD] hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary/30" onClick={clearSelection}>{clearLabel}</button></div> : null}
     </div> : null}
   </div>;
 }

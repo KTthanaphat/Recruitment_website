@@ -80,12 +80,14 @@ export function PipelineBoardView({
   const [dragged, setDragged] = useState<EnrichedCandidate | null>(null);
   const [blockedStage, setBlockedStage] = useState<PipelineStageKey | null>(null);
   const [openStageMenu, setOpenStageMenu] = useState<string | null>(null);
+  const [openMobileStageMenu, setOpenMobileStageMenu] = useState<string | null>(null);
   const [groupBy, setGroupBy] = useState<PipelineGroupBy>("none");
   const [boardFilter, setBoardFilter] = useState<BoardFilter>("all");
   const [pipelineSearch, setPipelineSearch] = useState("");
   const [filterOpen, setFilterOpen] = useState(false);
   const [focusedCandidateId, setFocusedCandidateId] = useState<string | null>(null);
   const [pipelineView, setPipelineView] = useState<PipelineView>("board");
+  const boardRef = useRef<HTMLDivElement>(null);
   const filterTriggerRef = useRef<HTMLButtonElement>(null);
   const filterSearchRef = useRef<HTMLInputElement>(null);
   const activeFilterCount = Number(Boolean(pipelineSearch.trim())) + Number(boardFilter !== "all");
@@ -98,17 +100,19 @@ export function PipelineBoardView({
   const displayStages: PipelineStageKey[] = ["No activity", ...ACTIVE_PIPELINE_STAGES];
 
   useEffect(() => {
-    if (!openStageMenu) return;
+    if (!openStageMenu && !openMobileStageMenu) return;
 
     function onPointerDown(event: PointerEvent) {
       if (event.target instanceof Element && event.target.closest("[data-stage-menu-root='true']")) return;
       setOpenStageMenu(null);
+      setOpenMobileStageMenu(null);
     }
 
     function onKeyDown(event: globalThis.KeyboardEvent) {
       if (event.key !== "Escape") return;
       event.preventDefault();
       setOpenStageMenu(null);
+      setOpenMobileStageMenu(null);
     }
 
     document.addEventListener("pointerdown", onPointerDown);
@@ -117,7 +121,7 @@ export function PipelineBoardView({
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [openStageMenu]);
+  }, [openMobileStageMenu, openStageMenu]);
 
   useEffect(() => {
     if (!filterOpen) return;
@@ -191,6 +195,7 @@ export function PipelineBoardView({
         />
         <div className="mb-3 grid gap-3">
           <OperationalSummaryStrip
+            className={embedded ? "hidden md:grid" : undefined}
             density="compact"
             items={[
               { label: translate(language, "activeCandidates"), value: activeRows.length, tone: "primary", helper: translate(language, "visibleOnBoard") },
@@ -200,7 +205,7 @@ export function PipelineBoardView({
               { label: translate(language, "noActivity"), value: noActivityRows.length, tone: noActivityRows.length > 0 ? "warning" : "success", helper: translate(language, "needsFirstUpdate") }
             ]}
           />
-          <div className="relative flex flex-wrap items-center justify-between gap-2" data-filter-popover-root="true">
+          <div className={`relative flex flex-wrap items-center justify-between gap-2 ${embedded ? "hidden md:flex" : ""}`} data-filter-popover-root="true">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <span className="text-xs font-semibold text-slate">{translate(language, "groupCards")}</span>
               {pipelineGroupOptions.map((option) => (
@@ -266,8 +271,50 @@ export function PipelineBoardView({
               ) : null}
             </div>
           </div>
+          <label className={`grid gap-1 md:hidden ${embedded ? "hidden" : ""}`}>
+            <span className="text-xs font-semibold text-slate">{translate(language, "candidatePipeline")}</span>
+            <select
+              className="min-h-11 w-full rounded-xl border border-[#C9D5E6] bg-white px-3 text-sm font-semibold text-navy outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+              defaultValue=""
+              onChange={(event) => {
+                const stage = event.target.value;
+                if (!stage) return;
+                boardRef.current?.querySelector<HTMLElement>(`[data-pipeline-stage="${stage}"]`)?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "start" });
+                event.currentTarget.value = "";
+              }}
+            >
+              <option value="">{translate(language, "candidatePipeline")}</option>
+              {displayStages.map((stage) => <option key={stage} value={stage}>{processLabel(stage, language)}</option>)}
+            </select>
+          </label>
         </div>
-        <div className="flex gap-3 overflow-x-auto rounded-2xl border border-[#E4E9F2] bg-white p-3" aria-label={translate(language, "candidatePipeline")}>
+        {embedded ? <MobileWorkspacePipelineStages language={language} rows={activeRows} stages={displayStages} canWrite={canWrite} onMove={onMove} onOpen={onOpen} onStartProcess={onStartProcess} renderCandidate={(candidate) => (
+          <PipelineCandidateCard
+            candidate={candidate}
+            compact
+            language={language}
+            canWrite={canWrite}
+            updateStages={nextStages(candidate.latest_process)}
+            profile={profile}
+            recruitmentLogs={recruitmentLogs.filter((log) => log.candidate_id === candidate.candidate_id)}
+            candidateReferences={candidateReferences.filter((reference) => reference.candidate_id === candidate.candidate_id)}
+            candidateReferenceChecks={candidateReferenceChecks}
+            issueCount={dataQualityIssues.filter((issue) => issue.entityId === candidate.candidate_id).length}
+            menuOpen={openMobileStageMenu === candidate.candidate_id}
+            onOpen={onOpen}
+            onMove={onMove}
+            onFailCurrentStage={onFailCurrentStage}
+            onMaintainTest={onMaintainTest}
+            onStartProcess={onStartProcess}
+            onEditPending={onEditPending}
+            onPassStage={onPassStage}
+            onManageReferenceChecks={onManageReferenceChecks}
+            onUpdateOffer={onUpdateOffer}
+            onMenuToggle={() => setOpenMobileStageMenu((current) => current === candidate.candidate_id ? null : candidate.candidate_id)}
+            onMenuClose={() => setOpenMobileStageMenu(null)}
+          />
+        )} /> : null}
+        <div ref={boardRef} className={`flex gap-2 overflow-x-auto rounded-2xl border border-[#E4E9F2] bg-white p-2 md:gap-3 md:p-3 ${embedded ? "hidden md:flex" : ""}`} aria-label={translate(language, "candidatePipeline")}>
           {displayStages.map((stage) => {
             const stageRows = sortByLastUpdateAsc(activeRows.filter((row) => row.latest_process === stage));
             const isBlocked = blockedStage === stage;
@@ -277,7 +324,8 @@ export function PipelineBoardView({
             return (
               <section
                 key={stage}
-                className={`min-h-80 w-[min(17rem,82vw)] shrink-0 rounded-2xl border border-[rgb(var(--app-primary-rgb)/0.22)] bg-[rgb(var(--app-primary-rgb)/0.08)] p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] transition-colors ${
+                data-pipeline-stage={stage}
+                className={`min-h-64 w-[calc(100vw-3.5rem)] shrink-0 rounded-xl border border-[#E4E9F2] bg-white p-2 shadow-none transition-colors md:min-h-80 md:w-[min(17rem,82vw)] md:rounded-2xl md:border-[rgb(var(--app-primary-rgb)/0.22)] md:bg-[rgb(var(--app-primary-rgb)/0.08)] md:p-2.5 md:shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] ${
                   isBlocked ? "border-scarlet bg-[#FFF1F0]" : ""
                 }`}
                 onDragOver={(event) => {
@@ -306,7 +354,7 @@ export function PipelineBoardView({
                   setDragged(null);
                 }}
               >
-                <div className="mb-3 flex min-w-0 items-center justify-between gap-2">
+                <div className="sticky top-0 z-10 -mx-1 mb-2 flex min-w-0 items-center justify-between gap-2 border-b border-[#E4E9F2] bg-white px-1 pb-2 md:mb-3 md:border-0 md:bg-[rgb(var(--app-primary-rgb)/0.08)] md:pb-1">
                   <h3 className={`break-words text-sm font-semibold ${metrics.overSlaCount > 0 ? "text-scarlet" : "text-navy"}`}>
                     {processLabel(stage, language)}
                   </h3>
@@ -453,7 +501,7 @@ function PipelineTableView({ language, rows, recruitmentLogs, recruitmentLogHist
     { key: "site", label: translate(language, "site"), value: ({ candidate }) => candidate.site ?? "-" },
     { key: "owner", label: translate(language, "owner"), value: ({ candidate }) => candidate.person_in_charge ?? "-" },
     { key: "stage", label: translate(language, "process"), value: ({ log }) => `${processLabel(log.recruitment_process, language)} ${log.round}` },
-    { key: "pending", label: translate(language, "pendingDetails"), value: ({ log }) => `${log.log_date} ${log.interviewer ?? ""} ${log.remark ?? ""}` },
+    { key: "pending", label: translate(language, "pendingDetails"), value: ({ log }) => `${log.log_date} ${log.estimated_action_date ?? ""} ${log.interviewer ?? ""} ${log.remark ?? ""}` },
     { key: "outcome", label: translate(language, "outcome"), value: ({ log }) => `${resultText(log.result, language)} ${log.outcome_date ?? ""} ${log.outcome_interviewer ?? ""} ${log.outcome_remark ?? ""}` },
     { key: "date", label: translate(language, "lastTouch"), value: ({ log }) => formatDate(log.outcome_date ?? log.log_date, language), sortValue: ({ log }) => log.outcome_date ?? log.log_date }
   ];
@@ -467,8 +515,8 @@ function PipelineTableView({ language, rows, recruitmentLogs, recruitmentLogHist
     <SectionTitle title={translate(language, "candidatePipeline")} action={<div className="flex items-center gap-2"><PipelineViewSwitch language={language} value="table" onChange={onViewChange} />{canWrite && onNewCandidate ? <Button type="button" size="sm" icon={<Plus size={16} />} onClick={onNewCandidate}>{translate(language, "newCandidate")}</Button> : null}</div>} />
     <TableToolbar advancedFiltersOpen={advancedFiltersOpen} language={language} onAdvancedFiltersToggle={() => setAdvancedFiltersOpen((open) => !open)} onSearch={table.setSearch} resultCount={table.controlledRows.length} searchValue={table.search} totalCount={recordRows.length} />
     {advancedFiltersOpen ? <div className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-[#E4E9F2] bg-[#F8FAFD] p-3"><label className="flex items-center gap-2 text-sm font-semibold text-navy"><input type="checkbox" checked={showAudit} onChange={(event) => setShowAudit(event.target.checked)} />{translate(language, "showAuditHistory")}</label><Button type="button" variant="secondary" size="sm" onClick={clear}>{translate(language, "clear")}</Button></div> : null}
-    <div className="grid gap-2 md:hidden">{paginated.rows.map(({ candidate, log, audit }) => <article key={log.log_id} className="ats-card p-3"><button type="button" onClick={() => onOpen(candidate.candidate_id)} className="text-left"><strong className="block text-navy">{formatCandidateName(candidate)}</strong><span className="text-xs text-slate">{processLabel(log.recruitment_process, language)} · {translate(language, "round")} {log.round}</span></button><p className="mt-2 text-xs text-slate">{translate(language, "pendingDetails")}: {formatDate(log.log_date, language)} · {log.interviewer ?? "-"}</p>{log.result !== null ? <p className="text-xs text-slate">{translate(language, "outcome")}: {resultText(log.result, language)} · {formatDate(log.outcome_date, language)}</p> : null}<RecordTableActions candidate={candidate} log={log} audit={audit} language={language} canCorrect={adminCanCorrect} onOpen={onOpen} onCorrect={onCorrectPipelineRecord} /></article>)}</div>
-    <div className="table-scroll hidden md:block"><table className="w-full border-collapse text-left text-sm"><thead className="bg-lightgray text-xs uppercase text-slate"><tr>{columns.map((column) => <th key={column.key} scope="col" className="px-3 py-3 align-top"><SortableFilterHeader columnKey={column.key} filterValue={table.filters[column.key] ?? ""} language={language} label={column.label} onFilter={table.setFilter} onSort={table.toggleSort} sortDirection={table.sortDirection} sortKey={table.sortKey} showFilter={advancedFiltersOpen} /></th>)}<th className="px-3 py-3"><span className="sr-only">{translate(language, "actions")}</span></th></tr></thead><tbody>{paginated.rows.map(({ candidate, log, audit }) => <tr key={log.log_id} className="border-b border-[#D7DEE8] last:border-0"><td className="px-3 py-3"><button type="button" onClick={() => onOpen(candidate.candidate_id)} className="text-left font-semibold text-navy hover:text-primary">{candidate.candidate_id}<span className="block text-xs font-medium text-slate">{formatCandidateName(candidate)}</span></button></td><td className="px-3 py-3 text-slate">{candidate.group_position ?? "-"}<span className="block text-xs">{candidate.doc_ids.join(", ") || "-"}</span></td><td className="px-3 py-3 text-slate">{candidate.site ?? "-"}</td><td className="px-3 py-3 text-slate">{candidate.person_in_charge ?? "-"}</td><td className="px-3 py-3"><Tag tone={audit ? "muted" : "teal"}>{processLabel(log.recruitment_process, language)} · {log.round}</Tag></td><td className="px-3 py-3 text-slate">{formatDate(log.log_date, language)}<span className="block text-xs">{log.interviewer ?? "-"}</span><span className="block text-xs">{log.remark ?? ""}</span></td><td className="px-3 py-3 text-slate">{log.result === null ? <Tag tone="warning">{resultText(null, language)}</Tag> : <><Tag tone={statusTone(log.result)}>{resultText(log.result, language)}</Tag><span className="block text-xs">{formatDate(log.outcome_date, language)} · {log.outcome_interviewer ?? "-"}</span><span className="block text-xs">{log.outcome_remark ?? ""}</span></>}</td><td className="px-3 py-3 text-slate">{formatDate(log.updated_at ?? log.created_at, language)}</td><td className="px-3 py-3"><RecordTableActions candidate={candidate} log={log} audit={audit} language={language} canCorrect={adminCanCorrect} onOpen={onOpen} onCorrect={onCorrectPipelineRecord} /></td></tr>)}</tbody></table></div>
+    <div className="grid gap-2 md:hidden">{paginated.rows.map(({ candidate, log, audit }) => <article key={log.log_id} className="ats-card p-3"><button type="button" onClick={() => onOpen(candidate.candidate_id)} className="text-left"><strong className="block text-navy">{formatCandidateName(candidate)}</strong><span className="text-xs text-slate">{processLabel(log.recruitment_process, language)} · {translate(language, "round")} {log.round}</span></button><p className="mt-2 text-xs text-slate">{translate(language, "pendingDetails")}: {formatDate(log.log_date, language)} · {log.interviewer ?? "-"}</p>{log.estimated_action_date ? <p className="text-xs font-medium text-slate">{translate(language, "estimatedDateValue", { date: formatDate(log.estimated_action_date, language) })}</p> : null}{log.result !== null ? <p className="text-xs text-slate">{translate(language, "outcome")}: {resultText(log.result, language)} · {formatDate(log.outcome_date, language)}</p> : null}<RecordTableActions candidate={candidate} log={log} audit={audit} language={language} canCorrect={adminCanCorrect} onOpen={onOpen} onCorrect={onCorrectPipelineRecord} /></article>)}</div>
+    <div className="table-scroll hidden md:block"><table className="w-full border-collapse text-left text-sm"><thead className="bg-lightgray text-xs uppercase text-slate"><tr>{columns.map((column) => <th key={column.key} scope="col" className="px-3 py-3 align-top"><SortableFilterHeader columnKey={column.key} filterValue={table.filters[column.key] ?? ""} language={language} label={column.label} onFilter={table.setFilter} onSort={table.toggleSort} sortDirection={table.sortDirection} sortKey={table.sortKey} showFilter={advancedFiltersOpen} /></th>)}<th className="px-3 py-3"><span className="sr-only">{translate(language, "actions")}</span></th></tr></thead><tbody>{paginated.rows.map(({ candidate, log, audit }) => <tr key={log.log_id} className="border-b border-[#D7DEE8] last:border-0"><td className="px-3 py-3"><button type="button" onClick={() => onOpen(candidate.candidate_id)} className="text-left font-semibold text-navy hover:text-primary">{candidate.candidate_id}<span className="block text-xs font-medium text-slate">{formatCandidateName(candidate)}</span></button></td><td className="px-3 py-3 text-slate">{candidate.group_position ?? "-"}<span className="block text-xs">{candidate.doc_ids.join(", ") || "-"}</span></td><td className="px-3 py-3 text-slate">{candidate.site ?? "-"}</td><td className="px-3 py-3 text-slate">{candidate.person_in_charge ?? "-"}</td><td className="px-3 py-3"><Tag tone={audit ? "muted" : "teal"}>{processLabel(log.recruitment_process, language)} · {log.round}</Tag></td><td className="px-3 py-3 text-slate">{formatDate(log.log_date, language)}{log.estimated_action_date ? <span className="block text-xs font-semibold text-primary">{translate(language, "estimatedDateValue", { date: formatDate(log.estimated_action_date, language) })}</span> : null}<span className="block text-xs">{log.interviewer ?? "-"}</span><span className="block text-xs">{log.remark ?? ""}</span></td><td className="px-3 py-3 text-slate">{log.result === null ? <Tag tone="warning">{resultText(null, language)}</Tag> : <><Tag tone={statusTone(log.result)}>{resultText(log.result, language)}</Tag><span className="block text-xs">{formatDate(log.outcome_date, language)} · {log.outcome_interviewer ?? "-"}</span><span className="block text-xs">{log.outcome_remark ?? ""}</span></>}</td><td className="px-3 py-3 text-slate">{formatDate(log.updated_at ?? log.created_at, language)}</td><td className="px-3 py-3"><RecordTableActions candidate={candidate} log={log} audit={audit} language={language} canCorrect={adminCanCorrect} onOpen={onOpen} onCorrect={onCorrectPipelineRecord} /></td></tr>)}</tbody></table></div>
     {paginated.rows.length === 0 ? <EmptyState message={translate(language, "noData")} /> : null}<Pagination language={language} page={paginated.page} pageSize={pageSize} totalRows={table.controlledRows.length} onPageChange={setPage} onPageSizeChange={setPageSize} />
   </Panel>;
 }
@@ -594,10 +642,73 @@ function recentCutoffDate() {
   ].join("-");
 }
 
+function MobileWorkspacePipelineStages({
+  language,
+  rows,
+  stages,
+  canWrite,
+  onMove,
+  onOpen,
+  onStartProcess,
+  renderCandidate
+}: {
+  language: Language;
+  rows: EnrichedCandidate[];
+  stages: PipelineStageKey[];
+  canWrite: boolean;
+  onMove: (candidate: EnrichedCandidate, nextStage: ProcessStage) => void;
+  onOpen: (candidateId: string) => void;
+  onStartProcess: (candidate: EnrichedCandidate) => void;
+  renderCandidate?: (candidate: EnrichedCandidate) => JSX.Element;
+}) {
+  if (renderCandidate) {
+    return (
+      <div data-workspace-pipeline-stages className="grid gap-2 md:hidden" aria-label={translate(language, "candidatePipeline")}>
+        {stages.map((stage) => {
+          const stageRows = sortByLastUpdateAsc(rows.filter((row) => row.latest_process === stage));
+          return <details key={stage} className="group rounded-lg border border-[#E4E9F2] bg-white">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 text-sm font-semibold text-navy focus:outline-none focus:ring-2 focus:ring-primary/30 [&::-webkit-details-marker]:hidden"><span className="min-w-0 truncate">{processLabel(stage, language)}</span><span className="inline-flex min-w-7 items-center justify-center rounded-md bg-[#F1F6FC] px-2 py-1 text-xs tabular-nums text-navy">{stageRows.length}</span></summary>
+            <div className="grid gap-1 border-t border-[#E4E9F2] p-2">{stageRows.length === 0 ? <p className="px-1 py-2 text-xs font-medium text-slate">{translate(language, "noData")}</p> : stageRows.map(renderCandidate)}</div>
+          </details>;
+        })}
+      </div>
+    );
+  }
+  return (
+    <div data-workspace-pipeline-stages className="grid gap-2 md:hidden" aria-label={translate(language, "candidatePipeline")}>
+      {stages.map((stage) => {
+        const stageRows = sortByLastUpdateAsc(rows.filter((row) => row.latest_process === stage));
+        return (
+          <details key={stage} className="group rounded-lg border border-[#E4E9F2] bg-white">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 text-sm font-semibold text-navy focus:outline-none focus:ring-2 focus:ring-primary/30 [&::-webkit-details-marker]:hidden">
+              <span className="min-w-0 truncate">{processLabel(stage, language)}</span>
+              <span className="inline-flex min-w-7 items-center justify-center rounded-md bg-[#F1F6FC] px-2 py-1 text-xs tabular-nums text-navy">{stageRows.length}</span>
+            </summary>
+            <div className="grid gap-1 border-t border-[#E4E9F2] p-2">
+              {stageRows.length === 0 ? <p className="px-1 py-2 text-xs font-medium text-slate">{translate(language, "noData")}</p> : stageRows.map((candidate) => {
+                const nextStage = nextStages(candidate.latest_process)[0];
+                const canAdvance = canWrite && (candidate.latest_process === "No activity" || Boolean(nextStage));
+                const advanceLabel = candidate.latest_process === "No activity"
+                  ? translate(language, "startPhoneScreenFor", { name: formatCandidateName(candidate) })
+                  : `${processLabel(nextStage!, language)} · ${formatCandidateName(candidate)}`;
+                return <div key={candidate.candidate_id} className="flex min-h-11 min-w-0 items-center gap-2 rounded-md px-2 hover:bg-[#F8FAFD]">
+                  <button type="button" onClick={() => onOpen(candidate.candidate_id)} className="min-w-0 flex-1 text-left focus:outline-none focus:ring-2 focus:ring-primary/30"><strong className="block truncate text-sm text-navy">{formatCandidateName(candidate)}</strong><span className="block truncate text-xs font-medium text-slate">{candidate.site ?? "-"} · {candidate.group_position ?? "-"}</span></button>
+                  {canAdvance ? <button type="button" aria-label={advanceLabel} title={advanceLabel} onClick={() => candidate.latest_process === "No activity" ? onStartProcess(candidate) : onMove(candidate, nextStage!)} className="inline-flex size-11 shrink-0 items-center justify-center rounded-lg border border-[#C9D5E6] text-primary hover:bg-[#F1F7FF] focus:outline-none focus:ring-2 focus:ring-primary/30"><ArrowRight size={17} aria-hidden="true" /></button> : null}
+                </div>;
+              })}
+            </div>
+          </details>
+        );
+      })}
+    </div>
+  );
+}
+
 function PipelineCandidateCard({
   candidate,
   language,
   canWrite,
+  compact = false,
   draggable = false,
   updateStages = [],
   profile = null,
@@ -627,6 +738,8 @@ function PipelineCandidateCard({
   candidate: EnrichedCandidate;
   language: Language;
   canWrite: boolean;
+  /** Uses the same action menu in a low-detail Workspace list row. */
+  compact?: boolean;
   draggable?: boolean;
   updateStages?: ProcessStage[];
   profile?: Profile | null;
@@ -654,6 +767,9 @@ function PipelineCandidateCard({
   onDragEnd?: () => void;
 }) {
   const lastUpdate = candidateLastUpdate(candidate);
+  const currentPending = [...recruitmentLogs].sort((a, b) => b.log_id - a.log_id).find((log) => log.result === null && !log.superseded_at);
+  const estimatedActionDate = currentPending?.estimated_action_date ?? null;
+  const estimateOverdue = Boolean(estimatedActionDate && estimatedActionDate < formatLocalDateInput());
   const canFailCurrentStage = ACTIVE_PIPELINE_STAGES.includes(candidate.latest_process as ProcessStage) && candidate.latest_result === null;
   const unresolvedReferences = candidateReferences.filter((reference) => (
     reference.status === "available" && !candidateReferenceChecks.some((check) => check.reference_id === reference.reference_id)
@@ -683,10 +799,11 @@ function PipelineCandidateCard({
     const positionMenu = () => {
       const rect = actionsButtonRef.current?.getBoundingClientRect();
       if (!rect) return;
-      const width = Math.min(320, window.innerWidth - 16);
-      const left = Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8));
-      const above = window.innerHeight - rect.bottom < 280 && rect.top > 280;
-      setMenuPosition({ left, top: above ? rect.top - 8 : rect.bottom + 8, above });
+      const isPhone = window.innerWidth < 768;
+      const width = Math.min(isPhone ? 480 : 320, window.innerWidth - 16);
+      const left = isPhone ? 8 : Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8));
+      const above = isPhone || (window.innerHeight - rect.bottom < 280 && rect.top > 280);
+      setMenuPosition({ left, top: isPhone ? window.innerHeight - 8 : above ? rect.top - 8 : rect.bottom + 8, above });
     };
     positionMenu();
     window.addEventListener("resize", positionMenu);
@@ -710,7 +827,7 @@ function PipelineCandidateCard({
       onDragEnd={onDragEnd}
       id={`pipeline-candidate-${candidate.candidate_id}`}
       tabIndex={focused ? -1 : undefined}
-      className={`ats-card relative min-w-0 p-3 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-primary/30 ${focused ? "border-primary ring-2 ring-primary/25" : ""} ${toneClass}`}
+      className={`${compact ? "border-0 bg-transparent p-1 shadow-none" : "ats-card p-2.5 md:p-3"} relative min-w-0 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-primary/30 ${focused ? "border-primary ring-2 ring-primary/25" : ""} ${toneClass}`}
     >
       <div className="flex items-start justify-between gap-2">
         <button
@@ -722,7 +839,7 @@ function PipelineCandidateCard({
           }}
         >
           <strong className="block truncate text-sm leading-tight text-navy">{formatCandidateName(candidate)}</strong>
-          <p className="mt-1 truncate text-xs font-medium text-slate">{candidate.site ?? "-"}-{candidate.group_position ?? "-"} ({candidate.person_in_charge ?? "-"})</p>
+          <p className="mt-1 truncate text-xs font-medium text-slate">{candidate.site ?? "-"} · {candidate.group_position ?? "-"}{compact ? "" : ` (${candidate.person_in_charge ?? "-"})`}</p>
         </button>
         {canWrite ? (
           <button
@@ -744,8 +861,9 @@ function PipelineCandidateCard({
           </button>
         ) : null}
       </div>
-      <p className="mt-3 text-[10px] font-medium text-cool">{translate(language, "updatedDate", { date: formatDate(lastUpdate, language) })}</p>
-      <div className="mt-1 flex flex-wrap items-center gap-2">
+      <p className="hidden md:block md:mt-3 md:text-[10px] md:font-medium md:text-cool">{translate(language, "updatedDate", { date: formatDate(lastUpdate, language) })}</p>
+      {estimatedActionDate ? <p className={`${compact ? "mt-1" : "mt-2"} text-xs font-semibold ${estimateOverdue ? "text-scarlet" : "text-primary"}`}>{translate(language, "estimatedDateValue", { date: formatDate(estimatedActionDate, language) })}{estimateOverdue ? ` · ${translate(language, "overdue")}` : ""}</p> : null}
+      <div className={compact ? "hidden" : "mt-1 flex flex-wrap items-center gap-2 md:mt-1"}>
         {issueCount ? <Tag tone="warning">{translate(language, "dataIssuesCount", { count: issueCount, plural: issueCount === 1 ? "" : "s" })}</Tag> : null}
       </div>
       {showCreateOffer ? (
@@ -767,7 +885,7 @@ function PipelineCandidateCard({
           id={stageMenuId}
           role="menu"
           aria-label={translate(language, "candidateActionsFor", { name: formatCandidateName(candidate) })}
-          className="fixed z-[45] grid w-[min(20rem,calc(100vw-1rem))] max-h-[min(70vh,28rem)] gap-1 overflow-y-auto rounded-2xl border border-[#E4E9F2] bg-white p-2 shadow-[0_8px_24px_rgba(11,19,43,0.16)]"
+          className="fixed z-[45] grid w-[min(20rem,calc(100vw-1rem))] max-h-[min(70vh,28rem)] gap-1 overflow-y-auto rounded-2xl border border-[#E4E9F2] bg-white p-2 shadow-[0_8px_24px_rgba(11,19,43,0.16)] max-md:w-[calc(100vw-1rem)] max-md:rounded-b-none max-md:[&_[role=menuitem]]:min-h-11 max-md:[&_[role=menuitem]]:px-3 max-md:[&_[role=menuitem]]:py-2 max-md:[&_[role=menuitem]]:text-sm"
           style={{ left: menuPosition.left, top: menuPosition.top, transform: menuPosition.above ? "translateY(-100%)" : undefined }}
           data-stage-menu-root="true"
           onClick={(event) => event.stopPropagation()}

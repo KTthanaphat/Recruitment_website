@@ -1,6 +1,6 @@
 # Candidate Pipeline Paired-Status Implementation
 
-Last updated: 2026-08-01
+Last updated: 2026-08-15
 
 Status: implemented; production migration execution remains an operational deployment step.
 
@@ -31,7 +31,7 @@ candidate_id + recruitment_process + round
 
 It contains:
 
-- Pending: `log_date` (opened date), `interviewer`, `remark`, plus edit timestamp/actor.
+- Pending: `log_date` (opened date), optional `estimated_action_date`, `interviewer`, `remark`, plus edit timestamp/actor.
 - Outcome: immutable `result`, `outcome_date`, `outcome_interviewer`, `outcome_remark`, and recorded timestamp.
 - Identity/audit: `stage_instance_id`, `record_origin`, migration note, update timestamp, and supersession metadata.
 
@@ -44,6 +44,7 @@ It contains:
 - Canonical rows use only the six active stages and positive rounds.
 - Pending rows have no Outcome fields; completed rows require result, Outcome date, and recorded timestamp.
 - Outcome cannot precede Pending.
+- An estimate is null or on/after its Pending opened date; it may be overdue or later than the eventual Outcome and remains historical metadata after completion.
 - Supersession timestamp, replacement ID, and reason are consistent; the replacement is a valid distinct stage instance.
 - Generic deletion cannot remove a canonical Pipeline row.
 - All transition indexes and terminal checks ignore superseded rows.
@@ -59,6 +60,12 @@ previous Outcome
 ```
 
 Same-day transitions are valid.
+
+Estimated action dates use a separate invariant and do not alter the authoritative Outcome chronology:
+
+```text
+Pending opened date <= estimated action date (when present)
+```
 
 ## Migration and reconciliation
 
@@ -80,6 +87,18 @@ Absent historical stages are not invented. A legacy-only candidate keeps no acti
 
 ## Public model and RPCs
 
+### 2026-08-15 estimated action date and Home calendar
+
+- Migration `supabase/migrations/202608150002_pipeline_estimated_action_calendar.sql` adds nullable `recruitment_logs.estimated_action_date` with no backfill and updates the existing Pipeline RPCs without adding a new write surface.
+- Start, Edit Pending, completion-generated next Pending, next Test round, jump target, and admin correction accept `pending.estimated_action_date`; clearing submits null. Completion and jump preserve the current stage estimate as audit/history data.
+- Home derives read-only stage events from unresolved, canonical, estimated rows and start-working events from `offers.first_working_date`, each intersected with the authorized Site/PIC-filtered candidate set. Desktop uses a browsable month grid; phone uses the same grid plus a selected-day agenda.
+- Fail Stage hides Current Pending controls while submitting the saved Pending values unchanged. Detail, Table, correction, and Audit continue to show those values.
+
+### 2026-08-15 derived Pending dates and Candidate Offer editing
+
+- Migration `20260815090000_derived_pipeline_pending_dates.sql` makes `log_date` server-derived: First Contact Date for initial Phone Screen, then the preceding passed Outcome. Pending dates are read-only in the UI and client values are not authoritative.
+- Admin Outcome correction updates only an immediate unresolved next Pending; downstream completed history and estimate conflicts reject atomically. Candidate Detail Offer cards edit accepted date, first working date, and remark through existing `app_upsert_offer` change mode.
+
 ### 2026-08-11 completion-date and Offer-handoff adjustment
 
 - On a non-Offer Pass, `app_complete_pipeline_stage_v2` derives the immediate next Pending `log_date` from `outcome.date`; legacy `next_pending.opened_date` input is ignored.
@@ -96,9 +115,9 @@ Shared model: `ActiveProcessStage`, `PendingStatusDetail`, `OutcomeStatusDetail`
 
 | RPC | Purpose | Key guarantees |
 | --- | --- | --- |
-| `app_update_pipeline_pending_v2` | Edit current Pending date/interviewer/remark | Candidate lock, PIC/role authorization, current-instance check, `expected_updated_at`, chronology, audited update |
-| `app_complete_pipeline_stage_v2` | Save final Pending detail and Pass/Fail Outcome | Atomic completion; required immediate next Pending for non-Offer Pass; none for Fail/Offer; Test N+1 or Reference Check rules |
-| `app_pass_pipeline_jump_v2` | Forward jump across consecutive stages | Pass-only crossed records, server-derived order, target Pending required, nondecreasing dates, all-or-nothing transaction |
+| `app_update_pipeline_pending_v2` | Edit current Pending date/estimate/interviewer/remark | Candidate lock, PIC/role authorization, current-instance check, `expected_updated_at`, chronology, audited update |
+| `app_complete_pipeline_stage_v2` | Save final Pending detail and Pass/Fail Outcome | Preserves current estimate; optional next estimate; atomic required next Pending for non-Offer Pass; none for Fail/Offer |
+| `app_pass_pipeline_jump_v2` | Forward jump across consecutive stages | Preserves current estimate; optional target estimate; Pass-only crossed records, server-derived order, all-or-nothing transaction |
 | `app_correct_pipeline_outcome_v2` | System Admin correction of completed Outcome details | Result cannot change; old canonical row is superseded; corrected replacement preserves Pending/result and downstream state |
 
 Stable error prefixes cover authorization, invalid payload, stale write, non-current stage, terminal state, invalid transition, date order, missing next Pending, and duplicate stage/round.
@@ -126,7 +145,7 @@ The board card remains compact. Full Pending/Outcome fields live in modals and C
 
 - Edit Pending loads exact saved values and locks candidate/stage/round/status.
 - Pass displays locked stage/round context, editable Pass Outcome, and the required next Pending unless current stage is Offer; stored Current Pending values are submitted unchanged.
-- Fail retains editable Current Pending plus locked-result Fail Outcome sections.
+- Fail hides Current Pending controls, carries the saved values invisibly, and shows only locked stage context plus the Fail Outcome section.
 - Outcome date defaults to Bangkok today; Outcome interviewer copies Pending; new remarks and new next-stage interviewer/remark start blank.
 - Drag/drop and the equivalent keyboard menu command open the same jump confirmation and never write on drop.
 - Jump shows a Pending/Passed pair for every crossed stage plus the target Pending.
@@ -165,7 +184,7 @@ Candidate identity contract: `app_upsert_candidate` accepts nullable trimmed `ni
 
 - v2-only cleanup: added `app_start_pipeline_stage_v2`; migration `202608010002_pipeline_v2_only_cleanup.sql` removes the four legacy Pipeline write RPCs.
 - Menu/scroll reliability: card menus render in a viewport overlay above board cards; the shared overlay lock now restores both document and body scrolling by owner token.
-- Pass-stage simplification: Pass hides Current Pending inputs and preserves their saved values in the unchanged v2 completion payload; Fail remains unchanged. System Admin's explicit client capability and database authorization regression cover Pending edits outside Site/PIC ownership.
+- Pass/Fail simplification: both outcome forms keep Current Pending values immutable in hidden inputs; Fail renders only the outcome fields and submits `next_pending: null`. System Admin's explicit client capability and database authorization regression cover Pending edits outside Site/PIC ownership.
 - `pnpm typecheck`: passed using the bundled workspace Node runtime.
 - `pnpm build`: passed; all 17 routes compiled and generated. One pre-existing non-blocking `react-hooks/exhaustive-deps` warning remains at `RecruitmentWorkspace.tsx:289`.
 - Focused `tests/e2e/pipeline-actions.spec.ts`: eight scenarios passed, including Pass payload preservation and System Admin Pending edit scope.
@@ -173,5 +192,8 @@ Candidate identity contract: `app_upsert_candidate` accepts nullable trimmed `ni
 - Full E2E regression: 59/62 passed on the first full run; its three failures were stale Current Stage expectations and a fixed-clock welcome expectation. All three corrected cases passed in the immediate targeted rerun, covering all 62 cases.
 - `git diff --check`: passed.
 - Canonical schema fragments and `supabase/restructured/00_fresh_schema.sql`: generated-equivalence check passed.
-- Fresh schema integrity: 2,645 lines, closing `commit;`, no truncation/placeholder markers.
+- Fresh schema integrity: 2,966 lines, closing `commit;`, no truncation/placeholder markers.
 - Disposable Supabase migration/authorization execution: not run locally because Supabase CLI, Docker, and PostgreSQL tools are unavailable; required before production deployment.
+- Estimated-action/calendar implementation (2026-08-15): migration `202608150002_pipeline_estimated_action_calendar.sql`, canonical/declarative/fresh-install schema, five existing Pipeline RPC contracts, UI types/forms/history/table/cards, localized Home calendar, mock persistence, and focused database/browser assertions were updated together.
+- Estimated-action focused browser checks: 6/6 passed for Edit/Clear, Pass preservation and next Pending scheduling, Fail immutability/no next Pending, Site/PIC filtering, month navigation, Candidate Detail opening, and mobile calendar behavior. The active Pipeline card estimate/Overdue display check also passed independently.
+- Current validation: bundled-runtime TypeScript check, production build (17 routes), and `git diff --check` passed. The build retains one unrelated `react-hooks/exhaustive-deps` warning in `RecruitmentWorkspace.tsx`.

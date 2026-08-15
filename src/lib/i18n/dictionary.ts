@@ -403,9 +403,9 @@ const en: Dictionary = {
   readOnlyWatchlist: "Read-only watchlist",
   sortedByRisk: "Sorted by risk",
   agingCandidates: "Aging candidates",
-  lastTouchOlderThan7Days: "Last touch older than 7 days",
+  lastTouchOlderThan7Days: "Last touch > 7 days",
   sourcingGaps: "Sourcing gaps",
-  openGroupsNeedingUpdates: "Open groups needing updates",
+  openGroupsNeedingUpdates: "Groups needing updates",
   noMonitoredRecordsNeedAttention: "No monitored records need attention right now.",
   noUrgentAssignedWork: "No urgent assigned work right now.",
   scrollableList: "{label} scrollable list",
@@ -926,6 +926,47 @@ Object.assign(en, {
 Object.assign(th, {
   createAndMatchGroup: "สร้างและจับคู่กลุ่ม",
   peerGroupReadOnly: "ดูได้อย่างเดียว — ผู้รับผิดชอบ {owners}"
+});
+
+Object.assign(en, {
+  recruitmentCalendar: "Recruitment Calendar",
+  estimatedActionDate: "Estimated action date",
+  estimatedDateValue: "Estimated: {date}",
+  overdue: "Overdue",
+  today: "Today",
+  noEstimatedActions: "No recruitment events in this month.",
+  noEstimatedActionsForDate: "No recruitment events for this date.",
+  moreEvents: "+{count} more",
+  selectedDayEvents: "Events for {date}",
+  calendarEventLabel: "Open {name}, {eventType}, {date}{overdue}",
+  calendarEventsCount: "{count} event{plural}",
+  stageEvent: "Stage event",
+  startWorkingEvent: "Start working",
+  showAllEvents: "Show all {count} events on {date}"
+});
+Object.assign(th, {
+  recruitmentCalendar: "ปฏิทินการสรรหา",
+  estimatedActionDate: "วันที่คาดว่าจะดำเนินการ",
+  estimatedDateValue: "คาดการณ์: {date}",
+  overdue: "เกินกำหนด",
+  today: "วันนี้",
+  noEstimatedActions: "ไม่มีรายการที่คาดว่าจะดำเนินการในเดือนนี้",
+  noEstimatedActionsForDate: "ไม่มีรายการที่คาดว่าจะดำเนินการในวันนี้",
+  moreEvents: "+{count} เพิ่มเติม",
+  selectedDayEvents: "รายการที่คาดว่าจะดำเนินการวันที่ {date}",
+  calendarEventLabel: "เปิด {name}, {stage}, คาดการณ์วันที่ {date}{overdue}",
+  calendarEventsCount: "รายการที่คาดว่าจะดำเนินการ {count} รายการ"
+});
+
+Object.assign(th, {
+  noEstimatedActions: "ไม่มีเหตุการณ์สรรหาในเดือนนี้",
+  noEstimatedActionsForDate: "ไม่มีเหตุการณ์สรรหาสำหรับวันนี้",
+  selectedDayEvents: "เหตุการณ์วันที่ {date}",
+  calendarEventLabel: "เปิด {name}, {eventType}, วันที่ {date}{overdue}",
+  calendarEventsCount: "{count} เหตุการณ์",
+  stageEvent: "เหตุการณ์ขั้นตอน",
+  startWorkingEvent: "เริ่มงาน",
+  showAllEvents: "แสดงเหตุการณ์ทั้งหมด {count} รายการ วันที่ {date}"
 });
 
 export const dictionaries = { en, th };

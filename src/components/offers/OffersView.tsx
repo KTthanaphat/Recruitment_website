@@ -106,9 +106,9 @@ export function OffersView({
                 {row.accepted_date ? <Tag tone="success">{formatDate(row.accepted_date, language)}</Tag> : <Tag tone="muted">{translate(language, "pending")}</Tag>}
               </div>
               <p className="text-sm font-semibold text-navy">{formatRequisitionTitle(row)}</p>
-              <p className="text-xs font-medium text-cool">{translate(language, "requisitionId")}: {row.doc_id}</p>
               <p className="text-sm font-medium text-slate">{translate(language, "startLower")} {formatDate(row.first_working_date, language)}</p>
-              <p className="text-sm font-medium text-slate">{offerImpact(row, allOffers, requisitions)} - {translate(language, "age")} {ageLabel(row)}</p>
+              <p className="hidden text-xs font-medium text-cool md:block">{translate(language, "requisitionId")}: {row.doc_id}</p>
+              <p className="hidden text-sm font-medium text-slate md:block">{offerImpact(row, allOffers, requisitions)} - {translate(language, "age")} {ageLabel(row)}</p>
               <div className="mt-3">
                 <RecordQuickActions label={translate(language, "recordActionsFor", { label: row.candidate_name ?? row.candidate_id })} actions={offerActions(row, language, onOpenCandidate)} />
               </div>

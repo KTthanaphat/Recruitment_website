@@ -129,6 +129,7 @@ create table if not exists public.recruitment_logs (
   interviewer text,
   result smallint check (result in (0, 1)),
   remark text,
+  estimated_action_date date,
   outcome_date date,
   outcome_interviewer text,
   outcome_remark text,
@@ -150,6 +151,7 @@ create table if not exists public.recruitment_logs (
     (result is null and outcome_date is null and outcome_interviewer is null and outcome_remark is null and outcome_recorded_at is null)
     or (result in (0, 1) and outcome_date is not null and outcome_recorded_at is not null)
   ),
+  constraint recruitment_logs_estimated_action_date_order check (estimated_action_date is null or estimated_action_date >= log_date),
   check (result is null or outcome_date >= log_date),
   check (
     (superseded_at is null and superseded_by_stage_instance_id is null and superseded_reason is null)

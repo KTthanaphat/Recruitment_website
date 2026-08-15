@@ -430,6 +430,7 @@ export function pipelineStageRecords(logs: RecruitmentLog[], changeLogs: ChangeL
         round: log.round,
         pending: {
           openedDate: log.log_date,
+          estimatedActionDate: log.estimated_action_date ?? null,
           interviewer: log.interviewer,
           remark: log.remark,
           editedAt: log.pending_edited_at ?? null,
@@ -466,6 +467,7 @@ export function pipelineStageRecords(logs: RecruitmentLog[], changeLogs: ChangeL
       round: source.round,
       pending: {
         openedDate: pending?.log_date ?? outcomeLog!.log_date,
+        estimatedActionDate: pending?.estimated_action_date ?? outcomeLog?.estimated_action_date ?? null,
         interviewer: pending?.interviewer ?? null,
         remark: pending?.remark ?? null,
         editedAt: audit?.changed_at ?? null,

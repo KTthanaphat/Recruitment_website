@@ -208,14 +208,19 @@ function RecordActionControl({
   );
 }
 
-export function OperationalSummaryStrip({ items, density = "default" }: { items: OperationalSummaryItem[]; density?: "default" | "compact" }) {
+export function OperationalSummaryStrip({ items, density = "default", className = "", layout = "grid" }: { items: OperationalSummaryItem[]; density?: "default" | "compact"; className?: string; layout?: "grid" | "stacked" | "stacked_lines" }) {
+  const stacked = layout === "stacked";
+  const stackedLines = layout === "stacked_lines";
+  const vertical = stacked || stackedLines;
   return (
-    <div className={`grid gap-2 ${density === "compact" ? "[grid-template-columns:repeat(auto-fit,minmax(130px,1fr))]" : "[grid-template-columns:repeat(auto-fit,minmax(150px,1fr))]"}`}>
+    <div className={`grid ${stackedLines ? "grid-cols-1 divide-y divide-[#B8CCE4]" : `gap-2 ${stacked ? "grid-cols-1" : density === "compact" ? "[grid-template-columns:repeat(auto-fit,minmax(130px,1fr))]" : "[grid-template-columns:repeat(auto-fit,minmax(150px,1fr))]"}`} ${className}`}>
       {items.map((item) => (
-        <div key={item.label} className={`rounded-xl border ${density === "compact" ? "px-3 py-2" : "p-3"} ${summaryCardClass(item.tone)}`}>
-          <p className="text-xs font-medium text-slate">{item.label}</p>
-          <p className={`mt-1 font-semibold tabular-nums ${density === "compact" ? "text-lg" : "text-xl"} ${summaryValueClass(item.tone)}`}>{item.value}</p>
-          {item.helper ? <p className="mt-1 text-xs font-medium text-cool">{item.helper}</p> : null}
+        <div key={item.label} className={stackedLines ? "grid grid-cols-[minmax(0,4fr)_minmax(2.5rem,1fr)] items-center gap-3 px-0 py-2" : `rounded-xl border ${stacked ? "grid grid-cols-[minmax(0,4fr)_minmax(2.5rem,1fr)] items-center gap-3 px-3 py-2" : density === "compact" ? "px-3 py-2" : "p-3"} ${summaryCardClass(item.tone)}`}>
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-slate">{item.label}</p>
+            {item.helper ? <p className={`${vertical ? "mt-0.5 font-light" : "mt-1 font-medium"} text-xs text-cool`}>{item.helper}</p> : null}
+          </div>
+          <p className={`${vertical ? "text-right" : "mt-1"} font-semibold tabular-nums ${density === "compact" ? "text-lg" : "text-xl"} ${summaryValueClass(item.tone)}`}>{item.value}</p>
         </div>
       ))}
     </div>
@@ -248,15 +253,17 @@ export function LinkedRecordActions({ links }: { links: Array<{ href: string; la
 }
 
 export function RecordActionList({
+  className = "",
   emptyMessage = "No urgent work right now.",
   items,
   layout = "stack",
   onOpenCandidate,
   onOpenRequisition
 }: {
+  className?: string;
   emptyMessage?: string;
   items: WorkQueueItem[];
-  layout?: "stack" | "horizontal";
+  layout?: "stack" | "horizontal" | "vertical_scroll";
   onOpenCandidate?: (candidateId: string) => void;
   onOpenRequisition?: (docId: string) => void;
 }) {
@@ -265,18 +272,24 @@ export function RecordActionList({
   }
 
   const horizontal = layout === "horizontal";
-  const listClass = horizontal ? "flex snap-x gap-3 overflow-x-auto overscroll-x-contain pb-2" : "grid gap-2";
+  const verticalScroll = layout === "vertical_scroll";
+  const listClass = horizontal ? "flex snap-x gap-3 overflow-x-auto overscroll-x-contain pb-2" : verticalScroll ? "grid min-h-0 gap-2 overflow-y-auto overscroll-contain pr-1" : "grid gap-2";
   const itemClass = horizontal ? "w-[min(22rem,82vw)] shrink-0 snap-start" : "";
 
   return (
-    <div className={listClass} data-home-scroll-section={horizontal ? "Today's Work" : undefined}>
+    <div className={`${listClass} ${className}`} data-home-scroll-section={horizontal || verticalScroll ? "Today's Work" : undefined}>
       {items.map((item) => {
         const buttonAction = item.type === "candidate" || item.type === "offer"
           ? () => onOpenCandidate?.(item.recordId)
           : item.type === "requisition"
             ? () => onOpenRequisition?.(item.recordId)
             : undefined;
-        const content = (
+        const content = verticalScroll ? (
+          <>
+            <strong className="block truncate text-sm text-navy">{item.title}</strong>
+            <div><Tag tone={item.tone}>{item.actionLabel}</Tag></div>
+          </>
+        ) : (
           <>
             <div className="min-w-0">
               <strong className="block truncate text-sm text-navy">{item.title}</strong>
@@ -291,7 +304,7 @@ export function RecordActionList({
             <button
               key={item.id}
               type="button"
-              className={`ats-card grid gap-2 p-3 text-left sm:grid-cols-[1fr_auto] sm:items-center ${itemClass}`}
+              className={`ats-card grid gap-2 p-3 text-left ${verticalScroll ? "grid-rows-[auto_auto] items-start" : "sm:grid-cols-[1fr_auto] sm:items-center"} ${itemClass}`}
               onClick={buttonAction}
             >
               {content}
@@ -302,7 +315,7 @@ export function RecordActionList({
         return (
           <Link
             key={item.id}
-            className={`ats-card grid gap-2 p-3 sm:grid-cols-[1fr_auto] sm:items-center ${itemClass}`}
+            className={`ats-card grid gap-2 p-3 ${verticalScroll ? "grid-rows-[auto_auto] items-start" : "sm:grid-cols-[1fr_auto] sm:items-center"} ${itemClass}`}
             href={item.type === "sourcing" ? `/workspace?type=group&id=${encodeURIComponent(item.recordId)}` : "/sourcing"}
           >
             {content}

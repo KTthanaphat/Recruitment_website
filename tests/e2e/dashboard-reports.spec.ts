@@ -106,6 +106,6 @@ test("home records use tabbed vertical panels while work queue keeps contained o
 
   const workScroller = page.locator('[data-home-scroll-section="Today\'s Work"]');
   await expect(workScroller).toBeVisible();
-  await expect(workScroller).toHaveCSS("overflow-x", "auto");
+  await expect(workScroller).toHaveCSS("overflow-y", "auto");
   await expect(page.getByRole("button", { name: /Show all .* data quality issues/ })).toHaveCount(0);
 });

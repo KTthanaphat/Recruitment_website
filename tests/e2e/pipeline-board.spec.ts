@@ -22,6 +22,8 @@ test("pipeline board renders active, failed, passed, aging, and filtered candida
   await expect.poll(async () => phoneStage.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe("rgb(255, 255, 255)");
 
   await expect(page.getByText("Pat Phone")).toBeVisible();
+  await expect(page.locator("#pipeline-candidate-C-PHONE").getByText("Estimated: 25/07/2026")).toBeVisible();
+  await expect(page.locator("#pipeline-candidate-C-AGING").getByText(/Estimated: 20\/07\/2026.*Overdue/)).toBeVisible();
   await expect(page.getByText("Nora No Activity")).toBeVisible();
   await expect(page.getByText("Active candidates")).toBeVisible();
   await expect(page.getByText("Aging", { exact: true })).toBeVisible();
@@ -38,8 +40,8 @@ test("pipeline board renders active, failed, passed, aging, and filtered candida
   await expect(page.locator("#pipeline-candidate-C-PHONE").getByRole("button", { name: "Candidate actions for Pat Phone" })).toHaveCSS("color", "rgb(255, 59, 48)");
 
   const filterButton = page.getByRole("button", { name: "Pipeline filters" });
-  const siteGroupButton = page.getByRole("button", { name: "Site" });
-  const ownerGroupButton = page.getByRole("button", { name: "Owner" });
+  const siteGroupButton = page.locator('button[aria-pressed]').filter({ hasText: /^Site$/ });
+  const ownerGroupButton = page.locator('button[aria-pressed]').filter({ hasText: /^Owner$/ });
   const filterBox = await filterButton.boundingBox();
   const siteBox = await siteGroupButton.boundingBox();
   const ownerBox = await ownerGroupButton.boundingBox();
@@ -56,7 +58,9 @@ test("pipeline board renders active, failed, passed, aging, and filtered candida
   await expect(page.getByText("Tina Test")).toBeVisible();
   await expect(page.getByText("Pat Phone")).toHaveCount(0);
 
-  await page.locator("[data-app-header-actions]").getByLabel("Site", { exact: true }).selectOption("KT1");
+  const siteFilter = page.locator("[data-app-header-actions]").getByLabel("Site", { exact: true });
+  await siteFilter.click();
+  await page.getByRole("listbox", { name: "Site" }).getByRole("option", { name: "KT1", exact: true }).click();
   await expect(page.getByText("Tina Test")).toBeVisible();
   await expect(page.getByText("Pat Phone")).toHaveCount(0);
 });

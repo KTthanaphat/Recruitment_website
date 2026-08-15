@@ -103,14 +103,32 @@ update public.requisitions
 set person_in_charge = 'Unowned Recruiter'
 where doc_id = '__paired_pipeline_open';
 
+select pg_temp.expect_error(
+  format(
+    'select public.app_update_pipeline_pending_v2(%L::jsonb)',
+    jsonb_build_object(
+      'candidate_id', '__paired_pipeline_candidate',
+      'stage_instance_id', (select stage_instance_id from public.recruitment_logs where candidate_id = '__paired_pipeline_candidate' and result is null and superseded_at is null),
+      'expected_updated_at', (select updated_at from public.recruitment_logs where candidate_id = '__paired_pipeline_candidate' and result is null and superseded_at is null),
+      'pending', jsonb_build_object('opened_date', (app_private.pipeline_business_date() - 2)::text, 'estimated_action_date', (app_private.pipeline_business_date() - 3)::text)
+    )::text
+  ),
+  'PIPELINE_DATE_ORDER'
+);
+
 select pg_temp.assert_true(
   (public.app_update_pipeline_pending_v2(jsonb_build_object(
     'candidate_id', '__paired_pipeline_candidate',
     'stage_instance_id', (select stage_instance_id from public.recruitment_logs where candidate_id = '__paired_pipeline_candidate' and result is null and superseded_at is null),
     'expected_updated_at', (select updated_at from public.recruitment_logs where candidate_id = '__paired_pipeline_candidate' and result is null and superseded_at is null),
-    'pending', jsonb_build_object('opened_date', (app_private.pipeline_business_date() - 2)::text, 'interviewer', 'System Admin', 'remark', 'System-wide pending edit')
+    'pending', jsonb_build_object('opened_date', (app_private.pipeline_business_date() - 2)::text, 'estimated_action_date', (app_private.pipeline_business_date() + 1)::text, 'interviewer', 'System Admin', 'remark', 'System-wide pending edit')
   )) ->> 'ok')::boolean,
   'a system admin can edit a current Pending stage outside PIC ownership'
+);
+select pg_temp.assert_true(
+  (select estimated_action_date = app_private.pipeline_business_date() + 1
+   from public.recruitment_logs where candidate_id = '__paired_pipeline_candidate' and result is null and superseded_at is null),
+  'Pending edit stores a future estimated action date independently from the opened date'
 );
 
 select pg_temp.assert_true(
@@ -155,6 +173,7 @@ select public.app_complete_pipeline_stage_v2(jsonb_build_object(
   'expected_updated_at', (select updated_at from public.recruitment_logs where candidate_id = '__paired_pipeline_candidate' and recruitment_process = 'Phone Screen' and superseded_at is null),
   'pending', jsonb_build_object(
     'opened_date', app_private.pipeline_business_date() - 2,
+    'estimated_action_date', app_private.pipeline_business_date() + 1,
     'interviewer', 'Edited pending interviewer',
     'remark', 'Edited pending remark'
   ),
@@ -167,25 +186,26 @@ select public.app_complete_pipeline_stage_v2(jsonb_build_object(
   'next_pending', jsonb_build_object(
     'stage', 'HR Interview',
     'round', 1,
-    'opened_date', app_private.pipeline_business_date() - 2
+    'opened_date', app_private.pipeline_business_date() - 2,
+    'estimated_action_date', app_private.pipeline_business_date() + 2
   )
 ));
 
 select pg_temp.assert_true(
-  (select count(*) = 1 and min(result) = 1 and min(outcome_interviewer) is null
+  (select count(*) = 1 and min(result) = 1 and min(outcome_interviewer) is null and min(estimated_action_date) = app_private.pipeline_business_date() + 1
    from public.recruitment_logs
    where candidate_id = '__paired_pipeline_candidate'
      and recruitment_process = 'Phone Screen'
      and superseded_at is null),
-  'completion must keep one canonical stage row and permit a blank Outcome interviewer'
+  'completion must preserve the historical estimate, keep one canonical stage row, and permit a blank Outcome interviewer'
 );
 select pg_temp.assert_true(
-  (select count(*) = 1 and min(log_date) = app_private.pipeline_business_date() - 1
+  (select count(*) = 1 and min(log_date) = app_private.pipeline_business_date() - 1 and min(estimated_action_date) = app_private.pipeline_business_date() + 2
    from public.recruitment_logs
    where candidate_id = '__paired_pipeline_candidate'
      and recruitment_process = 'HR Interview'
      and result is null and superseded_at is null),
-  'a Pass must create the next Pending stage on the Outcome date, ignoring legacy client input'
+  'a Pass must create the next Pending stage on the Outcome date and retain its estimate'
 );
 
 create temporary table _paired_pipeline_before_correction on commit drop as
@@ -279,12 +299,12 @@ select pg_temp.assert_true(
     'candidate_id', '__paired_pipeline_offer_candidate',
     'stage_instance_id', (select stage_instance_id from public.recruitment_logs where candidate_id = '__paired_pipeline_offer_candidate' and superseded_at is null),
     'expected_updated_at', (select updated_at from public.recruitment_logs where candidate_id = '__paired_pipeline_offer_candidate' and superseded_at is null),
-    'pending', jsonb_build_object('opened_date', (app_private.pipeline_business_date() - 2)::text, 'interviewer', 'Corrected admin', 'remark', 'Audited correction')
+    'pending', jsonb_build_object('opened_date', (app_private.pipeline_business_date() - 2)::text, 'estimated_action_date', app_private.pipeline_business_date()::text, 'interviewer', 'Corrected admin', 'remark', 'Audited correction')
   )) ->> 'ok')::boolean,
   'admin record correction succeeds for canonical Pending history'
 );
 select pg_temp.assert_true(
-  (select count(*) = 2 and count(*) filter (where superseded_at is not null) = 1
+  (select count(*) = 2 and count(*) filter (where superseded_at is not null) = 1 and max(estimated_action_date) = app_private.pipeline_business_date()
    from public.recruitment_logs where candidate_id = '__paired_pipeline_offer_candidate'),
   'record correction supersedes rather than overwriting the source record'
 );

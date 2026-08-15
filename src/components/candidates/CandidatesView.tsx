@@ -125,10 +125,10 @@ export function CandidatesView({
                 </strong>
                 <Tag tone={statusTone(resultText(row.latest_result).toLowerCase()) as never}>{resultText(row.latest_result, language)}</Tag>
               </div>
-              <p className="text-sm font-semibold text-navy">{row.candidate_id}</p>
-              <p className="text-sm font-medium text-slate">{row.group_position ?? "-"} - {row.site ?? "-"}</p>
-              <p className="text-sm font-medium text-slate">{processLabel(row.latest_process, language)} - {row.person_in_charge ?? "-"}</p>
-              <p className="text-sm font-medium text-slate">{translate(language, "lastTouchValue", { value: ageLabel(row) })}</p>
+              <p className="text-sm font-medium text-slate">{processLabel(row.latest_process, language)} · {row.site ?? "-"}</p>
+              <p className="hidden text-sm font-semibold text-navy md:block">{row.candidate_id}</p>
+              <p className="hidden text-sm font-medium text-slate md:block">{row.group_position ?? "-"} - {row.person_in_charge ?? "-"}</p>
+              <p className="hidden text-sm font-medium text-slate md:block">{translate(language, "lastTouchValue", { value: ageLabel(row) })}</p>
               <div className="mt-3">
                 <RecordQuickActions label={translate(language, "recordActionsFor", { label: formatCandidateName(row) })} actions={candidateActions(row, language, onOpen)} />
               </div>

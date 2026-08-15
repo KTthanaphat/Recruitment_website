@@ -75,6 +75,86 @@ test("home groups recruitment records into ordered role-aware tabs", async ({ pa
   await expect(page.getByRole("tablist", { name: "Recruitment record categories" }).getByRole("tab", { name: "Recent Activity" })).toHaveCount(0);
 });
 
+test("home calendar shows filtered unresolved estimates and opens candidate detail", async ({ page }) => {
+  const mock = await installMockSupabase(page, { role: "admin_recruiter" });
+  const scheduledPhoneScreen = mock.data.recruitment_logs.find((log) => log.candidate_id === "C-PHONE");
+  if (!scheduledPhoneScreen) throw new Error("Expected the phone-screen calendar fixture.");
+  mock.data.recruitment_logs.push({
+    ...scheduledPhoneScreen,
+    log_id: 999,
+    recruitment_process: "HR Interview",
+    stage_instance_id: "00000000-0000-4000-8000-000000000999",
+    estimated_action_date: "2026-07-20"
+  });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/home");
+  await expectWorkspaceReady(page);
+
+  const welcomeDialog = page.getByRole("dialog", { name: "Welcome back" });
+  if (await welcomeDialog.isVisible()) await welcomeDialog.getByRole("button", { name: "Close" }).last().click();
+
+  const workHeading = page.getByRole("heading", { name: "Today's Work" });
+  const calendarHeading = page.getByRole("heading", { name: "Recruitment Calendar" });
+  const recordsHeading = page.getByRole("heading", { name: "Recruitment Records" });
+  const workPanel = workHeading.locator("xpath=ancestor::section[1]");
+  const calendar = calendarHeading.locator("xpath=ancestor::section[1]");
+  const workBox = await workPanel.boundingBox();
+  const calendarBox = await calendar.boundingBox();
+  const recordsBox = await recordsHeading.boundingBox();
+  expect(workBox?.x ?? 0).toBeLessThan(calendarBox?.x ?? 0);
+  expect(calendarBox?.width ?? 0).toBeGreaterThan((workBox?.width ?? 0) * 2.5);
+  expect(Math.abs((workBox?.y ?? 0) - (calendarBox?.y ?? 0))).toBeLessThan(12);
+  expect(Math.abs((workBox?.height ?? 0) - (calendarBox?.height ?? 0))).toBeLessThan(2);
+  expect(calendarBox?.y ?? 0).toBeLessThan(recordsBox?.y ?? 0);
+
+  await expect(calendar.getByText("July 2026", { exact: true })).toBeVisible();
+  await expect(page.getByText("Last touch > 7 days", { exact: true })).toBeVisible();
+  await expect(page.getByText("Groups needing updates", { exact: true })).toBeVisible();
+  const patPhoneEvent = calendar.getByRole("button", { name: "Open Pat Phone, Stage event, 25/07/2026" });
+  await expect(patPhoneEvent).toBeVisible();
+  await expect(calendar.getByRole("button", { name: /Open Avery Aging.*Overdue/ })).toBeVisible();
+  await expect(calendar.getByRole("button", { name: /Finn Failed/ })).toHaveCount(0);
+  await patPhoneEvent.click();
+  await expect(page.getByRole("dialog", { name: /C-PHONE/ })).toBeVisible();
+  await page.getByRole("dialog", { name: /C-PHONE/ }).getByRole("button", { name: "Close" }).click();
+
+  await calendar.getByRole("button", { name: "Show all 3 events on 20/07/2026" }).click();
+  const dayEventsDialog = page.getByRole("dialog", { name: "Events for 20/07/2026" });
+  await expect(dayEventsDialog).toBeVisible();
+  await expect(dayEventsDialog.getByText("Avery Aging", { exact: true })).toBeVisible();
+  await expect(dayEventsDialog.getByText("Olivia Offer Pass", { exact: true })).toBeVisible();
+  await expect(dayEventsDialog.getByText("Pending details:", { exact: false }).first()).toBeVisible();
+  await expect(dayEventsDialog.getByRole("button", { name: "Edit", exact: true })).toHaveCount(2);
+  await dayEventsDialog.getByRole("button", { name: "Edit", exact: true }).first().click();
+  const pendingDialog = page.getByRole("dialog", { name: "Edit Pending Details" });
+  await expect(pendingDialog).toBeVisible();
+  await pendingDialog.getByRole("button", { name: "Cancel" }).click();
+
+  await calendar.getByRole("button", { name: "Next month" }).click();
+  await expect(calendar.getByText("August 2026", { exact: true })).toBeVisible();
+  await expect(calendar.getByRole("button", { name: /Open Hana HR/ })).toBeVisible();
+  await calendar.getByRole("button", { name: "Today" }).click();
+  await expect(calendar.getByText("July 2026", { exact: true })).toBeVisible();
+
+  const siteFilter = page.locator("[data-app-header-actions]").getByLabel("Site", { exact: true });
+  await siteFilter.click();
+  await page.getByRole("listbox", { name: "Site" }).getByRole("option", { name: "KT2", exact: true }).click();
+  await expect(calendar.getByText("No recruitment events in this month.")).toBeVisible();
+
+  await page.setViewportSize({ width: 1024, height: 800 });
+  const normalWorkBox = await workPanel.boundingBox();
+  const normalCalendarBox = await calendar.boundingBox();
+  expect(normalWorkBox?.x ?? 0).toBeLessThan(normalCalendarBox?.x ?? 0);
+  expect(normalCalendarBox?.width ?? 0).toBeGreaterThan((normalWorkBox?.width ?? 0) * 2.5);
+
+  await page.setViewportSize({ width: 360, height: 800 });
+  await expect(calendar.locator('[data-recruitment-calendar="mobile"]')).toBeVisible();
+  await expect(calendar.locator('[data-recruitment-calendar="desktop"]')).toBeHidden();
+  const mobileWorkBox = await workPanel.boundingBox();
+  const mobileCalendarBox = await calendar.boundingBox();
+  expect(mobileWorkBox?.y ?? 0).toBeLessThan(mobileCalendarBox?.y ?? 0);
+});
+
 test("welcome popup uses monthly accepted vacancies with bilingual weekday messages", async ({ page }) => {
   await installMockSupabase(page, { role: "admin_recruiter", language: "en" });
   await page.goto("/home");

@@ -73,6 +73,7 @@ import type {
   EnrichedCandidate,
   EnrichedRequisition,
   Language,
+  Offer,
   OfferPassHandoff,
   ProcessStage,
   RecruitmentLog,
@@ -134,6 +135,7 @@ type ProcessDefaults = {
   expected_updated_at?: string;
   outcome?: "pass" | "fail";
   pending_log_date?: string;
+  pending_estimated_action_date?: string | null;
   pending_interviewer?: string | null;
   pending_remark?: string | null;
   outcome_date?: string | null;
@@ -567,6 +569,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       stage_instance_id: currentPending?.stage_instance_id ?? String(currentPending?.log_id ?? ""),
       expected_updated_at: currentPending?.updated_at ?? currentPending?.created_at,
       pending_log_date: currentPending?.log_date,
+      pending_estimated_action_date: currentPending?.estimated_action_date,
       pending_interviewer: currentPending?.interviewer,
       pending_remark: currentPending?.remark,
       remark: `Progressed from ${processLabel(candidate.latest_process)} to ${processLabel(nextStage)} by pipeline drag and drop`
@@ -574,7 +577,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     setActiveModal("pipeline_pass");
   }
 
-  function openPendingEdit(candidate: EnrichedCandidate) {
+  const openPendingEdit = useCallback((candidate: EnrichedCandidate) => {
     const logs = latestLogsForCandidate(data, candidate.candidate_id);
     const active = activeProcessStage(logs);
     if (!active) return;
@@ -583,9 +586,9 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       setStatus("This pending stage is outside your update responsibility.");
       return;
     }
-    setProcessDefaults({ candidate_id: candidate.candidate_id, recruitment_process: active.stage, round: active.round, pending_log_id: active.pendingLogId, stage_instance_id: active.stageInstanceId, expected_updated_at: active.updatedAt, pending_log_date: pending.log_date, pending_interviewer: pending.interviewer, pending_remark: pending.remark });
+    setProcessDefaults({ candidate_id: candidate.candidate_id, recruitment_process: active.stage, round: active.round, pending_log_id: active.pendingLogId, stage_instance_id: active.stageInstanceId, expected_updated_at: active.updatedAt, pending_log_date: pending.log_date, pending_estimated_action_date: pending.estimated_action_date, pending_interviewer: pending.interviewer, pending_remark: pending.remark });
     setActiveModal("pending_edit");
-  }
+  }, [data]);
 
   function openPipelineRecordCorrection(candidate: EnrichedCandidate, log: RecruitmentLog) {
     if (!data.profile || !["system_admin", "admin_recruiter"].includes(data.profile.role)) return;
@@ -596,6 +599,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       stage_instance_id: log.stage_instance_id ?? String(log.log_id),
       expected_updated_at: log.updated_at ?? log.created_at,
       pending_log_date: log.log_date,
+      pending_estimated_action_date: log.estimated_action_date,
       pending_interviewer: log.interviewer,
       pending_remark: log.remark,
       outcome_result: log.result === null ? null : log.result === 1 ? "pass" : "fail",
@@ -613,7 +617,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     const nextIndex = ACTIVE_PIPELINE_STAGES.indexOf(active.stage) + 1;
     const nextStage = outcome === "pass" && active.stage !== "Offer" ? ACTIVE_PIPELINE_STAGES[nextIndex] : undefined;
     const pending = logs.find((row) => row.stage_instance_id === active.stageInstanceId);
-    setProcessDefaults({ candidate_id: candidate.candidate_id, recruitment_process: active.stage, round: active.round, pending_log_id: active.pendingLogId, stage_instance_id: active.stageInstanceId, expected_updated_at: active.updatedAt, pending_log_date: pending?.log_date, pending_interviewer: pending?.interviewer, pending_remark: pending?.remark, outcome, target_stage: nextStage, source: "pipeline" });
+    setProcessDefaults({ candidate_id: candidate.candidate_id, recruitment_process: active.stage, round: active.round, pending_log_id: active.pendingLogId, stage_instance_id: active.stageInstanceId, expected_updated_at: active.updatedAt, pending_log_date: pending?.log_date, pending_estimated_action_date: pending?.estimated_action_date, pending_interviewer: pending?.interviewer, pending_remark: pending?.remark, outcome, target_stage: nextStage, source: "pipeline" });
     setActiveModal("stage_outcome");
   }
 
@@ -627,7 +631,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     const active = activeProcessStage(logs);
     const pending = active ? logs.find((row) => row.stage_instance_id === active.stageInstanceId) : null;
     if (candidate.latest_process !== "Test" || !active || !pending) return;
-    setProcessDefaults({ candidate_id: candidate.candidate_id, recruitment_process: "Test", round: active.round, pending_log_id: pending.log_id, stage_instance_id: active.stageInstanceId, expected_updated_at: active.updatedAt, pending_log_date: pending.log_date, pending_interviewer: pending.interviewer, pending_remark: pending.remark, outcome: "pass", target_stage: "Test", current_round: active.round });
+    setProcessDefaults({ candidate_id: candidate.candidate_id, recruitment_process: "Test", round: active.round, pending_log_id: pending.log_id, stage_instance_id: active.stageInstanceId, expected_updated_at: active.updatedAt, pending_log_date: pending.log_date, pending_estimated_action_date: pending.estimated_action_date, pending_interviewer: pending.interviewer, pending_remark: pending.remark, outcome: "pass", target_stage: "Test", current_round: active.round });
     setActiveModal("stage_outcome");
   }
 
@@ -638,10 +642,14 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   }
 
   function openInitialProcessUpdate(candidate: EnrichedCandidate) {
+    if (!candidate.first_contact_date) {
+      setStatus("Add First Contact Date in Candidate Detail before starting Phone Screen.");
+      return;
+    }
     setProcessDefaults({
       candidate_id: candidate.candidate_id,
       recruitment_process: "Phone Screen",
-      pending_log_date: today(),
+      pending_log_date: candidate.first_contact_date,
       pending_remark: "Started from pipeline no-activity lane"
     });
     setActiveModal("pipeline_start");
@@ -992,9 +1000,13 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       payload
     });
   }, [language]);
+  const openDetailOffer = useCallback((offer: Offer) => {
+    setModalDefaults({ mode: "change", selectedId: String(offer.offer_id), candidate_id: offer.candidate_id, doc_id: offer.doc_id });
+    setActiveModal("offer");
+  }, []);
   const detailBody = useMemo(
-    () => buildDetailBodyV2(detail, data, language, canWrite, canDeleteRecords, openProcessFromDetail, navigationContext, openDetailRequisitionChange, openDetailCandidateChange, openCandidateReference, openCandidateReferenceStatus, openCandidateReferenceCheck, prepareDestructiveRpcAction),
-    [canDeleteRecords, canWrite, detail, data, language, navigationContext, openCandidateReference, openCandidateReferenceCheck, openCandidateReferenceStatus, openDetailCandidateChange, openDetailRequisitionChange, openProcessFromDetail, prepareDestructiveRpcAction]
+    () => buildDetailBodyV2(detail, data, language, canWrite, canDeleteRecords, openProcessFromDetail, openPendingEdit, openDetailOffer, navigationContext, openDetailRequisitionChange, openDetailCandidateChange, openCandidateReference, openCandidateReferenceStatus, openCandidateReferenceCheck, prepareDestructiveRpcAction),
+    [canDeleteRecords, canWrite, detail, data, language, navigationContext, openCandidateReference, openCandidateReferenceCheck, openCandidateReferenceStatus, openDetailCandidateChange, openDetailRequisitionChange, openDetailOffer, openPendingEdit, openProcessFromDetail, prepareDestructiveRpcAction]
   );
 
   if (!hasSupabaseConfig) {
@@ -1071,7 +1083,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       ) : null}
 
       {initialView === "home" ? (
-        <HomeView language={language} profile={data.profile} requisitions={filteredRequisitions} candidates={filteredCandidates} offers={filteredOffers} staleSourcingGroups={staleSourcingGroups} changeLogs={filteredChangeLogs} dataQualityIssues={dataQualityIssues} canViewRecentActivity={role === "system_admin" || role === "admin_recruiter"} onOpenRequisition={(id) => setDetail({ type: "requisition", id })} onOpenCandidate={(id) => setDetail({ type: "candidate", id })} />
+        <HomeView language={language} profile={data.profile} requisitions={filteredRequisitions} candidates={filteredCandidates} offers={filteredOffers} recruitmentLogs={data.recruitment_logs} staleSourcingGroups={staleSourcingGroups} changeLogs={filteredChangeLogs} dataQualityIssues={dataQualityIssues} canViewRecentActivity={role === "system_admin" || role === "admin_recruiter"} onEditPending={openPendingEdit} onOpenRequisition={(id) => setDetail({ type: "requisition", id })} onOpenCandidate={(id) => setDetail({ type: "candidate", id })} />
       ) : null}
 
       {initialView === "dashboard" ? (
@@ -1383,6 +1395,7 @@ function buildPayload(modal: Exclude<ModalName, null>, formData: FormData) {
       candidate_id: emptyToNull(formData.get("candidate_id")),
       pending: {
         opened_date: emptyToNull(formData.get("opened_date")),
+        estimated_action_date: emptyToNull(formData.get("estimated_action_date")),
         interviewer: emptyToNull(formData.get("interviewer")),
         remark: emptyToNull(formData.get("remark"))
       }
@@ -1397,7 +1410,7 @@ function buildPayload(modal: Exclude<ModalName, null>, formData: FormData) {
       candidate_id: emptyToNull(formData.get("candidate_id")),
       stage_instance_id: emptyToNull(formData.get("stage_instance_id")),
       expected_updated_at: emptyToNull(formData.get("expected_updated_at")),
-      pending: { opened_date: emptyToNull(formData.get("opened_date")), interviewer: emptyToNull(formData.get("interviewer")), remark: emptyToNull(formData.get("remark")) }
+      pending: { opened_date: emptyToNull(formData.get("opened_date")), estimated_action_date: emptyToNull(formData.get("estimated_action_date")), interviewer: emptyToNull(formData.get("interviewer")), remark: emptyToNull(formData.get("remark")) }
     };
     requireFields(payload, ["candidate_id", "stage_instance_id", "expected_updated_at"]);
     if (!payload.pending.opened_date) throw new Error("Pending date is required.");
@@ -1415,7 +1428,7 @@ function buildPayload(modal: Exclude<ModalName, null>, formData: FormData) {
       candidate_id: emptyToNull(formData.get("candidate_id")),
       stage_instance_id: emptyToNull(formData.get("stage_instance_id")),
       expected_updated_at: emptyToNull(formData.get("expected_updated_at")),
-      pending: { opened_date: emptyToNull(formData.get("pending_opened_date")), interviewer: emptyToNull(formData.get("pending_interviewer")), remark: emptyToNull(formData.get("pending_remark")) },
+      pending: { opened_date: emptyToNull(formData.get("pending_opened_date")), estimated_action_date: emptyToNull(formData.get("pending_estimated_action_date")), interviewer: emptyToNull(formData.get("pending_interviewer")), remark: emptyToNull(formData.get("pending_remark")) },
       outcome: {
         result: outcome,
         date: emptyToNull(formData.get("outcome_date")),
@@ -1425,6 +1438,7 @@ function buildPayload(modal: Exclude<ModalName, null>, formData: FormData) {
       next_pending: targetStage ? {
         stage: targetStage,
         round: asNumber(formData.get("next_round"), 1),
+        estimated_action_date: emptyToNull(formData.get("next_estimated_action_date")),
         interviewer: emptyToNull(formData.get("next_interviewer")),
         remark: emptyToNull(formData.get("next_remark"))
       } : null
@@ -1440,7 +1454,7 @@ function buildPayload(modal: Exclude<ModalName, null>, formData: FormData) {
     const stages = Array.from({ length: stageCount }, (_, index) => ({
       stage: emptyToNull(formData.get(`stage_${index}`)),
       round: asNumber(formData.get(`round_${index}`), 1),
-      pending: { opened_date: emptyToNull(formData.get(`pending_date_${index}`)), interviewer: emptyToNull(formData.get(`pending_interviewer_${index}`)), remark: emptyToNull(formData.get(`pending_remark_${index}`)) },
+      pending: { opened_date: emptyToNull(formData.get(`pending_date_${index}`)), estimated_action_date: emptyToNull(formData.get(`pending_estimated_action_date_${index}`)), interviewer: emptyToNull(formData.get(`pending_interviewer_${index}`)), remark: emptyToNull(formData.get(`pending_remark_${index}`)) },
       outcome: { result: "pass" as const, date: emptyToNull(formData.get(`outcome_date_${index}`)), interviewer: emptyToNull(formData.get(`outcome_interviewer_${index}`)), remark: emptyToNull(formData.get(`outcome_remark_${index}`)) }
     }));
     const targetStage = emptyToNull(formData.get("target_stage"));
@@ -1448,6 +1462,7 @@ function buildPayload(modal: Exclude<ModalName, null>, formData: FormData) {
       stage: targetStage,
       round: asNumber(formData.get("target_pending_round"), 1),
       opened_date: emptyToNull(formData.get("target_pending_opened_date")),
+      estimated_action_date: emptyToNull(formData.get("target_pending_estimated_action_date")),
       interviewer: emptyToNull(formData.get("target_pending_interviewer")),
       remark: emptyToNull(formData.get("target_pending_remark"))
     };
@@ -1499,7 +1514,7 @@ function buildPayload(modal: Exclude<ModalName, null>, formData: FormData) {
       candidate_id: emptyToNull(formData.get("candidate_id")),
       stage_instance_id: emptyToNull(formData.get("stage_instance_id")),
       expected_updated_at: emptyToNull(formData.get("expected_updated_at")),
-      pending: { opened_date: emptyToNull(formData.get("opened_date")), interviewer: emptyToNull(formData.get("interviewer")), remark: emptyToNull(formData.get("remark")) },
+      pending: { opened_date: emptyToNull(formData.get("opened_date")), estimated_action_date: emptyToNull(formData.get("estimated_action_date")), interviewer: emptyToNull(formData.get("interviewer")), remark: emptyToNull(formData.get("remark")) },
       outcome: outcomeResult ? { result: outcomeResult, date: emptyToNull(formData.get("outcome_date")), interviewer: emptyToNull(formData.get("outcome_interviewer")), remark: emptyToNull(formData.get("outcome_remark")) } : undefined
     };
     requireFields(payload, ["candidate_id", "stage_instance_id", "expected_updated_at"]);
@@ -2276,15 +2291,21 @@ function ProcessPrefillFields({
   );
 }
 
+function DerivedPendingDate({ language, value }: { language: Language; value?: string | null }) {
+  return <Field label="Pending date"><TextInput value={formatDate(value, language)} readOnly /></Field>;
+}
+
 function PendingEditFields({ defaults, language }: { defaults: ProcessDefaults; language: Language }) {
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <input type="hidden" name="candidate_id" value={defaults.candidate_id ?? ""} />
       <input type="hidden" name="stage_instance_id" value={defaults.stage_instance_id ?? ""} />
       <input type="hidden" name="expected_updated_at" value={defaults.expected_updated_at ?? ""} />
+      <input type="hidden" name="opened_date" value={defaults.pending_log_date ?? ""} />
       <Field label={translate(language, "process")}><TextInput value={processLabel(defaults.recruitment_process as ProcessStage, language)} readOnly /></Field>
       <Field label={translate(language, "round")}><TextInput value={defaults.round ?? 1} readOnly /></Field>
-      <Field label="Pending date"><TextInput autoFocus name="opened_date" type="date" defaultValue={defaults.pending_log_date ?? today()} required /></Field>
+      <DerivedPendingDate language={language} value={defaults.pending_log_date} />
+      <Field label={translate(language, "estimatedActionDate")}><DayDateSelector ariaLabel={translate(language, "estimatedActionDate")} clearLabel={translate(language, "clear")} defaultValue={defaults.pending_estimated_action_date ?? ""} language={language} name="estimated_action_date" nextMonthLabel={translate(language, "nextMonth")} previousMonthLabel={translate(language, "previousMonth")} /></Field>
       <Field label={translate(language, "interviewer")}><TextInput name="interviewer" defaultValue={defaults.pending_interviewer ?? ""} /></Field>
       <Field label={translate(language, "remark")} className="md:col-span-2"><TextArea name="remark" rows={3} placeholder={translate(language, "pipelinePendingRemarkPlaceholder", { stage: processLabel(defaults.recruitment_process as ProcessStage, language) })} defaultValue={defaults.pending_remark ?? ""} /></Field>
     </div>
@@ -2295,8 +2316,10 @@ function PipelineStartFields({ defaults, language }: { defaults: ProcessDefaults
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <input type="hidden" name="candidate_id" value={defaults.candidate_id ?? ""} />
+      <input type="hidden" name="opened_date" value={defaults.pending_log_date ?? ""} />
       <div className="rounded-md border border-[#D7DEE8] bg-lightgray p-3 text-sm font-semibold text-navy md:col-span-2">{translate(language, "startPhoneScreen")}</div>
-      <Field label="Pending date"><TextInput autoFocus name="opened_date" type="date" defaultValue={defaults.pending_log_date ?? today()} required /></Field>
+      <DerivedPendingDate language={language} value={defaults.pending_log_date} />
+      <Field label={translate(language, "estimatedActionDate")}><DayDateSelector ariaLabel={translate(language, "estimatedActionDate")} clearLabel={translate(language, "clear")} defaultValue={defaults.pending_estimated_action_date ?? ""} language={language} name="estimated_action_date" nextMonthLabel={translate(language, "nextMonth")} previousMonthLabel={translate(language, "previousMonth")} /></Field>
       <Field label={translate(language, "interviewer")}><TextInput name="interviewer" list="interviewer-options" defaultValue={defaults.pending_interviewer ?? ""} /></Field>
       <Field label={translate(language, "remark")} className="md:col-span-2"><TextArea name="remark" rows={3} placeholder={translate(language, "pipelinePendingRemarkPlaceholder", { stage: processLabel("Phone Screen", language) })} defaultValue={defaults.pending_remark ?? ""} /></Field>
     </div>
@@ -2316,16 +2339,10 @@ function StageOutcomeFields({ defaults, language }: { defaults: ProcessDefaults;
       <input type="hidden" name="current_stage" value={defaults.recruitment_process ?? ""} />
       <input type="hidden" name="target_stage" value={hasNextPending ? defaults.target_stage : ""} />
       <div className="rounded-md border border-[#D7DEE8] bg-lightgray p-3 text-sm font-semibold text-navy md:col-span-2">{isPass ? translate(language, "passStage") : translate(language, "failStage")}: {processLabel(defaults.recruitment_process as ProcessStage, language)}</div>
-      {isPass ? <>
-        <input type="hidden" name="pending_opened_date" value={defaults.pending_log_date ?? ""} />
-        <input type="hidden" name="pending_interviewer" value={defaults.pending_interviewer ?? ""} />
-        <input type="hidden" name="pending_remark" value={defaults.pending_remark ?? ""} />
-      </> : <>
-        <div className="border-b border-[#D7DEE8] pb-2 text-sm font-semibold text-navy md:col-span-2">{translate(language, "pendingDetails")}</div>
-        <Field label="Pending opened date"><TextInput autoFocus name="pending_opened_date" type="date" defaultValue={defaults.pending_log_date ?? today()} required /></Field>
-        <Field label={translate(language, "interviewer")}><TextInput name="pending_interviewer" list="interviewer-options" defaultValue={defaults.pending_interviewer ?? ""} /></Field>
-        <Field label={translate(language, "remark")} className="md:col-span-2"><TextArea name="pending_remark" rows={3} placeholder={translate(language, "pipelinePendingRemarkPlaceholder", { stage: processLabel(defaults.recruitment_process as ProcessStage, language) })} defaultValue={defaults.pending_remark ?? ""} /></Field>
-      </>}
+      <input type="hidden" name="pending_opened_date" value={defaults.pending_log_date ?? ""} />
+      <input type="hidden" name="pending_estimated_action_date" value={defaults.pending_estimated_action_date ?? ""} />
+      <input type="hidden" name="pending_interviewer" value={defaults.pending_interviewer ?? ""} />
+      <input type="hidden" name="pending_remark" value={defaults.pending_remark ?? ""} />
       <div className="border-b border-[#D7DEE8] pb-2 text-sm font-semibold text-navy md:col-span-2">{translate(language, "outcome")}</div>
       <Field label={translate(language, "outcomeDate")}><DayDateSelector ariaLabel={translate(language, "outcomeDate")} language={language} name="outcome_date" nextMonthLabel={translate(language, "nextMonth")} previousMonthLabel={translate(language, "previousMonth")} value={outcomeDate} onChange={(event) => setOutcomeDate(event.target.value)} required /></Field>
       <Field label={translate(language, "interviewer")}><TextInput name="outcome_interviewer" list="interviewer-options" defaultValue={defaults.pending_interviewer ?? ""} /></Field>
@@ -2334,6 +2351,7 @@ function StageOutcomeFields({ defaults, language }: { defaults: ProcessDefaults;
         <div className="border-t border-[#D7DEE8] pt-3 text-sm font-semibold text-navy md:col-span-2">{translate(language, "nextPendingStage")}: {processLabel(defaults.target_stage as ProcessStage, language)}</div>
         <input type="hidden" name="next_round" value={defaults.recruitment_process === "Test" && defaults.target_stage === "Test" ? (defaults.round ?? 1) + 1 : 1} />
         <p className="text-sm font-medium text-slate md:col-span-2">{translate(language, "nextPendingDateDerived", { date: outcomeDate || translate(language, "notSet") })}</p>
+        <Field label={translate(language, "estimatedActionDate")}><DayDateSelector ariaLabel={translate(language, "estimatedActionDate")} clearLabel={translate(language, "clear")} language={language} name="next_estimated_action_date" nextMonthLabel={translate(language, "nextMonth")} previousMonthLabel={translate(language, "previousMonth")} /></Field>
         <Field label={translate(language, "interviewer")}><TextInput name="next_interviewer" list="interviewer-options" defaultValue="" /></Field>
         <Field label={translate(language, "remark")} className="md:col-span-2"><TextArea name="next_remark" rows={3} placeholder={translate(language, "pipelinePendingRemarkPlaceholder", { stage: processLabel(defaults.target_stage as ProcessStage, language) })} /></Field>
       </> : null}
@@ -2359,7 +2377,9 @@ function PipelinePassFields({ data, defaults, language }: { data: DashboardData;
       {(
         <div className="grid gap-4 rounded-md border border-[#D7DEE8] bg-white p-3 md:grid-cols-2">
           <div className="md:col-span-2"><Tag tone="warning">{translate(language, "nextPendingStage")}: {processLabel(defaults.target_stage as ProcessStage, language)}</Tag></div>
-          <Field label="Next pending date"><TextInput name="target_pending_opened_date" type="date" defaultValue={today()} required /></Field>
+          <input type="hidden" name="target_pending_opened_date" value={today()} />
+          <p className="text-sm font-medium text-slate">{translate(language, "nextPendingDateDerived", { date: translate(language, "notSet") })}</p>
+          <Field label={translate(language, "estimatedActionDate")}><DayDateSelector ariaLabel={translate(language, "estimatedActionDate")} clearLabel={translate(language, "clear")} language={language} name="target_pending_estimated_action_date" nextMonthLabel={translate(language, "nextMonth")} previousMonthLabel={translate(language, "previousMonth")} /></Field>
           <Field label={translate(language, "round")}><TextInput name="target_pending_round" type="number" min={1} defaultValue={1} required /></Field>
           <Field label={translate(language, "interviewer")}><TextInput name="target_pending_interviewer" list="interviewer-options" defaultValue="" /></Field>
           <Field label={translate(language, "remark")}><TextArea name="target_pending_remark" rows={2} placeholder={translate(language, "pipelinePendingRemarkPlaceholder", { stage: processLabel(defaults.target_stage as ProcessStage, language) })} defaultValue="" /></Field>
@@ -2371,7 +2391,9 @@ function PipelinePassFields({ data, defaults, language }: { data: DashboardData;
           <div className="md:col-span-2">
             <Tag tone="teal">{processLabel(stage, language)}</Tag>
           </div>
-          <Field label="Pending date"><TextInput name={`pending_date_${index}`} type="date" defaultValue={index === 0 ? (defaults.pending_log_date ?? today()) : today()} required /></Field>
+          <input type="hidden" name={`pending_date_${index}`} value={index === 0 ? (defaults.pending_log_date ?? "") : today()} />
+          <p className="text-sm font-medium text-slate">{index === 0 ? `${translate(language, "pendingDetails")}: ${formatDate(defaults.pending_log_date, language)}` : translate(language, "nextPendingDateDerived", { date: translate(language, "notSet") })}</p>
+          <input type="hidden" name={`pending_estimated_action_date_${index}`} value={index === 0 ? (defaults.pending_estimated_action_date ?? "") : ""} />
           <Field label={translate(language, "round")}><TextInput name={`round_${index}`} type="number" min={1} value={isTestExit && stage === "Test" ? currentRound : undefined} defaultValue={isTestExit && stage === "Test" ? undefined : 1} readOnly={isTestExit && stage === "Test"} required /></Field>
           <Field label={translate(language, "interviewer")}><TextInput name={`pending_interviewer_${index}`} list="interviewer-options" defaultValue={index === 0 ? (defaults.pending_interviewer ?? "") : ""} /></Field>
           <Field label={translate(language, "remark")}><TextArea name={`pending_remark_${index}`} rows={2} placeholder={translate(language, "pipelinePendingRemarkPlaceholder", { stage: processLabel(stage, language) })} defaultValue={index === 0 ? (defaults.pending_remark ?? "") : ""} /></Field>
@@ -2852,10 +2874,12 @@ function PipelineRecordCorrectionFields({ defaults, language }: { defaults: Proc
     <input type="hidden" name="candidate_id" value={defaults.candidate_id ?? ""} />
     <input type="hidden" name="stage_instance_id" value={defaults.stage_instance_id ?? ""} />
     <input type="hidden" name="expected_updated_at" value={defaults.expected_updated_at ?? ""} />
+    <input type="hidden" name="opened_date" value={defaults.pending_log_date ?? ""} />
     <Field label={translate(language, "process")}><TextInput value={processLabel(defaults.recruitment_process as ProcessStage, language)} readOnly /></Field>
     <Field label={translate(language, "round")}><TextInput value={defaults.round ?? 1} readOnly /></Field>
     <div className="border-b border-[#D7DEE8] pb-2 text-sm font-semibold text-navy md:col-span-2">{translate(language, "pendingDetails")}</div>
-    <Field label="Pending date"><TextInput autoFocus name="opened_date" type="date" defaultValue={defaults.pending_log_date ?? today()} required /></Field>
+    <DerivedPendingDate language={language} value={defaults.pending_log_date} />
+    <Field label={translate(language, "estimatedActionDate")}><DayDateSelector ariaLabel={translate(language, "estimatedActionDate")} clearLabel={translate(language, "clear")} defaultValue={defaults.pending_estimated_action_date ?? ""} language={language} name="estimated_action_date" nextMonthLabel={translate(language, "nextMonth")} previousMonthLabel={translate(language, "previousMonth")} /></Field>
     <Field label={translate(language, "interviewer")}><TextInput name="interviewer" list="interviewer-options" defaultValue={defaults.pending_interviewer ?? ""} /></Field>
     <Field label={translate(language, "remark")} className="md:col-span-2"><TextArea name="remark" rows={3} defaultValue={defaults.pending_remark ?? ""} /></Field>
     {completed ? <>
@@ -3107,6 +3131,8 @@ function buildDetailBodyV2(
   canWrite: boolean,
   canDeleteRecords: boolean,
   onUpdateCandidate: (candidateId: string) => void,
+  onEditPending: (candidate: EnrichedCandidate) => void,
+  onEditOffer: (offer: Offer) => void,
   navigationContext: { language: Language; site: string; owner: string; sourcingWeek: string },
   onChangeRequisition: (docId: string) => void,
   onChangeCandidate: (candidateId: string) => void,
@@ -3211,6 +3237,16 @@ function buildDetailBodyV2(
     const stageOrder = ACTIVE_PIPELINE_STAGES.indexOf(a.stage) - ACTIVE_PIPELINE_STAGES.indexOf(b.stage);
     return stageOrder || a.round - b.round || a.logId - b.logId;
   });
+  const canEditCurrentPending = candidatePipelineCapability(candidate, logs, data.profile).canWrite;
+  const canEditOffers = canWrite && (
+    data.profile?.role === "system_admin" ||
+    data.profile?.role === "admin_recruiter" ||
+    (data.profile?.role === "site_recruiter" &&
+      candidate.site?.trim().toLowerCase() === data.profile.site?.trim().toLowerCase() &&
+      [data.profile.nickname, data.profile.full_name]
+        .filter((name): name is string => Boolean(name?.trim()))
+        .some((name) => candidate.person_in_charge?.trim().toLowerCase() === name.trim().toLowerCase()))
+  );
   const offers = data.offers.filter((row) => row.candidate_id === candidate.candidate_id);
   const references = data.candidate_references.filter((row) => row.candidate_id === candidate.candidate_id);
   const referenceChecks = new Map(data.candidate_reference_checks.map((row) => [row.reference_id, row]));
@@ -3326,10 +3362,12 @@ function buildDetailBodyV2(
                       <Tag tone="warning">{translate(language, "awaitingOutcome")}</Tag>
                     </div>
                     <p className="mt-1 break-words text-sm font-medium text-slate">{translate(language, "pendingDetails")}: {formatDate(record.pending.openedDate, language)} / {record.pending.interviewer ?? translate(language, "noInterviewer")}</p>
+                    {record.pending.estimatedActionDate ? <p className="mt-1 break-words text-sm font-semibold text-primary">{translate(language, "estimatedDateValue", { date: formatDate(record.pending.estimatedActionDate, language) })}</p> : null}
                     {record.pending.remark ? <p className="mt-1 break-words text-sm text-slate">{record.pending.remark}</p> : null}
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       {record.pending.editedAt ? <Tag tone="muted">{translate(language, "edited")}</Tag> : null}
                       {record.origin === "migration" ? <Tag tone="muted">{translate(language, "migrated")}</Tag> : null}
+                      {canEditCurrentPending ? <Button type="button" size="sm" variant="secondary" onClick={() => onEditPending(candidate)}>{translate(language, "edit")}</Button> : null}
                       <a className="text-xs font-semibold text-primary underline" href={`/audit?entity=recruitment_logs&entityId=${record.logId}`}>{translate(language, "viewAudit")}</a>
                     </div>
                     {record.migrationNote ? <p className="mt-2 break-words text-xs font-medium text-slate">{record.migrationNote}</p> : null}
@@ -3343,6 +3381,7 @@ function buildDetailBodyV2(
                   <div key={record.stageInstanceId} className="min-w-0 rounded-md border border-[#D7DEE8] bg-white p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-navy">{processLabel(record.stage, language)} / {translate(language, "round")} {record.round}</strong><Tag tone={record.outcome?.result === "pass" ? "success" : "danger"}>{record.outcome?.result === "pass" ? resultText(1, language) : resultText(0, language)}</Tag></div>
                     <p className="mt-1 text-sm font-medium text-slate">{translate(language, "pendingDetails")}: {formatDate(record.pending.openedDate, language)} / {record.pending.interviewer ?? translate(language, "noInterviewer")}</p>
+                    {record.pending.estimatedActionDate ? <p className="mt-1 text-sm font-semibold text-primary">{translate(language, "estimatedDateValue", { date: formatDate(record.pending.estimatedActionDate, language) })}</p> : null}
                     <p className="mt-1 text-sm font-medium text-slate">{translate(language, "outcome")}: {formatDate(record.outcome?.date, language)} / {record.outcome?.interviewer ?? translate(language, "noInterviewer")}</p>
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       {record.pending.editedAt ? <Tag tone="muted">{translate(language, "edited")}</Tag> : null}
@@ -3354,7 +3393,19 @@ function buildDetailBodyV2(
                 ))}
               </div>
             </div>
-            <DetailList title={translate(language, "offers")} rows={offers.map((row) => `${row.doc_id} / ${translate(language, "acceptedLower")} ${formatDate(row.accepted_date, language)} / ${translate(language, "startLower")} ${formatDate(row.first_working_date, language)}`)} />
+            <div>
+              <h4 className="mb-2 font-semibold text-navy">{translate(language, "offers")}</h4>
+              <div className="grid gap-2">
+                {offers.length === 0 ? <p className="text-sm font-medium text-slate">{translate(language, "noData")}</p> : offers.map((offer) => (
+                  <div key={offer.offer_id} className="rounded-md border border-[#D7DEE8] bg-white p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-navy">{offer.doc_id}</strong>{canEditOffers ? <Button type="button" size="sm" variant="secondary" onClick={() => onEditOffer(offer)}>{translate(language, "edit")}</Button> : null}</div>
+                    <p className="mt-1 text-sm font-medium text-slate">{translate(language, "acceptedLower")}: {formatDate(offer.accepted_date, language)}</p>
+                    <p className="mt-1 text-sm font-medium text-slate">{translate(language, "startLower")}: {formatDate(offer.first_working_date, language)}</p>
+                    {offer.remark ? <p className="mt-1 break-words text-sm text-slate">{offer.remark}</p> : null}
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </DetailDisclosure>
         {candidate.candidate_folder_url ? (
