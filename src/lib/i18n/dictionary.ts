@@ -905,6 +905,19 @@ Object.assign(th, {
 });
 
 Object.assign(en, {
+  pipelineView: "Pipeline view", boardView: "Board", tableView: "Table", pipelineState: "Pipeline state",
+  pipelineStateawaiting: "Awaiting outcome", pipelineStatepassed: "Passed", pipelineStatefailed: "Failed",
+  pipelineStateno_activity: "No activity", pipelineStateoffer_complete: "Offer complete",
+  lastTouchFrom: "Last touch from", lastTouchTo: "Last touch to"
+});
+Object.assign(th, {
+  pipelineView: "มุมมอง Pipeline", boardView: "บอร์ด", tableView: "ตาราง", pipelineState: "สถานะ Pipeline",
+  pipelineStateawaiting: "รอผล", pipelineStatepassed: "ผ่าน", pipelineStatefailed: "ไม่ผ่าน",
+  pipelineStateno_activity: "ยังไม่มีความเคลื่อนไหว", pipelineStateoffer_complete: "Offer เสร็จสิ้น",
+  lastTouchFrom: "อัปเดตล่าสุดตั้งแต่", lastTouchTo: "อัปเดตล่าสุดถึง"
+});
+
+Object.assign(en, {
   createAndMatchGroup: "Create & Match Group",
   peerGroupReadOnly: "Read-only — assigned to {owners}"
 });

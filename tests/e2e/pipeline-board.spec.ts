@@ -94,6 +94,29 @@ test("pipeline search, grouping, and board filters narrow by pipeline context", 
   await expect(page.getByText("Nora No Activity")).toHaveCount(0);
 });
 
+test("pipeline table keeps complete records sortable, filterable, and action-ready", async ({ page }) => {
+  await installMockSupabase(page, { role: "admin_recruiter" });
+  await page.goto("/pipeline");
+  await expectWorkspaceReady(page);
+
+  await page.getByRole("button", { name: "Table", exact: true }).click();
+  await expect(page.getByRole("table")).toBeVisible();
+  await expect(page.getByRole("button", { name: /C-FAILED.*Finn Failed/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /C-OFFER-PASS.*Olivia Offer Pass/ })).toBeVisible();
+  await expect(page).toHaveURL(/pipelineView=table/);
+
+  await page.getByRole("button", { name: "Advanced filters" }).click();
+  await page.locator("select").first().selectOption("failed");
+  await expect(page.getByRole("button", { name: /C-FAILED.*Finn Failed/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /C-PHONE.*Pat Phone/ })).toHaveCount(0);
+  await page.getByRole("button", { name: "Clear" }).click();
+
+  const patRow = page.getByRole("row").filter({ hasText: "Pat Phone" });
+  await expect(patRow.getByRole("button", { name: "View candidate detail for Pat Phone" })).toBeVisible();
+  await expect(patRow.getByRole("button", { name: "Change record" })).toBeVisible();
+  await expect(patRow.getByRole("button", { name: "Pass stage" })).toHaveCount(0);
+});
+
 test("passed Offer card without an offer opens offer creation flow", async ({ page }) => {
   await installMockSupabase(page, { role: "admin_recruiter" });
   await page.goto("/pipeline");
@@ -158,6 +181,6 @@ test("pipeline layout avoids page overflow on mobile while board scrolls interna
 
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
-  const board = page.getByLabel("Candidate Pipeline").first();
+  const board = page.locator('div[aria-label="Candidate Pipeline"]').last();
   await expect.poll(async () => board.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
 });

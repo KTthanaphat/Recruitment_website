@@ -107,6 +107,12 @@ Pipeline writes are v2-only. `app_start_pipeline_stage_v2` starts a no-activity 
 
 ## Recruiter interaction
 
+### Pipeline Table view
+
+- `/pipeline` keeps Board as its default view and offers a complete Table register for active, no-activity, failed, and Offer-complete candidates.
+- Table search, sortable columns, per-column advanced filters, Pipeline state, and Last-touch date range are URL-shareable. Desktop uses the shared scrollable table; mobile uses compact record cards.
+- System Admin and Admin Recruiter can open the existing stage actions from eligible rows. Site Recruiters retain Site/PIC-only write scope; Viewers and terminal rows are read-only. Table controls never write inline or bypass the existing v2 RPC/audit flow.
+
 Current Pending card menu order:
 
 1. `Pass stage`
