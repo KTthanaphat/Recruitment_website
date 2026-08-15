@@ -92,6 +92,7 @@ type ModalName =
   | "reference_check"
   | "pipeline_start"
   | "pending_edit"
+  | "pipeline_record_correction"
   | "stage_outcome"
   | "pipeline_pass"
   | "offer"
@@ -135,6 +136,10 @@ type ProcessDefaults = {
   pending_log_date?: string;
   pending_interviewer?: string | null;
   pending_remark?: string | null;
+  outcome_date?: string | null;
+  outcome_interviewer?: string | null;
+  outcome_remark?: string | null;
+  outcome_result?: string | null;
   reference_id?: string;
   reference_expected_updated_at?: string;
   reference_check_expected_updated_at?: string;
@@ -230,6 +235,7 @@ const rpcByModal: Record<Exclude<ModalName, null | "user">, string> = {
   reference_check: "app_save_candidate_reference_check_v1",
   pipeline_start: "app_start_pipeline_stage_v2",
   pending_edit: "app_update_pipeline_pending_v2",
+  pipeline_record_correction: "app_correct_pipeline_stage_record_v3",
   stage_outcome: "app_complete_pipeline_stage_v2",
   pipeline_pass: "app_pass_pipeline_jump_v2",
   offer: "app_upsert_offer",
@@ -579,6 +585,25 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     }
     setProcessDefaults({ candidate_id: candidate.candidate_id, recruitment_process: active.stage, round: active.round, pending_log_id: active.pendingLogId, stage_instance_id: active.stageInstanceId, expected_updated_at: active.updatedAt, pending_log_date: pending.log_date, pending_interviewer: pending.interviewer, pending_remark: pending.remark });
     setActiveModal("pending_edit");
+  }
+
+  function openPipelineRecordCorrection(candidate: EnrichedCandidate, log: RecruitmentLog) {
+    if (!data.profile || !["system_admin", "admin_recruiter"].includes(data.profile.role)) return;
+    setProcessDefaults({
+      candidate_id: candidate.candidate_id,
+      recruitment_process: log.recruitment_process,
+      round: log.round,
+      stage_instance_id: log.stage_instance_id ?? String(log.log_id),
+      expected_updated_at: log.updated_at ?? log.created_at,
+      pending_log_date: log.log_date,
+      pending_interviewer: log.interviewer,
+      pending_remark: log.remark,
+      outcome_result: log.result === null ? null : log.result === 1 ? "pass" : "fail",
+      outcome_date: log.outcome_date,
+      outcome_interviewer: log.outcome_interviewer,
+      outcome_remark: log.outcome_remark
+    });
+    setActiveModal("pipeline_record_correction");
   }
 
   function openStageOutcome(candidate: EnrichedCandidate, outcome: "pass" | "fail") {
@@ -1142,7 +1167,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       ) : null}
 
       {initialView === "pipeline" ? (
-        <PipelineBoardView language={language} rows={filteredCandidates} recruitmentLogs={data.recruitment_logs} candidateReferences={data.candidate_references} candidateReferenceChecks={data.candidate_reference_checks} profile={data.profile} dataQualityIssues={dataQualityIssues} canWrite={canWrite} offeredCandidateIds={offeredCandidateIds} onNewCandidate={() => setActiveModal("candidate")} onOpen={(id) => setDetail({ type: "candidate", id })} onMove={openProcessForMove} onFailCurrentStage={(candidate) => openStageOutcome(candidate, "fail")} onMaintainTest={openMaintainTest} onStartProcess={openInitialProcessUpdate} onEditPending={openPendingEdit} onPassStage={(candidate) => openStageOutcome(candidate, "pass")} onManageReferenceChecks={(candidate) => setDetail({ type: "candidate", id: candidate.candidate_id })} onCreateOffer={(candidate) => dispatchWorkspaceAction({ kind: "offer.upsert", candidateId: candidate.candidate_id })} onUpdateOffer={openOfferUpdate} onEditCandidate={openDetailCandidateChange} />
+        <PipelineBoardView language={language} rows={filteredCandidates} recruitmentLogs={data.recruitment_logs} recruitmentLogHistory={data.recruitment_log_history} candidateReferences={data.candidate_references} candidateReferenceChecks={data.candidate_reference_checks} profile={data.profile} dataQualityIssues={dataQualityIssues} canWrite={canWrite} offeredCandidateIds={offeredCandidateIds} onNewCandidate={() => setActiveModal("candidate")} onOpen={(id) => setDetail({ type: "candidate", id })} onMove={openProcessForMove} onFailCurrentStage={(candidate) => openStageOutcome(candidate, "fail")} onMaintainTest={openMaintainTest} onStartProcess={openInitialProcessUpdate} onEditPending={openPendingEdit} onPassStage={(candidate) => openStageOutcome(candidate, "pass")} onManageReferenceChecks={(candidate) => setDetail({ type: "candidate", id: candidate.candidate_id })} onCreateOffer={(candidate) => dispatchWorkspaceAction({ kind: "offer.upsert", candidateId: candidate.candidate_id })} onUpdateOffer={openOfferUpdate} onEditCandidate={openDetailCandidateChange} onCorrectPipelineRecord={openPipelineRecordCorrection} />
       ) : null}
 
       {initialView === "offers" ? <OffersView language={language} rows={filteredOffers} allOffers={data.offers} requisitions={filteredRequisitions} profile={data.profile} canWrite={canWrite} onNew={() => setActiveModal("offer")} onOpenCandidate={(id) => setDetail({ type: "candidate", id })} /> : null}
@@ -1468,6 +1493,20 @@ function buildPayload(modal: Exclude<ModalName, null>, formData: FormData) {
     return payload;
   }
 
+  if (modal === "pipeline_record_correction") {
+    const outcomeResult = emptyToNull(formData.get("outcome_result"));
+    const payload = {
+      candidate_id: emptyToNull(formData.get("candidate_id")),
+      stage_instance_id: emptyToNull(formData.get("stage_instance_id")),
+      expected_updated_at: emptyToNull(formData.get("expected_updated_at")),
+      pending: { opened_date: emptyToNull(formData.get("opened_date")), interviewer: emptyToNull(formData.get("interviewer")), remark: emptyToNull(formData.get("remark")) },
+      outcome: outcomeResult ? { result: outcomeResult, date: emptyToNull(formData.get("outcome_date")), interviewer: emptyToNull(formData.get("outcome_interviewer")), remark: emptyToNull(formData.get("outcome_remark")) } : undefined
+    };
+    requireFields(payload, ["candidate_id", "stage_instance_id", "expected_updated_at"]);
+    if (!payload.pending.opened_date || (outcomeResult && !payload.outcome?.date)) throw new Error("Pending and completed outcome dates are required.");
+    return payload;
+  }
+
   if (modal === "group_match") {
     const channelPayload = Object.fromEntries(
       SOURCING_CHANNELS.map((channel) => [channel.enabled, boolFromForm(formData.get(channel.enabled))])
@@ -1701,6 +1740,7 @@ function RecordModal({
         {modal === "reference_check" ? <CandidateReferenceCheckFields defaults={processDefaults} language={language} /> : null}
         {modal === "pipeline_start" ? <PipelineStartFields defaults={processDefaults} language={language} /> : null}
         {modal === "pending_edit" ? <PendingEditFields defaults={processDefaults} language={language} /> : null}
+        {modal === "pipeline_record_correction" ? <PipelineRecordCorrectionFields defaults={processDefaults} language={language} /> : null}
         {modal === "stage_outcome" ? <StageOutcomeFields defaults={processDefaults} language={language} /> : null}
         {modal === "pipeline_pass" ? <PipelinePassFields data={data} defaults={processDefaults} language={language} /> : null}
         {modal === "offer" ? <OfferPrefillFields data={data} language={language} mode={mode} selectedId={selectedId} selected={selectedRecords.offer} defaults={modalDefaults} onSelect={setSelectedId} /> : null}
@@ -2806,6 +2846,28 @@ function isAcceptedThisCalendarMonth(value: string | null | undefined) {
   return acceptedDate >= monthStart && acceptedDate <= today;
 }
 
+function PipelineRecordCorrectionFields({ defaults, language }: { defaults: ProcessDefaults; language: Language }) {
+  const completed = Boolean(defaults.outcome_result);
+  return <div className="grid gap-4 md:grid-cols-2">
+    <input type="hidden" name="candidate_id" value={defaults.candidate_id ?? ""} />
+    <input type="hidden" name="stage_instance_id" value={defaults.stage_instance_id ?? ""} />
+    <input type="hidden" name="expected_updated_at" value={defaults.expected_updated_at ?? ""} />
+    <Field label={translate(language, "process")}><TextInput value={processLabel(defaults.recruitment_process as ProcessStage, language)} readOnly /></Field>
+    <Field label={translate(language, "round")}><TextInput value={defaults.round ?? 1} readOnly /></Field>
+    <div className="border-b border-[#D7DEE8] pb-2 text-sm font-semibold text-navy md:col-span-2">{translate(language, "pendingDetails")}</div>
+    <Field label="Pending date"><TextInput autoFocus name="opened_date" type="date" defaultValue={defaults.pending_log_date ?? today()} required /></Field>
+    <Field label={translate(language, "interviewer")}><TextInput name="interviewer" list="interviewer-options" defaultValue={defaults.pending_interviewer ?? ""} /></Field>
+    <Field label={translate(language, "remark")} className="md:col-span-2"><TextArea name="remark" rows={3} defaultValue={defaults.pending_remark ?? ""} /></Field>
+    {completed ? <>
+      <div className="border-b border-[#D7DEE8] pb-2 text-sm font-semibold text-navy md:col-span-2">{translate(language, "outcome")}</div>
+      <Field label={translate(language, "result")}><SelectInput name="outcome_result" defaultValue={defaults.outcome_result ?? ""}><option value="pass">{resultText(1, language)}</option><option value="fail">{resultText(0, language)}</option></SelectInput></Field>
+      <Field label={translate(language, "outcomeDate")}><TextInput name="outcome_date" type="date" defaultValue={defaults.outcome_date ?? today()} required /></Field>
+      <Field label={translate(language, "interviewer")}><TextInput name="outcome_interviewer" list="interviewer-options" defaultValue={defaults.outcome_interviewer ?? ""} /></Field>
+      <Field label={translate(language, "remark")} className="md:col-span-2"><TextArea name="outcome_remark" rows={3} defaultValue={defaults.outcome_remark ?? ""} /></Field>
+    </> : null}
+  </div>;
+}
+
 function CreateAndMatchGroupFields({ data, defaults, language, profile }: { data: DashboardData; defaults: ModalDefaults; language: Language; profile: DashboardData["profile"] }) {
   const nickname = profile?.nickname ?? profile?.full_name ?? "";
   const site = profile?.site ?? "";
@@ -3571,6 +3633,7 @@ function modalTitle(modal: ModalName) {
     reference_check: "Reference check",
     pipeline_start: "Start Phone Screen",
     pending_edit: "Edit Pending Details",
+    pipeline_record_correction: "Edit Pipeline Record",
     stage_outcome: "Complete Stage",
     pipeline_pass: "Confirm Passed Stages",
     offer: "Offer",

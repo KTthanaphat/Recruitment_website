@@ -110,6 +110,7 @@ Pipeline writes are v2-only. `app_start_pipeline_stage_v2` starts a no-activity 
 ### Pipeline Table view
 
 - `/pipeline` keeps Board as its default view and offers a complete Table register for active, no-activity, failed, and Offer-complete candidates.
+- The Table is a record register: every canonical stage/round is a row. Admin roles may open an audited correction modal for pending/outcome detail and dates; stage/round remain fixed and superseded rows are audit-filter only.
 - Table search, sortable columns, per-column advanced filters, Pipeline state, and Last-touch date range are URL-shareable. Desktop uses the shared scrollable table; mobile uses compact record cards.
 - System Admin and Admin Recruiter can open the existing stage actions from eligible rows. Site Recruiters retain Site/PIC-only write scope; Viewers and terminal rows are read-only. Table controls never write inline or bypass the existing v2 RPC/audit flow.
 

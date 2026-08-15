@@ -274,4 +274,19 @@ select pg_temp.assert_true(
   'ineligible Offer Pass must roll back and leave Offer Pending'
 );
 
+select pg_temp.assert_true(
+  (public.app_correct_pipeline_stage_record_v3(jsonb_build_object(
+    'candidate_id', '__paired_pipeline_offer_candidate',
+    'stage_instance_id', (select stage_instance_id from public.recruitment_logs where candidate_id = '__paired_pipeline_offer_candidate' and superseded_at is null),
+    'expected_updated_at', (select updated_at from public.recruitment_logs where candidate_id = '__paired_pipeline_offer_candidate' and superseded_at is null),
+    'pending', jsonb_build_object('opened_date', (app_private.pipeline_business_date() - 2)::text, 'interviewer', 'Corrected admin', 'remark', 'Audited correction')
+  )) ->> 'ok')::boolean,
+  'admin record correction succeeds for canonical Pending history'
+);
+select pg_temp.assert_true(
+  (select count(*) = 2 and count(*) filter (where superseded_at is not null) = 1
+   from public.recruitment_logs where candidate_id = '__paired_pipeline_offer_candidate'),
+  'record correction supersedes rather than overwriting the source record'
+);
+
 rollback;

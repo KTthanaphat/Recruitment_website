@@ -267,6 +267,8 @@ export type DashboardData = {
   candidate_references: CandidateReference[];
   candidate_reference_checks: CandidateReferenceCheck[];
   recruitment_logs: RecruitmentLog[];
+  /** Includes superseded rows for the Pipeline Table audit-history filter. */
+  recruitment_log_history: RecruitmentLog[];
   offers: Offer[];
   sourcing_weekly_updates: SourcingWeeklyUpdate[];
   vacancy_weekly_snapshots: VacancyWeeklySnapshot[];

@@ -910,12 +910,14 @@ Object.assign(en, {
   pipelineStateno_activity: "No activity", pipelineStateoffer_complete: "Offer complete",
   lastTouchFrom: "Last touch from", lastTouchTo: "Last touch to"
 });
+Object.assign(en, { showAuditHistory: "Show audit history", editPipelineRecord: "Edit pipeline record" });
 Object.assign(th, {
   pipelineView: "มุมมอง Pipeline", boardView: "บอร์ด", tableView: "ตาราง", pipelineState: "สถานะ Pipeline",
   pipelineStateawaiting: "รอผล", pipelineStatepassed: "ผ่าน", pipelineStatefailed: "ไม่ผ่าน",
   pipelineStateno_activity: "ยังไม่มีความเคลื่อนไหว", pipelineStateoffer_complete: "Offer เสร็จสิ้น",
   lastTouchFrom: "อัปเดตล่าสุดตั้งแต่", lastTouchTo: "อัปเดตล่าสุดถึง"
 });
+Object.assign(th, { showAuditHistory: "แสดงประวัติการแก้ไข", editPipelineRecord: "แก้ไขรายการ Pipeline" });
 
 Object.assign(en, {
   createAndMatchGroup: "Create & Match Group",

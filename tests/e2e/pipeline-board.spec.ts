@@ -94,27 +94,28 @@ test("pipeline search, grouping, and board filters narrow by pipeline context", 
   await expect(page.getByText("Nora No Activity")).toHaveCount(0);
 });
 
-test("pipeline table keeps complete records sortable, filterable, and action-ready", async ({ page }) => {
+test("pipeline table shows every stage record and opens the admin correction modal", async ({ page }) => {
   await installMockSupabase(page, { role: "admin_recruiter" });
   await page.goto("/pipeline");
   await expectWorkspaceReady(page);
 
   await page.getByRole("button", { name: "Table", exact: true }).click();
   await expect(page.getByRole("table")).toBeVisible();
-  await expect(page.getByRole("button", { name: /C-FAILED.*Finn Failed/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /C-OFFER-PASS.*Olivia Offer Pass/ })).toBeVisible();
+  await expect(page.getByRole("row").filter({ hasText: "Finn Failed" }).first()).toBeVisible();
+  await expect(page.getByRole("row").filter({ hasText: "Olivia Offer Pass" }).first()).toBeVisible();
   await expect(page).toHaveURL(/pipelineView=table/);
 
   await page.getByRole("button", { name: "Advanced filters" }).click();
-  await page.locator("select").first().selectOption("failed");
-  await expect(page.getByRole("button", { name: /C-FAILED.*Finn Failed/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /C-PHONE.*Pat Phone/ })).toHaveCount(0);
+  await page.getByRole("checkbox", { name: "Show audit history" }).check();
+  await expect(page).toHaveURL(/pipeAudit=1/);
   await page.getByRole("button", { name: "Clear" }).click();
 
   const patRow = page.getByRole("row").filter({ hasText: "Pat Phone" });
   await expect(patRow.getByRole("button", { name: "View candidate detail for Pat Phone" })).toBeVisible();
-  await expect(patRow.getByRole("button", { name: "Change record" })).toBeVisible();
+  await expect(patRow.getByRole("button", { name: "Edit pipeline record" })).toBeVisible();
   await expect(patRow.getByRole("button", { name: "Pass stage" })).toHaveCount(0);
+  await patRow.getByRole("button", { name: "Edit pipeline record" }).click();
+  await expect(page.getByRole("dialog", { name: "Edit Pipeline Record" })).toBeVisible();
 });
 
 test("passed Offer card without an offer opens offer creation flow", async ({ page }) => {

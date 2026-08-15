@@ -424,7 +424,7 @@ Shared UI behavior:
 - Desktop sidebar can collapse to an icon-only `72px` rail with persisted `localStorage` preference; expanded width remains about `248px`.
 - Accessible StageRail semantics.
 - Keyboard-accessible pipeline stage update actions.
-- Pipeline defaults to Board and also provides a complete sortable Table register. The table persists its view/search/filter/sort/page state in the URL; its advanced filters include per-column values, Pipeline state, and Last-touch date range. Current-stage actions reuse existing Pipeline modals and role guards; there is no inline editing.
+- Pipeline defaults to Board and its Table is a sortable record register with one row per canonical candidate stage/round. It persists view/search/filter/sort/page state in the URL and can reveal superseded correction history separately. System Admins and Admin Recruiters use an audited modal to correct pending/outcome detail and dates; stage/round stay fixed, chronology violations are rejected, and Site Recruiters/Viewers remain read-only.
 - URL query params for shareable site, person in charge, language, and Dashboard date/detail state.
 - Use the local `internal-ops-ui` skill for future internal-tool UX/UI polish. Keep `gpt-taste` for marketing or Awwwards-style pages, not recruitment operations screens.
 
