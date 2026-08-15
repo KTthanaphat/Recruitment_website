@@ -81,6 +81,7 @@ export function PipelineBoardView({
   const [pipelineSearch, setPipelineSearch] = useState("");
   const [filterOpen, setFilterOpen] = useState(false);
   const [focusedCandidateId, setFocusedCandidateId] = useState<string | null>(null);
+  const [pipelineView, setPipelineView] = useState<PipelineView>("board");
   const filterTriggerRef = useRef<HTMLButtonElement>(null);
   const filterSearchRef = useRef<HTMLInputElement>(null);
   const activeFilterCount = Number(Boolean(pipelineSearch.trim())) + Number(boardFilter !== "all");
