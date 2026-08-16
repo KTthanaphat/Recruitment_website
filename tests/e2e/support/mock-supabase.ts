@@ -246,6 +246,15 @@ function applyRpcMutation(data: DashboardData, endpoint: string, payload: Record
         : !(match.doc_id === docId && match.group_id === groupId)
     ));
   }
+  if (endpoint === "app_confirm_offer_start_v1") {
+    const current = data.offers.find((row) => row.offer_id === Number(payload.offer_id));
+    if (!current) return;
+    current.start_confirmation = String(payload.start_confirmation) as "started" | "did_not_start";
+    current.start_confirmation_reason = current.start_confirmation === "did_not_start" ? nullableText(payload.reason) : null;
+    current.start_confirmed_at = "2026-07-24T05:00:00.000Z";
+    current.start_confirmed_by = "qa-admin";
+    current.updated_at = "2026-07-24T05:00:00.000Z";
+  }
   if (endpoint === "app_delete_recruitment_record") {
     const entity = String(payload.entity ?? "");
     const id = String(payload.id ?? "");
@@ -619,6 +628,10 @@ function offer(offerId: number, candidateId: string, docId: string, acceptedDate
     doc_id: docId,
     accepted_date: acceptedDate,
     first_working_date: firstWorkingDate,
+    start_confirmation: null,
+    start_confirmed_at: null,
+    start_confirmed_by: null,
+    start_confirmation_reason: null,
     remark: null,
     created_at: "2026-07-01T00:00:00",
     updated_at: "2026-07-01T00:00:00"

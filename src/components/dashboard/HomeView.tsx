@@ -13,13 +13,13 @@ import { Tag } from "@/components/ui/Tag";
 import { DataQualityIssueCard } from "@/components/ui/Workflow";
 import { ACTIVE_PIPELINE_STAGES, processLabel } from "@/lib/constants";
 import { dailyWelcomeMessage } from "@/lib/daily-messages";
-import { formatCandidateName, formatDateTime, formatNumber, formatRequisitionTitle, statusTone, toTitle } from "@/lib/format";
-import { actionToneLabel, translate } from "@/lib/i18n/dictionary";
+import { formatCandidateName, formatDateTime, formatNumber, formatRequisitionTitle } from "@/lib/format";
+import { translate } from "@/lib/i18n/dictionary";
 import { deriveWorkQueue, isCandidateAging, type DataQualityIssue } from "@/lib/operations";
 import { getRequisitionSlaState } from "@/lib/sla";
 import type { ChangeLog, EnrichedCandidate, EnrichedOffer, EnrichedRequisition, EnrichedSourcingGroup, Language, Profile, RecruitmentLog } from "@/types/recruitment";
 
-type HomeTabKey = "open_headcount" | "candidate_pipeline" | "sourcing_updates" | "data_quality" | "recent_activity";
+type HomeTabKey = "open_headcount" | "candidate_pipeline" | "sourcing_updates" | "data_quality" | "start_confirmation";
 
 type HomeTab = {
   key: HomeTabKey;
@@ -41,6 +41,7 @@ export function HomeView({
   changeLogs,
   dataQualityIssues,
   canViewRecentActivity,
+  onConfirmStart,
   onEditPending,
   onOpenRequisition,
   onOpenCandidate
@@ -55,6 +56,7 @@ export function HomeView({
   changeLogs: ChangeLog[];
   dataQualityIssues: DataQualityIssue[];
   canViewRecentActivity: boolean;
+  onConfirmStart: (offer: EnrichedOffer) => void;
   onEditPending?: (candidate: EnrichedCandidate) => void;
   onOpenRequisition: (docId: string) => void;
   onOpenCandidate: (candidateId: string) => void;
@@ -89,6 +91,9 @@ export function HomeView({
   const todayMonthParts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit" }).formatToParts(new Date());
   const todayMonth = `${todayMonthParts.find((part) => part.type === "year")?.value ?? ""}-${todayMonthParts.find((part) => part.type === "month")?.value ?? ""}`;
   const monthlyFilledCount = offers.filter((offer) => offer.accepted_date?.startsWith(todayMonth)).length;
+  const todayParts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+  const today = `${todayParts.find((part) => part.type === "year")?.value ?? ""}-${todayParts.find((part) => part.type === "month")?.value ?? ""}-${todayParts.find((part) => part.type === "day")?.value ?? ""}`;
+  const startConfirmations = offers.filter((offer) => Boolean(offer.accepted_date) && Boolean(offer.first_working_date) && offer.first_working_date! <= today && offer.start_confirmation === null);
   const welcomeDailyMessage = dailyWelcomeMessage({
     language,
     ratio: monthlyFillCapacity > 0 ? monthlyFilledCount / monthlyFillCapacity : 0,
@@ -100,7 +105,7 @@ export function HomeView({
     { key: "candidate_pipeline", label: translate(language, "candidatePipeline"), count: ongoingCandidates.length },
     { key: "sourcing_updates", label: translate(language, "SourcingUpdates"), count: staleSourcingGroups.length },
     { key: "data_quality", label: translate(language, "dataQuality"), count: dataQualityIssues.length },
-    ...(canViewRecentActivity ? [{ key: "recent_activity" as const, label: translate(language, "recentActivity"), count: changeLogs.length }] : [])
+    ...(canViewRecentActivity ? [{ key: "start_confirmation" as const, label: "New Hire Confirmation", count: startConfirmations.length }] : [])
   ];
 
   return (
@@ -187,6 +192,8 @@ export function HomeView({
         onOpenCandidate={onOpenCandidate}
         onOpenRequisition={onOpenRequisition}
         staleSourcingGroups={staleSourcingGroups}
+        startConfirmations={startConfirmations}
+        onConfirmStart={onConfirmStart}
         tabs={tabs}
       />
     </div>
@@ -202,6 +209,8 @@ function HomeRecordTabs({
   onOpenCandidate,
   onOpenRequisition,
   staleSourcingGroups,
+  startConfirmations,
+  onConfirmStart,
   tabs
 }: {
   changeLogs: ChangeLog[];
@@ -212,6 +221,8 @@ function HomeRecordTabs({
   onOpenCandidate: (candidateId: string) => void;
   onOpenRequisition: (docId: string) => void;
   staleSourcingGroups: EnrichedSourcingGroup[];
+  startConfirmations: EnrichedOffer[];
+  onConfirmStart: (offer: EnrichedOffer) => void;
   tabs: HomeTab[];
 }) {
   const [activeTab, setActiveTab] = useState<HomeTabKey>("open_headcount");
@@ -295,8 +306,8 @@ function HomeRecordTabs({
         {selectedTab.key === "data_quality" ? (
           dataQualityIssues.length === 0 ? <TabEmptyState message={translate(language, "noDataQualityIssues")} /> : dataQualityIssues.map((issue) => <DataQualityIssueCard key={issue.id} issue={issue} language={language} />)
         ) : null}
-        {selectedTab.key === "recent_activity" ? (
-          changeLogs.length === 0 ? <TabEmptyState message={translate(language, "noRecentActivity")} /> : changeLogs.map((log) => <RecentActivityCard key={log.log_id} language={language} log={log} />)
+        {selectedTab.key === "start_confirmation" ? (
+          startConfirmations.length === 0 ? <TabEmptyState message="No new-hire confirmations are due." /> : startConfirmations.map((offer) => <StartConfirmationCard key={offer.offer_id} language={language} offer={offer} onConfirm={() => onConfirmStart(offer)} />)
         ) : null}
       </div>
     </Panel>
@@ -385,14 +396,16 @@ function SourcingUpdateCard({ group, language }: { group: EnrichedSourcingGroup;
   );
 }
 
-function RecentActivityCard({ language, log }: { language: Language; log: ChangeLog }) {
+function StartConfirmationCard({ language, offer, onConfirm }: { language: Language; offer: EnrichedOffer; onConfirm: () => void }) {
   return (
-    <article className="ats-card-subtle p-3">
+    <article className="ats-card-subtle grid gap-2 p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <strong className="text-sm text-navy">{toTitle(log.entity)} - {log.entity_id}</strong>
-        <Tag tone={statusTone(log.action) as never}>{actionToneLabel(language, log.action)}</Tag>
+        <strong className="text-sm text-navy">{offer.candidate_name ?? offer.candidate_id}</strong>
+        <Tag tone="warning">Due</Tag>
       </div>
-      <p className="mt-1 text-sm font-medium text-slate">{log.changed_by_email ?? translate(language, "system")} - {formatDateTime(log.changed_at)}</p>
+      <p className="text-sm font-medium text-slate">{formatRequisitionTitle(offer)} · {offer.doc_id}</p>
+      <p className="text-xs font-medium text-cool">First working date: {offer.first_working_date}</p>
+      <button type="button" className="justify-self-start rounded-md bg-primary px-3 py-2 text-sm font-semibold text-white focus:outline-none focus:ring-2 focus:ring-primary/25" onClick={onConfirm}>Confirm start</button>
     </article>
   );
 }

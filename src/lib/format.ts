@@ -13,6 +13,15 @@ export function formatRequisitionTitle(requisition: RequisitionTitleFields) {
   return levelMatch ? `${position} (L${levelMatch[1]})` : position;
 }
 
+/** Compact card title: retain the full value for tables and details, but protect mobile card height. */
+export function formatRequisitionCardTitle(requisition: RequisitionTitleFields, maxLength = 30) {
+  const position = requisition.position?.trim() || "-";
+  if (position.length <= maxLength) return formatRequisitionTitle(requisition);
+  const rawLevel = requisition.level?.trim() ?? "";
+  const levelMatch = rawLevel.match(/^L?(0|[1-9]|1[0-4])$/i);
+  return `${position.slice(0, maxLength).trimEnd()}...${levelMatch ? ` (L${levelMatch[1]})` : ""}`;
+}
+
 export function formatRequisitionOptionLabel(requisition: RequisitionOptionFields) {
   return `${formatRequisitionTitle(requisition)} — ${requisition.doc_id}`;
 }

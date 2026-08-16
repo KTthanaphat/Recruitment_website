@@ -1,20 +1,17 @@
-import { AlertTriangle, ArrowDown, ArrowDownUp, ArrowUp, Link2, Plus, Save, SlidersHorizontal, Trash2, Unlink } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { ArrowDown, ArrowDownUp, ArrowUp, CalendarPlus, Clock3, Pencil, Settings2, SlidersHorizontal } from "lucide-react";
+import { FormEvent, useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, TextInput } from "@/components/ui/Field";
-import { CommandSelector } from "@/components/ui/CommandSelector";
-import { OperationalSummaryStrip, RecordActionGroup } from "@/components/ui/Operations";
+import { Modal } from "@/components/ui/Modal";
 import { Panel, SectionTitle } from "@/components/ui/Panel";
-import { MobileBottomSheet } from "@/components/ui/MobileBottomSheet";
+import { SortableFilterHeader, TableToolbar, type TableColumn, useTableControls } from "@/components/ui/TableControls";
 import { Tag } from "@/components/ui/Tag";
-import { BulkActionToolbar, BulkReviewModal, DisabledReasonHint, SourcingConversionPanel } from "@/components/ui/Workflow";
 import { SOURCING_CHANNELS } from "@/lib/constants";
-import { enrichSourcingGroups, enrichUnmatchedSourcingGroups } from "@/lib/data";
+import { enrichRequisitions, enrichSourcingGroups } from "@/lib/data";
 import { formatDate } from "@/lib/format";
-import { translate } from "@/lib/i18n/dictionary";
-import { ageDays, bulkActionDisabledReason, deriveSourcingConversionMetrics, sourcingApplicants, sourcingPreviousUpdate, sourcingUpdateDisabledReason, type BulkActionResult } from "@/lib/operations";
-import type { DashboardData, EnrichedSourcingGroup, EnrichedUnmatchedSourcingGroup, Language, Profile } from "@/types/recruitment";
+import { sourcingApplicants } from "@/lib/operations";
+import type { DashboardData, EnrichedSourcingGroup, Language, Profile, SourcingLifecycleRow, SourcingWeeklyUpdate } from "@/types/recruitment";
 
 export type SourcingViewProps = {
   language: Language;
@@ -25,572 +22,158 @@ export type SourcingViewProps = {
   weekStart: string;
   onWeekChange: (value: string) => void;
   onSaveSourcing: (payload: Record<string, unknown>, summary: string) => void;
-  onGroup?: () => void;
-  onCreateAndMatch?: () => void;
-  onMatch?: (defaults?: { doc_id?: string; group_id?: string }) => void;
-  onUnmatch?: (payload: Record<string, unknown>, summary: string) => void;
-  onDeleteRecord?: (payload: Record<string, unknown>, summary: string) => void;
-  canDeleteRecords?: boolean;
-  /** Restricts the editor to groups related to an embedded workspace context. */
+  onUpdateGroupInfo?: (payload: Record<string, unknown>, summary: string) => void;
+  onSetGroupChannel?: (payload: Record<string, unknown>, summary: string) => void;
   groupIds?: readonly string[];
-  /** Fallback scope for workspace contexts where the related group should resolve through selected requisitions. */
   docIds?: readonly string[];
   siteFilter?: string;
   ownerFilter?: string;
-  /** Omits standalone-only URL filtering and bulk actions when rendered in a workspace. */
   embedded?: boolean;
 };
 
+type Surface = "board" | "history";
+
 export function SourcingView({
-  language,
-  data,
-  profile,
-  canWrite,
-  canManageSetup,
-  weekStart,
-  onWeekChange,
-  onSaveSourcing,
-  onGroup,
-  onCreateAndMatch,
-  onMatch,
-  onUnmatch,
-  onDeleteRecord,
-  canDeleteRecords = false,
-  groupIds,
-  docIds,
-  siteFilter = "",
-  ownerFilter = "",
-  embedded = false
+  language, data, profile, canWrite, weekStart, onWeekChange, onSaveSourcing, onUpdateGroupInfo, onSetGroupChannel,
+  groupIds, docIds, siteFilter = "", ownerFilter = "", embedded = false
 }: SourcingViewProps) {
-  const [urlFilters, setUrlFilters] = useState({ sourceSearch: "", reqSearch: "" });
-  const [tableFiltersOpen, setTableFiltersOpen] = useState(false);
-  const [tableFilters, setTableFilters] = useState({ search: "", position: "", updateState: "all", applicantState: "all" });
-  const [tableSort, setTableSort] = useState<{ key: SourcingGroupSortKey | null; direction: "asc" | "desc" | null }>({ key: null, direction: null });
-  const scopedGroups = scopeSourcingGroups(enrichSourcingGroups(data, weekStart), groupIds, docIds);
-  const allGroups = visibleSourcingGroups(scopedGroups, profile);
-  const groups = filterSourcingGroups(allGroups, { ...urlFilters, site: siteFilter, owner: ownerFilter });
-  const filteredTableGroups = filterSourcingGroupTable(groups, tableFilters);
-  const tableGroups = useMemo(() => sortSourcingGroupTable(filteredTableGroups, tableSort), [filteredTableGroups, tableSort]);
-  const tablePositionOptions = Array.from(new Set(groups.map((group) => group.group_position))).sort((a, b) => a.localeCompare(b));
-  const hasTableFilters = Boolean(tableFilters.search || tableFilters.position || tableFilters.updateState !== "all" || tableFilters.applicantState !== "all");
-  const canManageGlobalSetup = profile?.role === "system_admin" || profile?.role === "admin_recruiter";
-  const isSiteRecruiter = profile?.role === "site_recruiter";
-  const unmatchedGroups = !embedded && canManageGlobalSetup ? filterUnmatchedGroups(enrichUnmatchedSourcingGroups(data), urlFilters) : [];
-  const groupScopeKey = groups.map((group) => group.group_id).join("|");
-  const focusedGroupId = urlFilters.sourceSearch || urlFilters.reqSearch ? groups[0]?.group_id ?? null : null;
-  const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
-  const [bulkReviewOpen, setBulkReviewOpen] = useState(false);
-  const [bulkResult, setBulkResult] = useState<BulkActionResult | null>(null);
-  const selectedGroups = groups.filter((group) => selectedGroupIds.includes(group.group_id));
-  const bulkDisabledReason = bulkActionDisabledReason({ entity: "sourcing", ids: selectedGroupIds }, "copy previous sourcing week", profile);
+  const [surface, setSurface] = useState<Surface>("board");
+  const [recordRow, setRecordRow] = useState<SourcingLifecycleRow | null>(null);
+  const [detailGroup, setDetailGroup] = useState<EnrichedSourcingGroup | null>(null);
+  const allGroups = useMemo(() => buildGroups(data, weekStart), [data, weekStart]);
+  const scoped = useMemo(() => allGroups.filter((group) => inScope(group, groupIds, docIds, siteFilter, ownerFilter, profile)), [allGroups, groupIds, docIds, ownerFilter, profile, siteFilter]);
+  const openGroups = scoped.filter((group) => group.open_headcount > 0);
+  const boardRows = useMemo(() => openGroups.map((group) => lifecycleRow(group, weekStart, data)).filter((row): row is SourcingLifecycleRow => Boolean(row)).sort(compareBoardRows), [data, openGroups, weekStart]);
+  const historyRows = useMemo(() => scoped.flatMap((group) => lifecycleRows(group, data)).sort((a, b) => b.week_start.localeCompare(a.week_start) || a.group.group_id.localeCompare(b.group.group_id)), [data, scoped]);
 
-  function toggleTableSort(key: SourcingGroupSortKey) {
-    setTableSort((current) => current.key !== key
-      ? { key, direction: "asc" }
-      : { key, direction: current.direction === "asc" ? "desc" : current.direction === "desc" ? null : "asc" });
-  }
+  if (embedded) return <><EmbeddedWorkEditors rows={boardRows} profile={profile} canWrite={canWrite} onSave={onSaveSourcing} onOpenGroup={setDetailGroup} /><GroupDetailModal group={detailGroup} data={data} selectedWeek={weekStart} profile={profile} onClose={() => setDetailGroup(null)} onUpdateGroupInfo={onUpdateGroupInfo} onSetGroupChannel={onSetGroupChannel} /></>;
 
-  useEffect(() => {
-    if (embedded) return;
-    const params = new URLSearchParams(window.location.search);
-      setUrlFilters({
-        sourceSearch: params.get("sourceSearch") ?? "",
-        reqSearch: params.get("reqSearch") ?? ""
-      });
-  }, [embedded]);
-
-  useEffect(() => {
-    const availableIds = new Set(groupScopeKey.split("|").filter(Boolean));
-    setSelectedGroupIds((current) => {
-      const next = current.filter((id) => availableIds.has(id));
-      return next.length === current.length ? current : next;
-    });
-  }, [groupScopeKey]);
-
-  useEffect(() => {
-    if (!focusedGroupId) return;
-    const group = document.getElementById(`sourcing-group-${focusedGroupId}`);
-    if (!group) return;
-    group.scrollIntoView({ block: "center", behavior: "smooth" });
-    group.focus({ preventScroll: true });
-  }, [focusedGroupId]);
-
-  function saveGroup(event: FormEvent<HTMLFormElement>, group: EnrichedSourcingGroup) {
-    event.preventDefault();
-    const disabledReason = sourcingUpdateDisabledReason(group, profile);
-    if (disabledReason.blocked) return;
-    const formData = new FormData(event.currentTarget);
-    const negativeChannels = SOURCING_CHANNELS.filter((channel) => rawNumericValue(formData.get(channel.count)) < 0);
-    if (negativeChannels.length > 0) {
-      window.alert(`Applicant counts cannot be negative: ${negativeChannels.map((channel) => channel.label).join(", ")}.`);
-      return;
-    }
-    const hasUnusualValue = SOURCING_CHANNELS.some((channel) => numericValue(formData.get(channel.count)) > 1000);
-    if (hasUnusualValue && !window.confirm("One or more applicant counts are above 1,000. Save anyway?")) return;
-    const payload = {
-      group_id: group.group_id,
-      week_start: weekStart,
-      ...Object.fromEntries(SOURCING_CHANNELS.map((channel) => [
-        channel.count,
-        Boolean(group[channel.enabled]) ? numericValue(formData.get(channel.count)) : 0
-      ]))
-    };
-    onSaveSourcing(payload, `sourcing update - ${group.group_id}`);
-  }
-
-  return (
-    <div className="grid gap-4">
-      {(canManageGlobalSetup && (onGroup || onMatch)) || (isSiteRecruiter && onCreateAndMatch) ? (
-        <Panel>
-          <SectionTitle
-            title="Sourcing Setup"
-            eyebrow="Groups and requisition matching"
-            action={
-              <>
-                {canManageGlobalSetup && onGroup ? <Button type="button" size="sm" icon={<Plus size={16} />} onClick={onGroup}>New Group</Button> : null}
-                {canManageGlobalSetup && onMatch ? <Button type="button" size="sm" variant="secondary" icon={<Link2 size={16} />} onClick={() => onMatch()}>{translate(language, "addMatch")}</Button> : null}
-                {isSiteRecruiter && onCreateAndMatch ? <Button type="button" size="sm" icon={<Plus size={16} />} onClick={onCreateAndMatch}>{translate(language, "newGroup")}</Button> : null}
-                {isSiteRecruiter && onMatch ? <Button type="button" size="sm" variant="secondary" icon={<Link2 size={16} />} onClick={() => onMatch()}>{translate(language, "linkGroup")}</Button> : null}
-              </>
-            }
-          />
-        </Panel>
-      ) : null}
-
-      {unmatchedGroups.length > 0 ? (
-        <Panel className="border-[#F3D3A2] bg-[#FFFDF8]">
-          <SectionTitle
-            title={translate(language, "unmatchedSourcingGroups")}
-            eyebrow={translate(language, "setupAttention")}
-          />
-          <p className="mb-3 flex items-start gap-2 text-sm font-medium text-slate" role="status">
-            <AlertTriangle className="mt-0.5 shrink-0 text-orange" size={17} aria-hidden="true" />
-            <span>{translate(language, "unmatchedSourcingGroupsWarning")}</span>
-          </p>
-          <div className="grid gap-2">
-            {unmatchedGroups.map((group) => {
-              const markedChannels = SOURCING_CHANNELS.filter((channel) => group[channel.enabled]);
-              return (
-                <div key={group.group_id} className="grid gap-3 rounded-lg border border-[#F3D3A2] bg-white p-3 sm:grid-cols-[1fr_auto] sm:items-center">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <strong className="text-base text-navy">{group.group_id}</strong>
-                      <Tag tone="warning">{group.group_position}</Tag>
-                    </div>
-                    <p className="mt-1 text-xs font-medium text-cool">
-                      {translate(language, "enabledChannels")}: {markedChannels.length > 0 ? markedChannels.map((channel) => channel.label).join(", ") : translate(language, "none")}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap justify-start gap-2 sm:justify-end">
-                    {onMatch ? (
-                      <Button type="button" size="sm" icon={<Link2 size={16} />} onClick={() => onMatch({ group_id: group.group_id })}>
-                        {translate(language, "matchRequisition")}
-                      </Button>
-                    ) : null}
-                    {canDeleteRecords && onDeleteRecord ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="danger"
-                        icon={<Trash2 size={16} />}
-                        onClick={() => onDeleteRecord({ entity: "position_group", id: group.group_id }, translate(language, "deleteRecordSummary", { entity: translate(language, "sourcingGroup"), id: group.group_id }))}
-                      >
-                        {translate(language, "deleteRecord")}
-                      </Button>
-                    ) : null}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </Panel>
-      ) : null}
-
-      <Panel>
-        <SectionTitle
-          title={embedded ? translate(language, "sourcingCoverage") : translate(language, "weeklySourcingUpdates")}
-          eyebrow={translate(language, "openRequisitionGroups")}
-          action={
-            <Field label={translate(language, "weekStart")}>
-              <TextInput type="date" value={weekStart} onChange={(event) => onWeekChange(event.target.value)} />
-            </Field>
-          }
-        />
-        {!embedded && (urlFilters.sourceSearch || urlFilters.reqSearch || siteFilter || ownerFilter) ? (
-          <p className="mb-3 text-sm font-medium text-slate" role="status">
-            Showing {groups.length} contextual group{groups.length === 1 ? "" : "s"}{urlFilters.sourceSearch ? ` for ${urlFilters.sourceSearch}` : ""}{urlFilters.reqSearch ? ` matching requisition ${urlFilters.reqSearch}` : ""}.
-          </p>
-        ) : null}
-        {groups.length === 0 ? (
-          <EmptyState message={emptySourcingMessage(embedded, { ...urlFilters, site: siteFilter, owner: ownerFilter })} />
-        ) : (
-          <div className="grid gap-3">
-            {groups.map((group) => {
-              const markedChannels = SOURCING_CHANNELS.filter((channel) => group[channel.enabled]);
-              const latestSavedUpdate = latestSourcingUpdateForGroup(data, group.group_id);
-              const groupMatches = data.document_groups
-                .filter((match) => match.group_id === group.group_id && group.doc_ids.includes(match.doc_id))
-                .sort((a, b) => a.doc_id.localeCompare(b.doc_id));
-              const disabledReason = sourcingUpdateDisabledReason(group, profile);
-              const canEditGroup = canWrite && !disabledReason.blocked;
-              const actionableMatches = canManageGlobalSetup
-                ? groupMatches
-                : groupMatches.filter((match) => data.requisitions.find((row) => row.doc_id === match.doc_id)?.person_in_charge === (profile?.nickname ?? profile?.full_name ?? ""));
-              return (
-              <form id={`sourcing-group-${group.group_id}`} key={group.group_id} tabIndex={focusedGroupId === group.group_id ? -1 : undefined} className={`rounded-lg border bg-white p-4 shadow-[0_4px_14px_rgba(11,19,43,0.025)] focus:outline-none focus:ring-2 focus:ring-primary/30 ${focusedGroupId === group.group_id ? "border-primary ring-2 ring-primary/25" : "border-[#D7DEE8]"}`} onSubmit={(event) => saveGroup(event, group)}>
-                {(() => {
-                  const previousUpdate = sourcingPreviousUpdate(data, group.group_id, weekStart);
-                  const defaultUpdate = group.latest_update ?? latestSavedUpdate;
-                  const thisWeekApplicants = sourcingApplicants(group.latest_update);
-                  const previousApplicants = sourcingApplicants(previousUpdate);
-                  const activeChannels = SOURCING_CHANNELS.filter((channel) => group[channel.enabled]).length;
-                  const conversionMetrics = deriveSourcingConversionMetrics(data, group.group_id, weekStart);
-                  return (
-                    <>
-                <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      {canEditGroup ? <input
-                        aria-label={translate(language, "selectSourcingGroup", { id: group.group_id })}
-                        type="checkbox"
-                        checked={selectedGroupIds.includes(group.group_id)}
-                        onChange={(event) => setSelectedGroupIds((current) => event.target.checked ? [...current, group.group_id] : current.filter((id) => id !== group.group_id))}
-                      /> : null}
-                      <strong className="text-lg text-navy">{group.group_id}</strong>
-                      <Tag tone="teal">{group.group_position}</Tag>
-                      <Tag tone="warning">{translate(language, "openCount", { count: group.open_headcount })}</Tag>
-                    </div>
-                    <p className="mt-1 text-sm font-medium text-slate">
-                      {translate(language, "docs")}: {group.doc_ids.join(", ")} | {translate(language, "sites")}: {group.sites.join(", ")} | {translate(language, "owners")}: {group.owners.join(", ")}
-                    </p>
-                    <p className="mt-1 text-xs font-medium text-cool">
-                      {translate(language, "candidates")}: {group.candidate_count} | {translate(language, "lastSaved")}: {group.latest_update?.updated_at ? formatDate(group.latest_update.updated_at, language) : translate(language, "notUpdatedThisWeek")}
-                    </p>
-                    {!canEditGroup ? <p className="mt-2 text-xs font-semibold text-slate">{translate(language, "peerGroupReadOnly", { owners: group.owners.join(", ") || translate(language, "unassigned") })}</p> : null}
-                  </div>
-                  <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-                    {canEditGroup ? (
-                      <Button
-                        type="submit"
-                        size="icon-sm"
-                        icon={<Save size={16} />}
-                        disabled={disabledReason.blocked}
-                        aria-label={translate(language, "saveSourcingWeekFor", { id: group.group_id })}
-                        title={disabledReason.blocked ? disabledReason.detail : translate(language, "saveSourcingWeekFor", { id: group.group_id })}
-                      >
-                        <span className="sr-only">{translate(language, "save")}</span>
-                      </Button>
-                    ) : !canWrite ? (
-                      <Tag tone="muted">{translate(language, "readonly")}</Tag>
-                    ) : null}
-                    <RecordActionGroup
-                      label={`${translate(language, "sourcingGroup")} ${group.group_id}`}
-                      items={[
-                        ...(canEditGroup ? [{ id: "copy-previous", label: "Copy Previous Week", onSelect: () => copyPreviousWeek(document.getElementById(`sourcing-group-${group.group_id}`) as HTMLFormElement | null, previousUpdate), disabledReason: { blocked: !previousUpdate, label: "Copy unavailable", detail: "No previous week update is available." } }] : []),
-                        ...(canEditGroup && canManageSetup && onUnmatch ? actionableMatches.map((match) => ({
-                          id: `unmatch-${match.doc_group_id}`,
-                          label: translate(language, "unmatchRequisition", { id: match.doc_id }),
-                          icon: <Unlink size={16} />,
-                          tone: "danger" as const,
-                          onSelect: () => onUnmatch(
-                            { doc_group_id: match.doc_group_id, doc_id: match.doc_id, group_id: group.group_id },
-                            translate(language, "unmatchRecordSummary", { group: group.group_id, requisition: match.doc_id })
-                          )
-                        })) : []),
-                        { id: "requisitions", href: `/requisitions?reqSearch=${encodeURIComponent(group.doc_ids.join(" "))}`, label: "Matching requisitions" },
-                        { id: "candidates", href: `/candidates?candSearch=${encodeURIComponent(group.group_position)}`, label: "Related candidates" },
-                        { id: "workspace", href: `/workspace?type=group&id=${encodeURIComponent(group.group_id)}`, label: "Open workspace" }
-                      ]}
-                    />
-                  </div>
-                </div>
-                <DisabledReasonHint language={language} reason={disabledReason} />
-                <div className="mb-4 grid gap-3">
-                  <OperationalSummaryStrip
-                    items={[
-                      { label: translate(language, "thisWeek"), value: thisWeekApplicants, tone: thisWeekApplicants > 0 ? "teal" : "warning", helper: translate(language, "applicantsSaved") },
-                      { label: translate(language, "previousWeek"), value: previousApplicants, tone: "muted", helper: previousUpdate ? translate(language, "forComparison") : translate(language, "noPriorUpdate") },
-                      { label: translate(language, "trend"), value: trendLabel(thisWeekApplicants, previousApplicants), tone: trendTone(thisWeekApplicants, previousApplicants), helper: translate(language, "applicantMovement") },
-                      { label: translate(language, "channels"), value: activeChannels, tone: activeChannels > 0 ? "primary" : "warning", helper: translate(language, "enabledChannels") },
-                      { label: translate(language, "lastUpdateAge"), value: group.latest_update?.updated_at ? `${ageDays(group.latest_update.updated_at) ?? "-"}d` : translate(language, "never"), tone: group.latest_update?.updated_at ? "muted" : "warning", helper: translate(language, "selectedWeek") }
-                    ]}
-                  />
-                  <SourcingConversionPanel collapsible defaultOpen={false} language={language} metrics={conversionMetrics} />
-                </div>
-
-                {markedChannels.length === 0 ? (
-                  <p className="rounded-md border border-[#D7DEE8] bg-[#F8FAFD] p-3 text-sm font-medium text-slate">{translate(language, "noMarkedSourcingChannels")}</p>
-                ) : (
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                  {markedChannels.map((channel) => (
-                    <div key={channel.count} className="rounded-md border border-[#D7DEE8] bg-[#F8FAFD] p-3">
-                      <p className="mb-3 text-sm font-semibold text-navy">{channel.label}</p>
-                      <Field label={translate(language, "applicants")}>
-                        <TextInput
-                          name={channel.count}
-                          type="number"
-                          min={0}
-                          defaultValue={String(defaultUpdate?.[channel.count] ?? 0)}
-                          disabled={!canEditGroup}
-                          readOnly={!canEditGroup}
-                        />
-                      </Field>
-                    </div>
-                  ))}
-                </div>
-                )}
-                    </>
-                  );
-                })()}
-              </form>
-              );
-            })}
-          </div>
-        )}
-        {!embedded ? <BulkActionToolbar
-          disabledReason={bulkDisabledReason}
-          entityLabel={translate(language, "sourcingGroupsUnit")}
-          language={language}
-          selectedCount={selectedGroupIds.length}
-          onClear={() => {
-            setSelectedGroupIds([]);
-            setBulkResult(null);
-          }}
-          onExport={() => exportSourcingGroups(selectedGroups)}
-          onOpenReview={() => {
-            setBulkResult(null);
-            setBulkReviewOpen(true);
-          }}
-        /> : null}
-        {!embedded ? <BulkReviewModal
-          actionLabel={translate(language, "bulkSourcingReviewAction")}
-          ids={selectedGroupIds}
-          language={language}
-          open={bulkReviewOpen}
-          result={bulkResult}
-          onClose={() => setBulkReviewOpen(false)}
-          onConfirm={() => setBulkResult({ ok: true, succeeded: selectedGroupIds, failed: [], skipped: [] })}
-        /> : null}
-      </Panel>
-
-      {!embedded ? <Panel>
-        <SectionTitle
-          title={translate(language, "sourcingGroupsTable")}
-          eyebrow={translate(language, "selectedWeekGroupSummary")}
-          action={<Button type="button" size="sm" variant="secondary" icon={<SlidersHorizontal size={16} />} onClick={() => setTableFiltersOpen((current) => !current)} aria-expanded={tableFiltersOpen}>{translate(language, "advancedFilters")}</Button>}
-        />
-        {tableFiltersOpen ? <>
-          <div className="mb-3 hidden gap-3 rounded-xl border border-[#D7E2F1] bg-[#F8FAFD] p-3 md:grid md:grid-cols-2 xl:grid-cols-[minmax(13rem,1fr)_minmax(11rem,0.8fr)_minmax(11rem,0.8fr)_minmax(11rem,0.8fr)_auto] xl:items-end">
-          <Field label={translate(language, "searchSourcingGroups")}><TextInput value={tableFilters.search} onChange={(event) => setTableFilters((current) => ({ ...current, search: event.target.value }))} placeholder={translate(language, "searchSourcingGroupsPlaceholder")} /></Field>
-          <Field label={translate(language, "position")}><CommandSelector ariaLabel={translate(language, "position")} emptyLabel={translate(language, "allPositions")} options={[{ value: "", label: translate(language, "allPositions") }, ...tablePositionOptions.map((value) => ({ value, label: value }))]} value={tableFilters.position} onValueChange={(position) => setTableFilters((current) => ({ ...current, position }))} /></Field>
-          <Field label={translate(language, "sourcingUpdateState")}><CommandSelector ariaLabel={translate(language, "sourcingUpdateState")} emptyLabel={translate(language, "allUpdateStates")} options={[{ value: "all", label: translate(language, "allUpdateStates") }, { value: "saved", label: translate(language, "savedThisWeek") }, { value: "missing", label: translate(language, "notSavedThisWeek") }]} value={tableFilters.updateState} onValueChange={(updateState) => setTableFilters((current) => ({ ...current, updateState }))} /></Field>
-          <Field label={translate(language, "weeklyApplicants")}><CommandSelector ariaLabel={translate(language, "weeklyApplicants")} emptyLabel={translate(language, "allApplicantStates")} options={[{ value: "all", label: translate(language, "allApplicantStates") }, { value: "has-applicants", label: translate(language, "hasApplicants") }, { value: "zero-applicants", label: translate(language, "zeroApplicants") }]} value={tableFilters.applicantState} onValueChange={(applicantState) => setTableFilters((current) => ({ ...current, applicantState }))} /></Field>
-          <Button type="button" size="sm" variant="secondary" disabled={!hasTableFilters} onClick={() => setTableFilters({ search: "", position: "", updateState: "all", applicantState: "all" })}>{translate(language, "clear")}</Button>
-          </div>
-          <MobileBottomSheet open={tableFiltersOpen} title={translate(language, "advancedFilters")} closeLabel={translate(language, "close")} onClose={() => setTableFiltersOpen(false)}>
-            <div className="grid gap-3">
-              <Field label={translate(language, "searchSourcingGroups")}><TextInput value={tableFilters.search} onChange={(event) => setTableFilters((current) => ({ ...current, search: event.target.value }))} placeholder={translate(language, "searchSourcingGroupsPlaceholder")} /></Field>
-              <Field label={translate(language, "position")}><CommandSelector ariaLabel={translate(language, "position")} emptyLabel={translate(language, "allPositions")} options={[{ value: "", label: translate(language, "allPositions") }, ...tablePositionOptions.map((value) => ({ value, label: value }))]} value={tableFilters.position} onValueChange={(position) => setTableFilters((current) => ({ ...current, position }))} /></Field>
-              <Field label={translate(language, "sourcingUpdateState")}><CommandSelector ariaLabel={translate(language, "sourcingUpdateState")} emptyLabel={translate(language, "allUpdateStates")} options={[{ value: "all", label: translate(language, "allUpdateStates") }, { value: "saved", label: translate(language, "savedThisWeek") }, { value: "missing", label: translate(language, "notSavedThisWeek") }]} value={tableFilters.updateState} onValueChange={(updateState) => setTableFilters((current) => ({ ...current, updateState }))} /></Field>
-              <Field label={translate(language, "weeklyApplicants")}><CommandSelector ariaLabel={translate(language, "weeklyApplicants")} emptyLabel={translate(language, "allApplicantStates")} options={[{ value: "all", label: translate(language, "allApplicantStates") }, { value: "has-applicants", label: translate(language, "hasApplicants") }, { value: "zero-applicants", label: translate(language, "zeroApplicants") }]} value={tableFilters.applicantState} onValueChange={(applicantState) => setTableFilters((current) => ({ ...current, applicantState }))} /></Field>
-              <div className="grid grid-cols-2 gap-2 border-t border-[#D7DEE8] pt-3"><Button type="button" variant="secondary" disabled={!hasTableFilters} onClick={() => setTableFilters({ search: "", position: "", updateState: "all", applicantState: "all" })}>{translate(language, "clear")}</Button><Button type="button" onClick={() => setTableFiltersOpen(false)}>{translate(language, "confirm")}</Button></div>
-            </div>
-          </MobileBottomSheet>
-        </> : null}
-        <p className="mb-3 text-sm font-medium text-slate" role="status">{translate(language, "sourcingGroupsShown", { shown: tableGroups.length, total: groups.length })}</p>
-        <div className="grid gap-3 md:hidden">
-          {tableGroups.map((group) => <article key={group.group_id} className="rounded-xl border border-[#D7DEE8] bg-white p-3">
-            <div className="flex items-start justify-between gap-3"><div className="min-w-0"><a className="font-semibold text-primary underline-offset-2 hover:underline" href={`/workspace?type=group&id=${encodeURIComponent(group.group_id)}`}>{group.group_id}</a><p className="mt-1 truncate text-sm font-medium text-navy">{group.group_position}</p></div><Tag tone={group.latest_update?.updated_at ? "success" : "warning"}>{group.latest_update?.updated_at ? translate(language, "savedThisWeek") : translate(language, "notSavedThisWeek")}</Tag></div>
-            <p className="mt-2 text-xs font-medium text-slate">{group.sites.join(", ") || "-"} · {group.owners.join(", ") || "-"}</p>
-            <dl className="mt-3 grid grid-cols-3 gap-2 border-t border-[#E4E9F2] pt-3 text-xs"><div><dt className="text-cool">{translate(language, "requisitions")}</dt><dd className="mt-1 font-semibold text-navy tabular-nums">{group.doc_ids.length}</dd></div><div><dt className="text-cool">{translate(language, "openHeadcount")}</dt><dd className="mt-1 font-semibold text-navy tabular-nums">{group.open_headcount}</dd></div><div><dt className="text-cool">{translate(language, "candidateCount")}</dt><dd className="mt-1 font-semibold text-navy tabular-nums">{group.candidate_count}</dd></div><div><dt className="text-cool">{translate(language, "weeklyApplicants")}</dt><dd className="mt-1 font-semibold text-navy tabular-nums">{sourcingApplicants(group.latest_update)}</dd></div><div className="col-span-2"><dt className="text-cool">{translate(language, "lastSaved")}</dt><dd className="mt-1 font-semibold text-navy">{group.latest_update?.updated_at ? formatDate(group.latest_update.updated_at, language) : translate(language, "notUpdatedThisWeek")}</dd></div></dl>
-          </article>)}
-          {tableGroups.length === 0 ? <EmptyState variant="quiet" message={translate(language, "noData")} /> : null}
-        </div>
-        <div className="table-scroll hidden overflow-x-auto md:block">
-          <table className="w-full min-w-[960px] border-collapse text-left text-sm">
-            <thead className="bg-[#F1F6FC] text-xs font-semibold uppercase tracking-wide text-slate">
-              <tr>{(["groupId", "position", "site", "personInCharge", "requisitions", "openHeadcount", "candidateCount", "weeklyApplicants", "lastSaved"] as SourcingGroupSortKey[]).map((key) => <SortableSourcingHeader key={key} label={translate(language, key)} language={language} sortKey={key} sortState={tableSort} onSort={toggleTableSort} />)}</tr>
-            </thead>
-            <tbody>
-              {tableGroups.map((group) => <tr key={group.group_id} className="border-b border-[#E4E9F2] text-navy last:border-0">
-                <td className="px-3 py-3 font-semibold"><a className="text-primary underline-offset-2 hover:underline" href={`/workspace?type=group&id=${encodeURIComponent(group.group_id)}`}>{group.group_id}</a></td>
-                <td className="px-3 py-3">{group.group_position}</td><td className="px-3 py-3">{group.sites.join(", ")}</td><td className="px-3 py-3">{group.owners.join(", ")}</td><td className="px-3 py-3">{group.doc_ids.join(", ")}</td><td className="px-3 py-3 tabular-nums">{group.open_headcount}</td><td className="px-3 py-3 tabular-nums">{group.candidate_count}</td><td className="px-3 py-3 tabular-nums">{sourcingApplicants(group.latest_update)}</td><td className="px-3 py-3">{group.latest_update?.updated_at ? formatDate(group.latest_update.updated_at, language) : translate(language, "notUpdatedThisWeek")}</td>
-              </tr>)}
-              {tableGroups.length === 0 ? <tr><td colSpan={9} className="px-3 py-6 text-center text-slate">{translate(language, "noData")}</td></tr> : null}
-            </tbody>
-          </table>
-        </div>
-      </Panel> : null}
-
-    </div>
-  );
+  return <div className="grid gap-4">
+    <Panel>
+      <SectionTitle
+        title="Sourcing"
+        eyebrow={surface === "board" ? "Weekly work board" : "Lifecycle history"}
+        action={<div className="flex flex-wrap items-end gap-2"><div className="inline-flex rounded-md border border-[#C9D5E6] p-0.5" aria-label="Sourcing view"><button type="button" aria-pressed={surface === "board"} className={`min-h-9 rounded px-3 text-sm font-semibold ${surface === "board" ? "bg-primary text-white" : "text-slate"}`} onClick={() => setSurface("board")}>Work board</button><button type="button" aria-pressed={surface === "history"} className={`min-h-9 rounded px-3 text-sm font-semibold ${surface === "history" ? "bg-primary text-white" : "text-slate"}`} onClick={() => setSurface("history")}>Lifecycle history</button></div><Field label="Week starting"><TextInput type="date" value={weekStart} onChange={(event) => onWeekChange(toMonday(event.target.value))} /></Field></div>}
+      />
+      <p className="text-sm text-slate">{surface === "board" ? `Open groups that need a record for ${formatDate(weekStart, "en")}.` : "Saved records and expected weekly slots from first PR approval through closure."}</p>
+    </Panel>
+    {surface === "board" ? <SourcingWorkBoard rows={boardRows} profile={profile} canWrite={canWrite} onOpenRecord={setRecordRow} onOpenGroup={setDetailGroup} /> : <HistoryTableControls rows={historyRows} profile={profile} canWrite={canWrite} language={language} onOpenRecord={setRecordRow} onOpenGroup={setDetailGroup} />}
+    <WeeklyRecordModal row={recordRow} profile={profile} onClose={() => setRecordRow(null)} onSave={onSaveSourcing} />
+    <GroupDetailModal group={detailGroup} data={data} selectedWeek={weekStart} profile={profile} onClose={() => setDetailGroup(null)} onUpdateGroupInfo={onUpdateGroupInfo} onSetGroupChannel={onSetGroupChannel} />
+  </div>;
 }
 
 export function EmbeddedSourcingEditor({ groupIds, ...props }: SourcingViewProps & { groupIds: readonly string[] }) {
   return <SourcingView {...props} groupIds={groupIds} embedded />;
 }
 
-type SourcingGroupSortKey = "groupId" | "position" | "site" | "personInCharge" | "requisitions" | "openHeadcount" | "candidateCount" | "weeklyApplicants" | "lastSaved";
-
-function SortableSourcingHeader({ label, language, onSort, sortKey, sortState }: {
-  label: string;
-  language: Language;
-  onSort: (key: SourcingGroupSortKey) => void;
-  sortKey: SourcingGroupSortKey;
-  sortState: { key: SourcingGroupSortKey | null; direction: "asc" | "desc" | null };
-}) {
-  const direction = sortState.key === sortKey ? sortState.direction : null;
-  const Icon = direction === "asc" ? ArrowUp : direction === "desc" ? ArrowDown : ArrowDownUp;
-  return <th className="border-b border-[#D7E2F1] px-3 py-3">
-    <button type="button" aria-label={translate(language, "sortLabel", { label })} aria-pressed={Boolean(direction)} onClick={() => onSort(sortKey)} className="flex w-full items-center justify-between gap-2 text-left transition-colors hover:text-navy focus:outline-none focus:ring-2 focus:ring-primary/25">
-      <span>{label}</span><Icon size={14} aria-hidden="true" />
-    </button>
-  </th>;
+function SourcingWorkBoard({ rows, profile, canWrite, onOpenRecord, onOpenGroup }: { rows: SourcingLifecycleRow[]; profile: Profile | null; canWrite: boolean; onOpenRecord: (row: SourcingLifecycleRow) => void; onOpenGroup: (group: EnrichedSourcingGroup) => void }) {
+  return <Panel><SectionTitle title="Weekly work" eyebrow="Open requisition groups" /><div className="grid gap-3">
+    {rows.map((row) => {
+      const editable = canWrite && canManage(row.group, profile);
+      const count = sourcingApplicants(row.update);
+      return <article key={row.group.group_id} className="grid gap-3 rounded-xl border border-[#D7DEE8] bg-white p-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" className="font-semibold text-primary hover:underline" onClick={() => onOpenGroup(row.group)}>{row.group.group_position}</button>
+            <Tag tone={row.status === "needs_recording" ? "warning" : "success"}>{row.status === "needs_recording" ? "Needs recording" : "Recorded"}</Tag>
+            <span className="text-xs text-cool tabular-nums">{row.group.open_headcount} open</span>
+          </div>
+          <p className="mt-1 text-xs font-semibold text-primary">{row.group.group_id}</p>
+          <p className="mt-1 text-xs text-slate">{row.group.sites.join(", ") || "-"} / {row.group.owners.join(", ") || "Unassigned"} / {enabledLabels(row).join(", ") || "No channels"}</p>
+          {count == null && row.update ? <p className="mt-2 text-xs font-medium text-orange">One or more channels are not recorded.</p> : null}
+        </div>
+        <div className="flex gap-2">
+          <Button type="button" size="sm" variant="secondary" icon={<Settings2 size={16} />} onClick={() => onOpenGroup(row.group)} aria-label={`Open ${row.group.group_id} details`}>Details</Button>
+          {editable ? <Button type="button" size="sm" icon={row.update ? <Pencil size={16} /> : <CalendarPlus size={16} />} onClick={() => onOpenRecord(row)}>{row.status === "needs_recording" ? "Record applicants" : "Edit record"}</Button> : null}
+        </div>
+      </article>;
+    })}
+    {rows.length === 0 ? <EmptyState variant="quiet" message="No open sourcing groups need attention for this week." /> : null}
+  </div></Panel>;
 }
 
-function sortSourcingGroupTable(groups: EnrichedSourcingGroup[], sort: { key: SourcingGroupSortKey | null; direction: "asc" | "desc" | null }) {
-  if (!sort.key || !sort.direction) return groups;
-  const valueFor = (group: EnrichedSourcingGroup): string | number => {
-    switch (sort.key) {
-      case "groupId": return group.group_id;
-      case "position": return group.group_position;
-      case "site": return group.sites.join(", ");
-      case "personInCharge": return group.owners.join(", ");
-      case "requisitions": return group.doc_ids.join(", ");
-      case "openHeadcount": return group.open_headcount;
-      case "candidateCount": return group.candidate_count;
-      case "weeklyApplicants": return sourcingApplicants(group.latest_update);
-      case "lastSaved": return group.latest_update?.updated_at ?? "";
-      default: return group.group_id;
-    }
-  };
-  return [...groups].sort((left, right) => {
-    const leftValue = valueFor(left);
-    const rightValue = valueFor(right);
-    const delta = typeof leftValue === "number" && typeof rightValue === "number"
-      ? leftValue - rightValue
-      : String(leftValue).localeCompare(String(rightValue), undefined, { numeric: true, sensitivity: "base" });
-    return sort.direction === "asc" ? delta : -delta;
+function WorkBoard({ rows, profile, canWrite, onOpenRecord, onOpenGroup }: { rows: SourcingLifecycleRow[]; profile: Profile | null; canWrite: boolean; onOpenRecord: (row: SourcingLifecycleRow) => void; onOpenGroup: (group: EnrichedSourcingGroup) => void }) {
+  return <Panel><SectionTitle title="Weekly work" eyebrow="Open requisition groups" /><div className="grid gap-3">
+    {rows.map((row) => { const editable = canWrite && canManage(row.group, profile); const count = sourcingApplicants(row.update); return <article key={row.group.group_id} className="grid gap-3 rounded-xl border border-[#D7DEE8] bg-white p-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><button type="button" className="font-semibold text-primary hover:underline" onClick={() => onOpenGroup(row.group)}>{row.group.group_id}</button><Tag tone={row.status === "needs_recording" ? "warning" : "success"}>{row.status === "needs_recording" ? "Needs recording" : "Recorded"}</Tag><span className="text-xs text-cool tabular-nums">{row.group.open_headcount} open</span></div><p className="mt-1 font-medium text-navy">{row.group.group_position}</p><p className="mt-1 text-xs text-slate">{row.group.sites.join(", ") || "-"} · {row.group.owners.join(", ") || "Unassigned"} · {enabledLabels(row).join(", ") || "No channels"}</p>{count == null && row.update ? <p className="mt-2 text-xs font-medium text-orange">One or more channels are not recorded.</p> : null}</div><div className="flex gap-2"><Button type="button" size="sm" variant="secondary" icon={<Settings2 size={16} />} onClick={() => onOpenGroup(row.group)} aria-label={`Open ${row.group.group_id} details`}>Details</Button>{editable ? <Button type="button" size="sm" icon={row.update ? <Pencil size={16} /> : <CalendarPlus size={16} />} onClick={() => onOpenRecord(row)}>{row.status === "needs_recording" ? "Record applicants" : "Edit record"}</Button> : null}</div></article>; })}
+    {rows.length === 0 ? <EmptyState variant="quiet" message="No open sourcing groups need attention for this week." /> : null}
+  </div></Panel>;
+}
+
+function EmbeddedWorkEditors({ rows, profile, canWrite, onSave, onOpenGroup }: { rows: SourcingLifecycleRow[]; profile: Profile | null; canWrite: boolean; onSave: (payload: Record<string, unknown>, summary: string) => void; onOpenGroup: (group: EnrichedSourcingGroup) => void }) {
+  return <Panel><SectionTitle title="Weekly sourcing" eyebrow="Selected week" /><div className="grid gap-3">{rows.map((row) => {
+    const editable = canWrite && canManage(row.group, profile); const channels = enabledChannels(row);
+    function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const form = new FormData(event.currentTarget); const invalid = channels.some((channel) => { const raw = String(form.get(channel.count) ?? "").trim(); return raw && (!Number.isInteger(Number(raw)) || Number(raw) < 0); }); if (invalid) { window.alert("Applicant counts must be whole numbers of zero or more."); return; } const payload: Record<string, unknown> = { group_id: row.group.group_id, week_start: row.week_start, ...Object.fromEntries(SOURCING_CHANNELS.map((channel) => [channel.enabled, Boolean(channelForRow(row, channel.enabled))])), ...Object.fromEntries(SOURCING_CHANNELS.map((channel) => [channel.count, channelForRow(row, channel.enabled) ? String(form.get(channel.count) ?? "").trim() : null])) }; if (row.update) payload.expected_updated_at = row.update.updated_at; onSave(payload, `${row.update ? "correct" : "create"} sourcing update - ${row.group.group_id} ${row.week_start}`); }
+    return <form key={row.group.group_id} className="rounded-xl border border-[#D7DEE8] bg-white p-4" onSubmit={submit}><div className="flex flex-wrap items-start justify-between gap-2"><div><strong className="text-navy">{row.group.group_position}</strong><p className="mt-1 text-xs font-semibold text-primary">{row.group.group_id}</p><p className="mt-1 text-xs text-slate">{row.week_start} · {row.group.open_headcount} open · {row.group.owners.join(", ") || "Unassigned"}</p></div><div className="flex gap-2"><Tag tone={row.status === "needs_recording" ? "warning" : "success"}>{row.status === "needs_recording" ? "Needs recording" : "Recorded"}</Tag><Button type="button" size="sm" variant="secondary" onClick={() => onOpenGroup(row.group)}>Details</Button></div></div><div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{channels.map((channel) => <div key={channel.enabled}><Field label={channel.label}><TextInput name={channel.count} type="number" min="0" step="1" inputMode="numeric" defaultValue={row.update?.[channel.count] ?? ""} placeholder="Not recorded" disabled={!editable} /></Field><p className="mt-1 text-xs text-cool">Blank = not recorded</p></div>)}</div>{editable ? <div className="mt-4 flex justify-end border-t border-[#E4E9F2] pt-3"><Button type="submit">Save record</Button></div> : null}</form>;
+  })}{rows.length === 0 ? <EmptyState variant="quiet" message="No open sourcing groups are in this workspace." /> : null}</div></Panel>;
+}
+
+type HistorySort = "group" | "position" | "week" | "status" | "applicants" | "saved";
+function HistoryTableControls({ rows, profile, canWrite, language, onOpenRecord, onOpenGroup }: { rows: SourcingLifecycleRow[]; profile: Profile | null; canWrite: boolean; language: Language; onOpenRecord: (row: SourcingLifecycleRow) => void; onOpenGroup: (group: EnrichedSourcingGroup) => void }) {
+  const [advanced, setAdvanced] = useState(false);
+  const columns: TableColumn<SourcingLifecycleRow>[] = [
+    { key: "group", label: "Group ID", value: (row) => row.group.group_id },
+    { key: "position", label: "Group name", value: (row) => row.group.group_position },
+    { key: "week", label: "Week", value: (row) => row.week_start },
+    { key: "status", label: "Status", value: (row) => row.status === "saved" ? "Recorded" : "Needs recording", filterMode: "category" },
+    { key: "applicants", label: "Applicants", value: (row) => sourcingApplicants(row.update) == null ? "Unknown" : sourcingApplicants(row.update) === 0 ? "Zero" : "Has applicants", filterMode: "category", sortValue: (row) => sourcingApplicants(row.update) ?? -1 },
+    { key: "saved", label: "Last saved", value: (row) => row.update?.updated_at ?? "", sortValue: (row) => row.update?.updated_at ?? "" }
+  ];
+  const table = useTableControls(rows, columns, { sortKey: "week", sortDirection: "desc" });
+  return <Panel><SectionTitle title="Lifecycle history" eyebrow="Saved and expected weekly slots" /><TableToolbar advancedFiltersOpen={advanced} language={language} onAdvancedFiltersToggle={() => setAdvanced((value) => !value)} onSearch={table.setSearch} resultCount={table.controlledRows.length} searchValue={table.search} totalCount={rows.length} /><div className="table-scroll overflow-x-auto"><table className="w-full min-w-[940px] text-left text-sm"><thead className="bg-[#F1F6FC] text-xs font-semibold uppercase tracking-wide text-slate"><tr>{columns.map((column) => <th key={column.key} className="px-3 py-3"><SortableFilterHeader columnKey={column.key} filterValue={table.filters[column.key] ?? ""} language={language} label={column.label} onFilter={table.setFilter} onSort={table.toggleSort} filterOptions={table.categoryFilterOptions(column.key)} sortDirection={table.sortDirection} sortKey={table.sortKey} showFilter={advanced} /></th>)}<th className="px-3 py-3"><span className="sr-only">Actions</span></th></tr></thead><tbody>{table.controlledRows.map((row) => { const editable = canWrite && canManage(row.group, profile) && (Boolean(row.update) || row.group.open_headcount > 0); const applicants = sourcingApplicants(row.update); return <tr key={`${row.group.group_id}-${row.week_start}`} className="border-b border-[#E4E9F2]"><td className="px-3 py-3"><button type="button" className="font-semibold text-primary hover:underline" onClick={() => onOpenGroup(row.group)}>{row.group.group_id}</button></td><td className="px-3 py-3">{row.group.group_position}</td><td className="px-3 py-3">{row.week_start}</td><td className="px-3 py-3"><Tag tone={row.status === "saved" ? "success" : "warning"}>{row.status === "saved" ? "Recorded" : "Needs recording"}</Tag></td><td className="px-3 py-3">{applicants == null ? "Not recorded" : applicants}</td><td className="px-3 py-3">{row.update?.updated_at ?? "—"}</td><td className="px-3 py-3 text-right">{editable ? <Button type="button" size="icon-sm" variant="secondary" icon={row.update ? <Pencil size={15} /> : <CalendarPlus size={15} />} aria-label={`${row.update ? "Edit" : "Add"} ${row.group.group_id} ${row.week_start}`} onClick={() => onOpenRecord(row)} /> : null}</td></tr>; })}</tbody></table></div>{table.controlledRows.length === 0 ? <EmptyState variant="quiet" message="No lifecycle records match this filter." /> : null}</Panel>;
+}
+function HistoryRefined({ rows, profile, canWrite, onOpenRecord, onOpenGroup }: { rows: SourcingLifecycleRow[]; profile: Profile | null; canWrite: boolean; onOpenRecord: (row: SourcingLifecycleRow) => void; onOpenGroup: (group: EnrichedSourcingGroup) => void }) {
+  const [filtersOpen, setFiltersOpen] = useState(false); const [filters, setFilters] = useState({ search: "", from: "", to: "", status: "all", applicants: "all" }); const [sort, setSort] = useState<{ key: HistorySort; direction: "asc" | "desc" }>({ key: "week", direction: "desc" });
+  const filtered = useMemo(() => rows.filter((row) => { const applicants = sourcingApplicants(row.update); const text = `${row.group.group_id} ${row.group.group_position}`.toLowerCase(); return (!filters.search || text.includes(filters.search.toLowerCase())) && (!filters.from || row.week_start >= filters.from) && (!filters.to || row.week_start <= filters.to) && (filters.status === "all" || row.status === filters.status) && (filters.applicants === "all" || (filters.applicants === "unknown" ? applicants == null : filters.applicants === "zero" ? applicants === 0 : (applicants ?? 0) > 0)); }), [filters, rows]);
+  const sorted = useMemo(() => [...filtered].sort((a, b) => { const value = (row: SourcingLifecycleRow): string | number => { const applicants = sourcingApplicants(row.update); if (sort.key === "group") return row.group.group_id; if (sort.key === "position") return row.group.group_position; if (sort.key === "week") return row.week_start; if (sort.key === "status") return row.status; if (sort.key === "applicants") return applicants ?? -1; return row.update?.updated_at ?? ""; }; const left = value(a); const right = value(b); const result = typeof left === "number" && typeof right === "number" ? left - right : String(left).localeCompare(String(right), undefined, { numeric: true }); return sort.direction === "asc" ? result : -result; }), [filtered, sort]);
+  const header = (key: HistorySort, label: string) => <th className="px-3 py-3"><button type="button" className="flex w-full items-center justify-between gap-2 text-left" aria-label={`Sort ${label}`} onClick={() => setSort((current) => current.key === key ? { key, direction: current.direction === "asc" ? "desc" : "asc" } : { key, direction: "asc" })}><span>{label}</span>{sort.key === key ? sort.direction === "asc" ? <ArrowUp size={14} /> : <ArrowDown size={14} /> : <ArrowDownUp size={14} />}</button></th>;
+  return <Panel><SectionTitle title="Lifecycle history" eyebrow="Saved and expected weekly slots" action={<Button type="button" size="sm" variant="secondary" icon={<SlidersHorizontal size={16} />} aria-expanded={filtersOpen} onClick={() => setFiltersOpen((value) => !value)}>Advanced filters</Button>} />{filtersOpen ? <div className="mb-4 grid gap-3 rounded-xl border border-[#D7E2F1] bg-[#F8FAFD] p-3 md:grid-cols-2 xl:grid-cols-5"><Field label="Group or position"><TextInput value={filters.search} onChange={(event) => setFilters((value) => ({ ...value, search: event.target.value }))} /></Field><Field label="From Monday"><TextInput type="date" value={filters.from} onChange={(event) => setFilters((value) => ({ ...value, from: toMonday(event.target.value) }))} /></Field><Field label="To Monday"><TextInput type="date" value={filters.to} onChange={(event) => setFilters((value) => ({ ...value, to: toMonday(event.target.value) }))} /></Field><Field label="Status"><select className="min-h-10 w-full rounded-md border border-[#C9D5E6] bg-white px-3 text-sm" value={filters.status} onChange={(event) => setFilters((value) => ({ ...value, status: event.target.value }))}><option value="all">All</option><option value="saved">Recorded</option><option value="needs_recording">Needs recording</option></select></Field><Field label="Applicants"><select className="min-h-10 w-full rounded-md border border-[#C9D5E6] bg-white px-3 text-sm" value={filters.applicants} onChange={(event) => setFilters((value) => ({ ...value, applicants: event.target.value }))}><option value="all">All</option><option value="has">Has applicants</option><option value="zero">Zero applicants</option><option value="unknown">Unknown</option></select></Field><div className="xl:col-span-5"><Button type="button" size="sm" variant="secondary" onClick={() => setFilters({ search: "", from: "", to: "", status: "all", applicants: "all" })}>Clear filters</Button></div></div> : null}<p className="mb-3 text-sm text-slate" role="status">{sorted.length} lifecycle record{sorted.length === 1 ? "" : "s"}</p><div className="table-scroll overflow-x-auto"><table className="w-full min-w-[940px] text-left text-sm"><thead className="bg-[#F1F6FC] text-xs font-semibold uppercase tracking-wide text-slate"><tr>{header("group", "Group")}{header("position", "Position")}{header("week", "Week")}{header("status", "Status")}{header("applicants", "Applicants")}{header("saved", "Last saved")}<th className="px-3 py-3"><span className="sr-only">Actions</span></th></tr></thead><tbody>{sorted.map((row) => { const editable = canWrite && canManage(row.group, profile) && (Boolean(row.update) || row.group.open_headcount > 0); const applicants = sourcingApplicants(row.update); return <tr key={`${row.group.group_id}-${row.week_start}`} className="border-b border-[#E4E9F2]"><td className="px-3 py-3"><button type="button" className="font-semibold text-primary hover:underline" onClick={() => onOpenGroup(row.group)}>{row.group.group_id}</button></td><td className="max-w-[18rem] truncate px-3 py-3">{row.group.group_position}</td><td className="px-3 py-3 tabular-nums">{row.week_start}</td><td className="px-3 py-3"><Tag tone={row.status === "needs_recording" ? "warning" : "success"}>{row.status === "needs_recording" ? "Needs recording" : "Recorded"}</Tag></td><td className="px-3 py-3 tabular-nums">{applicants == null ? "Not recorded" : applicants}</td><td className="px-3 py-3">{row.update?.updated_at ?? "—"}</td><td className="px-3 py-3 text-right">{editable ? <Button type="button" size="icon-sm" variant="secondary" icon={row.update ? <Pencil size={15} /> : <CalendarPlus size={15} />} aria-label={`${row.update ? "Edit" : "Add"} ${row.group.group_id} ${row.week_start}`} onClick={() => onOpenRecord(row)} /> : null}</td></tr>; })}</tbody></table></div>{sorted.length === 0 ? <EmptyState variant="quiet" message="No lifecycle records match these filters." /> : null}</Panel>;
+}
+
+function History({ rows, profile, canWrite, onOpenRecord, onOpenGroup }: { rows: SourcingLifecycleRow[]; profile: Profile | null; canWrite: boolean; onOpenRecord: (row: SourcingLifecycleRow) => void; onOpenGroup: (group: EnrichedSourcingGroup) => void }) {
+  return <Panel><SectionTitle title="Lifecycle history" eyebrow="Saved and expected weekly slots" /><div className="table-scroll overflow-x-auto"><table className="w-full min-w-[860px] text-left text-sm"><thead className="bg-[#F1F6FC] text-xs font-semibold uppercase tracking-wide text-slate"><tr><th className="px-3 py-3">Group</th><th className="px-3 py-3">Week</th><th className="px-3 py-3">Status</th><th className="px-3 py-3">Applicants</th><th className="px-3 py-3">Last saved</th><th className="px-3 py-3"><span className="sr-only">Actions</span></th></tr></thead><tbody>{rows.map((row) => { const editable = canWrite && canManage(row.group, profile) && (Boolean(row.update) || row.group.open_headcount > 0); const applicants = sourcingApplicants(row.update); return <tr key={`${row.group.group_id}-${row.week_start}`} className="border-b border-[#E4E9F2]"><td className="px-3 py-3"><button type="button" className="font-semibold text-primary hover:underline" onClick={() => onOpenGroup(row.group)}>{row.group.group_id}</button><p className="max-w-xs truncate text-xs text-slate">{row.group.group_position}</p></td><td className="px-3 py-3 tabular-nums">{row.week_start}</td><td className="px-3 py-3"><Tag tone={row.status === "needs_recording" ? "warning" : "success"}>{row.status === "needs_recording" ? "Needs recording" : "Recorded"}</Tag></td><td className="px-3 py-3 tabular-nums">{applicants == null ? "Not recorded" : applicants}</td><td className="px-3 py-3">{row.update?.updated_at ? formatDate(row.update.updated_at, "en") : "—"}</td><td className="px-3 py-3 text-right">{editable ? <Button type="button" size="icon-sm" variant="secondary" icon={row.update ? <Pencil size={15} /> : <CalendarPlus size={15} />} aria-label={`${row.update ? "Edit" : "Add"} ${row.group.group_id} ${row.week_start}`} onClick={() => onOpenRecord(row)} /> : null}</td></tr>; })}</tbody></table></div>{rows.length === 0 ? <EmptyState variant="quiet" message="No lifecycle records match this sourcing scope." /> : null}</Panel>;
+}
+
+function WeeklyRecordModal({ row: input, profile, onClose, onSave }: { row: SourcingLifecycleRow | null; profile: Profile | null; onClose: () => void; onSave: (payload: Record<string, unknown>, summary: string) => void }) {
+  const row = input as SourcingLifecycleRow;
+  if (!row) return null;
+  const channels = enabledChannels(row);
+  function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const form = new FormData(event.currentTarget); const invalid = channels.some((channel) => { const raw = String(form.get(channel.count) ?? "").trim(); return raw && (!Number.isInteger(Number(raw)) || Number(raw) < 0); }); if (invalid) { window.alert("Applicant counts must be whole numbers of zero or more."); return; } const payload: Record<string, unknown> = { group_id: row.group.group_id, week_start: row.week_start, ...Object.fromEntries(SOURCING_CHANNELS.map((channel) => [channel.enabled, Boolean(channelForRow(row, channel.enabled))])), ...Object.fromEntries(SOURCING_CHANNELS.map((channel) => [channel.count, channelForRow(row, channel.enabled) ? String(form.get(channel.count) ?? "").trim() : null])) }; if (row.update) payload.expected_updated_at = row.update.updated_at; onSave(payload, `${row.update ? "correct" : "create"} sourcing update - ${row.group.group_id} ${row.week_start}`); }
+  return <Modal open title={`${row.update ? "Edit" : "Record"} applicants · ${row.group.group_id}`} onClose={onClose} width="max-w-2xl"><form className="grid gap-4" onSubmit={submit}><p className="text-sm text-slate">Week of {row.week_start}. Leave a channel blank only when its count is not recorded; enter <strong>0</strong> when it was used with no applicants.</p><div className="grid gap-3 sm:grid-cols-2">{channels.map((channel) => <div key={channel.enabled}><Field label={channel.label}><TextInput name={channel.count} type="number" min="0" step="1" inputMode="numeric" defaultValue={row.update?.[channel.count] ?? ""} placeholder="Not recorded" /></Field><p className="mt-1 text-xs text-cool">Blank = not recorded</p></div>)}</div><div className="flex justify-end gap-2 border-t border-[#E4E9F2] pt-4"><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit">Save record</Button></div></form></Modal>;
+}
+
+function GroupDetailModal({ group: input, data, selectedWeek, profile, onClose, onUpdateGroupInfo, onSetGroupChannel }: { group: EnrichedSourcingGroup | null; data: DashboardData; selectedWeek: string; profile: Profile | null; onClose: () => void; onUpdateGroupInfo?: (payload: Record<string, unknown>, summary: string) => void; onSetGroupChannel?: (payload: Record<string, unknown>, summary: string) => void }) {
+  const [effectiveWeek, setEffectiveWeek] = useState(selectedWeek);
+  const group = input as EnrichedSourcingGroup;
+  if (!group) return null;
+  const positionGroup = data.position_groups.find((row) => row.group_id === group.group_id);
+  const editable = Boolean(positionGroup && group.open_headcount > 0 && canManage(group, profile));
+  function rename(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!positionGroup || !onUpdateGroupInfo) return; const name = String(new FormData(event.currentTarget).get("group_position") ?? "").trim(); if (!name) return; onUpdateGroupInfo({ group_id: group.group_id, group_position: name, expected_updated_at: positionGroup.updated_at }, `rename sourcing group - ${group.group_id}`); }
+  return <Modal open title={`Group details · ${group.group_id}`} onClose={onClose} width="max-w-3xl"><div className="grid gap-5"><dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4"><div><dt className="text-cool">Lifecycle starts</dt><dd className="mt-1 font-semibold text-navy">{lifecycleBounds(group, data).start}</dd></div><div><dt className="text-cool">Lifecycle ends</dt><dd className="mt-1 font-semibold text-navy">{lifecycleBounds(group, data).end}</dd></div><div><dt className="text-cool">Open headcount</dt><dd className="mt-1 font-semibold text-navy">{group.open_headcount}</dd></div><div><dt className="text-cool">Owners</dt><dd className="mt-1 font-semibold text-navy">{group.owners.join(", ") || "—"}</dd></div></dl><section className="border-t border-[#E4E9F2] pt-4"><h4 className="font-semibold text-navy">Group information</h4>{editable && positionGroup ? <form className="mt-3 flex flex-col gap-2 sm:flex-row" onSubmit={rename}><TextInput name="group_position" defaultValue={positionGroup.group_position} aria-label="Group display name" /><Button type="submit">Save name</Button></form> : <p className="mt-2 text-sm text-slate">{group.group_position}</p>}</section><section className="border-t border-[#E4E9F2] pt-4"><div className="flex flex-wrap items-end justify-between gap-3"><div><h4 className="font-semibold text-navy">Channels</h4><p className="mt-1 text-sm text-slate">Changes take effect from the selected Monday. Earlier saved records stay historical.</p></div>{editable ? <Field label="Effective week"><TextInput type="date" value={effectiveWeek} onChange={(event) => setEffectiveWeek(toMonday(event.target.value))} /></Field> : null}</div><div className="mt-3 grid gap-2 sm:grid-cols-2">{SOURCING_CHANNELS.map((channel) => { const enabled = Boolean(positionGroup?.[channel.enabled]); return <div key={channel.enabled} className="flex items-center justify-between rounded-lg border border-[#D7DEE8] px-3 py-2"><span className="text-sm font-medium text-navy">{channel.label}</span><Tag tone={enabled ? "success" : "muted"}>{enabled ? "Enabled" : "Disabled"}</Tag>{editable && positionGroup && onSetGroupChannel ? <Button type="button" size="sm" variant="secondary" onClick={() => onSetGroupChannel({ group_id: group.group_id, channel: channelKey(channel.enabled), enabled: !enabled, effective_week: effectiveWeek, expected_updated_at: positionGroup.updated_at }, `${enabled ? "disable" : "enable"} ${channel.label} - ${group.group_id}`)}>{enabled ? "Disable" : "Enable"}</Button> : null}</div>; })}</div></section></div></Modal>;
+}
+
+function buildGroups(data: DashboardData, weekStart: string) {
+  const open = new Map(enrichSourcingGroups(data, weekStart).map((group) => [group.group_id, group]));
+  const enriched = enrichRequisitions(data);
+  const ids = [...new Set(data.document_groups.map((row) => row.group_id).filter((id): id is string => Boolean(id)))];
+  return ids.map((groupId) => {
+    const existing = open.get(groupId); if (existing) return existing;
+    const matches = data.document_groups.filter((row) => row.group_id === groupId); const reqs = matches.map((row) => enriched.find((req) => req.doc_id === row.doc_id)).filter(Boolean); const position = data.position_groups.find((row) => row.group_id === groupId); const candidateCount = data.candidates.filter((candidate) => matches.some((match) => match.doc_group_id === candidate.doc_group_id)).length;
+    return { group_id: groupId, group_position: position?.group_position ?? matches[0]?.group_position ?? groupId, sites: unique(reqs.map((req) => req!.site)), owners: unique(reqs.map((req) => req!.person_in_charge)), doc_ids: unique(reqs.map((req) => req!.doc_id)), open_headcount: 0, candidate_count: candidateCount, ...SOURCING_CHANNELS.reduce((result, channel) => ({ ...result, [channel.enabled]: Boolean(position?.[channel.enabled] ?? matches[0]?.[channel.enabled]) }), {}), latest_update: data.sourcing_weekly_updates.find((update) => update.group_id === groupId && update.week_start === weekStart) ?? null } as EnrichedSourcingGroup;
   });
 }
 
-function scopeSourcingGroups(groups: EnrichedSourcingGroup[], groupIds?: readonly string[], docIds?: readonly string[]) {
-  const groupIdSet = new Set(groupIds ?? []);
-  const docIdSet = new Set(docIds ?? []);
-  if (groupIdSet.size === 0 && docIdSet.size === 0) return groups;
-  return groups.filter((group) => (
-    groupIdSet.has(group.group_id)
-      || group.doc_ids.some((docId) => docIdSet.has(docId))
-  ));
-}
-
-function emptySourcingMessage(embedded: boolean, filters: { sourceSearch: string; reqSearch: string; site: string; owner: string }) {
-  if (filters.sourceSearch || filters.reqSearch || filters.site || filters.owner) return "No sourcing groups match this context.";
-  if (embedded) return "No open sourcing group is linked to this workspace context.";
-  return "No unfilled sourcing groups match your responsibility.";
-}
-
-function exportSourcingGroups(groups: EnrichedSourcingGroup[]) {
-  downloadCsv("selected-sourcing-groups.csv", groups.map((group) => ({
-    group_id: group.group_id,
-    group_position: group.group_position,
-    sites: group.sites.join(" "),
-    owners: group.owners.join(" "),
-    open_headcount: group.open_headcount,
-    candidate_count: group.candidate_count
-  })));
-}
-
-function downloadCsv(filename: string, rows: Array<Record<string, string | number>>) {
-  if (rows.length === 0) return;
-  const headers = Object.keys(rows[0]);
-  const csv = [headers.join(","), ...rows.map((row) => headers.map((header) => JSON.stringify(row[header] ?? "")).join(","))].join("\n");
-  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
-}
-
-function visibleSourcingGroups(groups: EnrichedSourcingGroup[], profile: Profile | null) {
-  if (profile?.role !== "site_recruiter") return groups;
-  return groups.filter((group) => group.sites.includes(profile.site ?? ""));
-}
-
-function latestSourcingUpdateForGroup(data: DashboardData, groupId: string) {
-  return data.sourcing_weekly_updates
-    .filter((update) => update.group_id === groupId)
-    .sort((a, b) => b.week_start.localeCompare(a.week_start) || b.updated_at.localeCompare(a.updated_at))[0] ?? null;
-}
-
-function filterSourcingGroups(groups: EnrichedSourcingGroup[], filters: { sourceSearch: string; reqSearch: string; site: string; owner: string }) {
-  const sourceSearch = filters.sourceSearch.trim().toLocaleLowerCase();
-  const requisitionTerms = filters.reqSearch.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
-  return groups.filter((group) => {
-    const matchesSource = !sourceSearch || [
-      group.group_id,
-      group.group_position,
-      ...group.sites,
-      ...group.owners
-    ].some((value) => value.toLocaleLowerCase().includes(sourceSearch));
-    const matchesRequisition = requisitionTerms.length === 0 || group.doc_ids.some((docId) => requisitionTerms.some((term) => docId.toLocaleLowerCase().includes(term)));
-    return matchesSource && matchesRequisition && (!filters.site || group.sites.includes(filters.site)) && (!filters.owner || group.owners.includes(filters.owner));
-  });
-}
-
-function filterSourcingGroupTable(groups: EnrichedSourcingGroup[], filters: { search: string; position: string; updateState: string; applicantState: string }) {
-  const search = filters.search.trim().toLocaleLowerCase();
-  return groups.filter((group) => {
-    const applicants = sourcingApplicants(group.latest_update);
-    const matchesSearch = !search || [group.group_id, group.group_position, ...group.doc_ids, ...group.sites, ...group.owners]
-      .some((value) => value.toLocaleLowerCase().includes(search));
-    const matchesPosition = !filters.position || group.group_position === filters.position;
-    const matchesUpdate = filters.updateState === "all" || (filters.updateState === "saved" ? Boolean(group.latest_update) : !group.latest_update);
-    const matchesApplicants = filters.applicantState === "all" || (filters.applicantState === "has-applicants" ? applicants > 0 : applicants === 0);
-    return matchesSearch && matchesPosition && matchesUpdate && matchesApplicants;
-  });
-}
-
-
-function filterUnmatchedGroups(groups: EnrichedUnmatchedSourcingGroup[], filters: { sourceSearch: string; reqSearch: string }) {
-  if (filters.reqSearch.trim()) return [];
-  const sourceSearch = filters.sourceSearch.trim().toLocaleLowerCase();
-  if (!sourceSearch) return groups;
-  return groups.filter((group) => [
-    group.group_id,
-    group.group_position
-  ].some((value) => value.toLocaleLowerCase().includes(sourceSearch)));
-}
-
-function numericValue(value: FormDataEntryValue | null) {
-  const parsed = rawNumericValue(value);
-  if (!Number.isFinite(parsed)) return 0;
-  return Math.max(0, parsed);
-}
-
-function rawNumericValue(value: FormDataEntryValue | null) {
-  return Number(value ?? 0);
-}
-
-function copyPreviousWeek(form: HTMLFormElement | null, previousUpdate: ReturnType<typeof sourcingPreviousUpdate>) {
-  if (!form || !previousUpdate) return;
-  for (const channel of SOURCING_CHANNELS) {
-    const count = form.elements.namedItem(channel.count);
-    if (count instanceof HTMLInputElement) count.value = String(previousUpdate[channel.count] ?? 0);
-  }
-}
-
-function trendLabel(current: number, previous: number) {
-  const delta = current - previous;
-  if (delta > 0) return `+${delta}`;
-  if (delta < 0) return String(delta);
-  return "0";
-}
-
-function trendTone(current: number, previous: number) {
-  const delta = current - previous;
-  if (delta > 0) return "success" as const;
-  if (delta < 0) return "warning" as const;
-  return "muted" as const;
-}
+function lifecycleRows(group: EnrichedSourcingGroup, data: DashboardData) { const { start, end } = lifecycleBounds(group, data); const rows: SourcingLifecycleRow[] = []; for (let current = start; current <= end; current = addDays(current, 7)) rows.push(lifecycleRow(group, current, data)!); return rows; }
+function lifecycleRow(group: EnrichedSourcingGroup, week: string, data: DashboardData): SourcingLifecycleRow | null { const { start, end } = lifecycleBounds(group, data); if (week < start || week > end) return null; const update = data.sourcing_weekly_updates.find((row) => row.group_id === group.group_id && row.week_start === week) ?? null; const active = enabledChannels({ group, update }).length; const complete = Boolean(update) && active > 0 && enabledChannels({ group, update }).every((channel) => update?.[channel.count] != null); return { group, week_start: week, update, status: complete ? "saved" : "needs_recording" }; }
+function lifecycleBounds(group: EnrichedSourcingGroup, data: DashboardData) { const reqs = data.requisitions.filter((req) => group.doc_ids.includes(req.doc_id)); const start = toMonday(reqs.map((req) => req.pr_approved_date).filter((value): value is string => Boolean(value)).sort()[0] ?? todayBangkok()); const allTerminal = reqs.length > 0 && reqs.every((req) => req.status === "filled" || req.status === "cancel"); const terminal = reqs.filter((req) => req.status === "filled" || req.status === "cancel").map((req) => data.requisition_logs.filter((log) => log.doc_id === req.doc_id && (log.status === "filled" || log.status === "cancel")).map((log) => log.log_date).sort().at(-1) ?? req.updated_at.slice(0, 10)).sort().at(-1); return { start, end: toMonday(allTerminal ? terminal ?? todayBangkok() : todayBangkok()) }; }
+function enabledChannels(row: Pick<SourcingLifecycleRow, "group" | "update">) { return SOURCING_CHANNELS.filter((channel) => channelForRow(row, channel.enabled)); }
+function enabledLabels(row: Pick<SourcingLifecycleRow, "group" | "update">) { return enabledChannels(row).map((channel) => channel.label); }
+function channelForRow(row: Pick<SourcingLifecycleRow, "group" | "update">, enabled: (typeof SOURCING_CHANNELS)[number]["enabled"]) { return Boolean(row.update?.[enabled] ?? row.group[enabled]); }
+function channelKey(enabled: (typeof SOURCING_CHANNELS)[number]["enabled"]) { return enabled.replace("channel_", ""); }
+function canManage(group: EnrichedSourcingGroup, profile: Profile | null) { return profile?.role === "system_admin" || profile?.role === "admin_recruiter" || (profile?.role === "site_recruiter" && Boolean(profile.nickname && group.owners.includes(profile.nickname))); }
+function inScope(group: EnrichedSourcingGroup, groupIds: readonly string[] | undefined, docIds: readonly string[] | undefined, site: string, owner: string, profile: Profile | null) { if (profile?.role === "site_recruiter" && !group.sites.includes(profile.site ?? "")) return false; if (groupIds?.length && !groupIds.includes(group.group_id)) return false; if (docIds?.length && !group.doc_ids.some((id) => docIds.includes(id))) return false; return (!site || group.sites.includes(site)) && (!owner || group.owners.includes(owner)); }
+function compareBoardRows(a: SourcingLifecycleRow, b: SourcingLifecycleRow) { const aMissing = a.status === "needs_recording" ? 0 : 1; const bMissing = b.status === "needs_recording" ? 0 : 1; return aMissing - bMissing || b.group.open_headcount - a.group.open_headcount || a.group.group_id.localeCompare(b.group.group_id); }
+function toMonday(value: string) { if (!value) return ""; const date = new Date(`${value.slice(0, 10)}T00:00:00Z`); date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7)); return date.toISOString().slice(0, 10); }
+function addDays(value: string, days: number) { const date = new Date(`${value}T00:00:00Z`); date.setUTCDate(date.getUTCDate() + days); return date.toISOString().slice(0, 10); }
+function todayBangkok() { const parts = new Intl.DateTimeFormat("en", { timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date()); const part = (type: string) => parts.find((item) => item.type === type)?.value ?? "01"; return `${part("year")}-${part("month")}-${part("day")}`; }
+function unique(values: Array<string | null | undefined>) { return [...new Set(values.filter((value): value is string => Boolean(value)))]; }

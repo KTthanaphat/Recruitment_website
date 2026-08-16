@@ -2,6 +2,7 @@ import { ACTIVE_PIPELINE_STAGES, PROCESS_UPDATE_STAGES, SOURCING_CHANNELS, proce
 import { enrichCandidates, enrichOffers, enrichRequisitions, enrichSourcingGroups, latestLogsForCandidate } from "@/lib/data";
 import { formatLocalDateInput } from "@/lib/dates";
 import { formatCandidateName, formatRequisitionTitle } from "@/lib/format";
+import { countsTowardHeadcount } from "@/lib/offer-headcount";
 import { getRequisitionSlaState } from "@/lib/sla";
 import type {
   ChangeLog,
@@ -322,6 +323,8 @@ export function requisitionFillReadiness(row: EnrichedRequisition, candidates: E
 }
 
 export function offerStatus(offer: Pick<EnrichedOffer, "accepted_date" | "created_at" | "first_working_date">): OfferStatus {
+  if ((offer as EnrichedOffer).start_confirmation === "did_not_start") return { label: "Did not start", tone: "danger", ageDays: null };
+  if ((offer as EnrichedOffer).start_confirmation === "started") return { label: "Started", tone: "success", ageDays: 0 };
   if (!offer.accepted_date) return { label: "Pending", tone: "warning", ageDays: ageDays(offer.created_at) };
   if (!offer.first_working_date) return { label: "Missing start date", tone: "danger", ageDays: ageDays(offer.accepted_date) };
   const startAge = ageDays(offer.first_working_date);
@@ -333,14 +336,18 @@ export function offerStatus(offer: Pick<EnrichedOffer, "accepted_date" | "create
 export function offerImpact(offer: EnrichedOffer, allOffers: Offer[], requisitions: EnrichedRequisition[]) {
   const requisition = requisitions.find((row) => row.doc_id === offer.doc_id);
   if (!requisition) return "Requisition not found";
-  const accepted = allOffers.filter((row) => row.doc_id === offer.doc_id && row.accepted_date).length;
+  const accepted = allOffers.filter((row) => row.doc_id === offer.doc_id && countsTowardHeadcount(row)).length;
   const open = Math.max(requisition.head_count - accepted, 0);
   return `${accepted}/${requisition.head_count} accepted - ${open === 0 ? "fills requisition" : `${open} open`}`;
 }
 
-export function sourcingApplicants(update: SourcingWeeklyUpdate | null | undefined) {
-  if (!update) return 0;
-  return SOURCING_CHANNELS.reduce((sum, channel) => sum + Number(update[channel.count] ?? 0), 0);
+export function sourcingApplicants(update: SourcingWeeklyUpdate | null | undefined): number | null {
+  if (!update) return null;
+  const values = SOURCING_CHANNELS
+    .filter((channel) => update[channel.enabled])
+    .map((channel) => update[channel.count]);
+  if (values.some((value) => value == null)) return null;
+  return values.reduce<number>((sum, value) => sum + (value ?? 0), 0);
 }
 
 export function previousWeekStart(weekStart: string) {
@@ -645,9 +652,12 @@ export function offerQualityIssues(offer: EnrichedOffer, data: DashboardData): D
   if (offer.accepted_date && !offer.first_working_date) {
     issues.push(issue("warning", "offer", String(offer.offer_id), "Accepted offer missing first working date", "Accepted offers need a first working date for follow-up and reporting.", "Review offer", `/offers?offerSearch=${encodeURIComponent(offer.candidate_id)}`));
   }
+  if (offer.accepted_date && offer.first_working_date && offer.start_confirmation === null && (ageDays(offer.first_working_date) ?? -1) >= 0) {
+    issues.push(issue("warning", "offer", String(offer.offer_id), "New hire confirmation due", "Confirm whether the candidate started work on the first working date.", "Confirm start", `/home`));
+  }
   const requisition = data.requisitions.find((row) => row.doc_id === offer.doc_id);
-  if (offer.accepted_date && requisition?.status === "ongoing") {
-    const accepted = data.offers.filter((row) => row.doc_id === offer.doc_id && row.accepted_date).length;
+  if (countsTowardHeadcount(offer) && requisition?.status === "ongoing") {
+    const accepted = data.offers.filter((row) => row.doc_id === offer.doc_id && countsTowardHeadcount(row)).length;
     if (accepted >= requisition.head_count) {
       issues.push(issue("info", "offer", String(offer.offer_id), "Offer may fill requisition", "Accepted offers meet requested headcount while requisition remains ongoing.", "Review requisition", `/workspace?type=requisition&id=${encodeURIComponent(offer.doc_id)}`));
     }

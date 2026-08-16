@@ -57,7 +57,7 @@ test("home groups recruitment records into ordered role-aware tabs", async ({ pa
   await expect(tablist.getByRole("tab").nth(1)).toHaveAccessibleName("Candidate Pipeline");
   await expect(tablist.getByRole("tab").nth(2)).toHaveAccessibleName("Sourcing Updates");
   await expect(tablist.getByRole("tab").nth(3)).toHaveAccessibleName("Data Quality");
-  await expect(tablist.getByRole("tab").nth(4)).toHaveAccessibleName("Recent Activity");
+  await expect(tablist.getByRole("tab").nth(4)).toHaveAccessibleName("New Hire Confirmation");
   await expect(tablist.getByRole("tab", { name: "Open Headcount" })).toHaveAttribute("aria-selected", "true");
 
   const panel = page.getByRole("tabpanel");
@@ -72,7 +72,7 @@ test("home groups recruitment records into ordered role-aware tabs", async ({ pa
   await installMockSupabase(page, { role: "viewer" });
   await page.goto("/home");
   await expectWorkspaceReady(page);
-  await expect(page.getByRole("tablist", { name: "Recruitment record categories" }).getByRole("tab", { name: "Recent Activity" })).toHaveCount(0);
+  await expect(page.getByRole("tablist", { name: "Recruitment record categories" }).getByRole("tab", { name: "New Hire Confirmation" })).toHaveCount(0);
 });
 
 test("home calendar shows filtered unresolved estimates and opens candidate detail", async ({ page }) => {
@@ -215,17 +215,22 @@ test("monthly fill rate keeps recruiter scope and existing CSV threshold bands",
   }
 });
 
-test("sourcing shows weekly health and can copy previous week", async ({ page }) => {
+test("sourcing work board opens a selected-week applicant record", async ({ page }) => {
   await installMockSupabase(page, { role: "admin_recruiter" });
   await page.goto("/sourcing?sourcingWeek=2026-07-06");
   await expectWorkspaceReady(page);
 
-  const firstGroup = page.locator("form").filter({ hasText: "GRP-ENG" }).first();
-  await expect(firstGroup.getByText("Previous week", { exact: true })).toBeVisible();
-  await expect(firstGroup.getByText("Trend", { exact: true })).toBeVisible();
-  await firstGroup.getByRole("button", { name: "More actions for sourcing group GRP-ENG" }).click();
-  await firstGroup.getByRole("menuitem", { name: "Copy Previous Week" }).click();
-  await expect(firstGroup.getByLabel("Applicants").first()).toHaveValue("8");
+  await expect(page.getByText("Weekly work", { exact: true })).toBeVisible();
+  const firstGroup = page.locator("article").filter({ hasText: "GRP-ENG" }).first();
+  await expect(firstGroup.getByText(/Needs recording|Recorded/, { exact: true })).toBeVisible();
+  await firstGroup.getByRole("button", { name: /Record applicants|Edit record/ }).click();
+  await expect(page.getByRole("dialog", { name: /Record|Edit applicants/ })).toBeVisible();
+  await expect(page.getByPlaceholder("Not recorded").first()).toBeVisible();
+  await page.getByRole("button", { name: "Close" }).click();
+  await page.getByRole("button", { name: "Lifecycle history" }).click();
+  await expect(page.getByRole("button", { name: "Sort Week" })).toBeVisible();
+  await page.getByRole("button", { name: "Advanced filters" }).click();
+  await expect(page.getByLabel("Filter Group ID")).toBeVisible();
 });
 
 test("offers show status, requisition impact, and quick links", async ({ page }) => {

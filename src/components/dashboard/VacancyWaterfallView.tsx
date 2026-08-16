@@ -20,6 +20,7 @@ import { formatLocalDateInput } from "@/lib/dates";
 import { formatDate, formatNumber } from "@/lib/format";
 import { processStageLabel, requestTypeLabel, translate } from "@/lib/i18n/dictionary";
 import { getRequisitionSlaState, getSlaDays, type RequisitionSlaState, todayDate } from "@/lib/sla";
+import { countsTowardHeadcount, countsTowardHeadcountAt } from "@/lib/offer-headcount";
 import { readWorkspaceUrlState, updateWorkspaceUrlState } from "@/lib/workspace-url-state";
 import type {
   DashboardData,
@@ -62,6 +63,7 @@ type RequisitionDetailRow = {
   applicant_count: number;
   request_type: RequisitionRequestType;
   requisition_date: string;
+  actual_age_days: number | null;
   person_in_charge: string;
   stage_counts: Record<ProcessStage, number>;
   sla_state: RequisitionSlaState;
@@ -649,7 +651,8 @@ function RequisitionDetailTable({ rows, language, printMode = false }: { rows: R
       label: processStageLabel(language, stage),
       value: (row) => row.stage_counts[stage] ?? 0
     })),
-    { key: "sla", label: translate(language, "sla"), value: (row) => slaExportValue(row.sla_state, language), sortValue: (row) => row.sla_state.ageDays ?? Number.POSITIVE_INFINITY },
+    { key: "actual_age", label: translate(language, "actualAge"), value: (row) => row.actual_age_days === null ? "-" : `${row.actual_age_days}d`, sortValue: (row) => row.actual_age_days ?? Number.POSITIVE_INFINITY },
+    { key: "sla", label: translate(language, "currentSla"), value: (row) => slaExportValue(row.sla_state, language), sortValue: (row) => row.sla_state.ageDays ?? Number.POSITIVE_INFINITY },
     { key: "filled_status", label: translate(language, "filledStatus"), value: (row) => translate(language, row.filled_status === "Filled" ? "filled" : "open") },
     { key: "filled_date", label: translate(language, "filledDate"), value: (row) => row.filled_date ? formatDate(row.filled_date, language) : "-", sortValue: (row) => row.filled_date ?? "" }
   ];
@@ -695,7 +698,8 @@ function RequisitionDetailTable({ rows, language, printMode = false }: { rows: R
               {detailStages.map((stage) => (
                 <td key={stage} className={`${detailCellClass(stage)} border border-[#D7DEE8] px-2 py-2 text-right`}>{row.stage_counts[stage] ?? 0}</td>
               ))}
-              <td className={`${detailCellClass("SLA")} border border-[#D7DEE8] px-2 py-2`}>{slaStatusCell(row.sla_state)}</td>
+              <td className={`${detailCellClass("Actual Age")} border border-[#D7DEE8] px-2 py-2`}>{row.actual_age_days === null ? "-" : `${row.actual_age_days}d`}</td>
+              <td className={`${detailCellClass("Current SLA")} border border-[#D7DEE8] px-2 py-2`}>{slaStatusCell(row.sla_state)}</td>
               <td className={`${detailCellClass("Filled Status")} border border-[#D7DEE8] px-2 py-2`}>{translate(language, row.filled_status === "Filled" ? "filled" : "open")}</td>
               <td className={`${detailCellClass("Filled Date")} border border-[#D7DEE8] px-2 py-2`}>{row.filled_date ? formatDate(row.filled_date, language) : "-"}</td>
             </tr>
@@ -734,7 +738,8 @@ function requisitionDetailHeaders(language: Language) {
     translate(language, "personInCharge"),
     translate(language, "applicants"),
     ...detailStages.map((stage) => processStageLabel(language, stage)),
-    translate(language, "sla"),
+    translate(language, "actualAge"),
+    translate(language, "currentSla"),
     translate(language, "filledStatus"),
     translate(language, "filledDate")
   ];
@@ -753,7 +758,8 @@ function requisitionDetailExportRow(row: RequisitionDetailRow, language: Languag
       if (header === translate(language, "requisitionDate")) return [header, formatDate(row.requisition_date, language)];
       if (header === translate(language, "personInCharge")) return [header, row.person_in_charge];
       if (header === translate(language, "applicants")) return [header, row.applicant_count];
-      if (header === translate(language, "sla")) return [header, slaExportValue(row.sla_state, language)];
+      if (header === translate(language, "actualAge")) return [header, row.actual_age_days === null ? "-" : `${row.actual_age_days}d`];
+      if (header === translate(language, "currentSla")) return [header, slaExportValue(row.sla_state, language)];
       if (header === translate(language, "filledStatus")) return [header, translate(language, row.filled_status === "Filled" ? "filled" : "open")];
       if (header === translate(language, "filledDate")) return [header, row.filled_date ? formatDate(row.filled_date, language) : "-"];
       const stage = stageHeaders.get(header);
@@ -876,7 +882,7 @@ function buildLiveWaterfallRows(
 
   const rows: WaterfallRow[] = [];
   const requisitionsById = new Map(requisitions.map((row) => [row.doc_id, row]));
-  const acceptedOffers = offers.filter((offer) => Boolean(offer.accepted_date));
+  const coveredOffers = offers.filter(countsTowardHeadcount);
 
   for (const requisition of requisitions) {
     if (!isReportEligible(requisition, data, startDate, endDate, reportView)) continue;
@@ -884,9 +890,7 @@ function buildLiveWaterfallRows(
     if (!openedDate) continue;
 
     if (openedDate < startDate) {
-      const filledBeforeStart = acceptedOffers.filter(
-        (offer) => offer.doc_id === requisition.doc_id && dateOnly(offer.accepted_date) !== null && dateOnly(offer.accepted_date)! < startDate
-      ).length;
+      const filledBeforeStart = offers.filter((offer) => offer.doc_id === requisition.doc_id && countsTowardHeadcountAt(offer, startDate)).length;
       const openAtStart = Math.max(requisition.head_count - filledBeforeStart, 0);
       if (openAtStart > 0) rows.push(waterfallRow("Week Start", requisition.site, requisition.request_type ?? "New", openAtStart));
     }
@@ -896,12 +900,21 @@ function buildLiveWaterfallRows(
     }
   }
 
-  for (const offer of acceptedOffers) {
+  for (const offer of coveredOffers) {
     const acceptedDate = dateOnly(offer.accepted_date);
     if (!acceptedDate || acceptedDate < startDate || acceptedDate > endDate) continue;
     const requisition = requisitionsById.get(offer.doc_id);
     if (!requisition || requisition.status === "cancel") continue;
     rows.push(waterfallRow("Filled", requisition.site, requisition.request_type ?? "New", -1));
+  }
+
+  for (const offer of offers) {
+    if (offer.start_confirmation !== "did_not_start") continue;
+    const noShowDate = dateOnly(offer.start_confirmed_at);
+    if (!noShowDate || noShowDate < startDate || noShowDate > endDate) continue;
+    const requisition = requisitionsById.get(offer.doc_id);
+    if (!requisition || requisition.status === "cancel") continue;
+    rows.push(waterfallRow("Open", requisition.site, requisition.request_type ?? "New", 1));
   }
 
   const groupedRows = aggregateWaterfallRows(rows);
@@ -936,6 +949,7 @@ function buildActiveRequisitionRows(data: DashboardData, requisitions: EnrichedR
         applicant_count: applicantCountForGroups(data, groupIds, startDate, endDate),
         request_type: requisition.request_type,
         requisition_date: requisitionDate,
+        actual_age_days: calendarDayAge(requisitionDate, todayDate()),
         person_in_charge: requisition.person_in_charge ?? "-",
         stage_counts: stageCounts,
         sla_state: getRequisitionSlaState(
@@ -969,7 +983,7 @@ function resolvedCloseDate(requisition: EnrichedRequisition, data: DashboardData
   if (filledLogDate) return filledLogDate;
   return latestValidDate(
     data.offers
-      .filter((offer) => offer.doc_id === requisition.doc_id)
+      .filter((offer) => offer.doc_id === requisition.doc_id && countsTowardHeadcount(offer))
       .map((offer) => offer.accepted_date)
   );
 }
@@ -1407,7 +1421,7 @@ function buildReportSummary(requisitionRows: RequisitionDetailRow[], offers: Enr
   const activeVacancy = requisitionRows.reduce((sum, row) => sum + row.vacancy, 0);
   const filled = offers.filter((offer) => {
     const date = validDateOnly(offer.accepted_date);
-    return Boolean(date && date >= startDate && date <= endDate && requisitionRows.some((row) => row.doc_id === offer.doc_id));
+    return Boolean(countsTowardHeadcount(offer) && date && date >= startDate && date <= endDate && requisitionRows.some((row) => row.doc_id === offer.doc_id));
   }).length;
   const performance = activeVacancy === 0 ? 0 : Math.floor((filled / activeVacancy) * 100);
   const overSla = requisitionRows.filter((row) => row.sla_state.isOverdue).length;
@@ -1434,4 +1448,9 @@ function topFunnelBottleneck(rows: PipelineFunnelRow[], language: Language) {
 function dateOnly(value: string | null | undefined) {
   if (!value) return null;
   return value.slice(0, 10);
+}
+
+function calendarDayAge(startDate: string, endDate: string) {
+  if (!startDate || !endDate) return null;
+  return Math.max(Math.floor((Date.parse(`${endDate}T00:00:00Z`) - Date.parse(`${startDate}T00:00:00Z`)) / 86_400_000), 0);
 }

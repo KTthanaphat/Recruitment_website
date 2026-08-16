@@ -8,7 +8,7 @@ import { SortableFilterHeader, TableToolbar, TruncatedTableText, type TableColum
 import { Tag } from "@/components/ui/Tag";
 import { RecordQuickActions, type RecordQuickAction } from "@/components/ui/Operations";
 import { BulkActionToolbar, BulkReviewModal } from "@/components/ui/Workflow";
-import { formatDate, formatRequisitionOptionLabel, formatRequisitionTitle, statusTone } from "@/lib/format";
+import { formatDate, formatRequisitionCardTitle, formatRequisitionOptionLabel, formatRequisitionTitle, statusTone } from "@/lib/format";
 import { fillReadinessLabel, requisitionStatusLabel, requestTypeLabel, translate } from "@/lib/i18n/dictionary";
 import { bulkActionDisabledReason, requisitionFillReadiness, type BulkActionResult } from "@/lib/operations";
 import { getRequisitionSlaState } from "@/lib/sla";
@@ -118,7 +118,7 @@ export function RequisitionsView({
               <div className="mb-2 flex items-center justify-between gap-2">
                 <div className="min-w-0">
                   <strong className={`font-semibold ${getRequisitionSlaState(row, { openOnly: true }).isOverdue ? "text-scarlet" : "text-navy"}`}>
-                    {formatRequisitionTitle(row)}
+                    {formatRequisitionCardTitle(row)}
                   </strong>
                 </div>
                 <Tag tone={statusTone(row.status) as never}>{requisitionStatusLabel(language, row.status)}</Tag>

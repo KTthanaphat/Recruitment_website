@@ -280,6 +280,7 @@ as $$
       from public.offers o
       where o.doc_id = r.doc_id
         and o.accepted_date is not null
+        and o.start_confirmation is distinct from 'did_not_start'
     ) accepted on true
     where dg.group_id = p_group_id
       and r.status = 'ongoing'
@@ -371,6 +372,7 @@ as $$
           from public.offers o
           where o.doc_id = r.doc_id
             and o.accepted_date is not null
+            and o.start_confirmation is distinct from 'did_not_start'
         ) accepted on true
         where dg.group_id = p_group_id
           and r.status = 'ongoing'
@@ -438,7 +440,8 @@ begin
   select count(*) into v_accepted_count
   from public.offers
   where doc_id = p_doc_id
-    and accepted_date is not null;
+    and accepted_date is not null
+    and start_confirmation is distinct from 'did_not_start';
 
   v_next_status := case when v_accepted_count >= v_head_count then 'filled' else 'ongoing' end;
 

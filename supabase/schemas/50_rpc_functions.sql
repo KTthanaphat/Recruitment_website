@@ -479,21 +479,37 @@ create or replace function public.app_upsert_sourcing_weekly_update(payload json
 returns jsonb
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, app_private
 as $$
 declare
   v_group_id text := nullif(payload ->> 'group_id', '');
   v_week_start date := nullif(payload ->> 'week_start', '')::date;
+  v_expected timestamptz := nullif(payload ->> 'expected_updated_at', '')::timestamptz;
   v_group public.position_groups%rowtype;
+  v_existing public.sourcing_weekly_updates%rowtype;
+  v_saved public.sourcing_weekly_updates%rowtype;
+  v_start date;
+  v_end date;
+  v_is_existing boolean := false;
 begin
   perform app_private.assert_recruitment_writer();
-  if v_group_id is null then raise exception 'Group ID is required.'; end if;
-  if v_week_start is null then raise exception 'Week start is required.'; end if;
-  if not app_private.has_open_group_requisition(v_group_id) then raise exception 'Group has no unfilled active requisition.'; end if;
-  if not app_private.can_manage_sourcing_group(v_group_id) then raise exception 'You can update only sourcing groups where you are responsible.'; end if;
-  select * into v_group from public.position_groups where group_id = v_group_id;
+  if v_group_id is null or v_week_start is null then raise exception 'SOURCING_UPDATE_REQUIRED: Group ID and Monday week are required.'; end if;
+  if extract(isodow from v_week_start) <> 1 then raise exception 'SOURCING_WEEK_INVALID: Week start must be a Monday.'; end if;
+  select * into v_group from public.position_groups where group_id = v_group_id for update;
+  if not found then raise exception 'SOURCING_GROUP_NOT_FOUND: Group not found.'; end if;
+  select start_week, end_week into v_start, v_end from app_private.sourcing_group_lifecycle(v_group_id);
+  if v_start is null or v_week_start < v_start or v_week_start > v_end then raise exception 'SOURCING_WEEK_OUTSIDE_LIFECYCLE: Week is outside this group''s sourcing lifecycle.'; end if;
+  select * into v_existing from public.sourcing_weekly_updates where group_id = v_group_id and week_start = v_week_start for update;
+  v_is_existing := found;
+  if v_is_existing then
+    if not app_private.can_manage_sourcing_group_history(v_group_id) then raise exception 'SOURCING_UPDATE_DENIED: You can correct only sourcing groups you manage.'; end if;
+    if v_expected is null or v_existing.updated_at <> v_expected then raise exception 'SOURCING_STALE_WRITE: This weekly record changed after it was opened.'; end if;
+  else
+    if v_expected is not null then raise exception 'SOURCING_STALE_WRITE: No saved record matches the supplied timestamp.'; end if;
+    if not app_private.has_open_group_requisition(v_group_id) or not app_private.can_manage_sourcing_group(v_group_id) then raise exception 'SOURCING_CREATE_DENIED: Only a managed open group may receive a new weekly record.'; end if;
+  end if;
 
-  perform set_config('app.action', 'sourcing_update:upsert', true);
+  perform set_config('app.action', case when v_is_existing then 'sourcing_update:corrected' else 'sourcing_update:created' end, true);
   insert into public.sourcing_weekly_updates (
     group_id, week_start,
     channel_fb, channel_jobthai, channel_jobtopgun, channel_jobdb,
@@ -513,14 +529,14 @@ begin
     case when payload ? 'channel_walkin' then (payload ->> 'channel_walkin')::boolean else coalesce(v_group.channel_walkin, false) end,
     case when payload ? 'channel_referral' then (payload ->> 'channel_referral')::boolean else coalesce(v_group.channel_referral, false) end,
     case when payload ? 'channel_others' then (payload ->> 'channel_others')::boolean else coalesce(v_group.channel_others, false) end,
-    coalesce(nullif(payload ->> 'applicants_fb', '')::integer, 0),
-    coalesce(nullif(payload ->> 'applicants_jobthai', '')::integer, 0),
-    coalesce(nullif(payload ->> 'applicants_jobtopgun', '')::integer, 0),
-    coalesce(nullif(payload ->> 'applicants_jobdb', '')::integer, 0),
-    coalesce(nullif(payload ->> 'applicants_linkedin', '')::integer, 0),
-    coalesce(nullif(payload ->> 'applicants_walkin', '')::integer, 0),
-    coalesce(nullif(payload ->> 'applicants_referral', '')::integer, 0),
-    coalesce(nullif(payload ->> 'applicants_others', '')::integer, 0),
+    nullif(payload ->> 'applicants_fb', '')::integer,
+    nullif(payload ->> 'applicants_jobthai', '')::integer,
+    nullif(payload ->> 'applicants_jobtopgun', '')::integer,
+    nullif(payload ->> 'applicants_jobdb', '')::integer,
+    nullif(payload ->> 'applicants_linkedin', '')::integer,
+    nullif(payload ->> 'applicants_walkin', '')::integer,
+    nullif(payload ->> 'applicants_referral', '')::integer,
+    nullif(payload ->> 'applicants_others', '')::integer,
     auth.uid()
   )
   on conflict (group_id, week_start) do update set
@@ -540,9 +556,10 @@ begin
     applicants_walkin = excluded.applicants_walkin,
     applicants_referral = excluded.applicants_referral,
     applicants_others = excluded.applicants_others,
-    updated_by = excluded.updated_by;
+    updated_by = excluded.updated_by
+  returning * into v_saved;
 
-  return jsonb_build_object('ok', true, 'id', v_group_id);
+  return jsonb_build_object('ok', true, 'id', v_group_id, 'week_start', v_week_start, 'updated_at', v_saved.updated_at);
 end;
 $$;
 
@@ -1645,6 +1662,34 @@ begin
   );
 end;
 $$;
+
+create or replace function public.app_confirm_offer_start_v1(payload jsonb)
+returns jsonb language plpgsql security definer set search_path = public, app_private as $$
+declare
+  v_offer public.offers%rowtype;
+  v_outcome text := nullif(payload ->> 'start_confirmation', '');
+  v_reason text := nullif(btrim(payload ->> 'reason'), '');
+  v_expected timestamptz := nullif(payload ->> 'expected_updated_at', '')::timestamptz;
+  v_today date := (now() at time zone 'Asia/Bangkok')::date;
+begin
+  perform app_private.assert_recruitment_writer();
+  select * into v_offer from public.offers where offer_id = nullif(payload ->> 'offer_id', '')::bigint for update;
+  if not found then raise exception 'OFFER_NOT_FOUND: Offer not found.'; end if;
+  if not app_private.can_manage_requisition(v_offer.doc_id) or not app_private.can_manage_candidate(v_offer.candidate_id) then raise exception 'OFFER_PERMISSION_DENIED: You cannot confirm this offer.'; end if;
+  if v_expected is null or v_offer.updated_at <> v_expected then raise exception 'OFFER_STALE_WRITE: This offer changed after it was opened.'; end if;
+  if v_outcome not in ('started', 'did_not_start') then raise exception 'OFFER_CONFIRMATION_INVALID: Select Started or Did not start.'; end if;
+  if v_offer.accepted_date is null or v_offer.first_working_date is null or v_offer.first_working_date > v_today then raise exception 'OFFER_CONFIRMATION_NOT_DUE: Confirmation is available on or after the first working date.'; end if;
+  if v_outcome = 'did_not_start' and v_reason is null then raise exception 'OFFER_CONFIRMATION_REASON_REQUIRED: Did not start requires a reason.'; end if;
+  if v_offer.start_confirmation is not null and app_private.current_app_role() not in ('system_admin', 'admin_recruiter') then raise exception 'OFFER_CONFIRMATION_CORRECTION_DENIED: Only an administrator can correct a saved confirmation.'; end if;
+  perform set_config('app.action', case when v_offer.start_confirmation is null then 'offer:start-confirmed' else 'offer:start-confirmation-corrected' end, true);
+  update public.offers set start_confirmation = v_outcome, start_confirmed_at = now(), start_confirmed_by = auth.uid(), start_confirmation_reason = case when v_outcome = 'did_not_start' then v_reason else null end where offer_id = v_offer.offer_id;
+  perform set_config('app.action', 'auto-status', true);
+  perform app_private.refresh_requisition_status(v_offer.doc_id);
+  return jsonb_build_object('ok', true, 'id', v_offer.offer_id::text);
+end;
+$$;
+revoke all on function public.app_confirm_offer_start_v1(jsonb) from public, anon, authenticated;
+grant execute on function public.app_confirm_offer_start_v1(jsonb) to authenticated;
 
 -- Admin-only historical correction. The canonical row is never overwritten:
 -- it is superseded and replaced so the full timeline remains auditable.

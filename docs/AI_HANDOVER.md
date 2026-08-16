@@ -52,6 +52,8 @@ Canonical docs:
 - `docs/DEPLOYMENT.md`
 - `docs/AI_HANDOVER.md`
 
+Phone-first behavior is intentionally documented only in the [Website Structure phone-first recruiter operations section](WEBSITE_STRUCTURE.md#phone-first-recruiter-operations); keep this handover link-focused rather than duplicating mobile interaction rules here.
+
 Legacy reference files may still exist (`app.py`, `schema.sql`, `web/`), but the active app is the Next.js/Supabase app.
 
 ## Product Mental Model
@@ -166,7 +168,7 @@ Home is first after opening/signing in.
 Current section order:
 
 1. Today's Work / Workspace Watchlist with one compact metric strip: open requisitions, urgent items, aging candidates, and sourcing gaps.
-2. Recruitment Records tabs: Open Headcount, Candidate Pipeline, Sourcing Updates, Data Quality, then Recent Activity for `system_admin` and `admin_recruiter` only.
+2. Recruitment Records tabs: Open Headcount, Candidate Pipeline, Sourcing Updates, Data Quality, then New Hire Confirmation for recruiter write roles only. It lists accepted offers due on/after the first working date and still unconfirmed. `did_not_start` requires a reason, excludes the offer from covered headcount, reopens the requisition when needed, and restarts SLA from the Bangkok confirmation date; it never changes `pr_approved_date`. Only System Admin/Admin Recruiter can correct a saved confirmation.
 
 The selected tab has all records in a bounded vertical card list: one column below `md`, two columns at `md` and wider. Home and Workspace tabs use connected browser-style tabs attached to the selected content panel. The tab row is horizontally scrollable on narrow screens and supports Arrow, Home, and End keyboard navigation where implemented. Selected Home tabs are local UI state, not URL state.
 
@@ -195,6 +197,10 @@ Home-only recruiter bottleneck:
 ## Dashboard Rules
 
 Dashboard is dedicated to Vacancy Waterfall. Its dropdown/custom-range behavior, eligibility, original site colors, company-report RPC boundary, close-date precedence, and Welcome PIM behavior are canonical in `docs/WEBSITE_STRUCTURE.md`; implementation is owned by `VacancyWaterfallView.tsx`, `RecruitmentWorkspace.tsx`, and `app_dashboard_company_report`.
+
+- No-show reporting rule: exclude `did_not_start` from Filled; add Open on confirmation date; show Actual Age (PR-to-today) and Current SLA (latest no-show/PR-to-today) separately.
+
+- Sourcing channel rule: an eligible recruiter adds a channel only to an open managed group; historical group/week records receive enabled + `NULL` applicant count, meaning unrecorded rather than zero.
 
 Waterfall movement bars retain their Week Start, Open, Filled, and Total connector model; use the selected calendar view's eligible requisition population. Do not duplicate the MTD/YTD/PIM formulas here; Website Structure is canonical.
 
@@ -414,7 +420,7 @@ Important RPCs:
 - `app_create_group_match`
 - `app_unmatch_group_requisition`
 - `app_delete_recruitment_record`
-- `app_upsert_sourcing_weekly_update`
+- `app_upsert_sourcing_weekly_update` — Workspace uses inline selected-week forms; Details opens immutable-ID group configuration; lifecycle Monday only; blank applicant count is `NULL`/unknown, not zero; existing rows require `expected_updated_at`.
 - `app_upsert_candidate`
 - `app_start_pipeline_stage_v2`
 - `app_upsert_offer`

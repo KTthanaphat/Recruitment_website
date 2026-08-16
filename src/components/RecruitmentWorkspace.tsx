@@ -98,6 +98,7 @@ type ModalName =
   | "stage_outcome"
   | "pipeline_pass"
   | "offer"
+  | "start_confirmation"
   | "group"
   | "group_match"
   | "match"
@@ -156,6 +157,9 @@ type ProcessDefaults = {
   reference_checked_date?: string;
   reference_duration_minutes?: number;
   reference_conversation_summary?: string;
+  offer_id?: number;
+  offer_expected_updated_at?: string;
+  offer_start_confirmation?: "started" | "did_not_start" | null;
 };
 
 type ModalDefaults = {
@@ -242,6 +246,7 @@ const rpcByModal: Record<Exclude<ModalName, null | "user">, string> = {
   stage_outcome: "app_complete_pipeline_stage_v2",
   pipeline_pass: "app_pass_pipeline_jump_v2",
   offer: "app_upsert_offer",
+  start_confirmation: "app_confirm_offer_start_v1",
   group: "app_upsert_position_group",
   group_match: "app_create_and_match_sourcing_group",
   match: "app_create_group_match",
@@ -1014,7 +1019,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     setActiveModal("offer");
   }, []);
   const detailBody = useMemo(
-    () => buildDetailBodyV2(detail, data, language, canWrite, canDeleteRecords, openProcessFromDetail, openPendingEdit, openDetailOffer, navigationContext, openDetailRequisitionChange, openDetailCandidateChange, openCandidateReference, openCandidateReferenceStatus, openCandidateReferenceCheck, prepareDestructiveRpcAction),
+    () => buildDetailBodyV2(detail, data, language, canWrite, canDeleteRecords, openProcessFromDetail, openPendingEdit, openDetailOffer, (offer) => { setProcessDefaults({ offer_id: offer.offer_id, offer_expected_updated_at: offer.updated_at, offer_start_confirmation: offer.start_confirmation }); setActiveModal("start_confirmation"); }, navigationContext, openDetailRequisitionChange, openDetailCandidateChange, openCandidateReference, openCandidateReferenceStatus, openCandidateReferenceCheck, prepareDestructiveRpcAction),
     [canDeleteRecords, canWrite, detail, data, language, navigationContext, openCandidateReference, openCandidateReferenceCheck, openCandidateReferenceStatus, openDetailCandidateChange, openDetailRequisitionChange, openDetailOffer, openPendingEdit, openProcessFromDetail, prepareDestructiveRpcAction]
   );
 
@@ -1092,7 +1097,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       ) : null}
 
       {initialView === "home" ? (
-        <HomeView language={language} profile={data.profile} requisitions={filteredRequisitions} candidates={filteredCandidates} offers={filteredOffers} recruitmentLogs={data.recruitment_logs} staleSourcingGroups={staleSourcingGroups} changeLogs={filteredChangeLogs} dataQualityIssues={dataQualityIssues} canViewRecentActivity={role === "system_admin" || role === "admin_recruiter"} onEditPending={openPendingEdit} onOpenRequisition={(id) => setDetail({ type: "requisition", id })} onOpenCandidate={(id) => setDetail({ type: "candidate", id })} />
+        <HomeView language={language} profile={data.profile} requisitions={filteredRequisitions} candidates={filteredCandidates} offers={filteredOffers} recruitmentLogs={data.recruitment_logs} staleSourcingGroups={staleSourcingGroups} changeLogs={filteredChangeLogs} dataQualityIssues={dataQualityIssues} canViewRecentActivity={canWrite} onConfirmStart={(offer) => { setProcessDefaults({ offer_id: offer.offer_id, offer_expected_updated_at: offer.updated_at, offer_start_confirmation: offer.start_confirmation }); setActiveModal("start_confirmation"); }} onEditPending={openPendingEdit} onOpenRequisition={(id) => setDetail({ type: "requisition", id })} onOpenCandidate={(id) => setDetail({ type: "candidate", id })} />
       ) : null}
 
       {initialView === "dashboard" ? (
@@ -1163,12 +1168,9 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
               siteFilter={filters.site}
               ownerFilter={filters.owner}
               weekStart={sourcingWeek}
-              onGroup={() => dispatchWorkspaceAction({ kind: "group.create", docId: workspaceScope.requisitions[0]?.doc_id ?? undefined })}
-              onMatch={workspaceScope.requisitions[0] ? (defaults) => dispatchWorkspaceAction({ kind: "group.match", docId: defaults?.doc_id ?? workspaceScope.requisitions[0].doc_id, groupId: defaults?.group_id ?? workspaceScope.groupIds[0] }) : undefined}
-              onUnmatch={(payload, summary) => prepareDestructiveRpcAction("app_unmatch_group_requisition", payload, summary)}
-              onDeleteRecord={(payload, summary) => prepareDestructiveRpcAction("app_delete_recruitment_record", payload, summary)}
-              canDeleteRecords={canDeleteRecords}
               onSaveSourcing={(payload, summary) => prepareRpcAction("app_upsert_sourcing_weekly_update", payload, summary)}
+              onUpdateGroupInfo={(payload, summary) => prepareRpcAction("app_update_sourcing_group_info_v1", payload, summary)}
+              onSetGroupChannel={(payload, summary) => prepareRpcAction("app_set_sourcing_group_channel_v1", payload, summary)}
               onWeekChange={setSourcingWeek}
             />
           )}
@@ -1205,15 +1207,8 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
           weekStart={sourcingWeek}
           onWeekChange={setSourcingWeek}
           onSaveSourcing={(payload, summary) => prepareRpcAction("app_upsert_sourcing_weekly_update", payload, summary)}
-          onGroup={() => setActiveModal("group")}
-          onCreateAndMatch={() => setActiveModal("group_match")}
-          onMatch={(defaults) => {
-            setModalDefaults(defaults ?? {});
-            setActiveModal("match");
-          }}
-          onUnmatch={(payload, summary) => prepareDestructiveRpcAction("app_unmatch_group_requisition", payload, summary)}
-          onDeleteRecord={(payload, summary) => prepareDestructiveRpcAction("app_delete_recruitment_record", payload, summary)}
-          canDeleteRecords={canDeleteRecords}
+          onUpdateGroupInfo={(payload, summary) => prepareRpcAction("app_update_sourcing_group_info_v1", payload, summary)}
+          onSetGroupChannel={(payload, summary) => prepareRpcAction("app_set_sourcing_group_channel_v1", payload, summary)}
         />
       ) : null}
 
@@ -1519,6 +1514,13 @@ function buildPayload(modal: Exclude<ModalName, null>, formData: FormData) {
     return payload;
   }
 
+  if (modal === "start_confirmation") {
+    const payload = { offer_id: asNumber(formData.get("offer_id"), 0), expected_updated_at: emptyToNull(formData.get("expected_updated_at")), start_confirmation: emptyToNull(formData.get("start_confirmation")), reason: emptyToNull(formData.get("reason")) };
+    requireFields(payload, ["offer_id", "expected_updated_at", "start_confirmation"]);
+    if (payload.start_confirmation === "did_not_start" && !payload.reason) throw new Error("Did not start requires a reason.");
+    return payload;
+  }
+
   if (modal === "pipeline_record_correction") {
     const outcomeResult = emptyToNull(formData.get("outcome_result"));
     const payload = {
@@ -1770,6 +1772,7 @@ function RecordModal({
         {modal === "stage_outcome" ? <StageOutcomeFields defaults={processDefaults} language={language} /> : null}
         {modal === "pipeline_pass" ? <PipelinePassFields data={data} defaults={processDefaults} language={language} /> : null}
         {modal === "offer" ? <OfferPrefillFields data={data} language={language} mode={mode} selectedId={selectedId} selected={selectedRecords.offer} defaults={modalDefaults} onSelect={setSelectedId} /> : null}
+        {modal === "start_confirmation" ? <StartConfirmationFields defaults={processDefaults} language={language} /> : null}
         {modal === "group" ? <GroupPrefillFields data={data} language={language} mode={mode} selectedId={selectedId} selected={selectedRecords.group} defaults={modalDefaults} onSelect={setSelectedId} /> : null}
         {modal === "group_match" ? <CreateAndMatchGroupFields data={data} defaults={modalDefaults} language={language} profile={profile} /> : null}
         {modal === "match" ? <MatchFields data={data} defaults={modalDefaults} language={language} /> : null}
@@ -2548,6 +2551,17 @@ function UserFields({ canManageUsers, data, language = "en" }: { canManageUsers:
   );
 }
 
+function StartConfirmationFields({ defaults, language }: { defaults: ProcessDefaults; language: Language }) {
+  const [outcome, setOutcome] = useState<"started" | "did_not_start">(defaults.offer_start_confirmation ?? "started");
+  return <div className="grid gap-4">
+    <input type="hidden" name="offer_id" value={defaults.offer_id ?? ""} />
+    <input type="hidden" name="expected_updated_at" value={defaults.offer_expected_updated_at ?? ""} />
+    <div className="rounded-md border border-[#D7DEE8] bg-lightgray p-3 text-sm font-medium text-slate">Confirm the candidate’s first working-day attendance. Did not start will reopen headcount and restart the requisition SLA today.</div>
+    <Field label="Start confirmation"><SelectInput name="start_confirmation" value={outcome} onChange={(event) => setOutcome(event.target.value as "started" | "did_not_start")}><option value="started">Started work</option><option value="did_not_start">Did not start</option></SelectInput></Field>
+    {outcome === "did_not_start" ? <Field label="Reason"><TextArea name="reason" required rows={3} placeholder="Why did the candidate not start?" /></Field> : null}
+  </div>;
+}
+
 function OfferPrefillFields({
   data,
   defaults,
@@ -3165,6 +3179,7 @@ function buildDetailBodyV2(
   onUpdateCandidate: (candidateId: string) => void,
   onEditPending: (candidate: EnrichedCandidate) => void,
   onEditOffer: (offer: Offer) => void,
+  onConfirmOfferStart: (offer: Offer) => void,
   navigationContext: { language: Language; site: string; owner: string; sourcingWeek: string },
   onChangeRequisition: (docId: string) => void,
   onChangeCandidate: (candidateId: string) => void,
@@ -3429,11 +3444,19 @@ function buildDetailBodyV2(
               <h4 className="mb-2 font-semibold text-navy">{translate(language, "offers")}</h4>
               <div className="grid gap-2">
                 {offers.length === 0 ? <p className="text-sm font-medium text-slate">{translate(language, "noData")}</p> : offers.map((offer) => (
-                  <div key={offer.offer_id} className="rounded-md border border-[#D7DEE8] bg-white p-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-navy">{offer.doc_id}</strong>{canEditOffers ? <Button type="button" size="sm" variant="secondary" onClick={() => onEditOffer(offer)}>{translate(language, "edit")}</Button> : null}</div>
+                  <div key={offer.offer_id} className="grid gap-3 rounded-md border border-[#D7DEE8] bg-white p-3">
+                    <section className="rounded-md border border-[#E4E9F2] bg-[#F8FAFD] p-3">
+                    <p className="text-xs font-semibold uppercase tracking-normal text-slate">Offer record</p>
+                    <div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-navy">{offer.doc_id}</strong><div className="flex flex-wrap gap-2">{canEditOffers ? <Button type="button" size="sm" variant="secondary" onClick={() => onEditOffer(offer)}>{translate(language, "edit")}</Button> : null}</div></div>
                     <p className="mt-1 text-sm font-medium text-slate">{translate(language, "acceptedLower")}: {formatDate(offer.accepted_date, language)}</p>
                     <p className="mt-1 text-sm font-medium text-slate">{translate(language, "startLower")}: {formatDate(offer.first_working_date, language)}</p>
                     {offer.remark ? <p className="mt-1 break-words text-sm text-slate">{offer.remark}</p> : null}
+                    </section>
+                    <section className="rounded-md border border-[#E4E9F2] bg-white p-3">
+                    <p className="text-xs font-semibold uppercase tracking-normal text-slate">Come to work</p>
+                    <p className="mt-1 text-sm font-medium text-slate">First working date attendance: {offer.start_confirmation ? `${offer.start_confirmation === "started" ? "Started work" : "Did not start"}${offer.start_confirmed_at ? ` / ${formatDate(offer.start_confirmed_at, language)}` : ""}${offer.start_confirmation_reason ? ` — ${offer.start_confirmation_reason}` : ""}` : offer.first_working_date && offer.first_working_date > today() ? "Available on the first working date" : "Not confirmed"}</p>
+                    {canEditOffers && offer.accepted_date && offer.first_working_date && offer.first_working_date <= today() && (!offer.start_confirmation || ["system_admin", "admin_recruiter"].includes(data.profile?.role ?? "")) ? <Button type="button" className="mt-3" size="sm" variant="secondary" onClick={() => onConfirmOfferStart(offer)}>{offer.start_confirmation ? "Correct start" : "Confirm start"}</Button> : null}
+                    </section>
                   </div>
                 ))}
               </div>
@@ -3720,6 +3743,7 @@ function modalTitle(modal: ModalName) {
     stage_outcome: "Complete Stage",
     pipeline_pass: "Confirm Passed Stages",
     offer: "Offer",
+    start_confirmation: "New Hire Confirmation",
     group: "Position Group",
     group_match: "Create & Match Group",
     match: "Match Requisition and Group",

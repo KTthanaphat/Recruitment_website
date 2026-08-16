@@ -205,9 +205,12 @@ Requisitions:
 - `Position` appears after `Section`.
 - `Level (L)` is a dropdown from `0` to `14`.
 - Interactive UI surfaces that present a requisition as a named record use `Position (L#)` as the primary identity. The shared formatter accepts stored numeric levels `0`-`14` with or without one case-insensitive `L` prefix, so `4`, `L4`, and `l4` all display as `L4`; missing, blank, malformed, or out-of-range levels omit the suffix and preserve the stored position text.
+- Mobile requisition cards shorten a position longer than 30 characters to `trimmed position... (L#)`; tables, details, exports, and payloads retain the full position.
+- The Select a hiring workspace picker applies that same 30-character requisition title rule at every breakpoint; its group cards use display position as title and immutable Group ID as secondary metadata.
 - Requisition ID is compact secondary metadata. Native selection options use `Position (L#) — Requisition ID` so duplicate titles remain distinguishable. Raw IDs remain unchanged in breadcrumbs, dedicated Doc ID fields and columns, candidate Doc IDs, audit/destructive/data-quality records, URLs, search values, and payloads.
 - Candidate Pipeline cards remain candidate-first and unchanged because a group can inherit multiple requisitions. Exports, Vacancy Waterfall reporting, PDFs, XLSX, and CSV schemas continue to use their existing raw requisition fields.
-- SLA age starts from `pr_approved_date` and uses calendar days.
+- SLA age starts from `pr_approved_date` and uses calendar days, except after a confirmed `did_not_start`, when it restarts from the latest Bangkok confirmation date without overwriting the PR date.
+- Dashboard Waterfall excludes a no-show from Filled and adds Open on its Bangkok confirmation date. Its active-requisition table/export shows immutable Actual Age (PR-to-today) beside resettable Current SLA (latest no-show-to-today and threshold).
 - SLA thresholds are L0-L6: 30 days, L7-L9: 45 days, and L10-L14: 60 days.
 - Operational overdue styling applies only to open requisitions with open headcount, valid PR approved date, valid level threshold, and age greater than SLA.
 - Requisition list and Home Needs Action show age/SLA context; overdue open Doc IDs render red.
@@ -326,6 +329,8 @@ Offers:
 - Available means not filled, not cancelled, open headcount greater than `0`, and no existing offer for that candidate/doc pair.
 - Offer Type and Replaced fields were removed.
 - Change Offer locks candidate and Doc ID and allows editing accepted date, first working date, and remark.
+- New Hire Confirmation is due on the first working date for accepted offers. Recruiters confirm `started` or `did_not_start`; the latter requires a reason, preserves offer history, removes its operational headcount coverage, and may reopen the requisition. Only System Admin and Admin Recruiter may correct a saved confirmation.
+- Candidate Detail stacks Offer record above Come to work; only Come to work owns Confirm start or admin-only Correct start. Sourcing is a two-surface workflow: the default Weekly Work Board lists open groups needing the selected Monday's applicant record; embedded Workspace Sourcing shows every visible group as an inline editor with Details opening the group drawer. Group cards use the display position as title and immutable `group_id` as the subtitle. Lifecycle History shows saved and expected-unrecorded `group_id` + Monday slots with the shared Requisitions per-column search, sorting, and filter controls. A group detail drawer owns display-name and channel configuration, never the ID. Responsible recruiters may change an open managed group; channel changes take effect from a Monday and preserve `NULL`/unrecorded values rather than silently using zero.
 - The Offer surface is compact by design: offer actions, reconciliation prompts, and linked record actions should fit the shared workspace without reintroducing recommendation panels or redundant pipeline summaries.
 
 ## Data Model

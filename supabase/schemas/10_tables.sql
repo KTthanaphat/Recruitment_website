@@ -177,11 +177,21 @@ create table if not exists public.offers (
   doc_id text not null references public.requisitions(doc_id) on delete cascade,
   accepted_date date,
   first_working_date date,
+  start_confirmation text check (start_confirmation in ('started', 'did_not_start')),
+  start_confirmed_at timestamptz,
+  start_confirmed_by uuid references public.profiles(id),
+  start_confirmation_reason text,
+  constraint offers_start_confirmation_check check (
+    (start_confirmation is null and start_confirmed_at is null and start_confirmed_by is null and start_confirmation_reason is null)
+    or (start_confirmation = 'started' and start_confirmed_at is not null and start_confirmed_by is not null and start_confirmation_reason is null)
+    or (start_confirmation = 'did_not_start' and start_confirmed_at is not null and start_confirmed_by is not null and nullif(btrim(start_confirmation_reason), '') is not null)
+  ),
   remark text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (candidate_id, doc_id)
 );
+create index if not exists offers_start_confirmation_due_idx on public.offers (first_working_date) where accepted_date is not null and first_working_date is not null and start_confirmation is null;
 
 create table if not exists public.sourcing_weekly_updates (
   group_id text not null references public.position_groups(group_id) on delete cascade,
@@ -194,14 +204,14 @@ create table if not exists public.sourcing_weekly_updates (
   channel_walkin boolean not null default false,
   channel_referral boolean not null default false,
   channel_others boolean not null default false,
-  applicants_fb integer not null default 0 check (applicants_fb >= 0),
-  applicants_jobthai integer not null default 0 check (applicants_jobthai >= 0),
-  applicants_jobtopgun integer not null default 0 check (applicants_jobtopgun >= 0),
-  applicants_jobdb integer not null default 0 check (applicants_jobdb >= 0),
-  applicants_linkedin integer not null default 0 check (applicants_linkedin >= 0),
-  applicants_walkin integer not null default 0 check (applicants_walkin >= 0),
-  applicants_referral integer not null default 0 check (applicants_referral >= 0),
-  applicants_others integer not null default 0 check (applicants_others >= 0),
+    applicants_fb integer check (applicants_fb >= 0),
+    applicants_jobthai integer check (applicants_jobthai >= 0),
+    applicants_jobtopgun integer check (applicants_jobtopgun >= 0),
+    applicants_jobdb integer check (applicants_jobdb >= 0),
+    applicants_linkedin integer check (applicants_linkedin >= 0),
+    applicants_walkin integer check (applicants_walkin >= 0),
+    applicants_referral integer check (applicants_referral >= 0),
+    applicants_others integer check (applicants_others >= 0),
   updated_by uuid references auth.users(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),

@@ -2,6 +2,7 @@ import { formatLocalDateInput } from "@/lib/dates";
 
 type RequisitionLike = {
   pr_approved_date: string | null;
+  sla_restart_date?: string | null;
   level: string | null;
   status: string;
   open_headcount?: number;
@@ -18,7 +19,7 @@ export type RequisitionSlaState = {
 };
 
 export function getRequisitionStartDate(requisition: RequisitionLike) {
-  return dateOnly(requisition.pr_approved_date);
+  return dateOnly(requisition.sla_restart_date ?? requisition.pr_approved_date);
 }
 
 export function getSlaDays(level: string | null | undefined) {

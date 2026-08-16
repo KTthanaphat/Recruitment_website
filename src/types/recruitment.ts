@@ -201,6 +201,10 @@ export type Offer = {
   doc_id: string;
   accepted_date: string | null;
   first_working_date: string | null;
+  start_confirmation: "started" | "did_not_start" | null;
+  start_confirmed_at: string | null;
+  start_confirmed_by: string | null;
+  start_confirmation_reason: string | null;
   remark: string | null;
   created_at: string;
   updated_at: string;
@@ -217,14 +221,14 @@ export type SourcingWeeklyUpdate = {
   channel_walkin: boolean;
   channel_referral: boolean;
   channel_others: boolean;
-  applicants_fb: number;
-  applicants_jobthai: number;
-  applicants_jobtopgun: number;
-  applicants_jobdb: number;
-  applicants_linkedin: number;
-  applicants_walkin: number;
-  applicants_referral: number;
-  applicants_others: number;
+  applicants_fb: number | null;
+  applicants_jobthai: number | null;
+  applicants_jobtopgun: number | null;
+  applicants_jobdb: number | null;
+  applicants_linkedin: number | null;
+  applicants_walkin: number | null;
+  applicants_referral: number | null;
+  applicants_others: number | null;
   updated_by: string | null;
   created_at: string;
   updated_at: string;
@@ -281,6 +285,7 @@ export type EnrichedRequisition = Requisition & {
   candidate_count: number;
   accepted_count: number;
   open_headcount: number;
+  sla_restart_date: string | null;
 };
 
 export type EnrichedCandidate = Candidate & {
@@ -331,6 +336,14 @@ export type EnrichedSourcingGroup = {
   channel_referral: boolean;
   channel_others: boolean;
   latest_update: SourcingWeeklyUpdate | null;
+};
+
+/** A saved or expected Monday slot within one position group's sourcing lifecycle. */
+export type SourcingLifecycleRow = {
+  group: EnrichedSourcingGroup;
+  week_start: string;
+  update: SourcingWeeklyUpdate | null;
+  status: "saved" | "needs_recording";
 };
 
 export type EnrichedUnmatchedSourcingGroup = {

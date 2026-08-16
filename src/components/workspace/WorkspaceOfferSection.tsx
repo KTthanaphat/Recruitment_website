@@ -9,6 +9,7 @@ import { Tag } from "@/components/ui/Tag";
 import { formatDate, formatRequisitionOptionLabel, formatRequisitionTitle } from "@/lib/format";
 import { offerStatusLabel, translate } from "@/lib/i18n/dictionary";
 import { offerStatus } from "@/lib/operations";
+import { countsTowardHeadcount } from "@/lib/offer-headcount";
 import type { EnrichedCandidate, EnrichedOffer, EnrichedRequisition, Language, Offer, Profile, WorkspaceActionRequest } from "@/types/recruitment";
 
 export type WorkspaceOfferSectionProps = {
@@ -161,5 +162,5 @@ export function WorkspaceOfferSection({
 }
 
 function acceptedFor(docId: string, offers: Offer[]) {
-  return offers.filter((offer) => offer.doc_id === docId && Boolean(offer.accepted_date)).length;
+  return offers.filter((offer) => offer.doc_id === docId && countsTowardHeadcount(offer)).length;
 }

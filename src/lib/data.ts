@@ -1,5 +1,6 @@
 import { PROCESS_STAGES, SOURCING_CHANNELS } from "@/lib/constants";
 import { formatCandidateName } from "@/lib/format";
+import { countsTowardHeadcount } from "@/lib/offer-headcount";
 import type {
   Candidate,
   CandidateReference,
@@ -144,15 +145,20 @@ export function enrichRequisitions(data: DashboardData): EnrichedRequisition[] {
     const relatedGroups = data.document_groups.filter((group) => group.doc_id === requisition.doc_id);
     const relatedGroupIds = new Set(relatedGroups.map((group) => group.doc_group_id));
     const candidateCount = data.candidates.filter((candidate) => relatedGroupIds.has(candidate.doc_group_id)).length;
-    const acceptedCount = data.offers.filter(
-      (offer) => offer.doc_id === requisition.doc_id && Boolean(offer.accepted_date)
-    ).length;
+    const relatedOffers = data.offers.filter((offer) => offer.doc_id === requisition.doc_id);
+    const acceptedCount = relatedOffers.filter(countsTowardHeadcount).length;
+    const slaRestartDate = relatedOffers
+      .filter((offer) => offer.start_confirmation === "did_not_start" && offer.start_confirmed_at)
+      .map((offer) => offer.start_confirmed_at!.slice(0, 10))
+      .sort()
+      .at(-1) ?? null;
 
     return {
       ...requisition,
       candidate_count: candidateCount,
       accepted_count: acceptedCount,
-      open_headcount: Math.max(requisition.head_count - acceptedCount, 0)
+      open_headcount: Math.max(requisition.head_count - acceptedCount, 0),
+      sla_restart_date: slaRestartDate
     };
   });
 }
