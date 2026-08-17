@@ -1768,7 +1768,7 @@ function RecordModal({
         {modal === "reference_check" ? <CandidateReferenceCheckFields defaults={processDefaults} language={language} /> : null}
         {modal === "pipeline_start" ? <PipelineStartFields defaults={processDefaults} language={language} /> : null}
         {modal === "pending_edit" ? <PendingEditFields defaults={processDefaults} language={language} /> : null}
-        {modal === "pipeline_record_correction" ? <PipelineRecordCorrectionFields defaults={processDefaults} language={language} /> : null}
+        {modal === "pipeline_record_correction" ? <PipelineRecordCorrectionFields canEditPendingDate={data.profile?.role === "system_admin"} defaults={processDefaults} language={language} /> : null}
         {modal === "stage_outcome" ? <StageOutcomeFields defaults={processDefaults} language={language} /> : null}
         {modal === "pipeline_pass" ? <PipelinePassFields data={data} defaults={processDefaults} language={language} /> : null}
         {modal === "offer" ? <OfferPrefillFields data={data} language={language} mode={mode} selectedId={selectedId} selected={selectedRecords.offer} defaults={modalDefaults} onSelect={setSelectedId} /> : null}
@@ -2893,17 +2893,16 @@ function isAcceptedThisCalendarMonth(value: string | null | undefined) {
   return acceptedDate >= monthStart && acceptedDate <= today;
 }
 
-function PipelineRecordCorrectionFields({ defaults, language }: { defaults: ProcessDefaults; language: Language }) {
+function PipelineRecordCorrectionFields({ canEditPendingDate, defaults, language }: { canEditPendingDate: boolean; defaults: ProcessDefaults; language: Language }) {
   const completed = Boolean(defaults.outcome_result);
   return <div className="grid gap-4 md:grid-cols-2">
     <input type="hidden" name="candidate_id" value={defaults.candidate_id ?? ""} />
     <input type="hidden" name="stage_instance_id" value={defaults.stage_instance_id ?? ""} />
     <input type="hidden" name="expected_updated_at" value={defaults.expected_updated_at ?? ""} />
-    <input type="hidden" name="opened_date" value={defaults.pending_log_date ?? ""} />
     <Field label={translate(language, "process")}><TextInput value={processLabel(defaults.recruitment_process as ProcessStage, language)} readOnly /></Field>
     <Field label={translate(language, "round")}><TextInput value={defaults.round ?? 1} readOnly /></Field>
     <div className="border-b border-[#D7DEE8] pb-2 text-sm font-semibold text-navy md:col-span-2">{translate(language, "pendingDetails")}</div>
-    <DerivedPendingDate language={language} value={defaults.pending_log_date} />
+    {canEditPendingDate ? <Field label="Pending date"><DayDateSelector ariaLabel="Pending date" defaultValue={defaults.pending_log_date ?? ""} language={language} name="opened_date" nextMonthLabel={translate(language, "nextMonth")} previousMonthLabel={translate(language, "previousMonth")} required /></Field> : <><input type="hidden" name="opened_date" value={defaults.pending_log_date ?? ""} /><DerivedPendingDate language={language} value={defaults.pending_log_date} /></>}
     <Field label={translate(language, "estimatedActionDate")}><DayDateSelector ariaLabel={translate(language, "estimatedActionDate")} clearLabel={translate(language, "clear")} defaultValue={defaults.pending_estimated_action_date ?? ""} language={language} name="estimated_action_date" nextMonthLabel={translate(language, "nextMonth")} previousMonthLabel={translate(language, "previousMonth")} /></Field>
     <Field label={translate(language, "interviewer")}><TextInput name="interviewer" list="interviewer-options" defaultValue={defaults.pending_interviewer ?? ""} /></Field>
     <Field label={translate(language, "remark")} className="md:col-span-2"><TextArea name="remark" rows={3} defaultValue={defaults.pending_remark ?? ""} /></Field>

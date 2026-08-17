@@ -248,6 +248,51 @@ select pg_temp.assert_true(
   'correction must preserve downstream Pending state'
 );
 
+-- System Admin can correct an earlier Outcome after the next stage has completed;
+-- the completed downstream history must remain unchanged.
+select public.app_complete_pipeline_stage_v2(jsonb_build_object(
+  'candidate_id', '__paired_pipeline_candidate',
+  'stage_instance_id', (select stage_instance_id from public.recruitment_logs where candidate_id = '__paired_pipeline_candidate' and recruitment_process = 'HR Interview' and superseded_at is null),
+  'expected_updated_at', (select updated_at from public.recruitment_logs where candidate_id = '__paired_pipeline_candidate' and recruitment_process = 'HR Interview' and superseded_at is null),
+  'pending', jsonb_build_object('opened_date', app_private.pipeline_business_date() - 1),
+  'outcome', jsonb_build_object('result', 'fail', 'date', app_private.pipeline_business_date() - 1, 'remark', 'Closed after interview'),
+  'next_pending', '{}'::jsonb
+));
+select public.app_correct_pipeline_outcome_v2(jsonb_build_object(
+  'candidate_id', '__paired_pipeline_candidate',
+  'stage_instance_id', (select stage_instance_id from public.recruitment_logs where candidate_id = '__paired_pipeline_candidate' and recruitment_process = 'Phone Screen' and superseded_at is null),
+  'expected_updated_at', (select updated_at from public.recruitment_logs where candidate_id = '__paired_pipeline_candidate' and recruitment_process = 'Phone Screen' and superseded_at is null),
+  'outcome', jsonb_build_object('result', 'pass', 'date', app_private.pipeline_business_date() - 2, 'remark', 'System Admin historical correction')
+));
+select pg_temp.assert_true(
+  (select phone.outcome_date = app_private.pipeline_business_date() - 2
+      and hr.result = 0
+      and hr.outcome_date = app_private.pipeline_business_date() - 1
+   from public.recruitment_logs phone
+   join public.recruitment_logs hr on hr.candidate_id = phone.candidate_id
+   where phone.candidate_id = '__paired_pipeline_candidate'
+     and phone.recruitment_process = 'Phone Screen' and phone.superseded_at is null
+     and hr.recruitment_process = 'HR Interview' and hr.superseded_at is null),
+  'system admin Outcome correction succeeds without changing completed downstream history'
+);
+
+select pg_temp.assert_true(
+  (public.app_correct_pipeline_stage_record_v3(jsonb_build_object(
+    'candidate_id', '__paired_pipeline_candidate',
+    'stage_instance_id', (select stage_instance_id from public.recruitment_logs where candidate_id = '__paired_pipeline_candidate' and recruitment_process = 'HR Interview' and superseded_at is null),
+    'expected_updated_at', (select updated_at from public.recruitment_logs where candidate_id = '__paired_pipeline_candidate' and recruitment_process = 'HR Interview' and superseded_at is null),
+    'pending', jsonb_build_object('opened_date', (app_private.pipeline_business_date() - 2)::text),
+    'outcome', jsonb_build_object('result', 'fail', 'date', (app_private.pipeline_business_date() - 1)::text, 'remark', 'Corrected pending date')
+  )) ->> 'ok')::boolean,
+  'system admin can correct the Pending date of a completed pipeline stage'
+);
+select pg_temp.assert_true(
+  (select log_date = app_private.pipeline_business_date() - 2 and outcome_date = app_private.pipeline_business_date() - 1
+   from public.recruitment_logs
+   where candidate_id = '__paired_pipeline_candidate' and recruitment_process = 'HR Interview' and superseded_at is null),
+  'system admin Pending-date correction preserves the submitted date'
+);
+
 select pg_temp.expect_error(
   format(
     'select public.app_correct_pipeline_outcome_v2(%L::jsonb)',
