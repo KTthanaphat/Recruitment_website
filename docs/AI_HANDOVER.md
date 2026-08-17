@@ -223,7 +223,7 @@ Opened requisition detail:
 - Applicant counts use related `group_id`.
 - Stage counts mean candidates who are in or have ever been in the stage.
 - Stage counts use related `group_id`, not only the selected `doc_id`.
-- Applicant totals include Facebook, JobThai, JobTopGun, JobDB, LinkedIn, Walk-in, Referral, Others.
+- Applicant totals include Facebook, JobThai, JobTopGun, JobsDB, JobBKK, LinkedIn, Walk-in, Referral, Others.
 
 ## Requisition Rules
 
@@ -270,7 +270,8 @@ Channels:
 - Facebook
 - JobThai
 - JobTopGun
-- JobDB
+- JobsDB
+- JobBKK
 - LinkedIn
 - Walk-in
 - Referral

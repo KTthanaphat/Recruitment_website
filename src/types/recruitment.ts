@@ -64,6 +64,7 @@ export type PositionGroup = {
   channel_jobthai: boolean;
   channel_jobtopgun: boolean;
   channel_jobdb: boolean;
+  channel_jobbkk: boolean;
   channel_linkedin: boolean;
   channel_walkin: boolean;
   channel_referral: boolean;
@@ -81,6 +82,7 @@ export type DocumentGroup = {
   channel_jobthai: boolean;
   channel_jobtopgun: boolean;
   channel_jobdb: boolean;
+  channel_jobbkk: boolean;
   channel_linkedin: boolean;
   channel_walkin: boolean;
   channel_referral: boolean;
@@ -217,6 +219,7 @@ export type SourcingWeeklyUpdate = {
   channel_jobthai: boolean;
   channel_jobtopgun: boolean;
   channel_jobdb: boolean;
+  channel_jobbkk: boolean;
   channel_linkedin: boolean;
   channel_walkin: boolean;
   channel_referral: boolean;
@@ -225,6 +228,7 @@ export type SourcingWeeklyUpdate = {
   applicants_jobthai: number | null;
   applicants_jobtopgun: number | null;
   applicants_jobdb: number | null;
+  applicants_jobbkk: number | null;
   applicants_linkedin: number | null;
   applicants_walkin: number | null;
   applicants_referral: number | null;
@@ -331,6 +335,7 @@ export type EnrichedSourcingGroup = {
   channel_jobthai: boolean;
   channel_jobtopgun: boolean;
   channel_jobdb: boolean;
+  channel_jobbkk: boolean;
   channel_linkedin: boolean;
   channel_walkin: boolean;
   channel_referral: boolean;
@@ -353,6 +358,7 @@ export type EnrichedUnmatchedSourcingGroup = {
   channel_jobthai: boolean;
   channel_jobtopgun: boolean;
   channel_jobdb: boolean;
+  channel_jobbkk: boolean;
   channel_linkedin: boolean;
   channel_walkin: boolean;
   channel_referral: boolean;

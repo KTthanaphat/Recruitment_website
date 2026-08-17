@@ -272,6 +272,7 @@ export function enrichUnmatchedSourcingGroups(data: DashboardData): EnrichedUnma
       channel_jobthai: group.channel_jobthai,
       channel_jobtopgun: group.channel_jobtopgun,
       channel_jobdb: group.channel_jobdb,
+      channel_jobbkk: group.channel_jobbkk,
       channel_linkedin: group.channel_linkedin,
       channel_walkin: group.channel_walkin,
       channel_referral: group.channel_referral,

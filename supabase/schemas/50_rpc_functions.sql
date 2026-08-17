@@ -135,7 +135,7 @@ begin
   perform set_config('app.action', 'position_group:' || v_mode, true);
   insert into public.position_groups (
     group_id, group_position,
-    channel_fb, channel_jobthai, channel_jobtopgun, channel_jobdb,
+    channel_fb, channel_jobthai, channel_jobtopgun, channel_jobdb, channel_jobbkk,
     channel_linkedin, channel_walkin, channel_referral, channel_others
   )
   values (
@@ -145,6 +145,7 @@ begin
     coalesce((payload ->> 'channel_jobthai')::boolean, false),
     coalesce((payload ->> 'channel_jobtopgun')::boolean, false),
     coalesce((payload ->> 'channel_jobdb')::boolean, false),
+    coalesce((payload ->> 'channel_jobbkk')::boolean, false),
     coalesce((payload ->> 'channel_linkedin')::boolean, false),
     coalesce((payload ->> 'channel_walkin')::boolean, false),
     coalesce((payload ->> 'channel_referral')::boolean, false),
@@ -156,6 +157,7 @@ begin
     channel_jobthai = excluded.channel_jobthai,
     channel_jobtopgun = excluded.channel_jobtopgun,
     channel_jobdb = excluded.channel_jobdb,
+    channel_jobbkk = excluded.channel_jobbkk,
     channel_linkedin = excluded.channel_linkedin,
     channel_walkin = excluded.channel_walkin,
     channel_referral = excluded.channel_referral,
@@ -195,12 +197,12 @@ begin
   perform set_config('app.action', 'document_group:new', true);
   insert into public.document_groups (
     doc_group_id, doc_id, group_id, group_position,
-    channel_fb, channel_jobthai, channel_jobtopgun, channel_jobdb,
+    channel_fb, channel_jobthai, channel_jobtopgun, channel_jobdb, channel_jobbkk,
     channel_linkedin, channel_walkin, channel_referral, channel_others
   )
   values (
     v_doc_group_id, v_doc_id, v_group_id, v_group.group_position,
-    v_group.channel_fb, v_group.channel_jobthai, v_group.channel_jobtopgun, v_group.channel_jobdb,
+    v_group.channel_fb, v_group.channel_jobthai, v_group.channel_jobtopgun, v_group.channel_jobdb, v_group.channel_jobbkk,
     v_group.channel_linkedin, v_group.channel_walkin, v_group.channel_referral, v_group.channel_others
   );
 
@@ -294,7 +296,7 @@ begin
   v_doc_group_id := app_private.next_app_id('document_groups', 'DGRP');
   perform set_config('app.action', 'position_group:create_and_match', true);
   insert into public.position_groups (
-    group_id, group_position, channel_fb, channel_jobthai, channel_jobtopgun, channel_jobdb,
+    group_id, group_position, channel_fb, channel_jobthai, channel_jobtopgun, channel_jobdb, channel_jobbkk,
     channel_linkedin, channel_walkin, channel_referral, channel_others
   ) values (
     v_group_id, v_group_position,
@@ -302,6 +304,7 @@ begin
     coalesce((payload ->> 'channel_jobthai')::boolean, false),
     coalesce((payload ->> 'channel_jobtopgun')::boolean, false),
     coalesce((payload ->> 'channel_jobdb')::boolean, false),
+    coalesce((payload ->> 'channel_jobbkk')::boolean, false),
     coalesce((payload ->> 'channel_linkedin')::boolean, false),
     coalesce((payload ->> 'channel_walkin')::boolean, false),
     coalesce((payload ->> 'channel_referral')::boolean, false),
@@ -309,10 +312,10 @@ begin
   );
   insert into public.document_groups (
     doc_group_id, doc_id, group_id, group_position, channel_fb, channel_jobthai, channel_jobtopgun,
-    channel_jobdb, channel_linkedin, channel_walkin, channel_referral, channel_others
+    channel_jobdb, channel_jobbkk, channel_linkedin, channel_walkin, channel_referral, channel_others
   )
   select v_doc_group_id, v_doc_id, v_group_id, group_position, channel_fb, channel_jobthai,
-    channel_jobtopgun, channel_jobdb, channel_linkedin, channel_walkin, channel_referral, channel_others
+    channel_jobtopgun, channel_jobdb, channel_jobbkk, channel_linkedin, channel_walkin, channel_referral, channel_others
   from public.position_groups where group_id = v_group_id;
 
   return jsonb_build_object('ok', true, 'id', v_group_id, 'doc_group_id', v_doc_group_id);
@@ -517,9 +520,9 @@ begin
   perform set_config('app.action', case when v_is_existing then 'sourcing_update:corrected' else 'sourcing_update:created' end, true);
   insert into public.sourcing_weekly_updates (
     group_id, week_start,
-    channel_fb, channel_jobthai, channel_jobtopgun, channel_jobdb,
+    channel_fb, channel_jobthai, channel_jobtopgun, channel_jobdb, channel_jobbkk,
     channel_linkedin, channel_walkin, channel_referral, channel_others,
-    applicants_fb, applicants_jobthai, applicants_jobtopgun, applicants_jobdb,
+    applicants_fb, applicants_jobthai, applicants_jobtopgun, applicants_jobdb, applicants_jobbkk,
     applicants_linkedin, applicants_walkin, applicants_referral, applicants_others,
     updated_by
   )
@@ -530,6 +533,7 @@ begin
     case when payload ? 'channel_jobthai' then (payload ->> 'channel_jobthai')::boolean else coalesce(v_group.channel_jobthai, false) end,
     case when payload ? 'channel_jobtopgun' then (payload ->> 'channel_jobtopgun')::boolean else coalesce(v_group.channel_jobtopgun, false) end,
     case when payload ? 'channel_jobdb' then (payload ->> 'channel_jobdb')::boolean else coalesce(v_group.channel_jobdb, false) end,
+    case when payload ? 'channel_jobbkk' then (payload ->> 'channel_jobbkk')::boolean else coalesce(v_group.channel_jobbkk, false) end,
     case when payload ? 'channel_linkedin' then (payload ->> 'channel_linkedin')::boolean else coalesce(v_group.channel_linkedin, false) end,
     case when payload ? 'channel_walkin' then (payload ->> 'channel_walkin')::boolean else coalesce(v_group.channel_walkin, false) end,
     case when payload ? 'channel_referral' then (payload ->> 'channel_referral')::boolean else coalesce(v_group.channel_referral, false) end,
@@ -538,6 +542,7 @@ begin
     nullif(payload ->> 'applicants_jobthai', '')::integer,
     nullif(payload ->> 'applicants_jobtopgun', '')::integer,
     nullif(payload ->> 'applicants_jobdb', '')::integer,
+    nullif(payload ->> 'applicants_jobbkk', '')::integer,
     nullif(payload ->> 'applicants_linkedin', '')::integer,
     nullif(payload ->> 'applicants_walkin', '')::integer,
     nullif(payload ->> 'applicants_referral', '')::integer,
@@ -549,6 +554,7 @@ begin
     channel_jobthai = case when payload ? 'channel_jobthai' then excluded.channel_jobthai else sourcing_weekly_updates.channel_jobthai end,
     channel_jobtopgun = case when payload ? 'channel_jobtopgun' then excluded.channel_jobtopgun else sourcing_weekly_updates.channel_jobtopgun end,
     channel_jobdb = case when payload ? 'channel_jobdb' then excluded.channel_jobdb else sourcing_weekly_updates.channel_jobdb end,
+    channel_jobbkk = case when payload ? 'channel_jobbkk' then excluded.channel_jobbkk else sourcing_weekly_updates.channel_jobbkk end,
     channel_linkedin = case when payload ? 'channel_linkedin' then excluded.channel_linkedin else sourcing_weekly_updates.channel_linkedin end,
     channel_walkin = case when payload ? 'channel_walkin' then excluded.channel_walkin else sourcing_weekly_updates.channel_walkin end,
     channel_referral = case when payload ? 'channel_referral' then excluded.channel_referral else sourcing_weekly_updates.channel_referral end,
@@ -557,6 +563,7 @@ begin
     applicants_jobthai = excluded.applicants_jobthai,
     applicants_jobtopgun = excluded.applicants_jobtopgun,
     applicants_jobdb = excluded.applicants_jobdb,
+    applicants_jobbkk = excluded.applicants_jobbkk,
     applicants_linkedin = excluded.applicants_linkedin,
     applicants_walkin = excluded.applicants_walkin,
     applicants_referral = excluded.applicants_referral,

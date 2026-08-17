@@ -234,7 +234,7 @@ Open requisition
 
 Sourcing:
 
-- Supported channels: Facebook, JobThai, JobTopGun, JobDB, LinkedIn, Walk-in, Referral, Others.
+- Supported channels: Facebook, JobThai, JobTopGun, JobsDB, JobBKK, LinkedIn, Walk-in, Referral, Others.
 - Workspace > Sourcing reuses the embedded weekly sourcing editor, so recruiters can update applicant counts for the related group or requisition without leaving `/workspace`.
 - A `group_id` is single-site: it may link only to requisitions from one site. Cross-site matches are rejected.
 - Records > Sourcing shows unmatched sourcing groups in a separate warning section above weekly update cards for System Admins and Admin Recruiters only. Site Recruiters use Create & Match Group for their own unmatched open requisitions, so they do not leave setup exceptions behind.
