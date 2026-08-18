@@ -479,17 +479,21 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       if (selectedWorkspaceDocId && linked.includes(selectedWorkspaceDocId)) docIds.add(selectedWorkspaceDocId);
       else linked.forEach((docId) => docIds.add(docId));
     }
+    const visibleDocIds = new Set([...docIds].filter((docId) => {
+      const requisition = enrichedRequisitions.find((row) => row.doc_id === docId);
+      return Boolean(requisition && (!filters.site || requisition.site === filters.site) && (!filters.owner || requisition.person_in_charge === filters.owner));
+    }));
     const documentGroups = data.document_groups.filter((row) => (
       (row.group_id && groupIds.has(row.group_id))
-      || (docIds.has(row.doc_id) && groupIds.size === 0)
-    ));
+      || (visibleDocIds.has(row.doc_id) && groupIds.size === 0)
+    ) && visibleDocIds.has(row.doc_id));
     const scopedDocumentGroups = selectedWorkspaceDocId
       ? documentGroups.filter((row) => row.doc_id === selectedWorkspaceDocId)
       : documentGroups;
     const candidateDocGroupIds = new Set(documentGroups.map((row) => row.doc_group_id));
     const scopedCandidates = enrichedCandidates.filter((row) => candidateDocGroupIds.has(row.doc_group_id));
-    const scopedRequisitions = enrichedRequisitions.filter((row) => docIds.has(row.doc_id));
-    const scopedOffers = enrichedOffers.filter((row) => docIds.has(row.doc_id));
+    const scopedRequisitions = enrichedRequisitions.filter((row) => visibleDocIds.has(row.doc_id));
+    const scopedOffers = enrichedOffers.filter((row) => visibleDocIds.has(row.doc_id));
     return {
       candidates: scopedCandidates,
       docGroupId: scopedDocumentGroups[0]?.doc_group_id ?? null,
@@ -498,7 +502,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       offers: scopedOffers,
       requisitions: scopedRequisitions
     };
-  }, [data.document_groups, enrichedCandidates, enrichedOffers, enrichedRequisitions, selectedWorkspaceDocId, workspaceTarget]);
+  }, [data.document_groups, enrichedCandidates, enrichedOffers, enrichedRequisitions, filters.owner, filters.site, selectedWorkspaceDocId, workspaceTarget]);
 
   const siteOptions = SITE_OPTIONS;
   const ownerOptions = recruiterNicknameOptions(data.profiles);
@@ -1115,6 +1119,8 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
           canWrite={canWrite}
           data={data}
           language={language}
+          siteFilter={filters.site}
+          ownerFilter={filters.owner}
           onDispatchAction={dispatchWorkspaceAction}
           offerSlot={(
             <WorkspaceOfferSection
@@ -1171,6 +1177,8 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
               onSaveSourcing={(payload, summary) => prepareRpcAction("app_upsert_sourcing_weekly_update", payload, summary)}
               onUpdateGroupInfo={(payload, summary) => prepareRpcAction("app_update_sourcing_group_info_v1", payload, summary)}
               onSetGroupChannel={(payload, summary) => prepareRpcAction("app_set_sourcing_group_channel_v1", payload, summary)}
+              onUnmatchGroupRequisition={(payload, summary) => prepareDestructiveRpcAction("app_unmatch_group_requisition", payload, summary)}
+              onDeleteGroup={(payload, summary) => prepareDestructiveRpcAction("app_delete_recruitment_record", payload, summary)}
               onWeekChange={setSourcingWeek}
             />
           )}
@@ -1209,6 +1217,8 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
           onSaveSourcing={(payload, summary) => prepareRpcAction("app_upsert_sourcing_weekly_update", payload, summary)}
           onUpdateGroupInfo={(payload, summary) => prepareRpcAction("app_update_sourcing_group_info_v1", payload, summary)}
           onSetGroupChannel={(payload, summary) => prepareRpcAction("app_set_sourcing_group_channel_v1", payload, summary)}
+          onUnmatchGroupRequisition={(payload, summary) => prepareDestructiveRpcAction("app_unmatch_group_requisition", payload, summary)}
+          onDeleteGroup={(payload, summary) => prepareDestructiveRpcAction("app_delete_recruitment_record", payload, summary)}
         />
       ) : null}
 

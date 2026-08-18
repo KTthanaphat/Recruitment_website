@@ -96,7 +96,9 @@ export function HiringWorkspaceView({
   pipelineSlot,
   sourcingSlot,
   offerSlot,
-  selectedGroupDocId
+  selectedGroupDocId,
+  siteFilter = "",
+  ownerFilter = ""
 }: {
   data: DashboardData;
   language: Language;
@@ -112,22 +114,41 @@ export function HiringWorkspaceView({
   sourcingSlot?: ReactNode;
   offerSlot?: ReactNode;
   selectedGroupDocId?: string | null;
+  siteFilter?: string;
+  ownerFilter?: string;
 }) {
   const [urlState, setUrlState] = useState(() => readWorkspaceSelection(target, selectedGroupDocId));
   const [pickerOpen, setPickerOpen] = useState(() => !readWorkspaceSelection(target, selectedGroupDocId).target.type);
   const [pickerMode, setPickerMode] = useState<PickerMode>(() => readWorkspaceSelection(target, selectedGroupDocId).target.type === "group" ? "groups" : "requisitions");
   const [contextCompact, setContextCompact] = useState(false);
 
-  const requisitions = useMemo(() => enrichRequisitions(data), [data]);
-  const candidates = useMemo(() => enrichCandidates(data), [data]);
-  const offers = useMemo(() => enrichOffers(data), [data]);
-  const groups = useMemo(() => enrichSourcingGroups(data, weekStart), [data, weekStart]);
+  const scopedData = useMemo(() => {
+    const visibleDocIds = new Set(data.requisitions.filter((row) => (
+      (!siteFilter || row.site === siteFilter)
+      && (!ownerFilter || row.person_in_charge === ownerFilter)
+    )).map((row) => row.doc_id));
+    const documentGroups = data.document_groups.filter((row) => visibleDocIds.has(row.doc_id));
+    const documentGroupIds = new Set(documentGroups.map((row) => row.doc_group_id));
+    const candidateIds = new Set(data.candidates.filter((row) => documentGroupIds.has(row.doc_group_id)).map((row) => row.candidate_id));
+    return {
+      ...data,
+      requisitions: data.requisitions.filter((row) => visibleDocIds.has(row.doc_id)),
+      document_groups: documentGroups,
+      candidates: data.candidates.filter((row) => candidateIds.has(row.candidate_id)),
+      offers: data.offers.filter((row) => visibleDocIds.has(row.doc_id)),
+      recruitment_logs: data.recruitment_logs.filter((row) => candidateIds.has(row.candidate_id))
+    };
+  }, [data, ownerFilter, siteFilter]);
+  const requisitions = useMemo(() => enrichRequisitions(scopedData), [scopedData]);
+  const candidates = useMemo(() => enrichCandidates(scopedData), [scopedData]);
+  const offers = useMemo(() => enrichOffers(scopedData), [scopedData]);
+  const groups = useMemo(() => enrichSourcingGroups(scopedData, weekStart), [scopedData, weekStart]);
   const activeOpenRequisitions = useMemo(() => requisitions.filter(isActiveOpenRequisition), [requisitions]);
   const activeOpenGroups = useMemo(() => {
     const activeDocIds = new Set(activeOpenRequisitions.map((row) => row.doc_id));
     return groups.filter((group) => group.open_headcount > 0 && group.doc_ids.some((docId) => activeDocIds.has(docId)));
   }, [activeOpenRequisitions, groups]);
-  const allIssues = useMemo(() => deriveDataQualityIssues(data), [data]);
+  const allIssues = useMemo(() => deriveDataQualityIssues(scopedData), [scopedData]);
   const selectedTarget = urlState.target;
   const currentParams = readWorkspaceUrlState();
   const contextualHref = (path: string) => buildContextualHref(path, {
@@ -156,9 +177,9 @@ export function HiringWorkspaceView({
   }, [selectedGroupDocId, target]);
 
   const context = selectedTarget.type === "requisition" && selectedTarget.id
-    ? contextForRequisition(selectedTarget.id, data, activeOpenRequisitions, candidates, offers, activeOpenGroups, contextualHref, language)
+    ? contextForRequisition(selectedTarget.id, scopedData, activeOpenRequisitions, candidates, offers, activeOpenGroups, contextualHref, language)
     : selectedTarget.type === "group" && selectedTarget.id
-      ? contextForGroup(selectedTarget.id, urlState.docId, data, activeOpenRequisitions, candidates, offers, activeOpenGroups, contextualHref, language)
+      ? contextForGroup(selectedTarget.id, urlState.docId, scopedData, activeOpenRequisitions, candidates, offers, activeOpenGroups, contextualHref, language)
       : null;
   const hasMultipleGroupDocuments = context?.type === "group" && context.requisitions.length > 1;
   const readiness = context?.primaryRequisition ? requisitionFillReadiness(context.primaryRequisition, candidates) : null;
@@ -315,8 +336,8 @@ export function HiringWorkspaceView({
           {hasMultipleGroupDocuments ? <GroupDocumentSelector language={language} requisitions={context.requisitions} selectedDocId={context.primaryRequisition?.doc_id ?? null} onSelect={selectGroupDocument} /> : null}
           {urlState.section === "overview" ? <OverviewSection canWrite={canWrite} context={context} contextIssues={contextIssues} journey={journey} language={language} onDispatchAction={onDispatchAction} /> : null}
           {urlState.section === "pipeline" ? pipelineSlot : null}
-          {urlState.section === "sourcing" ? sourcingSlot ?? <SourcingFallbackSection data={data} groups={context.groups} language={language} weekStart={weekStart} /> : null}
-          {urlState.section === "offer" ? offerSlot ?? <OfferSection context={context} data={data} language={language} requisitions={requisitions} /> : null}
+          {urlState.section === "sourcing" ? sourcingSlot ?? <SourcingFallbackSection data={scopedData} groups={context.groups} language={language} weekStart={weekStart} /> : null}
+          {urlState.section === "offer" ? offerSlot ?? <OfferSection context={context} data={scopedData} language={language} requisitions={requisitions} /> : null}
           {urlState.section === "activity" ? <ActivitySection activity={context.activity} language={language} /> : null}
         </div>
       )}

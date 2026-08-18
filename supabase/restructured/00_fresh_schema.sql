@@ -481,7 +481,10 @@ as $$
         select 1
         from public.requisitions r
         where r.doc_id = p_doc_id
-          and r.site = app_private.current_profile_site()
+          and (
+            r.site = app_private.current_profile_site()
+            or r.person_in_charge = app_private.current_profile_nickname()
+          )
       )
     )
 $$;
@@ -910,7 +913,10 @@ using (
   app_private.is_global_recruitment_reader()
   or (
     app_private.current_app_role() = 'site_recruiter'
-    and site = app_private.current_profile_site()
+    and (
+      site = app_private.current_profile_site()
+      or person_in_charge = app_private.current_profile_nickname()
+    )
   )
 );
 
