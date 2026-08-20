@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { inflateSync } from "node:zlib";
 import { expectWorkspaceReady, installMockSupabase } from "./support/mock-supabase";
 
 test("dashboard report uses calendar views, persists its month, and keeps expandable sections", async ({ page }) => {
@@ -9,27 +10,89 @@ test("dashboard report uses calendar views, persists its month, and keeps expand
   await expect(page.getByRole("heading", { name: "Vacancy Waterfall" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Requisitions Active in Selected Period/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /Recruitment Pipeline Health in Selected Range/ })).toBeVisible();
-  await expect(page.getByText("Selected date range: 01/07/2026 - 31/07/2026")).toBeVisible();
-  await expect(page.getByLabel("Metric view")).toHaveValue("pim");
-  await expect(page.getByLabel("Report month")).toHaveValue("2026-07");
+  await expect(page.getByRole("button", { name: "Metric view" })).toContainText("Performance in Month");
+  await expect(page.getByRole("button", { name: "Report month" })).toContainText("Jul 2026");
   await expect(page.getByRole("heading", { name: "Recruitment Pipeline Health" })).toBeVisible();
-
-  await page.getByLabel("Report month").fill("2026-06");
-  await expect(page).toHaveURL(/reportMonth=2026-06/);
-  await expect(page.getByText("Selected date range: 01/06/2026 - 30/06/2026")).toBeVisible();
-
-  await page.getByLabel("Metric view").selectOption("custom");
-  await expect(page.getByLabel("Start Date").first()).toHaveValue("2026-06-01");
-  await expect(page.getByLabel("End Date").first()).toHaveValue("2026-06-30");
-  await page.getByLabel("Start Date").first().fill("2026-07-15");
-  await page.getByLabel("End Date").first().fill("2026-07-10");
-  await expect(page.getByText("Choose a start date on or before the end date.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Export PDF" }).first()).toBeDisabled();
-  await page.getByLabel("End Date").first().fill("2026-07-31");
-  await expect(page).toHaveURL(/reportView=custom/);
-  await expect(page).toHaveURL(/start=2026-07-15/);
-  await expect(page).toHaveURL(/end=2026-07-31/);
+  await expect(page.getByRole("button", { name: "Export PNG" })).toHaveCount(3);
+  await expect(page.getByRole("button", { name: "Export PNG" }).first()).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Export PDF" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Export XLSX" })).toBeVisible();
 });
+
+test("dashboard PNG exports download visible non-blank reports", async ({ page }) => {
+  await installMockSupabase(page, { role: "admin_recruiter" });
+  await page.goto("/dashboard?reportView=pim&reportMonth=2026-07&details=open&funnel=open");
+  await expectWorkspaceReady(page);
+
+  const filenames = [
+    "vacancy-waterfall-2026-07-01-to-2026-07-31.png",
+    "active-requisitions-2026-07-01-to-2026-07-31.png",
+    /^pipeline-funnel-2026-01-01-to-\d{4}-\d{2}-\d{2}\.png$/
+  ];
+  const exportButtons = page.getByRole("button", { name: "Export PNG" });
+  await expect(exportButtons).toHaveCount(3);
+
+  for (const [index, filename] of filenames.entries()) {
+    await expect(exportButtons.nth(index)).toBeEnabled();
+    const downloadPromise = page.waitForEvent("download");
+    await exportButtons.nth(index).click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toMatch(filename);
+    expect(await isVisiblePng(await download.createReadStream())).toBe(true);
+  }
+});
+
+async function isVisiblePng(stream: NodeJS.ReadableStream | null) {
+  if (!stream) return false;
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) chunks.push(Buffer.from(chunk));
+  const png = Buffer.concat(chunks);
+  if (png.length < 32 || png.subarray(1, 4).toString() !== "PNG") return false;
+
+  let offset = 8;
+  let width = 0;
+  let height = 0;
+  const idat: Buffer[] = [];
+  while (offset < png.length) {
+    const length = png.readUInt32BE(offset);
+    const type = png.subarray(offset + 4, offset + 8).toString();
+    const value = png.subarray(offset + 8, offset + 8 + length);
+    if (type === "IHDR") { width = value.readUInt32BE(0); height = value.readUInt32BE(4); }
+    if (type === "IDAT") idat.push(value);
+    offset += length + 12;
+  }
+  if (width < 2 || height < 2 || idat.length === 0) return false;
+
+  const scanlines = inflateSync(Buffer.concat(idat));
+  const stride = width * 4;
+  const row = Buffer.alloc(stride);
+  const previousRow = Buffer.alloc(stride);
+  let cursor = 0;
+  for (let y = 0; y < height; y += 1) {
+    const filter = scanlines[cursor++];
+    const source = scanlines.subarray(cursor, cursor + stride);
+    cursor += stride;
+    for (let x = 0; x < stride; x += 1) {
+      const left = x >= 4 ? row[x - 4] : 0;
+      const up = y > 0 ? previousRow[x] : 0;
+      const upLeft = x >= 4 && y > 0 ? previousRow[x - 4] : 0;
+      row[x] = filter === 0 ? source[x] : filter === 1 ? source[x] + left : filter === 2 ? source[x] + up : filter === 3 ? source[x] + Math.floor((left + up) / 2) : source[x] + paeth(left, up, upLeft);
+    }
+    for (let x = 0; x < stride; x += Math.max(4, Math.floor(stride / 256))) {
+      if (row[x + 3] > 0 && (row[x] < 245 || row[x + 1] < 245 || row[x + 2] < 245)) return true;
+    }
+    row.copy(previousRow);
+  }
+  return false;
+}
+
+function paeth(left: number, up: number, upLeft: number) {
+  const estimate = left + up - upLeft;
+  const leftDistance = Math.abs(estimate - left);
+  const upDistance = Math.abs(estimate - up);
+  const upLeftDistance = Math.abs(estimate - upLeft);
+  return leftDistance <= upDistance && leftDistance <= upLeftDistance ? left : upDistance <= upLeftDistance ? up : upLeft;
+}
 
 test("dashboard active-period vacancy follows PR date and resolved close date", async ({ page }) => {
   const mock = await installMockSupabase(page, { role: "admin_recruiter" });

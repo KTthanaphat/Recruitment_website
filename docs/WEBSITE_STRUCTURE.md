@@ -81,7 +81,7 @@ recruitment_website/
 - `/login`: Supabase email/password app account login.
 - `/`: redirects to `/home`.
 - `/home`: action center with responsible summary, candidate pipeline preview, stale weekly sourcing updates, needs action, and admin recent activity.
-- `/dashboard`: Vacancy Waterfall report, opened requisition detail, PDF export, and XLSX export.
+- `/dashboard`: Vacancy Waterfall report, opened requisition detail (PNG/XLSX), and Pipeline Funnel (PNG).
 - `/requisitions`: requisition list, new/replacement request type, replacement names, headcount progress, create/change, status log, and detail drawer.
 - `/sourcing`: weekly applicant/channel updates per active `group_id`, position groups, and requisition matches.
 - `/candidates`: candidate list, create/change, latest process/result, candidate folder link, and candidate detail drawer.
@@ -188,15 +188,16 @@ The report keeps running-total connector logic between bars and uses right-side 
 
 Dashboard export actions:
 
-- `Export PDF` for the chart report.
-- `Export PDF` for requisitions active in the selected period.
+- `Export PNG` for the Vacancy Waterfall chart report, active requisitions, and Pipeline Funnel. A shared in-viewport capture surface waits for fonts/layout, captures the complete localized report at 2× resolution, validates non-blank pixels, then downloads its title, `DD/MM/YYYY` date range, metadata, and all report rows/segments.
 - `Export XLSX` for requisitions active in the selected period.
 
-PDF export uses browser print with A4 landscape print CSS and shows a loading overlay while preparing. Active-requisition detail stays horizontally scrollable on screen and uses print-specific table sizing so the SLA dot/age and dense columns remain readable in PDF.
+Dashboard has no PDF export. PNG download uses deterministic names: `vacancy-waterfall-<start>-to-<end>.png`, `active-requisitions-<start>-to-<end>.png`, and `pipeline-funnel-<start>-to-<end>.png`; the existing preparation overlay applies to every PNG export.
+
+The active-requisition XLSX begins at `B2` (row 1 and column A blank; A width 2). It is a native Excel `TableStyleMedium2` table with Sarabun font, worksheet gridlines hidden, all value columns width 20, centered/middle non-wrapping headers, and wrapped middle-aligned values; Department and Position values are left/middle aligned.
 
 Active-requisition detail is collapsed by default. It includes each non-cancelled requisition with a valid PR date on or before the selected end date and no resolved close date before the selected start date; every eligible row contributes original headcount. For a filled requisition, close date is the newest filled requisition-log date, falling back to its latest valid accepted-offer date; no resolved close date is treated as blank. The Waterfall chart remains a separate movement report. Detail includes ownership, requisition date, applicant totals, historical pipeline stage counts, SLA status, fill status, and fill date.
 
-Recruitment Pipeline Health is a separate collapsible funnel report with its own date range, level filter, channel filter, and PDF export. Funnel rows are `Applicants`, derived `Resume Screening`, then active pipeline stages. `Resume Screening` is display/reporting-only and is counted from candidates who have reached Phone Screen. Real stage funnel counts are passed-only and de-duplicated per candidate per stage.
+Recruitment Pipeline Health is a separate collapsible funnel report with its own date range, level filter, channel filter, and PNG export. Funnel rows are `Applicants`, derived `Resume Screening`, then active pipeline stages. `Resume Screening` is display/reporting-only and is counted from candidates who have reached Phone Screen. Real stage funnel counts are passed-only and de-duplicated per candidate per stage.
 
 ## Recruitment Workflows
 
@@ -237,7 +238,8 @@ Sourcing:
 - Supported channels: Facebook, JobThai, JobTopGun, JobsDB, JobBKK, LinkedIn, Walk-in, Referral, Others.
 - Workspace > Sourcing reuses the embedded weekly sourcing editor, so recruiters can update applicant counts for the related group or requisition without leaving `/workspace`.
 - A `group_id` is single-site: it may link only to requisitions from one site. Cross-site matches are rejected.
-- Records > Sourcing shows unmatched sourcing groups in a separate warning section above weekly update cards for System Admins and Admin Recruiters only. Site Recruiters use Create & Match Group for their own unmatched open requisitions, so they do not leave setup exceptions behind.
+- Records > Sourcing shows unmatched Group IDs in a red warning section immediately above Weekly Work for System Admins and Admin Recruiters only; each item offers Details plus Link Group with that value prefilled. Site Recruiters and Viewers do not see this exception list.
+- Records > Sourcing header order is `New Group`, `Link Group`, Work Board/History toggle, then Week Starting. New Group uses `app_upsert_position_group` and stays on Records > Sourcing; Link Group uses `app_create_group_match`, then opens the matched `/workspace` group in its Sourcing section with the chosen requisition preserved. System Admin and Admin Recruiter can select every eligible open record, Site Recruiter may open either form but the existing RPC remains authoritative for assigned site, matching nickname/PIC, open requisition, and single-site-group constraints, and Viewer sees neither action.
 - Site Recruiters can inspect every linked open group at their assigned site. Peer-owned cards remain read-only; only a PIC of an active, open linked requisition can save sourcing data or alter that group's matches.
 - Weekly sourcing updates only show channels marked on the group or match snapshot.
 - Weekly sourcing saves applicant counts only. It does not clear or change channel booleans; channel marking is changed through sourcing setup. Unsaved weeks prefill applicant inputs from the latest saved group update.
@@ -246,6 +248,7 @@ Sourcing:
   - The Sourcing Groups table is a selected-week operational summary: Group ID (linked to Workspace), position, Site, PIC, requisitions, open headcount, candidate count, weekly applicants, and last saved time. It is not an editing or history surface.
   - Sourcing Groups has a table-local Advanced Filters panel for text search, position, weekly-save status, and applicant-total state. It narrows only the summary table after the existing header Site/PIC and responsibility scope are applied; Clear restores the scoped table.
 - Add Match shows only requisitions that do not already have any `document_groups` match.
+- Workspace’s Groups picker remains in the Groups toggle after creating an unlinked group; after a link succeeds, it opens that matched group’s workspace rather than the requisitions toggle.
 - Doc ID options include position context, for example `DOC-001 - Accountant`.
 - Unmatch removes one `document_groups` link between a requisition and a sourcing group. It is blocked when candidates reference that match.
 
@@ -441,11 +444,11 @@ Shared UI behavior:
 
 ## Language System
 
-- English and Thai UI text is controlled by `src/lib/i18n/dictionary.ts`; keep this as the single source for app labels, aria text, placeholders, empty states, table controls, modal labels, and shared domain labels.
+- English and Thai UI text is controlled by `src/lib/i18n/dictionary.ts`; keep this as the single source for app labels, aria text, placeholders, empty states, table controls, modal labels, and shared domain labels. Every visible date entry/filter uses the shared calendar and displays Gregorian `DD/MM/YYYY`; its stored, URL, sort, and RPC value remains ISO `YYYY-MM-DD`.
 - Language is `Language = "en" | "th"` and persists through `localStorage["recruitment_lang"]` plus the `lang` URL parameter in authenticated navigation.
 - Login is outside `AppShell` but still reads and writes `recruitment_lang`; check `/login` after language, theme, Tailwind, Button, Field, or Tag changes.
 - Translate UI/application text only. Do not translate stored HR data, names, emails, URLs, IDs, site codes (`HQ`, `KT1`, `KT2`), Doc IDs, Group IDs, or database free text.
-- Thai mode translates all static user-visible UI text. Familiar workflow terms (`Pipeline`, `Offer`, `Test`, and `LINE`) remain English within Thai copy.
+- Thai mode covers every app-controlled UI string, including responsive controls and dynamically opened modals. Keep approved external brands and HR acronyms unchanged (for example `Pipeline`, `SLA`, `Group ID`, JobThai, JobsDB, JobBKK, LinkedIn, `HQ`, `KT1`, `KT2`). Dictionary parity is required: every English key must have a Thai value.
 - Use helper labels for roles, request types, requisition statuses, process stages, results, and repeated timeline phrases. Keep Thai short, recruiter-friendly, and compact for tables/cards.
 - `CommandSelector` is the shared selector system for AppShell filters, Vacancy Waterfall Metric view, Report Month, and create-form choices. Its triggers share icon, selected label, chevron, rounded border, hover/disabled/focus states, and selected-row checkmark. Compact density is header-only; Dashboard and create forms use regular density. Option-list selectors use listbox semantics; Report Month has the same shell and lifecycle with a year-navigable month grid. Enter, Space, or Arrow keys open; arrows move the active choice; Home/End jump; Enter/Space select; Escape closes and restores trigger focus; outside click dismisses. Create selectors preserve current form/RPC contracts through a hidden named input; a contextual Workspace Group ID can be locked read-only.
 

@@ -189,6 +189,10 @@ test("sourcing shows unmatched groups with match action and no weekly save field
   await expect(page.locator("#sourcing-group-GRP-BUY")).toHaveCount(0);
   await expect(unmatchedGroup.getByRole("button", { name: "Delete record" })).toHaveCount(0);
 
+  await unmatchedGroup.getByRole("button", { name: "Details" }).click();
+  await expect(page.getByRole("dialog", { name: "Group details · GRP-BUY" })).toBeVisible();
+  await page.getByRole("button", { name: "Close" }).click();
+
   await unmatchedGroup.getByRole("button", { name: "Match requisition" }).click();
   const matchDialog = page.getByRole("dialog", { name: "Match Requisition and Group" });
   await expect(matchDialog).toBeVisible();

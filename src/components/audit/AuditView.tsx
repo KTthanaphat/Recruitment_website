@@ -5,6 +5,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Panel, SectionTitle } from "@/components/ui/Panel";
 import { Button } from "@/components/ui/Button";
 import { MobileBottomSheet } from "@/components/ui/MobileBottomSheet";
+import { DayDateSelector } from "@/components/ui/Field";
 import { Tag } from "@/components/ui/Tag";
 import { formatDateTime, statusTone, toTitle } from "@/lib/format";
 import { actionToneLabel, translate } from "@/lib/i18n/dictionary";
@@ -36,20 +37,20 @@ export function AuditView({ language, rows }: { language: Language; rows: Change
     <Panel>
       <SectionTitle title={translate(language, "audit")} action={<Button type="button" size="sm" variant="secondary" icon={<SlidersHorizontal size={16} />} className="md:hidden" onClick={() => setFiltersOpen(true)}>{translate(language, "filters")}</Button>} />
       <div className="mb-4 hidden gap-2 rounded-md border border-[#D7DEE8] bg-[#F8FAFD] p-3 md:grid md:grid-cols-3 xl:grid-cols-6">
-        <AuditFilter label={translate(language, "entity")} value={filters.entity} onChange={(value) => setFilters((current) => ({ ...current, entity: value }))} />
-        <AuditFilter label={translate(language, "action")} value={filters.action} onChange={(value) => setFilters((current) => ({ ...current, action: value }))} />
-        <AuditFilter label={translate(language, "changedBy")} value={filters.changedBy} onChange={(value) => setFilters((current) => ({ ...current, changedBy: value }))} />
-        <AuditFilter label={translate(language, "entityId")} value={filters.entityId} onChange={(value) => setFilters((current) => ({ ...current, entityId: value }))} />
-        <AuditFilter label={translate(language, "startDate")} type="date" value={filters.start} onChange={(value) => setFilters((current) => ({ ...current, start: value }))} />
-        <AuditFilter label={translate(language, "endDate")} type="date" value={filters.end} onChange={(value) => setFilters((current) => ({ ...current, end: value }))} />
+        <AuditFilter language={language} label={translate(language, "entity")} value={filters.entity} onChange={(value) => setFilters((current) => ({ ...current, entity: value }))} />
+        <AuditFilter language={language} label={translate(language, "action")} value={filters.action} onChange={(value) => setFilters((current) => ({ ...current, action: value }))} />
+        <AuditFilter language={language} label={translate(language, "changedBy")} value={filters.changedBy} onChange={(value) => setFilters((current) => ({ ...current, changedBy: value }))} />
+        <AuditFilter language={language} label={translate(language, "entityId")} value={filters.entityId} onChange={(value) => setFilters((current) => ({ ...current, entityId: value }))} />
+        <AuditFilter language={language} label={translate(language, "startDate")} type="date" value={filters.start} onChange={(value) => setFilters((current) => ({ ...current, start: value }))} />
+        <AuditFilter language={language} label={translate(language, "endDate")} type="date" value={filters.end} onChange={(value) => setFilters((current) => ({ ...current, end: value }))} />
       </div>
       <MobileBottomSheet open={filtersOpen} title={translate(language, "filters")} closeLabel={translate(language, "close")} onClose={() => setFiltersOpen(false)}>
         <div className="grid gap-3">
-          <AuditFilter label={translate(language, "entity")} value={filters.entity} onChange={(value) => setFilters((current) => ({ ...current, entity: value }))} />
-          <AuditFilter label={translate(language, "action")} value={filters.action} onChange={(value) => setFilters((current) => ({ ...current, action: value }))} />
-          <AuditFilter label={translate(language, "changedBy")} value={filters.changedBy} onChange={(value) => setFilters((current) => ({ ...current, changedBy: value }))} />
-          <AuditFilter label={translate(language, "entityId")} value={filters.entityId} onChange={(value) => setFilters((current) => ({ ...current, entityId: value }))} />
-          <div className="grid grid-cols-2 gap-2"><AuditFilter label={translate(language, "startDate")} type="date" value={filters.start} onChange={(value) => setFilters((current) => ({ ...current, start: value }))} /><AuditFilter label={translate(language, "endDate")} type="date" value={filters.end} onChange={(value) => setFilters((current) => ({ ...current, end: value }))} /></div>
+          <AuditFilter language={language} label={translate(language, "entity")} value={filters.entity} onChange={(value) => setFilters((current) => ({ ...current, entity: value }))} />
+          <AuditFilter language={language} label={translate(language, "action")} value={filters.action} onChange={(value) => setFilters((current) => ({ ...current, action: value }))} />
+          <AuditFilter language={language} label={translate(language, "changedBy")} value={filters.changedBy} onChange={(value) => setFilters((current) => ({ ...current, changedBy: value }))} />
+          <AuditFilter language={language} label={translate(language, "entityId")} value={filters.entityId} onChange={(value) => setFilters((current) => ({ ...current, entityId: value }))} />
+          <div className="grid grid-cols-2 gap-2"><AuditFilter language={language} label={translate(language, "startDate")} type="date" value={filters.start} onChange={(value) => setFilters((current) => ({ ...current, start: value }))} /><AuditFilter language={language} label={translate(language, "endDate")} type="date" value={filters.end} onChange={(value) => setFilters((current) => ({ ...current, end: value }))} /></div>
           <Button type="button" onClick={() => setFiltersOpen(false)}>{translate(language, "confirm")}</Button>
         </div>
       </MobileBottomSheet>
@@ -91,16 +92,16 @@ export function AuditView({ language, rows }: { language: Language; rows: Change
   );
 }
 
-function AuditFilter({ label, onChange, type = "search", value }: { label: string; onChange: (value: string) => void; type?: "date" | "search"; value: string }) {
+function AuditFilter({ label, language, onChange, type = "search", value }: { label: string; language: Language; onChange: (value: string) => void; type?: "date" | "search"; value: string }) {
   return (
     <label className="grid gap-1 text-xs font-semibold text-slate">
       {label}
-      <input
+      {type === "date" ? <DayDateSelector ariaLabel={label} language={language} name={label} value={value} onChange={(event) => onChange(event.target.value)} /> : <input
         className="min-h-11 rounded-md border border-[#C9D5E6] bg-white px-2 text-sm font-medium text-navy focus:border-primary focus:outline-none"
         type={type}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-      />
+      />}
     </label>
   );
 }

@@ -43,7 +43,7 @@ Stack:
 - Tailwind CSS.
 - Supabase Auth and Postgres.
 - Supabase RPC functions for writes.
-- Browser print-to-PDF and `xlsx` for spreadsheet export.
+- Dashboard PNG/XLSX and DD/MM/YYYY date-control rules are canonical in [Website Structure](WEBSITE_STRUCTURE.md#dashboard-reporting) and [Language System](WEBSITE_STRUCTURE.md#language-system).
 
 Canonical docs:
 
@@ -145,9 +145,7 @@ Design preferences:
 - Data tables use shared sort/filter headers; rows are filtered and sorted before pagination. Requisitions, Candidates, and Offers desktop tables share a vertical/horizontal table viewport with a sticky `thead`; Sourcing is card-based and Pipeline keeps stage headers.
 - Desktop sidebar has a persisted icon-only collapsed state in `localStorage`.
 - Login is outside authenticated `AppShell`; it must use fallback site-theme variables and should be checked after any Tailwind config, global CSS, theme helper, Button, Field, or Tag change. Restart the local dev server before judging `/login` if CSS appears broken. If the page shows browser-default styles, verify `/_next/static/css/app/layout.css`; a `404` means `.next` was likely rewritten by `pnpm build` or another Next process while dev was running, so stop dev, clear generated `.next`, restart dev, and reload `/login`.
-- Thai and English language support must be preserved when changing user-facing labels.
-- `src/lib/i18n/dictionary.ts` is the source of truth for UI copy. Route/shared components should call `translate(language, key, params)` or domain helpers such as `roleLabel`, `processStageLabel`, `resultLabel`, `requisitionStatusLabel`, and `requestTypeLabel`; do not add new hardcoded English text in JSX, placeholders, aria labels, empty states, modal titles, table headers, or detail drawers.
-- Thai text should be short HR business Thai. Do not translate stored HR data, free-text remarks, names, emails, IDs, URLs, or site codes (`HQ`, `KT1`, `KT2`).
+- Localization rules, approved Thai exceptions, and dictionary parity are canonical in [Website Structure](WEBSITE_STRUCTURE.md#language-system) and the file ownership index is [Feature File Map](FEATURE_FILE_MAP.md).
 - Use `.agents/skills/internal-ops-ui/SKILL.md` for future internal-tool UX/UI design and review work. Leave `gpt-taste` for marketing-style pages.
 - Viewer access is limited, but the workspace itself is not read-only.
 - Admin Recruiters can assign any eligible recruiter as Person in Charge on a requisition. Site Recruiters are locked to their own site and nickname by both the form and the requisition RPC.
@@ -207,10 +205,9 @@ Waterfall movement bars retain their Week Start, Open, Filled, and Total connect
 Current report behavior:
 
 - Curly brace callouts on final Total stack.
-- Chart PDF export.
+- All Dashboard export boundaries and XLSX formatting are defined in [Website Structure](WEBSITE_STRUCTURE.md#dashboard-reporting).
 - Active-requisition detail/export eligibility, close-date precedence, and unchanged chart boundary are canonical in `docs/WEBSITE_STRUCTURE.md`.
-- Opened requisition detail PDF uses print-specific sizing and print-safe SLA dots.
-- Recruitment Pipeline Health is a separate collapsible funnel with its own date range, level filter, channel filter, and PDF export.
+- Dashboard export formats and workbook presentation are defined only in [Website Structure](WEBSITE_STRUCTURE.md#dashboard-reporting).
 - Funnel rows are `Applicants`, derived `Resume Screening`, then active pipeline stages.
 - `Resume Screening` is display/reporting-only and is counted from candidates who reached Phone Screen; real stage funnel counts are passed-only and de-duplicated per candidate per stage.
 

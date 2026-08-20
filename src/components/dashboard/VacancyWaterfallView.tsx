@@ -1,11 +1,11 @@
 "use client";
 
-import { CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, Download, SlidersHorizontal } from "lucide-react";
+import { CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, ImageDown, SlidersHorizontal } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { CommandMonthSelector, CommandSelector } from "@/components/ui/CommandSelector";
-import { Field, TextInput } from "@/components/ui/Field";
+import { DayDateSelector, Field } from "@/components/ui/Field";
 import { OperationalSummaryStrip } from "@/components/ui/Operations";
 import { PipelineFunnel, type PipelineFunnelRow } from "@/components/ui/PipelineFunnel";
 import { SortableFilterHeader, type TableColumn, useTableControls } from "@/components/ui/TableControls";
@@ -40,7 +40,6 @@ const funnelLevelOptions: Array<{ value: FunnelLevelBand; label: string }> = [
   { value: "10-14", label: "L10-L14" }
 ];
 
-type PrintTarget = "chart" | "requisition-detail" | "pipeline-funnel";
 type FunnelLevelBand = "0-3" | "4-6" | "7-9" | "10-14";
 type FunnelChannelFilter = "all" | string;
 type FunnelStageCounts = Record<PipelineDisplayStage, number>;
@@ -92,10 +91,12 @@ export function VacancyWaterfallView({
   const [funnelLevelBands, setFunnelLevelBands] = useState<FunnelLevelBand[]>([]);
   const [funnelChannel, setFunnelChannel] = useState<FunnelChannelFilter>("all");
   const [funnelOpen, setFunnelOpen] = useState(false);
-  const [printTarget, setPrintTarget] = useState<PrintTarget | null>(null);
   const [exportPreparing, setExportPreparing] = useState(false);
+  const [exportError, setExportError] = useState(false);
   const [urlStateReady, setUrlStateReady] = useState(false);
-  const printFallbackTimer = useRef<number | null>(null);
+  const chartExportRef = useRef<HTMLDivElement | null>(null);
+  const requisitionExportRef = useRef<HTMLDivElement | null>(null);
+  const funnelExportRef = useRef<HTMLDivElement | null>(null);
   const { startDate, endDate } = useMemo(
     () => reportRange(reportView, reportMonth, customStartDate, customEndDate),
     [customEndDate, customStartDate, reportMonth, reportView]
@@ -155,58 +156,76 @@ export function VacancyWaterfallView({
     });
   }, [customEndDate, customStartDate, detailsOpen, funnelChannel, funnelEndDate, funnelLevelBands, funnelOpen, funnelStartDate, reportMonth, reportView, urlStateReady]);
 
-  useEffect(() => {
-    const clearPrintTarget = () => {
-      setPrintTarget(null);
-      setExportPreparing(false);
-      document.body.removeAttribute("data-print-target");
-      if (printFallbackTimer.current !== null) {
-        window.clearTimeout(printFallbackTimer.current);
-        printFallbackTimer.current = null;
-      }
-    };
-    window.addEventListener("afterprint", clearPrintTarget);
-    return () => {
-      window.removeEventListener("afterprint", clearPrintTarget);
-      if (printFallbackTimer.current !== null) window.clearTimeout(printFallbackTimer.current);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (printTarget) document.body.setAttribute("data-print-target", printTarget);
-    else document.body.removeAttribute("data-print-target");
-  }, [printTarget]);
-
-  function exportPdf(target: PrintTarget) {
-    setPrintTarget(target);
+  async function exportPng(surface: HTMLDivElement | null, filename: string) {
+    if (!surface) return;
     setExportPreparing(true);
-    document.body.setAttribute("data-print-target", target);
-    if (printFallbackTimer.current !== null) window.clearTimeout(printFallbackTimer.current);
-    window.setTimeout(() => window.print(), 120);
-    printFallbackTimer.current = window.setTimeout(() => {
-      setPrintTarget(null);
+    setExportError(false);
+    try {
+      const { toPng } = await import("html-to-image");
+      await waitForExportSurface();
+      const width = surface.scrollWidth;
+      const height = surface.scrollHeight;
+      if (width < 2 || height < 2) throw new Error("Export surface has no dimensions");
+      const dataUrl = await toPng(surface, {
+        backgroundColor: "#ffffff",
+        cacheBust: true,
+        canvasHeight: height * 2,
+        canvasWidth: width * 2,
+        height,
+        pixelRatio: 2,
+        style: { left: "0", opacity: "1", position: "static", top: "0", transform: "none", visibility: "visible" },
+        width
+      });
+      if (!await hasVisiblePngContent(dataUrl)) throw new Error("Export surface rendered blank");
+      const blob = await (await fetch(dataUrl)).blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = filename;
+      anchor.click();
+      URL.revokeObjectURL(objectUrl);
+    } catch {
+      setExportError(true);
+    } finally {
       setExportPreparing(false);
-      document.body.removeAttribute("data-print-target");
-      printFallbackTimer.current = null;
-    }, 12000);
+    }
   }
 
   async function exportRequisitionDetailXlsx() {
     setExportPreparing(true);
     try {
-      const XLSX = await import("xlsx");
       const headers = requisitionDetailHeaders(language);
-      const worksheet = XLSX.utils.json_to_sheet(requisitionRows.map((row) => requisitionDetailExportRow(row, language)), { header: headers });
-      const metadata = XLSX.utils.json_to_sheet([{
-        [translate(language, "generatedAt")]: new Date().toISOString(),
-        [translate(language, "generatedBy")]: data.profile?.email ?? data.profile?.nickname ?? translate(language, "unknown"),
-        [translate(language, "dateRange")]: `${formatDate(startDate, language)} - ${formatDate(endDate, language)}`,
-        [translate(language, "rows")]: requisitionRows.length
-      }]);
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, translate(language, "activeRequisitionsSheet"));
-      XLSX.utils.book_append_sheet(workbook, metadata, translate(language, "exportMetadataSheet"));
-      XLSX.writeFile(workbook, `active-requisitions-${startDate}-to-${endDate}.xlsx`);
+      const { Workbook } = await import("exceljs");
+      const workbook = new Workbook();
+      const worksheet = workbook.addWorksheet(translate(language, "activeRequisitionsSheet"));
+      const rows = requisitionRows.map((row) => headers.map((header) => requisitionDetailExportRow(row, language)[header]));
+      worksheet.views = [{ showGridLines: false }];
+      worksheet.getColumn(1).width = 2;
+      for (let index = 2; index < headers.length + 2; index += 1) worksheet.getColumn(index).width = 20;
+      worksheet.addTable({ name: "ActiveRequisitionsTable", ref: "B2", headerRow: true, totalsRow: false, style: { theme: "TableStyleMedium2", showRowStripes: true }, columns: headers.map((name) => ({ name, filterButton: true })), rows });
+      const departmentColumn = headers.indexOf(translate(language, "department")) + 2;
+      const positionColumn = headers.indexOf(translate(language, "position")) + 2;
+      for (let row = 2; row < rows.length + 3; row += 1) {
+        for (let column = 2; column < headers.length + 2; column += 1) {
+          const cell = worksheet.getCell(row, column);
+          cell.font = { name: "Sarabun" };
+          cell.alignment = {
+            vertical: "middle",
+            horizontal: row === 2 || (column !== departmentColumn && column !== positionColumn) ? "center" : "left",
+            wrapText: row > 2
+          };
+        }
+      }
+      const metadata = workbook.addWorksheet(translate(language, "exportMetadataSheet"));
+      metadata.addRows([[translate(language, "generatedAt"), new Date().toISOString()], [translate(language, "generatedBy"), data.profile?.email ?? data.profile?.nickname ?? translate(language, "unknown")], [translate(language, "dateRange"), `${formatDate(startDate, language)} - ${formatDate(endDate, language)}`], [translate(language, "rows"), requisitionRows.length]]);
+      metadata.eachRow((row) => row.eachCell((cell) => { cell.font = { name: "Sarabun" }; cell.alignment = { vertical: "middle" }; }));
+      const bytes = await workbook.xlsx.writeBuffer();
+      const objectUrl = URL.createObjectURL(new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = `active-requisitions-${startDate}-to-${endDate}.xlsx`;
+      anchor.click();
+      URL.revokeObjectURL(objectUrl);
     } finally {
       window.setTimeout(() => setExportPreparing(false), 300);
     }
@@ -246,7 +265,7 @@ export function VacancyWaterfallView({
               <DashboardDateFilter label={translate(language, "endDate")} value={customEndDate} onChange={setCustomEndDate} language={language} />
             </> : <Field label={translate(language, "reportMonth")} className="text-xs font-semibold text-slate"><CommandMonthSelector ariaLabel={translate(language, "reportMonth")} monthLabel={(month) => monthPickerMonthLabel(month, language)} previousYearLabel={translate(language, "previousYear")} nextYearLabel={translate(language, "nextYear")} value={reportMonth} onValueChange={setReportMonth} /></Field>}
             <div className="flex flex-wrap items-end gap-2 print:hidden lg:justify-end">
-              <Button type="button" size="sm" variant="secondary" icon={<Download size={16} />} disabled={exportPreparing || !validReportRange} onClick={() => exportPdf("chart")}>{translate(language, "exportPdf")}</Button>
+              <Button type="button" size="sm" variant="secondary" icon={<ImageDown size={16} />} disabled={exportPreparing || !validReportRange} onClick={() => exportPng(chartExportRef.current, `vacancy-waterfall-${startDate}-to-${endDate}.png`)}>{translate(language, "exportPng")}</Button>
             </div>
             </div>
             {reportView === "custom" && !validReportRange ? <p className="mt-3 rounded-xl border border-danger/20 bg-danger/5 px-3 py-2 text-sm font-medium text-danger" role="alert">{translate(language, "invalidCustomDateRange")}</p> : null}
@@ -262,11 +281,11 @@ export function VacancyWaterfallView({
             <EmptyState variant="quiet" message={translate(language, "noWaterfallData")} />
           </div>
         ) : (
-          <div data-print-section="chart" className="print-chart-report">
-            <ReportHeader language={language} title={translate(language, "vacancyWaterfall")} startDate={startDate} endDate={endDate} />
+          <div className="bg-white">
             <VacancyWaterfallChart language={language} rows={waterfallRows} />
           </div>
         )}
+        {exportError ? <p className="mx-4 mb-1 text-sm font-medium text-danger sm:mx-6 lg:mx-8" role="alert">{translate(language, "exportPngFailed")}</p> : null}
       </section>
 
       <section className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-[#E4E9F2] bg-[#F8FAFD] shadow-none">
@@ -283,8 +302,8 @@ export function VacancyWaterfallView({
             <ChevronDown className={`shrink-0 transition-transform motion-reduce:transition-none ${detailsOpen ? "rotate-180" : ""}`} size={20} />
           </button>
           <div className="flex flex-wrap gap-2 print:hidden">
-            <Button type="button" size="sm" variant="secondary" icon={<Download size={16} />} disabled={exportPreparing || !validReportRange} onClick={exportRequisitionDetailXlsx}>{translate(language, "exportDetailXlsx")}</Button>
-            <Button type="button" size="sm" variant="secondary" icon={<Download size={16} />} disabled={exportPreparing || !validReportRange} onClick={() => exportPdf("requisition-detail")}>{translate(language, "exportDetailPdf")}</Button>
+            <Button type="button" size="sm" variant="secondary" icon={<ImageDown size={16} />} disabled={exportPreparing || !validReportRange} onClick={exportRequisitionDetailXlsx}>{translate(language, "exportDetailXlsx")}</Button>
+            <Button type="button" size="sm" variant="secondary" icon={<ImageDown size={16} />} disabled={exportPreparing || !validReportRange} onClick={() => exportPng(requisitionExportRef.current, `active-requisitions-${startDate}-to-${endDate}.png`)}>{translate(language, "exportPng")}</Button>
           </div>
         </div>
         {detailsOpen ? (
@@ -310,28 +329,14 @@ export function VacancyWaterfallView({
             <ChevronDown className={`shrink-0 transition-transform motion-reduce:transition-none ${funnelOpen ? "rotate-180" : ""}`} size={20} />
           </button>
           <div className="flex flex-wrap gap-2 print:hidden">
-            <Button type="button" size="sm" variant="secondary" icon={<Download size={16} />} disabled={exportPreparing} onClick={() => exportPdf("pipeline-funnel")}>{translate(language, "exportFunnelPdf")}</Button>
+            <Button type="button" size="sm" variant="secondary" icon={<ImageDown size={16} />} disabled={exportPreparing} onClick={() => exportPng(funnelExportRef.current, `pipeline-funnel-${funnelStartDate}-to-${funnelEndDate}.png`)}>{translate(language, "exportPng")}</Button>
           </div>
         </div>
         {funnelOpen ? (
           <div className="grid min-w-0 gap-4 border-t border-[#E4E9F2] bg-white p-4 sm:p-6 lg:p-8">
             <div className="grid gap-3 rounded-2xl border border-[#E4E9F2] bg-[#F8FAFD] p-3 sm:grid-cols-2 lg:grid-cols-[repeat(4,minmax(0,10rem))_auto] sm:items-end">
-              <Field label={translate(language, "startDate")} className="text-xs font-medium">
-                <TextInput
-                  className="min-h-10 w-full rounded-xl border border-[#C9D5E6] bg-white px-2.5 py-1.5 text-sm font-normal text-navy shadow-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-                  type="date"
-                  value={funnelStartDate}
-                  onChange={(event) => setFunnelStartDate(event.target.value)}
-                />
-              </Field>
-              <Field label={translate(language, "endDate")} className="text-xs font-medium">
-                <TextInput
-                  className="min-h-10 w-full rounded-xl border border-[#C9D5E6] bg-white px-2.5 py-1.5 text-sm font-normal text-navy shadow-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-                  type="date"
-                  value={funnelEndDate}
-                  onChange={(event) => setFunnelEndDate(event.target.value)}
-                />
-              </Field>
+              <Field label={translate(language, "startDate")} className="text-xs font-medium"><DayDateSelector ariaLabel={translate(language, "startDate")} language={language} name="funnel_start" value={funnelStartDate} onChange={(event) => setFunnelStartDate(event.target.value)} required /></Field>
+              <Field label={translate(language, "endDate")} className="text-xs font-medium"><DayDateSelector ariaLabel={translate(language, "endDate")} language={language} name="funnel_end" value={funnelEndDate} onChange={(event) => setFunnelEndDate(event.target.value)} required /></Field>
               <DashboardMultiFilterPicker id="funnel-level-options" label={translate(language, "level")} language={language} options={localizedFunnelLevelOptions} values={funnelLevelBands} onValuesChange={(values) => setFunnelLevelBands(values as FunnelLevelBand[])} />
               <DashboardFilterPicker id="funnel-channel-options" label={translate(language, "channel")} options={funnelChannelOptions} value={funnelChannel} onValueChange={setFunnelChannel} />
             </div>
@@ -348,13 +353,18 @@ export function VacancyWaterfallView({
         ) : null}
       </section>
 
-      <div data-print-section="requisition-detail" className="print-report-only">
-        <ReportHeader language={language} title={translate(language, "activeRequisitionsSelectedRange")} startDate={startDate} endDate={endDate} />
+      <div ref={requisitionExportRef} className="export-report-surface" aria-hidden="true">
+        <ReportHeader exportMode language={language} title={translate(language, "activeRequisitionsSelectedRange")} startDate={startDate} endDate={endDate} />
         <RequisitionDetailTable rows={requisitionRows} language={language} printMode />
       </div>
 
-      <div data-print-section="pipeline-funnel" className="print-report-only print-funnel-report">
-        <ReportHeader language={language} title={translate(language, "recruitmentPipelineHealthSelectedRange")} startDate={funnelStartDate} endDate={funnelEndDate} />
+      <div ref={chartExportRef} className="export-report-surface" aria-hidden="true">
+        <ReportHeader exportMode language={language} title={translate(language, "vacancyWaterfall")} startDate={startDate} endDate={endDate} />
+        <VacancyWaterfallChart language={language} rows={waterfallRows} />
+      </div>
+
+      <div ref={funnelExportRef} className="export-report-surface" aria-hidden="true">
+        <ReportHeader exportMode language={language} title={translate(language, "recruitmentPipelineHealthSelectedRange")} startDate={funnelStartDate} endDate={funnelEndDate} />
         <p className="px-4 pb-3 text-sm font-medium text-slate sm:px-6 lg:px-8">{translate(language, "levelMeta")}: {funnelLevelLabel(funnelLevelBands, language)} - {translate(language, "channelMeta")}: {funnelChannelLabel}</p>
         <PipelineFunnel
           language={language}
@@ -370,7 +380,7 @@ export function VacancyWaterfallView({
         <div className="fixed inset-0 z-[70] grid place-items-center bg-navy/45 p-6 print:hidden" role="status" aria-live="polite" aria-busy="true">
           <div className="rounded-lg border border-[#D7DEE8] bg-white px-6 py-5 text-center shadow-[0_12px_30px_rgba(11,19,43,0.12)]">
             <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-4 border-[#D7DEE8] border-t-primary" />
-            <p className="font-semibold text-navy">{translate(language, "preparingPdf")}</p>
+            <p className="font-semibold text-navy">{translate(language, "preparingPng")}</p>
           </div>
         </div>
       ) : null}
@@ -455,9 +465,9 @@ function DashboardMultiFilterPicker({ id, label, language, options, values, onVa
   </div>;
 }
 
-function ReportHeader({ language, title, startDate, endDate }: { language: Language; title: string; startDate: string; endDate: string }) {
+function ReportHeader({ exportMode = false, language, title, startDate, endDate }: { exportMode?: boolean; language: Language; title: string; startDate: string; endDate: string }) {
   return (
-    <div className="hidden print-report-header px-4 pb-3 sm:px-6 lg:px-8">
+    <div className={`${exportMode ? "block" : "hidden print-report-header"} px-4 pb-3 sm:px-6 lg:px-8`}>
       <h1 className="text-2xl font-semibold text-navy">{title}</h1>
       <p className="text-sm text-slate">{translate(language, "dateRange")}: {formatDate(startDate, language)} - {formatDate(endDate, language)}</p>
     </div>
@@ -1378,6 +1388,35 @@ function DashboardDateFilter({
 
 function today() {
   return formatLocalDateInput();
+}
+
+async function waitForExportSurface() {
+  await document.fonts?.ready;
+  await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+}
+
+async function hasVisiblePngContent(dataUrl: string) {
+  const image = new Image();
+  image.decoding = "async";
+  image.src = dataUrl;
+  await image.decode();
+  if (image.naturalWidth < 2 || image.naturalHeight < 2) return false;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = image.naturalWidth;
+  canvas.height = image.naturalHeight;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) return false;
+  context.drawImage(image, 0, 0);
+  const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
+  const step = Math.max(4, Math.floor(Math.sqrt((canvas.width * canvas.height) / 4096)));
+  for (let y = 0; y < canvas.height; y += step) {
+    for (let x = 0; x < canvas.width; x += step) {
+      const index = (y * canvas.width + x) * 4;
+      if (data[index + 3] > 0 && (data[index] < 245 || data[index + 1] < 245 || data[index + 2] < 245)) return true;
+    }
+  }
+  return false;
 }
 
 function calendarMonth(value: string) {

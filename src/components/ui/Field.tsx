@@ -22,8 +22,11 @@ export function Field({
 const fieldClass =
   "min-h-10 w-full rounded-md border border-[#D7DEE8] bg-white px-3 py-2 text-sm font-normal text-navy shadow-none transition placeholder:text-cool hover:border-[#C9D5E6] focus:border-primary focus:bg-[#FBFDFF]";
 
-export function TextInput(props: InputHTMLAttributes<HTMLInputElement>) {
-  return <input className={fieldClass} {...props} />;
+export function TextInput({ className = "", ...props }: InputHTMLAttributes<HTMLInputElement>) {
+  if (props.type === "date") {
+    return <DayDateSelector ariaLabel={String(props["aria-label"] ?? props.name ?? "Date")} defaultValue={String(props.defaultValue ?? "")} disabled={props.disabled} name={props.name ?? "date"} onChange={props.onChange} required={Boolean(props.required)} value={props.value === undefined ? undefined : String(props.value)} />;
+  }
+  return <input className={`${fieldClass} ${className}`} {...props} />;
 }
 
 export function SelectInput(props: SelectHTMLAttributes<HTMLSelectElement>) {
@@ -71,7 +74,7 @@ export function DayDateSelector({
   clearLabel = "Clear",
   defaultValue = "",
   disabled = false,
-  language = "en",
+  language,
   name,
   nextMonthLabel = "Next month",
   onChange,
@@ -91,6 +94,7 @@ export function DayDateSelector({
   required?: boolean;
   value?: string;
 }) {
+  const resolvedLanguage = language ?? (typeof window !== "undefined" && window.localStorage.getItem("recruitment_lang") === "th" ? "th" : "en");
   const controlledValue = value === undefined ? undefined : normalizeIsoDate(value);
   const [internalValue, setInternalValue] = useState(normalizeIsoDate(defaultValue));
   const selectedValue = controlledValue ?? internalValue;
@@ -156,10 +160,10 @@ export function DayDateSelector({
     {open ? <div id={`${id}-calendar`} role="dialog" aria-label={ariaLabel} className="absolute z-50 mt-2 w-[19rem] rounded-xl border border-[#C9D5E6] bg-white p-3 shadow-[0_18px_40px_rgba(11,19,43,0.18)] max-md:fixed max-md:inset-x-2 max-md:bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] max-md:mt-0 max-md:w-auto">
       <div className="mb-3 flex items-center justify-between rounded-lg bg-[#F8FAFD] p-1">
         <button type="button" className="grid size-8 place-items-center rounded-md text-slate hover:bg-white hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary/20" aria-label={previousMonthLabel} onClick={() => shiftMonth(-1)}><ChevronLeft size={17} /></button>
-        <span className="text-sm font-semibold tabular-nums text-navy">{monthLabels[language][month]} {year}</span>
+        <span className="text-sm font-semibold tabular-nums text-navy">{monthLabels[resolvedLanguage][month]} {year}</span>
         <button type="button" className="grid size-8 place-items-center rounded-md text-slate hover:bg-white hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary/20" aria-label={nextMonthLabel} onClick={() => shiftMonth(1)}><ChevronRight size={17} /></button>
       </div>
-      <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-slate">{weekdayLabels[language].map((label) => <span key={label} className="grid min-h-7 place-items-center">{label}</span>)}</div>
+      <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-slate">{weekdayLabels[resolvedLanguage].map((label) => <span key={label} className="grid min-h-7 place-items-center">{label}</span>)}</div>
       <div className="grid grid-cols-7 gap-1">{dayCells.map((day, index) => {
         if (!day) return <span key={`blank-${index}`} aria-hidden="true" />;
         const dayValue = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;

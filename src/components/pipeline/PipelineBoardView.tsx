@@ -4,6 +4,7 @@ import { ArrowRight, Filter, Pencil, Plus, Search } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/Button";
+import { DayDateSelector } from "@/components/ui/Field";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { OperationalSummaryStrip } from "@/components/ui/Operations";
 import { Panel, SectionTitle } from "@/components/ui/Panel";
@@ -570,8 +571,8 @@ function LegacyPipelineTableView({
     <TableToolbar advancedFiltersOpen={advancedFiltersOpen} language={language} onAdvancedFiltersToggle={() => setAdvancedFiltersOpen((open) => !open)} onSearch={table.setSearch} resultCount={table.controlledRows.length} searchValue={table.search} totalCount={rows.length} />
     {advancedFiltersOpen ? <div className="mb-3 grid gap-2 rounded-xl border border-[#E4E9F2] bg-[#F8FAFD] p-3 md:grid-cols-4">
       <label className="grid gap-1 text-xs font-semibold text-slate"><span>{translate(language, "pipelineState")}</span><select value={stateFilter} onChange={(event) => setStateFilter(event.target.value)} className="min-h-9 rounded-lg border border-[#C9D5E6] bg-white px-2 text-sm text-navy"><option value="">{translate(language, "candidateTriageAll")}</option>{pipelineTableStates.map((state) => <option key={state} value={state}>{translate(language, `pipelineState${state}`)}</option>)}</select></label>
-      <label className="grid gap-1 text-xs font-semibold text-slate"><span>{translate(language, "lastTouchFrom")}</span><input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} className="min-h-9 rounded-lg border border-[#C9D5E6] bg-white px-2 text-sm text-navy" /></label>
-      <label className="grid gap-1 text-xs font-semibold text-slate"><span>{translate(language, "lastTouchTo")}</span><input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} className="min-h-9 rounded-lg border border-[#C9D5E6] bg-white px-2 text-sm text-navy" /></label>
+      <label className="grid gap-1 text-xs font-semibold text-slate"><span>{translate(language, "lastTouchFrom")}</span><DayDateSelector ariaLabel={translate(language, "lastTouchFrom")} language={language} name="last_touch_from" value={fromDate} onChange={(event) => setFromDate(event.target.value)} /></label>
+      <label className="grid gap-1 text-xs font-semibold text-slate"><span>{translate(language, "lastTouchTo")}</span><DayDateSelector ariaLabel={translate(language, "lastTouchTo")} language={language} name="last_touch_to" value={toDate} onChange={(event) => setToDate(event.target.value)} /></label>
       <div className="flex items-end"><Button type="button" variant="secondary" size="sm" disabled={activeFilterCount === 0 && !table.search} onClick={clearFilters}>{translate(language, "clear")}</Button></div>
     </div> : null}
     <div className="grid gap-2 md:hidden">{paginated.rows.map((row) => <PipelineTableCard key={row.candidate_id} candidate={row} language={language} recruitmentLogs={recruitmentLogs} candidateReferences={candidateReferences} candidateReferenceChecks={candidateReferenceChecks} profile={profile} canWrite={canWrite} onOpen={onOpen} onStartProcess={onStartProcess} onEditPending={onEditPending} onPassStage={onPassStage} onFailCurrentStage={onFailCurrentStage} onMaintainTest={onMaintainTest} onUpdateOffer={onUpdateOffer} onEditCandidate={onEditCandidate} />)}</div>

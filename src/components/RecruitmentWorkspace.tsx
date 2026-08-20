@@ -963,13 +963,29 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       return true;
     }
 
-    if (modal === "match" && guideStep === "add_match") {
-      setGuideContext((current) => ({
-        ...current,
-        doc_group_id: resultId ?? valueAsString(payload.doc_group_id)
-      }));
-      setGuideStep("ask_candidate");
-      setStatus("Match saved. Add a candidate if you already have one.");
+    if (modal === "group" && initialView === "workspace") {
+      const groupId = resultId ?? valueAsString(payload.group_id);
+      if (groupId) openWorkspaceGroupAfterSetup(groupId, null);
+      clearGuide();
+      setStatus("Group created. It is ready to link to a requisition.");
+      return true;
+    }
+
+    if (modal === "group_match") {
+      const groupId = resultId ?? valueAsString(payload.group_id);
+      const docId = valueAsString(payload.doc_id);
+      if (groupId && docId) openWorkspaceGroupAfterSetup(groupId, docId);
+      clearGuide();
+      setStatus("Group created and matched. Opening its sourcing workspace.");
+      return true;
+    }
+
+    if (modal === "match") {
+      const groupId = valueAsString(payload.group_id);
+      const docId = valueAsString(payload.doc_id);
+      if (groupId && docId) openWorkspaceGroupAfterSetup(groupId, docId);
+      clearGuide();
+      setStatus("Group linked. Opening its sourcing workspace.");
       return true;
     }
 
@@ -981,6 +997,14 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     }
 
     return false;
+  }
+
+  function openWorkspaceGroupAfterSetup(groupId: string, docId: string | null) {
+    if (initialView === "workspace") setWorkspaceTarget({ type: "group", id: groupId });
+    const docQuery = docId ? `&doc=${encodeURIComponent(docId)}` : "";
+    const section = docId ? "sourcing" : "overview";
+    const path = `/workspace?type=group&id=${encodeURIComponent(groupId)}${docQuery}&section=${section}`;
+    router.push(buildContextualHref(path, { language, site: filters.site, owner: filters.owner, sourcingWeek }));
   }
 
   function openOfferFromHandoff() {
@@ -1212,6 +1236,12 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
           ownerFilter={filters.owner}
           canWrite={canWrite}
           canManageSetup={canManageSetup}
+          onCreateGroup={() => {
+            clearGuide();
+            setModalDefaults({ mode: "new" });
+            setActiveModal("group");
+          }}
+          onLinkGroup={(groupId) => dispatchWorkspaceAction({ kind: "group.match", docId: "", groupId })}
           weekStart={sourcingWeek}
           onWeekChange={setSourcingWeek}
           onSaveSourcing={(payload, summary) => prepareRpcAction("app_upsert_sourcing_weekly_update", payload, summary)}
@@ -2934,8 +2964,7 @@ function CreateAndMatchGroupFields({ data, defaults, language, profile }: { data
     row.status === "ongoing"
       && row.open_headcount > 0
       && !matchedDocIds.has(row.doc_id)
-      && row.site === site
-      && row.person_in_charge === nickname
+      && (profile?.role !== "site_recruiter" || (row.site === site && row.person_in_charge === nickname))
   ));
   return (
     <div className="grid gap-4 md:grid-cols-2">
@@ -3738,45 +3767,32 @@ function hasLatestOfferPass(data: DashboardData, candidateId: string) {
   return latest?.recruitment_process === "Offer" && latest.result === 1;
 }
 
-function modalTitle(modal: ModalName) {
+function modalTitle(language: Language, modal: ModalName) {
   const titles: Record<Exclude<ModalName, null>, string> = {
-    requisition: "Requisition",
-    status: "Requisition Status",
-    candidate: "Candidate",
-    candidate_reference: "Reference",
-    reference_status: "Reference status",
-    reference_check: "Reference check",
-    pipeline_start: "Start Phone Screen",
-    pending_edit: "Edit Pending Details",
-    pipeline_record_correction: "Edit Pipeline Record",
-    stage_outcome: "Complete Stage",
-    pipeline_pass: "Confirm Passed Stages",
-    offer: "Offer",
-    start_confirmation: "New Hire Confirmation",
-    group: "Position Group",
-    group_match: "Create & Match Group",
-    match: "Match Requisition and Group",
-    snapshot: "Vacancy Snapshot",
-    user: "Manage User"
+    requisition: "modalRequisition", status: "modalRequisitionStatus", candidate: "modalCandidate", candidate_reference: "modalReference",
+    reference_status: "modalReferenceStatus", reference_check: "modalReferenceCheck", pipeline_start: "modalStartPhoneScreen", pending_edit: "modalEditPending",
+    pipeline_record_correction: "modalEditPipeline", stage_outcome: "modalCompleteStage", pipeline_pass: "modalConfirmStages", offer: "modalOffer",
+    start_confirmation: "modalNewHire", group: "modalSourcingGroup", group_match: "modalCreateMatchGroup", match: "modalMatchRequisitionGroup",
+    snapshot: "modalVacancySnapshot", user: "modalManageUser"
   };
-  return modal ? titles[modal] : "";
+  return modal ? translate(language, titles[modal]) : "";
 }
 
 function modalDialogTitle(language: Language, modal: ModalName, mode: "new" | "change") {
   if (!modal) return "";
   const editableLabels: Partial<Record<Exclude<ModalName, null>, string>> = {
-    requisition: "Requisition",
-    candidate: "Candidate",
+    requisition: translate(language, "modalRequisition"),
+    candidate: translate(language, "modalCandidate"),
     candidate_reference: translate(language, "reference"),
     reference_status: translate(language, "referenceStatus"),
     reference_check: translate(language, "referenceCheck"),
-    offer: "Offer",
-    group: "Position Group",
-    group_match: "Sourcing Group",
-    user: "User"
+    offer: translate(language, "modalOffer"),
+    group: translate(language, "modalSourcingGroup"),
+    group_match: translate(language, "modalSourcingGroup"),
+    user: translate(language, "modalUser")
   };
   const label = editableLabels[modal];
-  if (!label) return modalTitle(modal);
+  if (!label) return modalTitle(language, modal);
   const action = mode === "change" ? translate(language, "edit") : translate(language, "create");
   return `${action} ${label}`;
 }
