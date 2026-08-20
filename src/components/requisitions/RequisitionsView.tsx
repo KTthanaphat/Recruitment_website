@@ -93,7 +93,7 @@ export function RequisitionsView({
         action={
           canWrite ? (
             <>
-              <Button type="button" size="sm" icon={<Plus size={16} />} onClick={onNew}>{translate(language, "newRequisition")}</Button>
+              <Button type="button" size="icon-sm" icon={<Plus size={17} />} aria-label={translate(language, "newRequisition")} title={translate(language, "newRequisition")} onClick={onNew} />
               <Button type="button" size="sm" variant="secondary" icon={<RotateCw size={16} />} onClick={onStatus}>{translate(language, "status")}</Button>
             </>
           ) : null

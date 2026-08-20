@@ -206,23 +206,20 @@ test("site recruiters can inspect peer groups at their site but cannot change th
   await expectWorkspaceReady(page);
 
   await expect(page.getByRole("button", { name: "New Group" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Link Group" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Create & Match Group" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Link Group" })).toHaveCount(0);
   await page.getByRole("button", { name: "New Group" }).click();
-  await expect(page.getByRole("dialog", { name: "Create Sourcing Group" })).toBeVisible();
-  await page.getByRole("button", { name: "Cancel" }).click();
-  await page.getByRole("button", { name: "Link Group" }).click();
-  await expect(page.getByRole("dialog", { name: "Match Requisition and Group" })).toBeVisible();
+  const newGroupDialog = page.getByRole("dialog", { name: "Create Group" });
+  await expect(newGroupDialog).toBeVisible();
+  await expect(newGroupDialog.getByRole("heading", { name: "Link requisitions" })).toBeVisible();
   await page.getByRole("button", { name: "Cancel" }).click();
   await expect(page.getByRole("heading", { name: "Unmatched sourcing groups" })).toHaveCount(0);
 
-  const peerGroup = page.locator("#sourcing-group-GRP-KT1-PEER");
+  const peerGroup = page.getByRole("article").filter({ hasText: "GRP-KT1-PEER" });
   await expect(peerGroup).toBeVisible();
-  await expect(peerGroup).toContainText("Read-only — assigned to Nina");
-  await expect(peerGroup.getByLabel("Applicants").first()).toBeDisabled();
-  await expect(peerGroup.getByRole("button", { name: /Save sourcing week/ })).toHaveCount(0);
-  await expect(peerGroup.getByRole("checkbox", { name: /Select sourcing group/ })).toHaveCount(0);
-  await expect(peerGroup.getByRole("menuitem", { name: "Copy Previous Week" })).toHaveCount(0);
+  await expect(peerGroup).toContainText("KT1 / Nina");
+  await expect(peerGroup.getByRole("button", { name: "Edit record" })).toHaveCount(0);
+  const ownedGroup = page.getByRole("article").filter({ hasText: "GRP-TECH" });
+  await expect(ownedGroup.getByRole("button", { name: "Edit record" })).toBeVisible();
 });
 
 test("sourcing unmatch uses destructive confirmation and RPC", async ({ page }) => {

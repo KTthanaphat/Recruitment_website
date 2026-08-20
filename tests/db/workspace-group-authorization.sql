@@ -52,6 +52,7 @@ select pg_temp.assert_true(
       'public.app_upsert_position_group(jsonb)'::regprocedure,
       'public.app_create_group_match(jsonb)'::regprocedure,
       'public.app_create_and_match_sourcing_group(jsonb)'::regprocedure,
+      'public.app_create_and_match_sourcing_group_v2(jsonb)'::regprocedure,
       'public.app_unmatch_group_requisition(jsonb)'::regprocedure,
       'public.app_delete_recruitment_record(jsonb)'::regprocedure,
       'public.app_start_pipeline_stage_v2(jsonb)'::regprocedure,
@@ -69,6 +70,7 @@ select pg_temp.assert_true(
   not has_function_privilege('anon', 'public.app_upsert_position_group(jsonb)', 'EXECUTE')
     and not has_function_privilege('anon', 'public.app_create_group_match(jsonb)', 'EXECUTE')
     and not has_function_privilege('anon', 'public.app_create_and_match_sourcing_group(jsonb)', 'EXECUTE')
+    and not has_function_privilege('anon', 'public.app_create_and_match_sourcing_group_v2(jsonb)', 'EXECUTE')
     and not has_function_privilege('anon', 'public.app_unmatch_group_requisition(jsonb)', 'EXECUTE')
     and not has_function_privilege('anon', 'public.app_delete_recruitment_record(jsonb)', 'EXECUTE')
     and not has_function_privilege('anon', 'public.app_start_pipeline_stage_v2(jsonb)', 'EXECUTE')
@@ -82,6 +84,7 @@ select pg_temp.assert_true(
   has_function_privilege('authenticated', 'public.app_upsert_position_group(jsonb)', 'EXECUTE')
     and has_function_privilege('authenticated', 'public.app_create_group_match(jsonb)', 'EXECUTE')
     and has_function_privilege('authenticated', 'public.app_create_and_match_sourcing_group(jsonb)', 'EXECUTE')
+    and has_function_privilege('authenticated', 'public.app_create_and_match_sourcing_group_v2(jsonb)', 'EXECUTE')
     and has_function_privilege('authenticated', 'public.app_unmatch_group_requisition(jsonb)', 'EXECUTE')
     and has_function_privilege('authenticated', 'public.app_delete_recruitment_record(jsonb)', 'EXECUTE')
     and has_function_privilege('authenticated', 'public.app_start_pipeline_stage_v2(jsonb)', 'EXECUTE')
@@ -139,6 +142,7 @@ values
   ('__authz_test_peer', '__authz_test_site', 'Peer owned group', 'Test', 'Peer Owner', 'ongoing'),
   ('__authz_test_other_site', '__authz_other_site', 'Other site group', 'Test', 'Other Site Owner', 'ongoing'),
   ('__authz_test_atomic', '__authz_test_site', 'Atomic group', 'Test', 'Scope Owner', 'ongoing'),
+  ('__authz_test_atomic_second', '__authz_test_site', 'Atomic group two', 'Test', 'Scope Owner', 'ongoing'),
   ('__authz_test_cross_site_owned', '__authz_test_site', 'Cross-site match', 'Test', 'Scope Owner', 'ongoing');
 
 insert into public.position_groups (group_id, group_position)
@@ -226,10 +230,11 @@ select pg_temp.expect_error(
 );
 
 select pg_temp.assert_true(
-  (public.app_create_and_match_sourcing_group(
-    '{"doc_id":"__authz_test_atomic","group_position":"Atomic group","channel_fb":true}'::jsonb
-  ) ->> 'ok')::boolean,
-  'a site recruiter can atomically create and match a group for an owned open requisition'
+  (public.app_create_and_match_sourcing_group_v2(
+    '{"doc_ids":["__authz_test_atomic","__authz_test_atomic_second"],"group_position":"Atomic group","channel_fb":true}'::jsonb
+  ) ->> 'ok')::boolean
+  and (select count(*) = 2 from public.document_groups where doc_id in ('__authz_test_atomic', '__authz_test_atomic_second')),
+  'a site recruiter can atomically create and match one group to multiple owned open requisitions'
 );
 
 select pg_temp.assert_true(

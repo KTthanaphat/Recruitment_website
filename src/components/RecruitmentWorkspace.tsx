@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Plus, X } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AdminView } from "@/components/admin/AdminView";
 import { AuditView } from "@/components/audit/AuditView";
@@ -248,7 +248,7 @@ const rpcByModal: Record<Exclude<ModalName, null | "user">, string> = {
   offer: "app_upsert_offer",
   start_confirmation: "app_confirm_offer_start_v1",
   group: "app_upsert_position_group",
-  group_match: "app_create_and_match_sourcing_group",
+  group_match: "app_create_and_match_sourcing_group_v2",
   match: "app_create_group_match",
   snapshot: "app_upsert_vacancy_weekly_snapshot"
 };
@@ -536,7 +536,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   function openGuidedGroup() {
     setGuideStep("create_group");
     setModalDefaults({ group_position: guideContext.position ?? "", doc_id: guideContext.doc_id ?? "" });
-    setActiveModal(data.profile?.role === "site_recruiter" ? "group_match" : "group");
+    setActiveModal("group_match");
   }
 
   function openGuidedCandidate() {
@@ -753,7 +753,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       setGuideContext({ doc_id: request.docId, position: requisition?.position, level: requisition?.level, site: requisition?.site, person_in_charge: requisition?.person_in_charge ?? undefined });
       setGuideStep(request.docId ? "create_group" : null);
       setModalDefaults({ mode: "new", group_position: requisition?.position ?? "" });
-      setActiveModal("group");
+      setActiveModal("group_match");
       return;
     }
     if (request.kind === "group.match") {
@@ -946,37 +946,11 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       return true;
     }
 
-    if (modal === "group" && guideStep === "create_group") {
-      const nextContext = {
-        ...guideContext,
-        group_id: resultId ?? valueAsString(payload.group_id),
-        group_position: valueAsString(payload.group_position) || guideContext.position
-      };
-      setGuideContext(nextContext);
-      setGuideStep("add_match");
-      setModalDefaults({
-        doc_id: nextContext.doc_id ?? "",
-        group_id: nextContext.group_id ?? ""
-      });
-      setActiveModal("match");
-      setStatus("Group saved. Match it to the requisition.");
-      return true;
-    }
-
-    if (modal === "group" && initialView === "workspace") {
+    if (modal === "group_match") {
       const groupId = resultId ?? valueAsString(payload.group_id);
       if (groupId) openWorkspaceGroupAfterSetup(groupId, null);
       clearGuide();
-      setStatus("Group created. It is ready to link to a requisition.");
-      return true;
-    }
-
-    if (modal === "group_match") {
-      const groupId = resultId ?? valueAsString(payload.group_id);
-      const docId = valueAsString(payload.doc_id);
-      if (groupId && docId) openWorkspaceGroupAfterSetup(groupId, docId);
-      clearGuide();
-      setStatus("Group created and matched. Opening its sourcing workspace.");
+      setStatus("Group created and linked. Opening its sourcing workspace.");
       return true;
     }
 
@@ -1239,7 +1213,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
           onCreateGroup={() => {
             clearGuide();
             setModalDefaults({ mode: "new" });
-            setActiveModal("group");
+            setActiveModal("group_match");
           }}
           onLinkGroup={(groupId) => dispatchWorkspaceAction({ kind: "group.match", docId: "", groupId })}
           weekStart={sourcingWeek}
@@ -1580,11 +1554,12 @@ function buildPayload(modal: Exclude<ModalName, null>, formData: FormData) {
       SOURCING_CHANNELS.map((channel) => [channel.enabled, boolFromForm(formData.get(channel.enabled))])
     );
     const payload = {
-      doc_id: emptyToNull(formData.get("doc_id")),
+      doc_ids: formData.getAll("doc_ids").map((value) => String(value).trim()).filter(Boolean),
       group_position: emptyToNull(formData.get("group_position")),
       ...channelPayload
     };
-    requireFields(payload, ["doc_id", "group_position"]);
+    requireFields(payload, ["group_position"]);
+    if (payload.doc_ids.length === 0) throw new Error("Select at least one requisition to link.");
     return payload;
   }
 
@@ -1909,7 +1884,8 @@ function RequisitionFields({
   const ownerValue = isSiteRecruiter ? nickname : selected?.person_in_charge;
   const initialSiteValue = siteValue ?? "";
   const [requestType, setRequestType] = useState<RequisitionRequestType>(selected?.request_type ?? "New");
-  const [replacementNames, setReplacementNames] = useState(splitReplacementNames(selected?.replacement_names));
+  const [headCount, setHeadCount] = useState(Math.max(1, selected?.head_count ?? 1));
+  const [replacementNames, setReplacementNames] = useState(() => replacementNamesForHeadcount(splitReplacementNames(selected?.replacement_names), selected?.head_count ?? 1));
   const [selectedSite, setSelectedSite] = useState(initialSiteValue);
   const [departmentValue, setDepartmentValue] = useState(selected?.department ?? "");
   const [sectionValue, setSectionValue] = useState(selected?.section ?? "");
@@ -1925,11 +1901,30 @@ function RequisitionFields({
 
   useEffect(() => {
     setRequestType(selected?.request_type ?? "New");
-    setReplacementNames(splitReplacementNames(selected?.replacement_names));
+    const nextHeadCount = Math.max(1, selected?.head_count ?? 1);
+    setHeadCount(nextHeadCount);
+    setReplacementNames(replacementNamesForHeadcount(splitReplacementNames(selected?.replacement_names), nextHeadCount));
     setSelectedSite(initialSiteValue);
     setDepartmentValue(selected?.department ?? "");
     setSectionValue(selected?.section ?? "");
-  }, [initialSiteValue, selected?.department, selected?.doc_id, selected?.replacement_names, selected?.request_type, selected?.section]);
+  }, [initialSiteValue, selected?.department, selected?.doc_id, selected?.head_count, selected?.replacement_names, selected?.request_type, selected?.section]);
+
+  function changeRequestType(nextRequestType: RequisitionRequestType) {
+    setRequestType(nextRequestType);
+    if (nextRequestType === "Replacement") setReplacementNames((names) => replacementNamesForHeadcount(names, headCount));
+  }
+
+  function changeHeadCount(rawValue: string) {
+    const nextHeadCount = Math.max(1, Number.parseInt(rawValue, 10) || 1);
+    if (requestType === "Replacement" && nextHeadCount < replacementNames.length) {
+      const removedCount = replacementNames.length - nextHeadCount;
+      if (!window.confirm(translate(language, "confirmReplacementTrim", { count: removedCount }))) return;
+      setReplacementNames((names) => names.slice(0, nextHeadCount));
+    } else if (requestType === "Replacement" && nextHeadCount > replacementNames.length) {
+      setReplacementNames((names) => replacementNamesForHeadcount(names, nextHeadCount));
+    }
+    setHeadCount(nextHeadCount);
+  }
 
   useEffect(() => {
     let active = true;
@@ -1960,7 +1955,7 @@ function RequisitionFields({
       </Field>
       <Field label={translate(language, "prApprovedDate")}><DayDateSelector ariaLabel={translate(language, "prApprovedDate")} language={language} name="pr_approved_date" nextMonthLabel={translate(language, "nextMonth")} previousMonthLabel={translate(language, "previousMonth")} defaultValue={selected?.pr_approved_date ?? ""} /></Field>
       <Field label={translate(language, "requestType")}>
-        <CreateSelectInput name="request_type" value={requestType} onChange={(event) => setRequestType(event.target.value as RequisitionRequestType)}>
+        <CreateSelectInput name="request_type" value={requestType} onChange={(event) => changeRequestType(event.target.value as RequisitionRequestType)}>
           <option value="New">{requestTypeLabel(language, "New")}</option>
           <option value="Replacement">{requestTypeLabel(language, "Replacement")}</option>
         </CreateSelectInput>
@@ -2015,7 +2010,7 @@ function RequisitionFields({
           {Array.from({ length: 15 }, (_, level) => <option key={level} value={String(level)}>{level}</option>)}
         </CreateSelectInput>
       </Field>
-      <Field label={translate(language, "headCount")}><TextInput name="head_count" type="number" min={1} defaultValue={selected?.head_count ?? 1} required /></Field>
+      <Field label={translate(language, "headCount")}><TextInput name="head_count" type="number" min={1} value={headCount} onChange={(event) => changeHeadCount(event.target.value)} required /></Field>
       <Field label={translate(language, "personInCharge")}>
         {isSiteRecruiter ? <input type="hidden" name="person_in_charge" value={nickname} /> : null}
         <CreateSelectInput name={isSiteRecruiter ? undefined : "person_in_charge"} defaultValue={ownerValue ?? ""} disabled={isSiteRecruiter}>
@@ -2029,16 +2024,13 @@ function RequisitionFields({
       </Field>
       {requestType === "Replacement" ? (
         <div className="grid gap-2 md:col-span-2">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-sm font-bold text-navy">{translate(language, "replacementNames")}</span>
-            <Button type="button" size="sm" variant="secondary" onClick={() => setReplacementNames((names) => [...names, ""])}>{translate(language, "addReplacement")}</Button>
-          </div>
+          <div><span className="text-sm font-bold text-navy">{translate(language, "replacementNames")}</span><p className="mt-1 text-xs text-slate">{translate(language, "replacementNamesMatchHeadcount", { count: headCount })}</p></div>
           <div className="grid gap-2">
             {replacementNames.map((name, index) => (
               <TextInput
                 key={index}
                 name="replacement_names"
-                required={index === 0}
+                required
                 placeholder={translate(language, "replacementName", { index: index + 1 })}
                 value={name}
                 onChange={(event) => setReplacementNames((names) => names.map((item, itemIndex) => itemIndex === index ? event.target.value : item))}
@@ -2081,6 +2073,12 @@ function splitReplacementNames(value: string | null | undefined) {
     .map((name) => name.trim())
     .filter(Boolean);
   return names.length > 0 ? names : [""];
+}
+
+function replacementNamesForHeadcount(names: string[], headCount: number) {
+  const requiredCount = Math.max(1, headCount);
+  if (names.length >= requiredCount) return names;
+  return [...names, ...Array.from({ length: requiredCount - names.length }, () => "")];
 }
 
 function CandidateFields({ data }: { data: DashboardData }) {
@@ -2223,12 +2221,12 @@ function CandidatePrefillFields({
       <div className="rounded-md border border-[#D7DEE8] bg-lightgray/60 p-3 md:col-span-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div><p className="text-sm font-semibold text-navy">{translate(language, "contactReferences")} <span className="font-medium text-slate">({translate(language, "optional")})</span></p><p className="mt-1 text-xs font-medium text-slate">{translate(language, "contactReferencesHelper")}</p></div>
-          <Button type="button" size="sm" variant="secondary" onClick={() => setReferenceRows((rows) => [...rows, (rows.at(-1) ?? -1) + 1])}>{translate(language, "addReference")}</Button>
+          <Button type="button" size="icon-sm" variant="secondary" icon={<Plus size={17} />} aria-label={translate(language, "addReference")} title={translate(language, "addReference")} onClick={() => setReferenceRows((rows) => [...rows, (rows.at(-1) ?? -1) + 1])} />
         </div>
         {referenceRows.length > 0 ? <div className="mt-3 grid gap-3">{referenceRows.map((row) => {
           const channelType = referenceChannelTypes[row] ?? "phone";
           return <div key={row} className="grid gap-3 rounded-md border border-[#D7DEE8] bg-white p-3 md:grid-cols-2">
-            <div className="flex items-center justify-between gap-2 md:col-span-2"><p className="text-xs font-semibold text-slate">{translate(language, "referenceNumber", { number: row + 1 })}</p><Button type="button" size="sm" variant="secondary" onClick={() => setReferenceRows((rows) => rows.filter((value) => value !== row))}>{translate(language, "remove")}</Button></div>
+            <div className="flex items-center justify-between gap-2 md:col-span-2"><p className="text-xs font-semibold text-slate">{translate(language, "referenceNumber", { number: row + 1 })}</p><Button type="button" size="icon-sm" variant="ghost" className="text-danger hover:bg-danger/10 hover:text-danger" icon={<X size={16} />} aria-label={translate(language, "remove")} title={translate(language, "remove")} onClick={() => setReferenceRows((rows) => rows.filter((value) => value !== row))} /></div>
             <Field label={translate(language, "referenceContactName")}><TextInput name="candidate_reference_name" required /></Field>
             <Field label={translate(language, "relationship")}><TextInput name="candidate_reference_relationship" required /></Field>
             <Field label={translate(language, "channel")}><SelectInput name="candidate_reference_channel_type" value={channelType} onChange={(event) => setReferenceChannelTypes((current) => ({ ...current, [row]: event.target.value }))}><option value="phone">{translate(language, "referenceChannelPhone")}</option><option value="email">{translate(language, "referenceChannelEmail")}</option><option value="line">LINE</option><option value="other">{translate(language, "referenceChannelOther")}</option></SelectInput></Field>
@@ -2960,19 +2958,39 @@ function CreateAndMatchGroupFields({ data, defaults, language, profile }: { data
   const nickname = profile?.nickname ?? profile?.full_name ?? "";
   const site = profile?.site ?? "";
   const matchedDocIds = new Set(data.document_groups.map((group) => group.doc_id));
-  const eligibleRequisitions = enrichRequisitions(data).filter((row) => (
+  const allEligibleRequisitions = enrichRequisitions(data).filter((row) => (
     row.status === "ongoing"
       && row.open_headcount > 0
       && !matchedDocIds.has(row.doc_id)
       && (profile?.role !== "site_recruiter" || (row.site === site && row.person_in_charge === nickname))
   ));
+  const [selectedDocIds, setSelectedDocIds] = useState<string[]>(() => defaults.doc_id ? [defaults.doc_id] : []);
+  const [pendingDocId, setPendingDocId] = useState("");
+  useEffect(() => {
+    setSelectedDocIds(defaults.doc_id ? [defaults.doc_id] : []);
+    setPendingDocId("");
+  }, [defaults.doc_id]);
+  const selectedRequisitions = selectedDocIds.map((docId) => allEligibleRequisitions.find((row) => row.doc_id === docId)).filter((row): row is ReturnType<typeof enrichRequisitions>[number] => Boolean(row));
+  const selectedSite = selectedRequisitions[0]?.site;
+  const eligibleRequisitions = allEligibleRequisitions.filter((row) => !selectedDocIds.includes(row.doc_id) && (!selectedSite || row.site === selectedSite));
+  const addRequisition = () => {
+    if (!pendingDocId || !eligibleRequisitions.some((row) => row.doc_id === pendingDocId)) return;
+    setSelectedDocIds((ids) => [...ids, pendingDocId]);
+    setPendingDocId("");
+  };
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      <Field label={translate(language, "docId")}><CreateSelectInput name="doc_id" required defaultValue={defaults.doc_id ?? ""}><option value="">{translate(language, "selectRequisitionOption")}</option>{eligibleRequisitions.map((row) => <option key={row.doc_id} value={row.doc_id}>{requisitionOptionLabel(row)}</option>)}</CreateSelectInput></Field>
+      <Field label={translate(language, "groupId")}><TextInput value={translate(language, "autoInNewMode")} readOnly /></Field>
       <Field label={translate(language, "groupPosition")}><TextInput name="group_position" list="group-position-options" required defaultValue={defaults.group_position ?? ""} /></Field>
       <div className="grid gap-2 rounded-md border border-[#D7DEE8] bg-lightgray p-3 text-sm font-bold text-navy md:col-span-2 md:grid-cols-4">
         {SOURCING_CHANNELS.map((channel) => <label key={channel.enabled} className="flex items-center gap-2"><input name={channel.enabled} type="checkbox" /> {channel.label}</label>)}
       </div>
+      <section className="grid gap-3 rounded-md border border-[#C9D5E6] bg-[#F8FAFD] p-3 md:col-span-2">
+        <div><h3 className="font-semibold text-navy">{translate(language, "linkRequisitions")}</h3><p className="mt-1 text-sm text-slate">{translate(language, "groupRequisitionSiteHint")}</p></div>
+        <div className="flex flex-wrap items-end gap-2"><Field className="min-w-[16rem] flex-1" label={translate(language, "docId")}><CreateSelectInput value={pendingDocId} onChange={(event) => setPendingDocId(event.target.value)}><option value="">{translate(language, "selectRequisitionOption")}</option>{eligibleRequisitions.map((row) => <option key={row.doc_id} value={row.doc_id}>{requisitionOptionLabel(row)}</option>)}</CreateSelectInput></Field><Button type="button" size="icon-sm" variant="secondary" icon={<Plus size={17} />} aria-label={translate(language, "addRequisition")} title={translate(language, "addRequisition")} onClick={addRequisition} disabled={!pendingDocId} /></div>
+        <div className="grid gap-2">{selectedRequisitions.map((row) => <div key={row.doc_id} className="flex min-w-0 items-center gap-2 rounded border border-[#D7DEE8] bg-white px-3 py-2"><input type="hidden" name="doc_ids" value={row.doc_id} /><p className="min-w-0 flex-1 truncate text-sm font-semibold text-navy" title={`${row.doc_id} · ${row.position} · ${row.site} · ${row.person_in_charge ?? translate(language, "unassigned")}`}>{row.doc_id} · {row.position} · {row.site} · {row.person_in_charge ?? translate(language, "unassigned")}</p><Button type="button" size="icon-sm" variant="ghost" className="text-danger hover:bg-danger/10 hover:text-danger" icon={<X size={16} />} onClick={() => setSelectedDocIds((ids) => ids.filter((id) => id !== row.doc_id))} aria-label={translate(language, "removeRequisition", { docId: row.doc_id })} /></div>)}</div>
+        {selectedRequisitions.length === 0 ? <p className="text-sm font-medium text-danger">{translate(language, "selectAtLeastOneRequisition")}</p> : null}
+      </section>
       <DataLists data={data} />
     </div>
   );
@@ -3074,7 +3092,7 @@ function GuidePrompt({
           </div>
           <div className="flex flex-wrap justify-end gap-2">
             <Button type="button" variant="secondary" onClick={onLater}>{translate(language, "later")}</Button>
-            <Button type="button" className="ring-4 ring-primary/20" onClick={onCreateGroup}>{translate(language, "newGroup")}</Button>
+            <Button type="button" size="icon-sm" className="ring-4 ring-primary/20" icon={<Plus size={17} />} aria-label={translate(language, "newGroup")} title={translate(language, "newGroup")} onClick={onCreateGroup} />
           </div>
         </div>
       </Modal>
@@ -3408,7 +3426,7 @@ function buildDetailBodyV2(
           <div className="grid gap-3">
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-[#D7DEE8] bg-lightgray/70 p-3">
               <p className="text-sm font-medium text-slate">{translate(language, "referencePassRequirement")}</p>
-              {canWrite ? <Button type="button" size="sm" variant="secondary" onClick={() => onEditReference(candidate.candidate_id)}>{translate(language, "addReference")}</Button> : null}
+              {canWrite ? <Button type="button" size="icon-sm" variant="secondary" icon={<Plus size={17} />} aria-label={translate(language, "addReference")} title={translate(language, "addReference")} onClick={() => onEditReference(candidate.candidate_id)} /> : null}
             </div>
             {references.length === 0 ? <p className="text-sm font-medium text-slate">{translate(language, "noContactReferences")}</p> : references.map((reference) => {
               const check = referenceChecks.get(reference.reference_id);
@@ -3780,6 +3798,7 @@ function modalTitle(language: Language, modal: ModalName) {
 
 function modalDialogTitle(language: Language, modal: ModalName, mode: "new" | "change") {
   if (!modal) return "";
+  if (modal === "group_match") return translate(language, "modalCreateMatchGroup");
   const editableLabels: Partial<Record<Exclude<ModalName, null>, string>> = {
     requisition: translate(language, "modalRequisition"),
     candidate: translate(language, "modalCandidate"),
@@ -3788,7 +3807,6 @@ function modalDialogTitle(language: Language, modal: ModalName, mode: "new" | "c
     reference_check: translate(language, "referenceCheck"),
     offer: translate(language, "modalOffer"),
     group: translate(language, "modalSourcingGroup"),
-    group_match: translate(language, "modalSourcingGroup"),
     user: translate(language, "modalUser")
   };
   const label = editableLabels[modal];

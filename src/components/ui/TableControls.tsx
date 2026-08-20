@@ -225,8 +225,8 @@ function CategoryFilter({ columnKey, filterValue, language, options, onFilter, l
 
   return (
     <details className="relative min-w-28 normal-case">
-      <summary className="flex min-h-8 cursor-pointer list-none items-center justify-between gap-1 rounded-lg border border-[#C9D5E6] bg-white px-2 py-1 text-xs font-medium text-navy focus:outline-none focus:ring-2 focus:ring-primary/15 [&::-webkit-details-marker]:hidden" aria-label={translate(language, "filterLabel", { label })}>
-        <span className="truncate">{selectedCount === 0 ? translate(language, "all") : translate(language, "filterSelected", { count: selectedCount })}</span>
+      <summary className="flex min-h-8 min-w-0 cursor-pointer list-none items-center justify-between gap-1 rounded-lg border border-[#C9D5E6] bg-white px-2 py-1 text-xs font-medium text-navy focus:outline-none focus:ring-2 focus:ring-primary/15 [&::-webkit-details-marker]:hidden" aria-label={translate(language, "filterLabel", { label })}>
+        <span className="min-w-0 truncate" title={selectedCount === 0 ? translate(language, "all") : translate(language, "filterSelected", { count: selectedCount })}>{selectedCount === 0 ? translate(language, "all") : translate(language, "filterSelected", { count: selectedCount })}</span>
         <span aria-hidden="true">⌄</span>
       </summary>
       <div className="absolute left-0 z-30 mt-1 grid max-h-60 min-w-48 overflow-y-auto rounded-lg border border-[#C9D5E6] bg-white p-2 text-xs font-medium text-navy shadow-lg">

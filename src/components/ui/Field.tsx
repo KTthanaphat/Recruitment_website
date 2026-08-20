@@ -30,7 +30,7 @@ export function TextInput({ className = "", ...props }: InputHTMLAttributes<HTML
 }
 
 export function SelectInput(props: SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select className={fieldClass} {...props} />;
+  return <select className={`${fieldClass} min-w-0 truncate`} {...props} />;
 }
 
 /** Shared command-selector field that keeps the existing FormData shape. */
@@ -155,7 +155,7 @@ export function DayDateSelector({
       className="flex min-h-10 w-full items-center gap-2 rounded-md border border-[#D7DEE8] bg-white px-3 py-2 text-left text-sm font-normal tabular-nums text-navy transition hover:border-[#C9D5E6] hover:bg-[#FBFDFF] focus:border-primary focus:bg-[#FBFDFF] focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:bg-[#F1F5F9] disabled:text-slate"
     >
       <CalendarDays size={16} className="shrink-0 text-primary" aria-hidden="true" />
-      <span className="min-w-0 flex-1">{selectedValue ? displayDate(selectedValue) : ariaLabel}</span>
+      <span className="min-w-0 flex-1 truncate" title={selectedValue ? displayDate(selectedValue) : ariaLabel}>{selectedValue ? displayDate(selectedValue) : ariaLabel}</span>
     </button>
     {open ? <div id={`${id}-calendar`} role="dialog" aria-label={ariaLabel} className="absolute z-50 mt-2 w-[19rem] rounded-xl border border-[#C9D5E6] bg-white p-3 shadow-[0_18px_40px_rgba(11,19,43,0.18)] max-md:fixed max-md:inset-x-2 max-md:bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] max-md:mt-0 max-md:w-auto">
       <div className="mb-3 flex items-center justify-between rounded-lg bg-[#F8FAFD] p-1">

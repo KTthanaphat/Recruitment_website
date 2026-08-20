@@ -85,7 +85,7 @@ export function CandidatesView({
         action={
           canWrite ? (
             <>
-              <Button type="button" size="sm" icon={<Plus size={16} />} onClick={onNew}>{translate(language, "newCandidate")}</Button>
+              <Button type="button" size="icon-sm" icon={<Plus size={17} />} aria-label={translate(language, "newCandidate")} title={translate(language, "newCandidate")} onClick={onNew} />
             </>
           ) : null
         }

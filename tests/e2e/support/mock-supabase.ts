@@ -236,6 +236,13 @@ function createRecruitmentDataset(activeRole: MockUserRole): DashboardData {
 }
 
 function applyRpcMutation(data: DashboardData, endpoint: string, payload: Record<string, unknown>) {
+  if (endpoint === "app_create_and_match_sourcing_group_v2") {
+    const groupId = generatedIdForEndpoint(endpoint);
+    const groupPosition = String(payload.group_position ?? "New group");
+    const docIds = Array.isArray(payload.doc_ids) ? payload.doc_ids.map((value) => String(value)) : [];
+    data.position_groups.push(positionGroup(groupId, groupPosition));
+    docIds.forEach((docId, index) => data.document_groups.push(documentGroup(`DG-GENERATED-${index + 1}`, docId, groupId, groupPosition)));
+  }
   if (endpoint === "app_unmatch_group_requisition") {
     const docGroupId = String(payload.doc_group_id ?? "");
     const docId = String(payload.doc_id ?? "");

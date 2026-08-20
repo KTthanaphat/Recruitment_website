@@ -237,10 +237,7 @@ Requisition form:
 - Open overdue status applies only when status is not filled/cancel, open headcount is greater than `0`, and age is greater than SLA.
 - Requisition cards/tables show age/SLA context; overdue open Doc IDs render red.
 - Home Needs Action sorts by requisition age descending, with rows missing PR approved date after valid ages.
-- Replacement requisitions require replacement names.
-- Replacement names support more than one name.
-- Replacement names are stored newline-delimited in `requisitions.replacement_names`.
-- New Position requisitions submit `replacement_names` as null.
+- Replacement-name, Headcount, and sourcing-group setup rules are canonical in `docs/WEBSITE_STRUCTURE.md`; ownership and focused test locations are indexed in `docs/FEATURE_FILE_MAP.md`.
 - Department and Section are cascading dropdowns sourced from `dep_sec_data.csv` through `/api/department-sections`; Department is scoped by selected Site, Section stays disabled until Department is selected, and legacy saved values remain selectable.
 
 Guided flow starts only after creating a new requisition, not after editing.
@@ -277,7 +274,7 @@ Channels:
 Weekly sourcing update:
 
 - Only render update cards for marked channels.
-- Records > Sourcing shows unmatched `position_groups` separately with a warning and Match requisition action; unmatched groups do not render weekly applicant inputs.
+- Records > Sourcing unmatched-group handling and atomic New Group behavior are canonical in `docs/WEBSITE_STRUCTURE.md`; unmatched groups do not render weekly applicant inputs.
 - Weekly update saves applicant counts only; it must not clear or change channel booleans.
 - Channel marking is controlled by sourcing setup/group matching. The RPC preserves omitted channel booleans and initializes new weekly rows from `position_groups`.
 - Unsaved selected weeks prefill applicant inputs from the latest saved group update.
@@ -414,7 +411,7 @@ Important fields:
 Important RPCs:
 
 - `app_upsert_requisition`
-- `app_upsert_position_group`
+- `app_create_and_match_sourcing_group_v2`
 - `app_create_group_match`
 - `app_unmatch_group_requisition`
 - `app_delete_recruitment_record`

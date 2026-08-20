@@ -66,16 +66,16 @@ export function WorkspaceOfferSection({
             <span title={newOfferDisabledReason}>
               <Button
                 type="button"
-                size="sm"
-                icon={<Plus size={16} />}
+                size="icon-sm"
+                icon={<Plus size={17} />}
                 disabled={Boolean(newOfferDisabledReason)}
+                aria-label={translate(language, "newOffer")}
+                title={translate(language, "newOffer")}
                 aria-describedby={newOfferDisabledReason ? "workspace-new-offer-reason" : undefined}
                 onClick={() => {
                   if (eligibleCandidate) onAction({ kind: "offer.upsert", candidateId: eligibleCandidate.candidate_id });
                 }}
-              >
-                New Offer
-              </Button>
+              />
             </span>
             {newOfferDisabledReason ? <p id="workspace-new-offer-reason" className="max-w-56 text-right text-xs font-medium text-slate">{newOfferDisabledReason}</p> : null}
           </div>

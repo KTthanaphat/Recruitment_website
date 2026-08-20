@@ -61,6 +61,14 @@ textarea {
   font: inherit;
 }
 
+/* Keep long selected values inside every native selector; custom triggers use Tailwind's truncate utility. */
+select {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 button,
 [role="button"] {
   touch-action: manipulation;

@@ -81,7 +81,7 @@ export function OffersView({
     <Panel>
       <SectionTitle
         title={translate(language, "offers")}
-        action={canWrite ? <Button type="button" size="sm" icon={<Plus size={16} />} onClick={onNew}>New Offer</Button> : null}
+        action={canWrite ? <Button type="button" size="icon-sm" icon={<Plus size={17} />} aria-label={translate(language, "newOffer")} title={translate(language, "newOffer")} onClick={onNew} /> : null}
       />
       {rows.length === 0 ? (
         <EmptyState message={translate(language, "noData")} />

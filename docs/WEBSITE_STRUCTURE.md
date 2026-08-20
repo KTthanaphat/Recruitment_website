@@ -101,7 +101,7 @@ Hiring Workspace behavior:
 - Workspace URL context is breadcrumb state, not disposable filter state. `type`, `id`, optional `doc`, and `section` identify the current hiring case, while `lang`, `site`, `pic`, and `sourcingWeek` remain preserved navigation context across links and actions.
 - Group-level workspace tabs show aggregate group information by default. Selecting a `doc` narrows Sourcing, Pipeline, Offer, and Activity to that requisition, and changing `doc` preserves the active `section`.
 - When no workspace is selected, `/workspace` renders the searchable workspace picker directly instead of a redundant empty workspace header.
-- The workspace picker action area follows its active tab: Requisitions keeps `New Requisition`; Groups exposes `New Group` and `Link Group`. The latter opens the existing requisition-to-group match flow with both values selectable. Group actions are visible only to roles that can manage sourcing setup.
+- The workspace picker action area follows its active tab: Requisitions keeps `New Requisition`; Groups exposes one `New Group` action. It creates a group and one or more requisition links atomically, then opens the aggregate group Workspace Sourcing section. Group actions are visible only to roles that can manage sourcing setup.
 - `section=offer` is the canonical workspace URL for offer creation and follow-up. Legacy `section=outcome` links are replaced with `section=offer` without adding browser history.
 - Workspace targets are active open work only: requisitions must be ongoing with remaining open headcount, and groups must include at least one such requisition. Filtered-out direct URLs show the invalid-target picker state.
 - The selected workspace context is a sticky command header. It shows breadcrumbs, group/requisition title, meta, readiness/SLA, actions, and summary metrics; after page scroll, the summary collapses into compact metric chips while the selected case stays visible.
@@ -216,8 +216,8 @@ Requisitions:
 - Operational overdue styling applies only to open requisitions with open headcount, valid PR approved date, valid level threshold, and age greater than SLA.
 - Requisition list and Home Needs Action show age/SLA context; overdue open Doc IDs render red.
 - Requisition Fill Readiness is tone-colored text in records and detail drawers, not a boxed tag.
-- Replacement requisitions require at least one replacement name.
-- Multiple replacement names are stored as newline-delimited text in `replacement_names`.
+- Replacement requisitions require exactly one replacement name for every Headcount vacancy. The modal automatically adds fields when Headcount rises and confirms before trailing names are removed when it falls.
+- Replacement names are stored as newline-delimited text in `replacement_names`; the RPC enforces the same non-empty-name/Headcount count.
 - New Position requisitions submit `replacement_names` as null.
 - After a new requisition is saved, the guided sourcing flow starts automatically.
 - Department and Section are dropdowns sourced from `dep_sec_data.csv` through `/api/department-sections`. Department options are filtered by selected Site, Section is disabled until Department is selected, and existing legacy saved values remain selectable when editing.
@@ -239,7 +239,7 @@ Sourcing:
 - Workspace > Sourcing reuses the embedded weekly sourcing editor, so recruiters can update applicant counts for the related group or requisition without leaving `/workspace`.
 - A `group_id` is single-site: it may link only to requisitions from one site. Cross-site matches are rejected.
 - Records > Sourcing shows unmatched Group IDs in a red warning section immediately above Weekly Work for System Admins and Admin Recruiters only; each item offers Details plus Link Group with that value prefilled. Site Recruiters and Viewers do not see this exception list.
-- Records > Sourcing header order is `New Group`, `Link Group`, Work Board/History toggle, then Week Starting. New Group uses `app_upsert_position_group` and stays on Records > Sourcing; Link Group uses `app_create_group_match`, then opens the matched `/workspace` group in its Sourcing section with the chosen requisition preserved. System Admin and Admin Recruiter can select every eligible open record, Site Recruiter may open either form but the existing RPC remains authoritative for assigned site, matching nickname/PIC, open requisition, and single-site-group constraints, and Viewer sees neither action.
+- Records > Sourcing header order is `New Group`, Work Board/History toggle, then Week Starting. New Group uses `app_create_and_match_sourcing_group_v2` to create the group and one or more selected eligible requisition links in one transaction, then opens aggregate group Workspace Sourcing. System Admin and Admin Recruiter may select eligible open requisitions from one site; Site Recruiters may select only their assigned-site, matching-nickname/PIC requisitions; Viewer sees no setup action. The red unmatched exception panel retains its System Admin/Admin Recruiter-only Link Group action for historical cleanup.
 - Site Recruiters can inspect every linked open group at their assigned site. Peer-owned cards remain read-only; only a PIC of an active, open linked requisition can save sourcing data or alter that group's matches.
 - Weekly sourcing updates only show channels marked on the group or match snapshot.
 - Weekly sourcing saves applicant counts only. It does not clear or change channel booleans; channel marking is changed through sourcing setup. Unsaved weeks prefill applicant inputs from the latest saved group update.
@@ -375,6 +375,7 @@ Protected RPC functions handle all recruitment writes:
 - `app_insert_requisition_log`
 - `app_upsert_position_group`
 - `app_create_group_match`
+- `app_create_and_match_sourcing_group_v2`
 - `app_unmatch_group_requisition`
 - `app_delete_recruitment_record`
 - `app_upsert_sourcing_weekly_update`

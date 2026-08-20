@@ -128,7 +128,7 @@ export function HomeView({
       </div>
       <div className="grid gap-5 lg:items-start lg:grid-cols-4">
         <div
-          className="min-h-0 lg:col-span-1 lg:h-[var(--calendar-panel-height)]"
+          className="order-2 min-h-0 lg:order-1 lg:col-span-1 lg:h-[var(--calendar-panel-height)]"
           style={calendarPanelHeight ? { "--calendar-panel-height": `${calendarPanelHeight}px` } as CSSProperties : undefined}
         >
         <Panel variant="primary" className="flex h-full min-h-0 flex-col">
@@ -170,7 +170,7 @@ export function HomeView({
         </Panel>
         </div>
 
-        <div ref={calendarPanelRef} className="min-w-0 lg:col-span-3">
+        <div ref={calendarPanelRef} className="order-1 min-w-0 lg:order-2 lg:col-span-3">
           <RecruitmentCalendar
             candidates={candidates}
             language={language}

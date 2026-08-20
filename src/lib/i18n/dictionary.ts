@@ -1680,7 +1680,7 @@ Object.assign(en, {
   modalOffer: "Offer",
   modalNewHire: "New Hire Confirmation",
   modalPositionGroup: "Position Group",
-  modalCreateMatchGroup: "Create & Match Group",
+  modalCreateMatchGroup: "Create Group",
   modalMatchRequisitionGroup: "Match Requisition and Group",
   modalVacancySnapshot: "Vacancy Snapshot",
   modalManageUser: "Manage User",
@@ -1688,7 +1688,15 @@ Object.assign(en, {
   modalUser: "User",
   exportPng: "Export PNG",
   preparingPng: "Preparing PNG…",
-  exportPngFailed: "Could not export the chart as PNG. Please try again."
+  exportPngFailed: "Could not export the chart as PNG. Please try again.",
+  linkRequisitions: "Link requisitions",
+  addRequisition: "Add requisition",
+  selectedRequisitions: "Selected requisitions",
+  removeRequisition: "Remove requisition {docId}",
+  selectAtLeastOneRequisition: "Select at least one requisition to link.",
+  groupRequisitionSiteHint: "All linked requisitions must be at the same site.",
+  replacementNamesMatchHeadcount: "Enter one replacement name for each vacancy ({count}).",
+  confirmReplacementTrim: "Reducing headcount will remove the final {count} replacement name(s). Continue?"
 });
 
 Object.assign(th, {
@@ -1772,7 +1780,7 @@ Object.assign(th, {
   modalOffer: "ข้อเสนอ",
   modalNewHire: "ยืนยันพนักงานใหม่",
   modalPositionGroup: "กลุ่มตำแหน่ง",
-  modalCreateMatchGroup: "สร้างและจับคู่กลุ่ม",
+  modalCreateMatchGroup: "สร้างกลุ่ม",
   modalMatchRequisitionGroup: "จับคู่คำขอและกลุ่ม",
   modalVacancySnapshot: "ภาพรวมอัตราว่าง",
   modalManageUser: "จัดการผู้ใช้",
@@ -1780,7 +1788,15 @@ Object.assign(th, {
   modalUser: "ผู้ใช้",
   exportPng: "ส่งออก PNG",
   preparingPng: "กำลังเตรียม PNG…",
-  exportPngFailed: "ไม่สามารถส่งออกแผนภูมิเป็น PNG ได้ โปรดลองอีกครั้ง"
+  exportPngFailed: "ไม่สามารถส่งออกแผนภูมิเป็น PNG ได้ โปรดลองอีกครั้ง",
+  linkRequisitions: "เชื่อมโยงคำขอพนักงาน",
+  addRequisition: "เพิ่มคำขอ",
+  selectedRequisitions: "คำขอที่เลือก",
+  removeRequisition: "ลบคำขอ {docId}",
+  selectAtLeastOneRequisition: "โปรดเลือกคำขออย่างน้อยหนึ่งรายการเพื่อเชื่อมโยง",
+  groupRequisitionSiteHint: "คำขอที่เชื่อมโยงทั้งหมดต้องอยู่ในพื้นที่เดียวกัน",
+  replacementNamesMatchHeadcount: "กรอกชื่อผู้ถูกทดแทนหนึ่งชื่อสำหรับแต่ละอัตราว่าง ({count})",
+  confirmReplacementTrim: "การลดจำนวนอัตราจะลบชื่อผู้ถูกทดแทนท้ายรายการ {count} ชื่อ ต้องการดำเนินการต่อหรือไม่?"
 });
 
 const processKeys: Record<ProcessStage, string> = {
