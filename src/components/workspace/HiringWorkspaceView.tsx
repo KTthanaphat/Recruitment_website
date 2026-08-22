@@ -125,7 +125,8 @@ export function HiringWorkspaceView({
 
   const scopedData = useMemo(() => {
     const visibleDocIds = new Set(data.requisitions.filter((row) => (
-      (!siteFilter || row.site === siteFilter)
+      canSiteRecruiterViewRequisition(row, profile)
+      && (!siteFilter || row.site === siteFilter)
       && (!ownerFilter || row.person_in_charge === ownerFilter)
     )).map((row) => row.doc_id));
     const documentGroups = data.document_groups.filter((row) => visibleDocIds.has(row.doc_id));
@@ -139,7 +140,7 @@ export function HiringWorkspaceView({
       offers: data.offers.filter((row) => visibleDocIds.has(row.doc_id)),
       recruitment_logs: data.recruitment_logs.filter((row) => candidateIds.has(row.candidate_id))
     };
-  }, [data, ownerFilter, siteFilter]);
+  }, [data, ownerFilter, profile, siteFilter]);
   const requisitions = useMemo(() => enrichRequisitions(scopedData), [scopedData]);
   const candidates = useMemo(() => enrichCandidates(scopedData), [scopedData]);
   const offers = useMemo(() => enrichOffers(scopedData), [scopedData]);
@@ -565,6 +566,20 @@ function workspaceSectionLabel(language: Language, section: WorkspaceSection) {
 
 function isWorkspaceSection(value: string | null): value is WorkspaceSection {
   return value === "overview" || value === "pipeline" || value === "sourcing" || value === "offer" || value === "activity";
+}
+
+function canSiteRecruiterViewRequisition(requisition: Pick<EnrichedRequisition, "site" | "person_in_charge">, profile: Profile | null | undefined) {
+  if (profile?.role !== "site_recruiter") return true;
+  const assignedSite = normalizeScopeValue(profile.site);
+  const assignedRecruiter = normalizeScopeValue(profile.nickname);
+  return (
+    Boolean(assignedSite && normalizeScopeValue(requisition.site) === assignedSite)
+    || Boolean(assignedRecruiter && normalizeScopeValue(requisition.person_in_charge) === assignedRecruiter)
+  );
+}
+
+function normalizeScopeValue(value: string | null | undefined) {
+  return (value ?? "").trim().toLocaleLowerCase();
 }
 
 function journeyClass(state: HiringJourneyStep["state"]) {

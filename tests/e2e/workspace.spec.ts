@@ -90,6 +90,23 @@ test("workspace picker lists open requisitions and groups when no target is sele
   await expect(page.getByRole("button", { name: /GRP-ENG/ })).toBeVisible();
 });
 
+test("site recruiter sees workspace records assigned to them or in their assigned site", async ({ page }) => {
+  await installMockSupabase(page, { role: "site_recruiter" });
+  await page.goto("/workspace");
+  await expectWorkspaceReady(page);
+
+  await expect(page.getByRole("button", { name: "Technician (L4) — REQ-KT1-1" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Line Technician (L4) — REQ-KT1-PEER" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Recruitment Coordinator (L4) — REQ-HQ-BOB" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Engineer (L4) — REQ-HQ-1" })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Groups" }).click();
+  await expect(page.getByRole("button", { name: /GRP-TECH/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /GRP-KT1-PEER/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /GRP-HQ-BOB/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /GRP-ENG/ })).toHaveCount(0);
+});
+
 test("empty workspace picker keeps New Requisition available", async ({ page }) => {
   await installMockSupabase(page, { role: "admin_recruiter" });
   await page.goto("/workspace");
