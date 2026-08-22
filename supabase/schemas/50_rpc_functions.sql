@@ -338,6 +338,7 @@ declare
   v_doc_id text := nullif(payload ->> 'doc_id', '');
   v_group_id text := nullif(payload ->> 'group_id', '');
   v_match public.document_groups%rowtype;
+  v_replacement_doc_group_id text;
 begin
   perform app_private.assert_recruitment_writer();
 
@@ -373,6 +374,21 @@ begin
   end if;
 
   perform set_config('app.action', 'document_group:unmatch', true);
+  -- Candidates are owned by the sourcing group, not this individual requisition.
+  -- Retain a legacy anchor when another requisition remains; otherwise the FK
+  -- clears it while the candidate stays assigned to the group.
+  select doc_group_id into v_replacement_doc_group_id
+  from public.document_groups
+  where group_id = v_match.group_id
+    and doc_group_id <> v_match.doc_group_id
+  order by doc_group_id
+  limit 1;
+
+  update public.candidates
+  set doc_group_id = v_replacement_doc_group_id
+  where group_id = v_match.group_id
+    and doc_group_id = v_match.doc_group_id;
+
   delete from public.document_groups
   where doc_group_id = v_match.doc_group_id;
 
