@@ -504,8 +504,10 @@ as $$
         select 1
         from public.requisitions r
         where r.doc_id = p_doc_id
-          and r.site = app_private.current_profile_site()
-          and r.person_in_charge = app_private.current_profile_nickname()
+        and (
+          r.site = app_private.current_profile_site()
+          or r.person_in_charge = app_private.current_profile_nickname()
+        )
       )
     )
 $$;
@@ -1015,7 +1017,7 @@ begin
   if v_request_type = 'Replacement' and v_replacement_names is null then raise exception 'Replacement names are required for replacement requisitions.'; end if;
   if v_request_type = 'New' then v_replacement_names := null; end if;
 
-  if v_role = 'site_recruiter' then
+  if v_role = 'site_recruiter' and v_mode = 'new' then
     v_site := app_private.current_profile_site();
     v_person_in_charge := app_private.current_profile_nickname();
     if v_site is null or v_person_in_charge is null then
@@ -1026,7 +1028,12 @@ begin
   select exists(select 1 from public.requisitions where doc_id = v_doc_id) into v_exists;
   if v_mode = 'new' and v_exists then raise exception 'Requisition Doc ID already exists. Switch to Change mode to edit it.'; end if;
   if v_mode = 'change' and not v_exists then raise exception 'Requisition Doc ID does not exist. Switch to New mode to create it.'; end if;
-  if v_mode = 'change' and not app_private.can_manage_requisition(v_doc_id) then raise exception 'You can edit only requisitions where you are person in charge.'; end if;
+  if v_mode = 'change' and not app_private.can_manage_requisition(v_doc_id) then raise exception 'You can edit only requisitions where you are the person in charge or assigned to the site.'; end if;
+
+  if v_role = 'site_recruiter' and v_mode = 'change' then
+    select site, person_in_charge into v_site, v_person_in_charge
+    from public.requisitions where doc_id = v_doc_id;
+  end if;
 
   perform set_config('app.action', 'requisition:' || v_mode, true);
 
@@ -1080,7 +1087,7 @@ declare
   v_status text := nullif(payload ->> 'status', '');
 begin
   perform app_private.assert_recruitment_writer();
-  if not app_private.can_manage_requisition(v_doc_id) then raise exception 'You can update status only for requisitions where you are person in charge.'; end if;
+  if not app_private.can_manage_requisition(v_doc_id) then raise exception 'You can update only requisitions where you are the person in charge or assigned to the site.'; end if;
   if v_status not in ('ongoing', 'filled', 'cancel') then raise exception 'Status must be ongoing, filled, or cancel.'; end if;
 
   perform set_config('app.action', 'requisition:status', true);

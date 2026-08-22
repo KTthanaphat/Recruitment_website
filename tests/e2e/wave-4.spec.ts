@@ -200,7 +200,7 @@ test("sourcing shows unmatched groups with match action and no weekly save field
   await expect(matchDialog.getByLabel("Doc ID")).toContainText("Senior Procurement Operations and Supplier Development Specialist — REQ-UNMATCHED-1");
 });
 
-test("site recruiters can inspect peer groups at their site but cannot change them", async ({ page }) => {
+test("site recruiters can change groups they own or groups at their assigned site", async ({ page }) => {
   await installMockSupabase(page, { role: "site_recruiter" });
   await page.goto("/sourcing?sourcingWeek=2026-07-06");
   await expectWorkspaceReady(page);
@@ -217,9 +217,11 @@ test("site recruiters can inspect peer groups at their site but cannot change th
   const peerGroup = page.getByRole("article").filter({ hasText: "GRP-KT1-PEER" });
   await expect(peerGroup).toBeVisible();
   await expect(peerGroup).toContainText("KT1 / Nina");
-  await expect(peerGroup.getByRole("button", { name: "Edit record" })).toHaveCount(0);
+  await expect(peerGroup.getByRole("button", { name: "Edit record" })).toBeVisible();
   const ownedGroup = page.getByRole("article").filter({ hasText: "GRP-TECH" });
   await expect(ownedGroup.getByRole("button", { name: "Edit record" })).toBeVisible();
+  const crossSiteOwnedGroup = page.getByRole("article").filter({ hasText: "GRP-HQ-BOB" });
+  await expect(crossSiteOwnedGroup.getByRole("button", { name: "Record applicants" })).toBeVisible();
 });
 
 test("sourcing unmatch uses destructive confirmation and RPC", async ({ page }) => {

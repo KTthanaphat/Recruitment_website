@@ -208,8 +208,10 @@ as $$
         select 1
         from public.requisitions r
         where r.doc_id = p_doc_id
-          and r.site = app_private.current_profile_site()
-          and r.person_in_charge = app_private.current_profile_nickname()
+        and (
+          r.site = app_private.current_profile_site()
+          or r.person_in_charge = app_private.current_profile_nickname()
+        )
       )
     )
 $$;

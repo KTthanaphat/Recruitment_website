@@ -1877,11 +1877,12 @@ function RequisitionFields({
   onSelect: (value: string) => void;
 }) {
   const isSiteRecruiter = profile?.role === "site_recruiter";
+  const forceAssignedScope = isSiteRecruiter && mode === "new";
   const nickname = profile?.nickname ?? profile?.full_name ?? "";
   const assignedSite = profile?.site ?? "";
   const personOptions = recruiterNicknameOptions(data.profiles);
-  const siteValue = isSiteRecruiter ? assignedSite : selected?.site;
-  const ownerValue = isSiteRecruiter ? nickname : selected?.person_in_charge;
+  const siteValue = forceAssignedScope ? assignedSite : selected?.site;
+  const ownerValue = forceAssignedScope ? nickname : selected?.person_in_charge;
   const initialSiteValue = siteValue ?? "";
   const [requestType, setRequestType] = useState<RequisitionRequestType>(selected?.request_type ?? "New");
   const [headCount, setHeadCount] = useState(Math.max(1, selected?.head_count ?? 1));
@@ -1961,9 +1962,9 @@ function RequisitionFields({
         </CreateSelectInput>
       </Field>
       <Field label={translate(language, "site")}>
-        {isSiteRecruiter ? <input type="hidden" name="site" value={assignedSite} /> : null}
+        {forceAssignedScope ? <input type="hidden" name="site" value={assignedSite} /> : null}
         <CreateSelectInput
-          name={isSiteRecruiter ? undefined : "site"}
+          name={forceAssignedScope ? undefined : "site"}
           required
           value={selectedSite}
           disabled={isSiteRecruiter}
@@ -2012,8 +2013,8 @@ function RequisitionFields({
       </Field>
       <Field label={translate(language, "headCount")}><TextInput name="head_count" type="number" min={1} value={headCount} onChange={(event) => changeHeadCount(event.target.value)} required /></Field>
       <Field label={translate(language, "personInCharge")}>
-        {isSiteRecruiter ? <input type="hidden" name="person_in_charge" value={nickname} /> : null}
-        <CreateSelectInput name={isSiteRecruiter ? undefined : "person_in_charge"} defaultValue={ownerValue ?? ""} disabled={isSiteRecruiter}>
+        {forceAssignedScope ? <input type="hidden" name="person_in_charge" value={nickname} /> : null}
+        <CreateSelectInput name={forceAssignedScope ? undefined : "person_in_charge"} defaultValue={ownerValue ?? ""} disabled={isSiteRecruiter}>
           <option value="">{translate(language, "unassigned")}</option>
           {personOptions.map((person) => <option key={person} value={person}>{person}</option>)}
         </CreateSelectInput>
@@ -2130,15 +2131,11 @@ function ProcessFields({ data, defaults }: { data: DashboardData; defaults: Proc
 function eligibleCandidateDocGroups(data: DashboardData, profile: DashboardData["profile"], limitIds?: readonly string[]) {
   const requisitions = new Map(enrichRequisitions(data).map((row) => [row.doc_id, row]));
   const allowedIds = limitIds ? new Set(limitIds) : null;
-  const nickname = (profile?.nickname ?? profile?.full_name ?? "").trim().toLocaleLowerCase();
-  const site = (profile?.site ?? "").trim().toLocaleLowerCase();
   return data.document_groups.filter((group) => {
     const requisition = requisitions.get(group.doc_id);
     if (!requisition || requisition.status !== "ongoing" || requisition.open_headcount <= 0) return false;
     if (allowedIds && !allowedIds.has(group.doc_group_id)) return false;
-    if (profile?.role !== "site_recruiter") return true;
-    return requisition.site.toLocaleLowerCase() === site
-      && (requisition.person_in_charge ?? "").trim().toLocaleLowerCase() === nickname;
+    return siteRecruiterCanManageRequisition(requisition, profile);
   });
 }
 
@@ -2955,14 +2952,12 @@ function PipelineRecordCorrectionFields({ canEditPendingDate, defaults, language
 }
 
 function CreateAndMatchGroupFields({ data, defaults, language, profile }: { data: DashboardData; defaults: ModalDefaults; language: Language; profile: DashboardData["profile"] }) {
-  const nickname = profile?.nickname ?? profile?.full_name ?? "";
-  const site = profile?.site ?? "";
   const matchedDocIds = new Set(data.document_groups.map((group) => group.doc_id));
   const allEligibleRequisitions = enrichRequisitions(data).filter((row) => (
     row.status === "ongoing"
       && row.open_headcount > 0
       && !matchedDocIds.has(row.doc_id)
-      && (profile?.role !== "site_recruiter" || (row.site === site && row.person_in_charge === nickname))
+      && siteRecruiterCanManageRequisition(row, profile)
   ));
   const [selectedDocIds, setSelectedDocIds] = useState<string[]>(() => defaults.doc_id ? [defaults.doc_id] : []);
   const [pendingDocId, setPendingDocId] = useState("");
@@ -2994,6 +2989,14 @@ function CreateAndMatchGroupFields({ data, defaults, language, profile }: { data
       <DataLists data={data} />
     </div>
   );
+}
+
+function siteRecruiterCanManageRequisition(requisition: Pick<EnrichedRequisition, "site" | "person_in_charge">, profile: DashboardData["profile"]) {
+  if (profile?.role !== "site_recruiter") return true;
+  const site = (profile.site ?? "").trim().toLocaleLowerCase();
+  const nickname = (profile.nickname ?? profile.full_name ?? "").trim().toLocaleLowerCase();
+  return Boolean(site && requisition.site.trim().toLocaleLowerCase() === site)
+    || Boolean(nickname && (requisition.person_in_charge ?? "").trim().toLocaleLowerCase() === nickname);
 }
 
 function isPimEligible(requisition: EnrichedRequisition, offers: DashboardData["offers"], logs: DashboardData["requisition_logs"]) {

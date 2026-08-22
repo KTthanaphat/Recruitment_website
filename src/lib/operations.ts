@@ -396,7 +396,7 @@ export function candidateProcessDisabledReason(candidate: EnrichedCandidate, log
   return { blocked: false };
 }
 
-/** Mirrors the server's site-recruiter site + PIC guard before exposing board controls. */
+/** Mirrors the server's site-recruiter PIC-or-site guard before exposing board controls. */
 export function candidatePipelineCapability(candidate: EnrichedCandidate, logs: RecruitmentLog[], profile: Profile | null): CandidatePipelineCapability {
   const base = candidateProcessDisabledReason(candidate, logs, profile);
   if (base.blocked) return { ...base, canRead: true, canWrite: false, canDrag: false };
@@ -405,15 +405,15 @@ export function candidatePipelineCapability(candidate: EnrichedCandidate, logs: 
   }
   if (profile?.role === "site_recruiter") {
     const names = [profile.nickname, profile.full_name].filter(Boolean).map((value) => value!.trim().toLowerCase());
-    const ownsCandidate = candidate.site?.toLowerCase() === profile.site?.toLowerCase()
-      && names.some((name) => (candidate.person_in_charge ?? "").toLowerCase() === name);
-    if (!ownsCandidate) {
+    const inAssignedSite = Boolean(profile.site && candidate.site?.toLowerCase() === profile.site.toLowerCase());
+    const isAssignedRecruiter = names.some((name) => (candidate.person_in_charge ?? "").toLowerCase() === name);
+    if (!inAssignedSite && !isAssignedRecruiter) {
       return {
         blocked: true,
         code: "permission_scope",
         label: "Outside responsibility",
-        detail: "This candidate is readable for your site but can only be updated by its assigned recruiter.",
-        recovery: "Ask the assigned recruiter or an admin recruiter to update the process.",
+        detail: "This candidate is outside both your assigned site and PIC responsibility.",
+        recovery: "Ask the assigned recruiter or a recruiter for that site to update the process.",
         canRead: true,
         canWrite: false,
         canDrag: false
@@ -526,12 +526,6 @@ export function offerActionDisabledReason(candidate: EnrichedCandidate | null | 
 
 export function sourcingUpdateDisabledReason(group: EnrichedSourcingGroup, profile: Profile | null): DisabledReason {
   if (!canProfileWrite(profile)) return disabled("readonly_role", "Read-only role", "Your role can inspect sourcing but cannot save weekly updates.", "Ask a recruiter with write access.");
-  if (profile?.role === "site_recruiter") {
-    const nickname = profile.nickname ?? profile.full_name ?? "";
-    if (!group.owners.includes(nickname)) {
-      return disabled("permission_scope", "Read-only peer group", "This sourcing group belongs to another recruiter at your site.", "Ask the assigned recruiter or an admin recruiter to update it.");
-    }
-  }
   return { blocked: false };
 }
 

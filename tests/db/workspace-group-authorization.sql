@@ -141,6 +141,7 @@ values
   ('__authz_test_admin_unmatch', '__authz_test_site', 'Admin unmatch', 'Test', 'Other Owner', 'ongoing'),
   ('__authz_test_peer', '__authz_test_site', 'Peer owned group', 'Test', 'Peer Owner', 'ongoing'),
   ('__authz_test_other_site', '__authz_other_site', 'Other site group', 'Test', 'Other Site Owner', 'ongoing'),
+  ('__authz_test_pic_other_site', '__authz_other_site', 'PIC other site group', 'Test', 'Scope Owner', 'ongoing'),
   ('__authz_test_atomic', '__authz_test_site', 'Atomic group', 'Test', 'Scope Owner', 'ongoing'),
   ('__authz_test_atomic_second', '__authz_test_site', 'Atomic group two', 'Test', 'Scope Owner', 'ongoing'),
   ('__authz_test_cross_site_owned', '__authz_test_site', 'Cross-site match', 'Test', 'Scope Owner', 'ongoing');
@@ -206,6 +207,19 @@ select pg_temp.assert_true(
 select pg_temp.assert_true(
   not exists (select 1 from public.position_groups where group_id in ('__authz_test_other_site_group', '__authz_test_unlinked_group')),
   'a site recruiter cannot read other-site or unmatched groups'
+);
+
+select pg_temp.assert_true(
+  (public.app_upsert_requisition(
+    '{"mode":"change","doc_id":"__authz_test_pic_other_site","site":"__authz_test_site","position":"PIC other site updated","department":"Test","person_in_charge":"Other Owner","status":"ongoing"}'::jsonb
+  ) ->> 'ok')::boolean
+  and exists (
+    select 1 from public.requisitions
+    where doc_id = '__authz_test_pic_other_site'
+      and site = '__authz_other_site'
+      and person_in_charge = 'Scope Owner'
+  ),
+  'a site recruiter can update a cross-site requisition when they are the PIC without changing its site or PIC'
 );
 
 select pg_temp.assert_true(
@@ -331,22 +345,18 @@ select pg_temp.expect_error(
   'Requisition does not exist.'
 );
 
-select pg_temp.expect_error(
-  $sql$
-    select public.app_create_group_match(
-      '{"doc_id":"__authz_test_match_foreign","group_id":"__authz_test_match_group"}'::jsonb
-    )
-  $sql$,
-  'You can match only requisitions where you are person in charge.'
+select pg_temp.assert_true(
+  (public.app_create_group_match(
+    '{"doc_id":"__authz_test_match_foreign","group_id":"__authz_test_match_group"}'::jsonb
+  ) ->> 'ok')::boolean,
+  'a site recruiter can match a same-site requisition assigned to another PIC'
 );
 
-select pg_temp.expect_error(
-  $sql$
-    select public.app_upsert_position_group(
-      '{"mode":"change","group_id":"__authz_test_foreign_group","group_position":"Forbidden update"}'::jsonb
-    )
-  $sql$,
-  'You can edit only sourcing groups linked to requisitions where you are responsible.'
+select pg_temp.assert_true(
+  (public.app_upsert_position_group(
+    '{"mode":"change","group_id":"__authz_test_foreign_group","group_position":"Same-site update"}'::jsonb
+  ) ->> 'ok')::boolean,
+  'a site recruiter can update a group linked to a same-site requisition assigned to another PIC'
 );
 
 select pg_temp.expect_error(
