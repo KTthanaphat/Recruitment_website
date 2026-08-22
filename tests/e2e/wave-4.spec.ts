@@ -224,6 +224,25 @@ test("site recruiters can change groups they own or groups at their assigned sit
   await expect(crossSiteOwnedGroup.getByRole("button", { name: "Record applicants" })).toBeVisible();
 });
 
+test("group details can add an eligible requisition to an existing group", async ({ page }) => {
+  const mock = await installMockSupabase(page, { role: "admin_recruiter" });
+  await page.goto("/sourcing?sourcingWeek=2026-07-06");
+  await expectWorkspaceReady(page);
+
+  const group = page.getByRole("article").filter({ hasText: "GRP-ENG" });
+  await group.getByRole("button", { name: "Details" }).click();
+  const detailDialog = page.getByRole("dialog", { name: "Group details · GRP-ENG" });
+  await expect(detailDialog.getByRole("heading", { name: "Add requisition" })).toBeVisible();
+  await detailDialog.getByLabel("Select requisition to add").selectOption("REQ-UNMATCHED-1");
+  await detailDialog.getByRole("button", { name: "Add Match" }).click();
+
+  const confirmDialog = page.getByRole("dialog", { name: "Confirm Save" });
+  await expect(confirmDialog).toContainText("Match sourcing group GRP-ENG to requisition REQ-UNMATCHED-1");
+  await confirmDialog.getByRole("button", { name: "Save Changes" }).click();
+  await expect.poll(() => mock.rpcCalls.at(-1)?.endpoint).toBe("app_create_group_match");
+  expect(mock.rpcCalls.at(-1)?.payload).toEqual({ group_id: "GRP-ENG", doc_id: "REQ-UNMATCHED-1" });
+});
+
 test("sourcing unmatch uses destructive confirmation and RPC", async ({ page }) => {
   const mock = await installMockSupabase(page, { role: "admin_recruiter" });
   await page.goto("/sourcing?sourcingWeek=2026-07-06");
