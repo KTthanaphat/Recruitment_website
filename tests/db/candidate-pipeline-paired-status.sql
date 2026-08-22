@@ -50,10 +50,10 @@ values
   ('__paired_pipeline_open_link', '__paired_pipeline_open', '__paired_pipeline_open_group', 'Open role'),
   ('__paired_pipeline_closed_link', '__paired_pipeline_closed', '__paired_pipeline_closed_group', 'Closed role');
 
-insert into public.candidates (candidate_id, name, doc_group_id, first_contact_date)
+insert into public.candidates (candidate_id, name, doc_group_id, group_id, first_contact_date)
 values
-  ('__paired_pipeline_candidate', 'Paired Pipeline Candidate', '__paired_pipeline_open_link', app_private.pipeline_business_date() - 2),
-  ('__paired_pipeline_offer_candidate', 'Ineligible Offer Candidate', '__paired_pipeline_closed_link', app_private.pipeline_business_date() - 7);
+  ('__paired_pipeline_candidate', 'Paired Pipeline Candidate', '__paired_pipeline_open_link', '__paired_pipeline_open_group', app_private.pipeline_business_date() - 2),
+  ('__paired_pipeline_offer_candidate', 'Ineligible Offer Candidate', '__paired_pipeline_closed_link', '__paired_pipeline_closed_group', app_private.pipeline_business_date() - 7);
 
 insert into public.recruitment_logs (
   candidate_id, log_date, recruitment_process, round, interviewer, result, remark, record_origin

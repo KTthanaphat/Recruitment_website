@@ -143,8 +143,9 @@ export async function loadCompanyDashboardReport(client: SupabaseLike): Promise<
 export function enrichRequisitions(data: DashboardData): EnrichedRequisition[] {
   return data.requisitions.map((requisition) => {
     const relatedGroups = data.document_groups.filter((group) => group.doc_id === requisition.doc_id);
+    const relatedPositionGroupIds = new Set(relatedGroups.map((group) => group.group_id).filter((groupId): groupId is string => Boolean(groupId)));
     const relatedGroupIds = new Set(relatedGroups.map((group) => group.doc_group_id));
-    const candidateCount = data.candidates.filter((candidate) => relatedGroupIds.has(candidate.doc_group_id)).length;
+    const candidateCount = data.candidates.filter((candidate) => (candidate.group_id ? relatedPositionGroupIds.has(candidate.group_id) : Boolean(candidate.doc_group_id && relatedGroupIds.has(candidate.doc_group_id)))).length;
     const relatedOffers = data.offers.filter((offer) => offer.doc_id === requisition.doc_id);
     const acceptedCount = relatedOffers.filter(countsTowardHeadcount).length;
     const slaRestartDate = relatedOffers
@@ -165,8 +166,8 @@ export function enrichRequisitions(data: DashboardData): EnrichedRequisition[] {
 
 export function enrichCandidates(data: DashboardData): EnrichedCandidate[] {
   return data.candidates.map((candidate) => {
-    const group = data.document_groups.find((row) => row.doc_group_id === candidate.doc_group_id);
-    const context = candidateGroupContext(data, candidate.doc_group_id);
+    const group = candidate.group_id ? data.position_groups.find((row) => row.group_id === candidate.group_id) : data.document_groups.find((row) => row.doc_group_id === candidate.doc_group_id);
+    const context = candidateGroupContext(data, candidate.group_id, candidate.doc_group_id);
     const logs = data.recruitment_logs
       .filter((log) => log.candidate_id === candidate.candidate_id)
       .sort((a, b) => b.log_id - a.log_id);
@@ -175,7 +176,7 @@ export function enrichCandidates(data: DashboardData): EnrichedCandidate[] {
 
     return {
       ...candidate,
-      doc_id: context.doc_ids.join(", ") || group?.doc_id || null,
+      doc_id: context.doc_ids.join(", ") || (group && "doc_id" in group ? group.doc_id : null),
       doc_ids: context.doc_ids,
       group_id: context.group_id,
       group_position: group?.group_position ?? null,
@@ -236,10 +237,7 @@ export function enrichSourcingGroups(data: DashboardData, weekStart: string): En
       if (matchedRequisitions.length === 0) return null;
 
       const positionGroup = data.position_groups.find((group) => group.group_id === groupId);
-      const groupCandidateCount = candidates.filter((candidate) => {
-        const match = data.document_groups.find((row) => row.doc_group_id === candidate.doc_group_id);
-        return match?.group_id === groupId;
-      }).length;
+      const groupCandidateCount = candidates.filter((candidate) => candidate.group_id === groupId || (!candidate.group_id && data.document_groups.find((row) => row.doc_group_id === candidate.doc_group_id)?.group_id === groupId)).length;
       const latestUpdate = data.sourcing_weekly_updates.find(
         (update) => update.group_id === groupId && update.week_start === weekStart
       ) ?? null;
@@ -304,10 +302,7 @@ export function staleOpenSourcingGroups(data: DashboardData, staleDays = 6): Enr
       const latestUpdatedAt = latestUpdate ? new Date(latestUpdate.updated_at) : null;
       if (latestUpdatedAt && latestUpdatedAt > staleBefore) return null;
 
-      const groupCandidateCount = candidates.filter((candidate) => {
-        const match = data.document_groups.find((row) => row.doc_group_id === candidate.doc_group_id);
-        return match?.group_id === groupId;
-      }).length;
+      const groupCandidateCount = candidates.filter((candidate) => candidate.group_id === groupId || (!candidate.group_id && data.document_groups.find((row) => row.doc_group_id === candidate.doc_group_id)?.group_id === groupId)).length;
 
       return {
         group_id: groupId,
@@ -343,15 +338,15 @@ export function filterChangeLogsByText(data: DashboardData, filters: { site: str
   });
 }
 
-export function candidateGroupContext(data: DashboardData, docGroupId: string) {
+export function candidateGroupContext(data: DashboardData, groupId: string | null, docGroupId: string | null) {
   const documentGroup = data.document_groups.find((row) => row.doc_group_id === docGroupId);
-  const groupId = documentGroup?.group_id ?? null;
-  const matchedRequisitions = groupId
-    ? requisitionsForGroupId(data, groupId)
+  const resolvedGroupId = groupId ?? documentGroup?.group_id ?? null;
+  const matchedRequisitions = resolvedGroupId
+    ? requisitionsForGroupId(data, resolvedGroupId)
     : data.requisitions.filter((row) => row.doc_id === documentGroup?.doc_id);
 
   return {
-    group_id: groupId,
+    group_id: resolvedGroupId,
     doc_ids: uniqueValues(matchedRequisitions.map((row) => row.doc_id)),
     sites: uniqueValues(matchedRequisitions.map((row) => row.site)),
     owners: uniqueValues(matchedRequisitions.map((row) => row.person_in_charge))
@@ -364,6 +359,11 @@ export function sourcingChannelsForDocGroup(data: DashboardData, docGroupId: str
   if (!documentGroup) return [];
 
   return SOURCING_CHANNELS.filter((channel) => Boolean(positionGroup?.[channel.enabled] ?? documentGroup[channel.enabled]));
+}
+
+export function sourcingChannelsForGroup(data: DashboardData, groupId: string) {
+  const positionGroup = data.position_groups.find((row) => row.group_id === groupId);
+  return positionGroup ? SOURCING_CHANNELS.filter((channel) => Boolean(positionGroup[channel.enabled])) : [];
 }
 
 function changeLogContext(data: DashboardData, log: ChangeLog) {
@@ -387,12 +387,12 @@ function changeLogContext(data: DashboardData, log: ChangeLog) {
 
 function contextForCandidateId(data: DashboardData, candidateId: string | null) {
   const candidate = data.candidates.find((row) => row.candidate_id === candidateId);
-  return candidate ? contextForDocGroupId(data, candidate.doc_group_id) : null;
+  return candidate ? contextFromValues(candidateGroupContext(data, candidate.group_id, candidate.doc_group_id).sites, candidateGroupContext(data, candidate.group_id, candidate.doc_group_id).owners) : null;
 }
 
 function contextForDocGroupId(data: DashboardData, docGroupId: string | null) {
   if (!docGroupId) return null;
-  const context = candidateGroupContext(data, docGroupId);
+  const context = candidateGroupContext(data, null, docGroupId);
   return contextFromValues(context.sites, context.owners);
 }
 

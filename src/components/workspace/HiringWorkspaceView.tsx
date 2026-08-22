@@ -131,7 +131,7 @@ export function HiringWorkspaceView({
     )).map((row) => row.doc_id));
     const documentGroups = data.document_groups.filter((row) => visibleDocIds.has(row.doc_id));
     const documentGroupIds = new Set(documentGroups.map((row) => row.doc_group_id));
-    const candidateIds = new Set(data.candidates.filter((row) => documentGroupIds.has(row.doc_group_id)).map((row) => row.candidate_id));
+    const candidateIds = new Set(data.candidates.filter((row) => Boolean(row.doc_group_id && documentGroupIds.has(row.doc_group_id))).map((row) => row.candidate_id));
     return {
       ...data,
       requisitions: data.requisitions.filter((row) => visibleDocIds.has(row.doc_id)),
@@ -525,7 +525,7 @@ function contextForRequisition(id: string, data: DashboardData, requisitions: En
   const matches = data.document_groups.filter((match) => match.doc_id === id);
   const groupIds = new Set(matches.map((match) => match.group_id).filter(Boolean) as string[]);
   const docGroupIds = groupIds.size > 0 ? new Set(data.document_groups.filter((match) => match.group_id && groupIds.has(match.group_id)).map((match) => match.doc_group_id)) : new Set(matches.map((match) => match.doc_group_id));
-  const relatedCandidates = candidates.filter((candidate) => docGroupIds.has(candidate.doc_group_id) || candidate.doc_ids.includes(id));
+  const relatedCandidates = candidates.filter((candidate) => Boolean(candidate.doc_group_id && docGroupIds.has(candidate.doc_group_id)) || candidate.doc_ids.includes(id));
   const relatedOffers = offers.filter((offer) => offer.doc_id === id);
   const relatedGroups = groups.filter((group) => groupIds.has(group.group_id));
   return { id, type: "requisition", title: formatRequisitionTitle(requisition), meta: `${translate(language, "requisitionId")}: ${requisition.doc_id} - ${requisition.site} - ${requisition.department} - ${requisition.person_in_charge ?? translate(language, "unassigned")}`, primaryRequisition: requisition, requisitions: [requisition], groups: relatedGroups, candidates: relatedCandidates, offers: relatedOffers, openHeadcount: requisition.open_headcount, docGroupId: matches[0]?.doc_group_id ?? null, activity: activityForContext(data, relatedCandidates.map((row) => row.candidate_id), [id], [...groupIds], contextualHref, language) };
@@ -540,7 +540,7 @@ function contextForGroup(id: string, selectedDocId: string | null, data: Dashboa
   const primaryRequisition = relatedRequisitions.length === 1 ? relatedRequisitions[0] : relatedRequisitions.find((row) => row.doc_id === selectedDocId) ?? null;
   const scopedMatches = primaryRequisition ? matches.filter((match) => match.doc_id === primaryRequisition.doc_id) : matches;
   const groupDocGroupIds = new Set(matches.map((match) => match.doc_group_id));
-  const relatedCandidates = candidates.filter((candidate) => groupDocGroupIds.has(candidate.doc_group_id));
+  const relatedCandidates = candidates.filter((candidate) => candidate.group_id === id || Boolean(candidate.doc_group_id && groupDocGroupIds.has(candidate.doc_group_id)));
   const relatedOffers = offers.filter((offer) => primaryRequisition ? offer.doc_id === primaryRequisition.doc_id : linkedDocIds.has(offer.doc_id));
   return { id, type: "group", title: `${group.group_id} - ${group.group_position}`, meta: `${group.sites.join(", ") || "-"} - ${group.owners.join(", ") || translate(language, "unassigned")}`, primaryRequisition, requisitions: relatedRequisitions, groups: [group], candidates: relatedCandidates, offers: relatedOffers, openHeadcount: primaryRequisition?.open_headcount ?? group.open_headcount, docGroupId: primaryRequisition ? scopedMatches[0]?.doc_group_id ?? null : null, activity: activityForContext(data, relatedCandidates.map((row) => row.candidate_id), primaryRequisition ? [primaryRequisition.doc_id] : [...linkedDocIds], [id], contextualHref, language) };
 }

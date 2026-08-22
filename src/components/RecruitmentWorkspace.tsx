@@ -57,7 +57,7 @@ import {
   filterByText,
   latestLogsForCandidate,
   loadDashboardData,
-  sourcingChannelsForDocGroup,
+  sourcingChannelsForGroup,
   staleOpenSourcingGroups,
   uniqueValues
 } from "@/lib/data";
@@ -172,6 +172,8 @@ type ModalDefaults = {
   doc_group_id?: string;
   eligible_doc_group_ids?: string[];
   lock_doc_group_id?: boolean;
+  eligible_group_ids?: string[];
+  lock_group_id?: boolean;
   first_contact_date?: string;
   accepted_date?: string;
   offer_candidate_ids?: string[];
@@ -454,14 +456,13 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     if (!candidateId) return;
     const candidate = enrichedCandidates.find((row) => row.candidate_id === candidateId);
     const docId = workspaceUrlState.params.get("doc")
-      ?? data.document_groups.find((row) => row.doc_group_id === candidate?.doc_group_id)?.doc_id;
-    const scopedDocGroupIds = new Set(data.document_groups.filter((row) => row.doc_id === docId).map((row) => row.doc_group_id));
+      ?? data.document_groups.find((row) => row.group_id === candidate?.group_id)?.doc_id;
     setModalDefaults({
       mode: "new",
       candidate_id: candidateId,
       doc_id: docId,
       accepted_date: workspaceUrlState.params.get("offerDate") ?? undefined,
-      offer_candidate_ids: enrichedCandidates.filter((row) => scopedDocGroupIds.has(row.doc_group_id)).map((row) => row.candidate_id),
+      offer_candidate_ids: enrichedCandidates.filter((row) => row.group_id === candidate?.group_id).map((row) => row.candidate_id),
       offer_doc_ids: docId ? [docId] : undefined
     });
     setActiveModal("offer");
@@ -491,7 +492,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       ? documentGroups.filter((row) => row.doc_id === selectedWorkspaceDocId)
       : documentGroups;
     const candidateDocGroupIds = new Set(documentGroups.map((row) => row.doc_group_id));
-    const scopedCandidates = enrichedCandidates.filter((row) => candidateDocGroupIds.has(row.doc_group_id));
+    const scopedCandidates = enrichedCandidates.filter((row) => (row.group_id ? groupIds.has(row.group_id) : Boolean(row.doc_group_id && candidateDocGroupIds.has(row.doc_group_id))));
     const scopedRequisitions = enrichedRequisitions.filter((row) => visibleDocIds.has(row.doc_id));
     const scopedOffers = enrichedOffers.filter((row) => visibleDocIds.has(row.doc_id));
     return {
@@ -772,7 +773,8 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       return;
     }
     if (request.kind === "candidate.create") {
-      setModalDefaults({ mode: "new", doc_group_id: request.docGroupIds[0], eligible_doc_group_ids: request.docGroupIds, lock_doc_group_id: request.docGroupIds.length === 1, first_contact_date: today() });
+      const eligibleGroupIds = [...new Set(data.document_groups.filter((row) => request.docGroupIds.includes(row.doc_group_id)).map((row) => row.group_id).filter((groupId): groupId is string => Boolean(groupId)))];
+      setModalDefaults({ mode: "new", group_id: eligibleGroupIds[0], eligible_group_ids: eligibleGroupIds, lock_group_id: eligibleGroupIds.length === 1, first_contact_date: today() });
       setActiveModal("candidate");
       return;
     }
@@ -797,7 +799,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       const candidate = enrichedCandidates.find((row) => row.candidate_id === request.candidateId);
       const candidateDocId = request.docId
         ?? selectedWorkspaceDocId
-        ?? data.document_groups.find((row) => row.doc_group_id === candidate?.doc_group_id)?.doc_id;
+        ?? data.document_groups.find((row) => row.group_id === candidate?.group_id)?.doc_id;
       const proposedAcceptedDate = request.proposedAcceptedDate
         ?? latestSuccessfulOfferPassDate(request.candidateId ?? "", data.recruitment_logs)
         ?? undefined;
@@ -1145,7 +1147,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
               candidateReferenceChecks={data.candidate_reference_checks}
               rows={workspaceScope.candidates}
               offeredCandidateIds={offeredCandidateIds}
-              onNewCandidate={eligibleCandidateDocGroups(data, data.profile, workspaceScope.docGroupIds).length > 0 ? () => dispatchWorkspaceAction({ kind: "candidate.create", docGroupIds: eligibleCandidateDocGroups(data, data.profile, workspaceScope.docGroupIds).map((row) => row.doc_group_id) }) : undefined}
+              onNewCandidate={eligibleCandidateGroups(data, data.profile, workspaceScope.groupIds).length > 0 ? () => dispatchWorkspaceAction({ kind: "candidate.create", docGroupIds: eligibleCandidateGroups(data, data.profile, workspaceScope.groupIds).flatMap((group) => data.document_groups.filter((match) => match.group_id === group.group_id).slice(0, 1).map((match) => match.doc_group_id)) }) : undefined}
               onOpen={(id) => setDetail({ type: "candidate", id })}
               onMove={openProcessForMove}
               onFailCurrentStage={(candidate) => openStageOutcome(candidate, "fail")}
@@ -1359,7 +1361,7 @@ function buildPayload(modal: Exclude<ModalName, null>, formData: FormData) {
       name: emptyToNull(formData.get("name")),
       nickname: emptyToNull(formData.get("nickname")),
       phone_no: emptyToNull(formData.get("phone_no")),
-      doc_group_id: emptyToNull(formData.get("doc_group_id")),
+      group_id: emptyToNull(formData.get("group_id")),
       channel,
       ref_name: channel === "Referral" ? emptyToNull(formData.get("ref_name")) : null,
       first_contact_date: emptyToNull(formData.get("first_contact_date")),
@@ -1614,7 +1616,7 @@ function validateCandidatePayload(payload: Record<string, unknown>, language: La
     ...(valueAsString(payload.mode) === "change" ? ["candidate_id"] : []),
     "name",
     "phone_no",
-    "doc_group_id",
+    "group_id",
     "channel",
     "first_contact_date",
     ...(valueAsString(payload.channel) === "Referral" ? ["ref_name"] : [])
@@ -1642,7 +1644,7 @@ function candidateRequiredFieldLabel(language: Language, field: string) {
     candidate_id: translate(language, "candidateId"),
     name: translate(language, "name"),
     phone_no: translate(language, "phoneNo"),
-    doc_group_id: translate(language, "groupId"),
+    group_id: translate(language, "groupId"),
     channel: translate(language, "channel"),
     first_contact_date: translate(language, "firstContactDate"),
     ref_name: translate(language, "referenceName")
@@ -2130,14 +2132,15 @@ function ProcessFields({ data, defaults }: { data: DashboardData; defaults: Proc
   );
 }
 
-function eligibleCandidateDocGroups(data: DashboardData, profile: DashboardData["profile"], limitIds?: readonly string[]) {
+function eligibleCandidateGroups(data: DashboardData, profile: DashboardData["profile"], limitIds?: readonly string[]) {
   const requisitions = new Map(enrichRequisitions(data).map((row) => [row.doc_id, row]));
   const allowedIds = limitIds ? new Set(limitIds) : null;
-  return data.document_groups.filter((group) => {
-    const requisition = requisitions.get(group.doc_id);
-    if (!requisition || requisition.status !== "ongoing" || requisition.open_headcount <= 0) return false;
-    if (allowedIds && !allowedIds.has(group.doc_group_id)) return false;
-    return siteRecruiterCanManageRequisition(requisition, profile);
+  return data.position_groups.filter((group) => {
+    if (allowedIds && !allowedIds.has(group.group_id)) return false;
+    return data.document_groups.some((match) => match.group_id === group.group_id && (() => {
+      const requisition = requisitions.get(match.doc_id);
+      return Boolean(requisition && requisition.status === "ongoing" && requisition.open_headcount > 0 && siteRecruiterCanManageRequisition(requisition, profile));
+    })());
   });
 }
 
@@ -2160,25 +2163,25 @@ function CandidatePrefillFields({
   defaults: ModalDefaults;
   onSelect: (value: string) => void;
 }) {
-  const docGroupValue = mode === "new" ? defaults.doc_group_id ?? "" : selected?.doc_group_id ?? "";
+  const groupValue = mode === "new" ? defaults.group_id ?? "" : selected?.group_id ?? "";
   const firstContactDate = mode === "new" ? defaults.first_contact_date ?? "" : selected?.first_contact_date ?? "";
-  const [selectedDocGroupId, setSelectedDocGroupId] = useState(docGroupValue);
+  const [selectedGroupId, setSelectedGroupId] = useState(groupValue);
   const [selectedChannel, setSelectedChannel] = useState(selected?.channel ?? "");
   const [referenceRows, setReferenceRows] = useState<number[]>([]);
   const [referenceChannelTypes, setReferenceChannelTypes] = useState<Record<number, string>>({});
   const eligibleGroups = useMemo(
-    () => mode === "new" ? eligibleCandidateDocGroups(data, profile, defaults.eligible_doc_group_ids) : data.document_groups,
-    [data, defaults.eligible_doc_group_ids, mode, profile]
+    () => mode === "new" ? eligibleCandidateGroups(data, profile, defaults.eligible_group_ids) : data.position_groups,
+    [data, defaults.eligible_group_ids, mode, profile]
   );
-  const availableChannels = useMemo(() => sourcingChannelsForDocGroup(data, selectedDocGroupId), [data, selectedDocGroupId]);
+  const availableChannels = useMemo(() => sourcingChannelsForGroup(data, selectedGroupId), [data, selectedGroupId]);
   const showReferenceName = selectedChannel === "Referral";
 
   useEffect(() => {
-    setSelectedDocGroupId(docGroupValue);
+    setSelectedGroupId(groupValue);
     setSelectedChannel(selected?.channel ?? "");
     setReferenceRows([]);
     setReferenceChannelTypes({});
-  }, [docGroupValue, selected?.channel]);
+  }, [groupValue, selected?.channel]);
 
   useEffect(() => {
     if (selectedChannel && !availableChannels.some((channel) => channel.label === selectedChannel)) {
@@ -2202,14 +2205,14 @@ function CandidatePrefillFields({
       <Field label={translate(language, "nickname")}><TextInput name="nickname" defaultValue={selected?.nickname ?? ""} /></Field>
       <Field label={translate(language, "phoneNo")}><TextInput name="phone_no" type="tel" inputMode="numeric" maxLength={10} pattern="0[0-9]{9}" required placeholder={translate(language, "candidatePhonePlaceholder")} defaultValue={selected?.phone_no ?? ""} /></Field>
       <Field label={translate(language, "groupId")}>
-        <CreateSelectInput name="doc_group_id" required value={selectedDocGroupId} disabled={mode === "new" && (defaults.lock_doc_group_id || eligibleGroups.length === 0)} onChange={(event) => setSelectedDocGroupId(event.target.value)}>
+        <CreateSelectInput name="group_id" required value={selectedGroupId} disabled={mode === "new" && (defaults.lock_group_id || eligibleGroups.length === 0)} onChange={(event) => setSelectedGroupId(event.target.value)}>
           <option value="">{eligibleGroups.length === 0 ? translate(language, "noEligibleGroups") : translate(language, "selectGroup")}</option>
-          {eligibleGroups.map((row) => <option key={row.doc_group_id} value={row.doc_group_id}>{documentGroupOptionLabel(row)}</option>)}
+          {eligibleGroups.map((row) => <option key={row.group_id} value={row.group_id}>{positionGroupOptionLabel(row)}</option>)}
         </CreateSelectInput>
-        {mode === "new" && defaults.lock_doc_group_id ? <span className="text-xs font-medium text-slate">{translate(language, "groupLockedToWorkspace")}</span> : null}
+        {mode === "new" && defaults.lock_group_id ? <span className="text-xs font-medium text-slate">{translate(language, "groupLockedToWorkspace")}</span> : null}
       </Field>
       <Field label={translate(language, "channel")}>
-        <CreateSelectInput name="channel" required value={selectedChannel} onChange={(event) => setSelectedChannel(event.target.value)} disabled={!selectedDocGroupId || availableChannels.length === 0}>
+        <CreateSelectInput name="channel" required value={selectedChannel} onChange={(event) => setSelectedChannel(event.target.value)} disabled={!selectedGroupId || availableChannels.length === 0}>
           <option value="">{availableChannels.length === 0 ? translate(language, "noSourcingChannelsForGroup") : translate(language, "selectChannel")}</option>
           {availableChannels.map((channel) => <option key={channel.enabled} value={channel.label}>{channel.label}</option>)}
         </CreateSelectInput>
@@ -2685,11 +2688,11 @@ function availableOfferDocOptions(data: DashboardData, candidateId: string, curr
   if (!candidateId) return [];
   const candidate = data.candidates.find((row) => row.candidate_id === candidateId);
   if (!candidate) return [];
-  const candidateMatch = data.document_groups.find((row) => row.doc_group_id === candidate.doc_group_id);
-  if (!candidateMatch) return [];
+  const candidateGroupId = candidate.group_id ?? data.document_groups.find((row) => row.doc_group_id === candidate.doc_group_id)?.group_id;
+  if (!candidateGroupId) return [];
   const matchedDocIds = new Set(
     data.document_groups
-      .filter((row) => candidateMatch.group_id ? row.group_id === candidateMatch.group_id : row.doc_group_id === candidateMatch.doc_group_id)
+      .filter((row) => row.group_id === candidateGroupId)
       .map((row) => row.doc_id)
   );
   const existingOfferDocIds = new Set(data.offers.filter((offer) => offer.candidate_id === candidateId).map((offer) => offer.doc_id));
@@ -3260,7 +3263,7 @@ function buildDetailBodyV2(
     const relatedDocGroupIds = positionGroupIds.size > 0
       ? new Set(data.document_groups.filter((row) => row.group_id && positionGroupIds.has(row.group_id)).map((row) => row.doc_group_id))
       : new Set(groups.map((row) => row.doc_group_id));
-    const candidates = enrichCandidates(data).filter((row) => relatedDocGroupIds.has(row.doc_group_id));
+    const candidates = enrichCandidates(data).filter((row) => row.group_id ? positionGroupIds.has(row.group_id) : Boolean(row.doc_group_id && relatedDocGroupIds.has(row.doc_group_id)));
     const offers = data.offers.filter((row) => row.doc_id === requisition.doc_id);
     const applicantTotal = applicantCountForPositionGroups(data, positionGroupIds);
     const funnelRows = buildPipelineFunnelRows(applicantTotal, historicalPipelineCountsForCandidates(data, candidates.map((row) => row.candidate_id)), language);
@@ -3386,7 +3389,7 @@ function buildDetailBodyV2(
               onSelect: () => onDeleteRecord("app_delete_recruitment_record", { entity: "candidate", id: candidate.candidate_id }, translate(language, "deleteRecordSummary", { entity: translate(language, "candidate"), id: candidate.candidate_id }))
             }] : []),
             ...(candidate.doc_ids[0] ? [{ id: "requisition", href: href(`/requisitions?detailType=requisition&detailId=${encodeURIComponent(candidate.doc_ids[0])}`), label: "View requisition" }] : []),
-            { id: "same-group", href: href(`/candidates?candSearch=${encodeURIComponent(candidate.group_position ?? candidate.doc_group_id)}`), label: "Same group" },
+            { id: "same-group", href: href(`/candidates?candSearch=${encodeURIComponent(candidate.group_position ?? candidate.doc_group_id ?? "")}`), label: "Same group" },
             { id: "pipeline", href: href(`/pipeline?pipelineSearch=${encodeURIComponent(candidate.candidate_id)}&detailType=candidate&detailId=${encodeURIComponent(candidate.candidate_id)}`), label: "Open in pipeline" }
         ]}
       />
@@ -3419,7 +3422,7 @@ function buildDetailBodyV2(
         <DetailGrid rows={[
           [translate(language, "phoneNo"), formatThaiMobilePhone(candidate.phone_no)],
           [translate(language, "nickname"), candidate.nickname ?? "-"],
-          ["Group ID", candidate.group_id ?? candidate.doc_group_id],
+          ["Group ID", candidate.group_id ?? candidate.doc_group_id ?? "-"],
           ["Doc IDs", candidate.doc_ids.join(", ") || "-"],
           ["Group Position", candidate.group_position ?? "-"],
           ["Site", candidate.site ?? "-"],
@@ -3550,7 +3553,7 @@ function buildDetailBody(detail: { type: "requisition" | "candidate"; id: string
     const relatedDocGroupIds = positionGroupIds.size > 0
       ? new Set(data.document_groups.filter((row) => row.group_id && positionGroupIds.has(row.group_id)).map((row) => row.doc_group_id))
       : new Set(groups.map((row) => row.doc_group_id));
-    const candidates = enrichCandidates(data).filter((row) => relatedDocGroupIds.has(row.doc_group_id));
+    const candidates = enrichCandidates(data).filter((row) => row.group_id ? positionGroupIds.has(row.group_id) : Boolean(row.doc_group_id && relatedDocGroupIds.has(row.doc_group_id)));
     const offers = data.offers.filter((row) => row.doc_id === requisition.doc_id);
     const applicantTotal = applicantCountForPositionGroups(data, positionGroupIds);
     const funnelRows = buildPipelineFunnelRows(applicantTotal, historicalPipelineCountsForCandidates(data, candidates.map((row) => row.candidate_id)), language);
@@ -3644,14 +3647,14 @@ function buildDetailBody(detail: { type: "requisition" | "candidate"; id: string
           primary={{ id: "workspace", href: `/workspace?type=${candidate.group_id ? "group" : "requisition"}&id=${encodeURIComponent(candidate.group_id ?? candidate.doc_ids[0] ?? "")}`, label: "Open workspace", tone: "primary", iconOnly: true }}
           items={[
             ...(candidate.doc_ids[0] ? [{ id: "requisition", href: `/requisitions?detailType=requisition&detailId=${encodeURIComponent(candidate.doc_ids[0])}`, label: "View requisition", tone: "primary" as const }] : []),
-            { id: "same-group", href: `/candidates?candSearch=${encodeURIComponent(candidate.group_position ?? candidate.doc_group_id)}`, label: "Same group" },
+            { id: "same-group", href: `/candidates?candSearch=${encodeURIComponent(candidate.group_position ?? candidate.doc_group_id ?? "")}`, label: "Same group" },
             { id: "pipeline", href: `/pipeline?detailType=candidate&detailId=${encodeURIComponent(candidate.candidate_id)}`, label: "Open in pipeline" }
           ]}
         />
         <DetailGrid rows={[
           [translate(language, "phoneNo"), formatThaiMobilePhone(candidate.phone_no)],
           [translate(language, "nickname"), candidate.nickname ?? "-"],
-          ["Group ID", candidate.group_id ?? candidate.doc_group_id],
+          ["Group ID", candidate.group_id ?? candidate.doc_group_id ?? "-"],
           ["Doc IDs", candidate.doc_id ?? "-"],
           ["Group Position", candidate.group_position ?? "-"],
           ["Site", candidate.site ?? "-"],

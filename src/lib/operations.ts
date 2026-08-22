@@ -392,7 +392,7 @@ export function candidateProcessDisabledReason(candidate: EnrichedCandidate, log
   if (candidate.accepted_date || (candidate.latest_process === "Offer" && candidate.latest_result === 1)) {
     return disabled("completed_candidate", "Completed candidate", "Pipeline update unavailable because this candidate completed all stages.", "Review the offer record instead of adding another process update.");
   }
-  if (!candidate.doc_group_id) return disabled("missing_required_data", "Missing group", "Candidate is not linked to a requisition group.", "Link the candidate to a group before updating the process.");
+  if (!candidate.group_id) return disabled("missing_required_data", "Missing group", "Candidate is not linked to a sourcing group.", "Link the candidate to a group before updating the process.");
   return { blocked: false };
 }
 
@@ -684,8 +684,7 @@ export function pipelineQualityIssues(candidate: EnrichedCandidate, logs: Recrui
 
 export function deriveSourcingConversionMetrics(data: DashboardData, groupId: string, weekStart = formatLocalDateInput()): SourcingConversionMetric[] {
   const groupMatches = data.document_groups.filter((match) => match.group_id === groupId);
-  const docGroupIds = new Set(groupMatches.map((match) => match.doc_group_id));
-  const candidates = data.candidates.filter((candidate) => docGroupIds.has(candidate.doc_group_id));
+  const candidates = data.candidates.filter((candidate) => candidate.group_id === groupId || (!candidate.group_id && groupMatches.some((match) => match.doc_group_id === candidate.doc_group_id)));
   const update = data.sourcing_weekly_updates.find((row) => row.group_id === groupId && row.week_start === weekStart);
   const previous = sourcingPreviousUpdate(data, groupId, weekStart);
 

@@ -1102,7 +1102,7 @@ function stageHistoryCountsForDocGroups(data: DashboardData, docGroupIds: Set<st
 
   const candidateIds = new Set(
     data.candidates
-      .filter((candidate) => docGroupIds.has(candidate.doc_group_id))
+      .filter((candidate) => Boolean(candidate.doc_group_id && docGroupIds.has(candidate.doc_group_id)))
       .map((candidate) => candidate.candidate_id)
   );
 
@@ -1120,7 +1120,7 @@ function passedStageActivityCountsForDocGroups(data: DashboardData, docGroupIds:
 
   const candidateIds = new Set(
     data.candidates
-      .filter((candidate) => docGroupIds.has(candidate.doc_group_id) && channelMatchesFilter(candidate.channel, channelFilter))
+      .filter((candidate) => Boolean(candidate.doc_group_id && docGroupIds.has(candidate.doc_group_id)) && channelMatchesFilter(candidate.channel, channelFilter))
       .map((candidate) => candidate.candidate_id)
   );
 

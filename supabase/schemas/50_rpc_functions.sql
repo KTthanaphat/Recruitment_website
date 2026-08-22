@@ -372,10 +372,6 @@ begin
     raise exception 'You can unmatch only sourcing groups where you are responsible.';
   end if;
 
-  if exists(select 1 from public.candidates where doc_group_id = v_match.doc_group_id) then
-    raise exception 'Cannot unmatch because candidates are linked to this match.';
-  end if;
-
   perform set_config('app.action', 'document_group:unmatch', true);
   delete from public.document_groups
   where doc_group_id = v_match.doc_group_id;
@@ -418,15 +414,6 @@ begin
   end if;
 
   if v_entity = 'requisition' then
-    if exists (
-      select 1
-      from public.candidates c
-      join public.document_groups dg on dg.doc_group_id = c.doc_group_id
-      where dg.doc_id = v_id
-    ) then
-      raise exception 'Cannot delete requisition because candidates are linked to it.';
-    end if;
-
     perform set_config('app.action', 'requisition:delete', true);
     delete from public.requisitions where doc_id = v_id;
 
@@ -435,18 +422,15 @@ begin
     delete from public.requisition_logs where log_id = v_id::bigint;
 
   elsif v_entity = 'position_group' then
-    if exists(select 1 from public.document_groups where group_id = v_id) then
-      raise exception 'Cannot delete sourcing group because requisitions are matched to it.';
+    if exists(select 1 from public.document_groups where group_id = v_id)
+      or exists(select 1 from public.candidates where group_id = v_id) then
+      raise exception 'Cannot delete sourcing group because requisitions or candidates are linked to it.';
     end if;
 
     perform set_config('app.action', 'position_group:delete', true);
     delete from public.position_groups where group_id = v_id;
 
   elsif v_entity = 'document_group' then
-    if exists(select 1 from public.candidates where doc_group_id = v_id) then
-      raise exception 'Cannot delete match because candidates are linked to it.';
-    end if;
-
     perform set_config('app.action', 'document_group:delete', true);
     delete from public.document_groups where doc_group_id = v_id;
 
@@ -455,7 +439,7 @@ begin
     from (
       select dg.doc_id
       from public.candidates c
-      join public.document_groups dg on dg.doc_group_id = c.doc_group_id
+      join public.document_groups dg on dg.group_id = c.group_id
       where c.candidate_id = v_id
       union
       select o.doc_id from public.offers o where o.candidate_id = v_id
@@ -608,7 +592,9 @@ as $$
 declare
   v_mode text := coalesce(payload ->> 'mode', 'new');
   v_candidate_id text := nullif(payload ->> 'candidate_id', '');
-  v_doc_group_id text := nullif(payload ->> 'doc_group_id', '');
+  v_group_id text := nullif(payload ->> 'group_id', '');
+  v_doc_group_id text;
+  v_legacy_doc_group_id text := nullif(payload ->> 'doc_group_id', '');
   v_nickname text := nullif(btrim(payload ->> 'nickname'), '');
   v_phone_no text := nullif(payload ->> 'phone_no', '');
   v_references jsonb := coalesce(payload -> 'references', '[]'::jsonb);
@@ -617,10 +603,13 @@ declare
   v_initial_log_date date;
 begin
   perform app_private.assert_recruitment_writer();
+  if v_group_id is null then
+    select group_id into v_group_id from public.document_groups where doc_group_id = v_legacy_doc_group_id;
+  end if;
   if v_phone_no is null or v_phone_no !~ '^0[0-9]{9}$' then
     raise exception 'CANDIDATE_PHONE_INVALID: Phone No. must be exactly 10 digits beginning with 0.';
   end if;
-  if not app_private.can_manage_doc_group(v_doc_group_id) then raise exception 'You can create candidates only for requisitions where you are person in charge.'; end if;
+  if not app_private.can_manage_sourcing_group(v_group_id) then raise exception 'You can create candidates only for sourcing groups you manage.'; end if;
 
   if v_mode = 'new' and not exists (
     select 1
@@ -629,12 +618,17 @@ begin
     left join lateral (
       select count(*)::integer accepted_count from public.offers o where o.doc_id = r.doc_id and o.accepted_date is not null
     ) accepted on true
-    where dg.doc_group_id = v_doc_group_id
+    where dg.group_id = v_group_id
       and r.status = 'ongoing'
       and greatest(r.head_count - coalesce(accepted.accepted_count, 0), 0) > 0
   ) then
-    raise exception 'CANDIDATE_GROUP_NOT_AVAILABLE: Group ID must be linked to an ongoing requisition with remaining headcount.';
+    raise exception 'CANDIDATE_GROUP_NOT_AVAILABLE: Group ID must contain an ongoing requisition with remaining headcount.';
   end if;
+  select dg.doc_group_id into v_doc_group_id
+  from public.document_groups dg
+  where dg.group_id = v_group_id
+  order by dg.doc_group_id
+  limit 1;
 
   if v_mode = 'new' then
     v_candidate_id := app_private.next_app_id('candidates', 'CAN');
@@ -648,13 +642,14 @@ begin
   if v_mode = 'change' and not app_private.can_manage_candidate(v_candidate_id) then raise exception 'You can edit candidates only for requisitions where you are person in charge.'; end if;
 
   perform set_config('app.action', 'candidate:' || v_mode, true);
-  insert into public.candidates (candidate_id, name, nickname, phone_no, doc_group_id, channel, ref_name, first_contact_date, candidate_folder_url)
+  insert into public.candidates (candidate_id, name, nickname, phone_no, doc_group_id, group_id, channel, ref_name, first_contact_date, candidate_folder_url)
   values (
     v_candidate_id,
     nullif(payload ->> 'name', ''),
     v_nickname,
     v_phone_no,
     v_doc_group_id,
+    v_group_id,
     nullif(payload ->> 'channel', ''),
     nullif(payload ->> 'ref_name', ''),
     nullif(payload ->> 'first_contact_date', '')::date,
@@ -665,6 +660,7 @@ begin
     nickname = excluded.nickname,
     phone_no = excluded.phone_no,
     doc_group_id = excluded.doc_group_id,
+    group_id = excluded.group_id,
     channel = excluded.channel,
     ref_name = excluded.ref_name,
     first_contact_date = excluded.first_contact_date,
@@ -1092,6 +1088,14 @@ begin
   if not app_private.can_manage_requisition(v_doc_id) or not app_private.can_manage_candidate(v_candidate_id) then
     raise exception 'You can create offers only for requisitions where you are person in charge.';
   end if;
+  if not exists (
+    select 1
+    from public.candidates c
+    join public.document_groups dg on dg.group_id = c.group_id
+    where c.candidate_id = v_candidate_id and dg.doc_id = v_doc_id
+  ) then
+    raise exception 'OFFER_CANDIDATE_GROUP_MISMATCH: Candidate must belong to the selected requisition''s sourcing group.';
+  end if;
 
   select exists(select 1 from public.offers where candidate_id = v_candidate_id and doc_id = v_doc_id) into v_exists;
   if v_mode = 'new' and v_exists then raise exception 'This offer already exists. Switch to Change mode to edit it.'; end if;
@@ -1428,7 +1432,7 @@ begin
     select jsonb_build_object(
       'candidate_id', v_candidate_id,
       'passed_date', v_outcome_date,
-      'group_id', anchor.group_id,
+      'group_id', c.group_id,
       'requisitions', coalesce(jsonb_agg(jsonb_build_object(
         'doc_group_id', peer.doc_group_id,
         'doc_id', r.doc_id,
@@ -1438,15 +1442,14 @@ begin
       ) order by r.doc_id) filter (where r.doc_id is not null), '[]'::jsonb)
     ) into v_handoff
     from public.candidates c
-    join public.document_groups anchor on anchor.doc_group_id = c.doc_group_id
-    join public.document_groups peer on (anchor.group_id is not null and peer.group_id = anchor.group_id) or peer.doc_group_id = anchor.doc_group_id
+    join public.document_groups peer on peer.group_id = c.group_id
     join public.requisitions r on r.doc_id = peer.doc_id and r.status = 'ongoing'
     left join lateral (
       select count(*)::integer accepted_count from public.offers o where o.doc_id = r.doc_id and o.accepted_date is not null
     ) accepted on true
     where c.candidate_id = v_candidate_id
       and greatest(r.head_count - coalesce(accepted.accepted_count, 0), 0) > 0
-    group by anchor.group_id;
+    group by c.group_id;
 
     if v_handoff is null
       or jsonb_array_length(coalesce(v_handoff -> 'requisitions', '[]'::jsonb)) = 0

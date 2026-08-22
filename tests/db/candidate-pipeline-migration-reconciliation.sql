@@ -18,16 +18,19 @@ $$;
 insert into public.requisitions (doc_id, site, position, department, person_in_charge, status)
 values ('__paired_migration_req', '__paired_migration_site', 'Migration fixture', 'Test', 'Migration Owner', 'ongoing');
 
-insert into public.document_groups (doc_group_id, doc_id, group_position)
-values ('__paired_migration_link', '__paired_migration_req', 'Migration fixture');
+insert into public.position_groups (group_id, group_position)
+values ('__paired_migration_group', 'Migration fixture');
 
-insert into public.candidates (candidate_id, name, doc_group_id, first_contact_date)
+insert into public.document_groups (doc_group_id, doc_id, group_id, group_position)
+values ('__paired_migration_link', '__paired_migration_req', '__paired_migration_group', 'Migration fixture');
+
+insert into public.candidates (candidate_id, name, doc_group_id, group_id, first_contact_date)
 values
-  ('__migration_outcome_only', 'Outcome Only', '__paired_migration_link', date '2026-07-02'),
-  ('__migration_clamped_fallback', 'Clamped Fallback', '__paired_migration_link', date '2026-07-20'),
-  ('__migration_pending_chain', 'Pending Chain', '__paired_migration_link', date '2026-07-01'),
-  ('__migration_fail_conflict', 'Fail Conflict', '__paired_migration_link', date '2026-07-01'),
-  ('__migration_legacy_only', 'Legacy Only', '__paired_migration_link', date '2026-07-01');
+  ('__migration_outcome_only', 'Outcome Only', '__paired_migration_link', '__paired_migration_group', date '2026-07-02'),
+  ('__migration_clamped_fallback', 'Clamped Fallback', '__paired_migration_link', '__paired_migration_group', date '2026-07-20'),
+  ('__migration_pending_chain', 'Pending Chain', '__paired_migration_link', '__paired_migration_group', date '2026-07-01'),
+  ('__migration_fail_conflict', 'Fail Conflict', '__paired_migration_link', '__paired_migration_group', date '2026-07-01'),
+  ('__migration_legacy_only', 'Legacy Only', '__paired_migration_link', '__paired_migration_group', date '2026-07-01');
 
 -- Outcome-only canonical rows: Phone uses first contact; HR uses previous
 -- canonical Outcome. The latest HR Pass must also create Line Interview Pending.

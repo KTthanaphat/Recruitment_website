@@ -238,13 +238,15 @@ stable
 security definer
 set search_path = public
 as $$
-  select exists (
-    select 1
-    from public.candidates c
-    join public.document_groups dg on dg.doc_group_id = c.doc_group_id
-    where c.candidate_id = p_candidate_id
-      and app_private.can_manage_requisition(dg.doc_id)
-  )
+  select
+    app_private.current_app_role() in ('system_admin', 'admin_recruiter')
+    or exists (
+      select 1
+      from public.candidates c
+      join public.document_groups dg on dg.group_id = c.group_id
+      where c.candidate_id = p_candidate_id
+        and app_private.can_manage_requisition(dg.doc_id)
+    )
 $$;
 
 create or replace function app_private.can_read_candidate(p_candidate_id text)
@@ -256,16 +258,12 @@ set search_path = public
 as $$
   select
     app_private.is_global_recruitment_reader()
-    or (
-      app_private.current_app_role() = 'site_recruiter'
-      and exists (
-        select 1
-        from public.candidates c
-        join public.document_groups dg on dg.doc_group_id = c.doc_group_id
-        join public.requisitions r on r.doc_id = dg.doc_id
-        where c.candidate_id = p_candidate_id
-          and r.site = app_private.current_profile_site()
-      )
+    or exists (
+      select 1
+      from public.candidates c
+      join public.document_groups dg on dg.group_id = c.group_id
+      where c.candidate_id = p_candidate_id
+        and app_private.can_read_requisition(dg.doc_id)
     )
 $$;
 
@@ -381,7 +379,10 @@ as $$
         ) accepted on true
         where dg.group_id = p_group_id
           and r.status = 'ongoing'
-          and r.person_in_charge = app_private.current_profile_nickname()
+          and (
+            r.site = app_private.current_profile_site()
+            or r.person_in_charge = app_private.current_profile_nickname()
+          )
           and greatest(r.head_count - coalesce(accepted.accepted_count, 0), 0) > 0
       )
     )

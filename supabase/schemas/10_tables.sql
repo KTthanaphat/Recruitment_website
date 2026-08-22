@@ -83,7 +83,10 @@ create table if not exists public.candidates (
   name text not null,
   nickname text,
   phone_no text,
+  -- Candidates are managed by group_id. doc_group_id is an internal anchor kept
+  -- for legacy referential compatibility and is never chosen by the user.
   doc_group_id text not null references public.document_groups(doc_group_id) on delete restrict,
+  group_id text not null references public.position_groups(group_id) on delete restrict,
   channel text,
   ref_name text,
   first_contact_date date,

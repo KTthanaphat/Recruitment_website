@@ -59,26 +59,13 @@ using (app_private.can_read_requisition(doc_id));
 drop policy if exists candidates_read on public.candidates;
 create policy candidates_read on public.candidates
 for select to authenticated
-using (
-  exists (
-    select 1
-    from public.document_groups dg
-    where dg.doc_group_id = candidates.doc_group_id
-      and app_private.can_read_requisition(dg.doc_id)
-  )
-);
+using (app_private.can_read_candidate(candidate_id));
 
 drop policy if exists recruitment_logs_read on public.recruitment_logs;
 create policy recruitment_logs_read on public.recruitment_logs
 for select to authenticated
 using (
-  exists (
-    select 1
-    from public.candidates c
-    join public.document_groups dg on dg.doc_group_id = c.doc_group_id
-    where c.candidate_id = recruitment_logs.candidate_id
-      and app_private.can_read_requisition(dg.doc_id)
-  )
+  app_private.can_read_candidate(recruitment_logs.candidate_id)
 );
 
 drop policy if exists offers_read on public.offers;

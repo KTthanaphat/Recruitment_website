@@ -172,12 +172,12 @@ values
 insert into public.sourcing_weekly_updates (group_id, week_start, applicants_fb)
 values ('__authz_test_peer_group', current_date, 4);
 
-insert into public.candidates (candidate_id, name, phone_no, doc_group_id, channel, first_contact_date)
+insert into public.candidates (candidate_id, name, phone_no, doc_group_id, group_id, channel, first_contact_date)
 values
-  ('__authz_test_blocking_candidate', 'Blocking Candidate', '0999999999', '__authz_test_unmatch_blocked_link', 'Facebook', current_date),
-  ('__authz_test_pipeline_candidate', 'Pipeline Candidate', '0999999998', '__authz_test_owned_link', 'Facebook', current_date),
-  ('__authz_test_failed_pipeline_candidate', 'Failed Pipeline Candidate', '0999999997', '__authz_test_owned_link', 'Facebook', current_date),
-  ('__authz_test_completed_pipeline_candidate', 'Completed Pipeline Candidate', '0999999996', '__authz_test_owned_link', 'Facebook', current_date);
+  ('__authz_test_blocking_candidate', 'Blocking Candidate', '0999999999', '__authz_test_unmatch_blocked_link', '__authz_test_unmatch_blocked_group', 'Facebook', current_date),
+  ('__authz_test_pipeline_candidate', 'Pipeline Candidate', '0999999998', '__authz_test_owned_link', '__authz_test_owned_group', 'Facebook', current_date),
+  ('__authz_test_failed_pipeline_candidate', 'Failed Pipeline Candidate', '0999999997', '__authz_test_owned_link', '__authz_test_owned_group', 'Facebook', current_date),
+  ('__authz_test_completed_pipeline_candidate', 'Completed Pipeline Candidate', '0999999996', '__authz_test_owned_link', '__authz_test_owned_group', 'Facebook', current_date);
 
 insert into public.recruitment_logs (
   candidate_id, log_date, recruitment_process, round, interviewer, result, remark,

@@ -26,7 +26,7 @@ test("candidate creation form enforces required fields before review", async ({ 
 
   await dialog.getByRole("textbox", { name: "Name", exact: true }).fill("QA Candidate");
   await dialog.getByLabel("Phone No.").fill("0812345678");
-  await selectCommandOption(page, "doc_group_id", "DG-HQ-ENG");
+  await selectCommandOption(page, "group_id", "GRP-ENG");
   await selectCommandOption(page, "channel", "Facebook");
   await setDateValue(page, "first_contact_date", "2026-05-31");
 
@@ -62,7 +62,7 @@ test("candidate reference name is required only for Referral channel", async ({ 
 
   await dialog.getByRole("textbox", { name: "Name", exact: true }).fill("Referral Candidate");
   await dialog.getByLabel("Phone No.").fill("0899999999");
-  await selectCommandOption(page, "doc_group_id", "DG-HQ-ENG");
+  await selectCommandOption(page, "group_id", "GRP-ENG");
   await setDateValue(page, "first_contact_date", "2026-06-02");
   await selectCommandOption(page, "channel", "Referral");
   await expect(dialog.getByLabel("Reference Name")).toBeVisible();
