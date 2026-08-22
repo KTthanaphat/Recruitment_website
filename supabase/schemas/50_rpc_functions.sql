@@ -408,6 +408,8 @@ declare
   v_id text := nullif(payload ->> 'id', '');
   v_week_start date := nullif(payload ->> 'week_start', '')::date;
   v_deleted integer := 0;
+  v_affected_doc_ids text[] := '{}';
+  v_affected_doc_id text;
 begin
   perform app_private.assert_system_admin();
 
@@ -449,6 +451,15 @@ begin
     delete from public.document_groups where doc_group_id = v_id;
 
   elsif v_entity = 'candidate' then
+    select array_agg(distinct doc_id) into v_affected_doc_ids
+    from (
+      select dg.doc_id
+      from public.candidates c
+      join public.document_groups dg on dg.doc_group_id = c.doc_group_id
+      where c.candidate_id = v_id
+      union
+      select o.doc_id from public.offers o where o.candidate_id = v_id
+    ) affected;
     perform set_config('app.action', 'candidate:delete', true);
     delete from public.candidates where candidate_id = v_id;
 
@@ -458,6 +469,8 @@ begin
     delete from public.recruitment_logs where log_id = v_id::bigint;
 
   elsif v_entity = 'offer' then
+    select doc_id into v_affected_doc_id from public.offers where offer_id = v_id::bigint;
+    v_affected_doc_ids := array[v_affected_doc_id];
     perform set_config('app.action', 'offer:delete', true);
     delete from public.offers where offer_id = v_id::bigint;
 
@@ -483,6 +496,12 @@ begin
   if v_deleted = 0 then
     raise exception 'Record not found.';
   end if;
+
+  foreach v_affected_doc_id in array v_affected_doc_ids loop
+    if v_affected_doc_id is not null then
+      perform app_private.refresh_requisition_status(v_affected_doc_id);
+    end if;
+  end loop;
 
   return jsonb_build_object('ok', true, 'id', v_id, 'entity', v_entity);
 end;
