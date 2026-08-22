@@ -1,0 +1,162 @@
+  ▲ Next.js 14.2.35
+  - Local:        http://localhost:3100
+  - Environments: .env.local
+  - Experiments (use with caution):
+    · cpus
+
+ ✓ Starting...
+ ✓ Ready in 4.7s
+ ○ Compiling /dashboard ...
+ ✓ Compiled /dashboard in 6.3s (820 modules)
+ GET /dashboard 200 in 6607ms
+ GET /dashboard 200 in 87ms
+ ○ Compiling /login ...
+ ✓ Compiled /login in 843ms (823 modules)
+ GET /login 200 in 1012ms
+ GET /dashboard 200 in 150ms
+ ✓ Compiled in 751ms (818 modules)
+ ✓ Compiled in 259ms (422 modules)
+ ✓ Compiled in 488ms (818 modules)
+ ○ Compiling /home ...
+ ✓ Compiled /home in 600ms (820 modules)
+ ✓ Compiled in 1060ms (820 modules)
+ ✓ Compiled in 650ms (820 modules)
+ GET /dashboard?lang=en&sourcingWeek=2026-08-03&reportView=mtd&reportMonth=2026-08&details=closed&funnelStart=2026-01-01&funnelEnd=2026-08-09&funnelLevel=all&funnelChannel=all&funnel=closed 200 in 178ms
+ ✓ Compiled in 1013ms (822 modules)
+ GET /dashboard?lang=en&sourcingWeek=2026-08-03&reportView=mtd&reportMonth=2026-08&details=closed&funnelStart=2026-01-01&funnelEnd=2026-08-09&funnelLevel=all&funnelChannel=all&funnel=closed 200 in 332ms
+ ✓ Compiled in 497ms (822 modules)
+ GET /dashboard?lang=en&sourcingWeek=2026-08-03&reportView=mtd&reportMonth=2026-08&details=closed&funnelStart=2026-01-01&funnelEnd=2026-08-09&funnelLevel=all&funnelChannel=all&funnel=closed 200 in 105ms
+ ✓ Compiled in 430ms (822 modules)
+ GET /dashboard?lang=en&sourcingWeek=2026-08-03&reportView=mtd&reportMonth=2026-08&details=closed&funnelStart=2026-01-01&funnelEnd=2026-08-09&funnelLevel=all&funnelChannel=all&funnel=closed 200 in 90ms
+ ✓ Compiled in 814ms (822 modules)
+ GET /dashboard?lang=en&sourcingWeek=2026-08-03&reportView=mtd&reportMonth=2026-08&details=closed&funnelStart=2026-01-01&funnelEnd=2026-08-09&funnelLevel=all&funnelChannel=all&funnel=closed 200 in 271ms
+ ✓ Compiled in 477ms (822 modules)
+ GET /dashboard?lang=en&sourcingWeek=2026-08-03&reportView=mtd&reportMonth=2026-08&details=closed&funnelStart=2026-01-01&funnelEnd=2026-08-09&funnelLevel=all&funnelChannel=all&funnel=closed 200 in 137ms
+ ✓ Compiled in 532ms (822 modules)
+ GET /dashboard?lang=en&sourcingWeek=2026-08-03&reportView=mtd&reportMonth=2026-08&details=closed&funnelStart=2026-01-01&funnelEnd=2026-08-09&funnelLevel=all&funnelChannel=all&funnel=closed 200 in 103ms
+ ○ Compiling /requisitions ...
+ ✓ Compiled /requisitions in 783ms (824 modules)
+ ✓ Compiled /workspace in 402ms (812 modules)
+ ✓ Compiled in 1345ms (828 modules)
+ ✓ Compiled in 808ms (828 modules)
+ ✓ Compiled in 1112ms (828 modules)
+ ✓ Compiled in 630ms (828 modules)
+ ✓ Compiled in 573ms (828 modules)
+ ✓ Compiled in 622ms (828 modules)
+ GET /workspace?lang=en&sourcingWeek=2026-08-03 200 in 190ms
+ ✓ Compiled in 756ms (828 modules)
+ GET /dashboard?lang=en&sourcingWeek=2026-08-03&reportView=pim&details=closed&funnelStart=2026-01-01&funnelEnd=2026-08-09&funnelLevel=all&funnelChannel=all&funnel=closed&reportMonth=2026-08 200 in 165ms
+ ✓ Compiled in 794ms (828 modules)
+ GET /dashboard?lang=en&sourcingWeek=2026-08-03&reportView=pim&details=closed&funnelStart=2026-01-01&funnelEnd=2026-08-09&funnelLevel=all&funnelChannel=all&funnel=closed&reportMonth=2026-08 200 in 207ms
+ ✓ Compiled in 740ms (828 modules)
+ GET /dashboard?lang=en&sourcingWeek=2026-08-03&reportView=mtd&details=closed&funnelStart=2026-01-01&funnelEnd=2026-08-09&funnelLevel=all&funnelChannel=all&funnel=closed&reportMonth=2026-08 200 in 194ms
+ ✓ Compiled in 727ms (828 modules)
+ ✓ Compiled in 187ms (424 modules)
+ ✓ Compiled in 1173ms (828 modules)
+ GET /dashboard?lang=en&sourcingWeek=2026-08-03&reportView=custom&details=open&funnelStart=2026-01-01&funnelEnd=2026-08-09&funnelLevel=all&funnelChannel=all&funnel=closed&start=2026-08-01&end=2026-08-31 200 in 236ms
+ ✓ Compiled in 1093ms (828 modules)
+ ○ Compiling /pipeline ...
+ ✓ Compiled /pipeline in 1387ms (830 modules)
+ GET /pipeline?lang=en&pic=Vena&sourcingWeek=2026-08-03 200 in 1114ms
+ ✓ Compiled in 3.1s (830 modules)
+ ✓ Compiled in 1053ms (830 modules)
+ ✓ Compiled in 2.1s (830 modules)
+ ✓ Compiled in 967ms (830 modules)
+ ✓ Compiled in 448ms (816 modules)
+ ✓ Compiled in 1044ms (830 modules)
+ ✓ Compiled in 375ms (830 modules)
+ GET /pipeline?lang=en&sourcingWeek=2026-08-03 200 in 396ms
+ GET /pipeline?lang=en&sourcingWeek=2026-08-03 200 in 73ms
+ GET /pipeline?lang=en&sourcingWeek=2026-08-03 200 in 66ms
+ GET /pipeline?lang=en&sourcingWeek=2026-08-03 200 in 57ms
+ ✓ Compiled in 5.9s (830 modules)
+ ✓ Compiled in 1011ms (830 modules)
+ ✓ Compiled in 1595ms (830 modules)
+ ✓ Compiled in 2.5s (832 modules)
+ ✓ Compiled in 1424ms (832 modules)
+ ✓ Compiled in 280ms (425 modules)
+ ✓ Compiled in 1142ms (832 modules)
+ ✓ Compiled in 1411ms (832 modules)
+ ✓ Compiled in 1376ms (832 modules)
+ ✓ Compiled in 1190ms (832 modules)
+ ✓ Compiled in 944ms (832 modules)
+ ✓ Compiled in 968ms (832 modules)
+ ✓ Compiled in 1511ms (832 modules)
+ GET /dashboard?lang=en&sourcingWeek=2026-08-03&reportView=mtd&reportMonth=2026-08&details=closed&funnelStart=2026-01-01&funnelEnd=2026-08-11&funnelLevel=all&funnelChannel=all&funnel=closed 200 in 437ms
+ ○ Compiling /_not-found ...
+ ✓ Compiled /_not-found in 1241ms (835 modules)
+ GET /_next/static/css/app/layout.css?v=1786418680997 404 in 1367ms
+ GET /_next/static/chunks/app-pages-internals.js 404 in 1335ms
+ GET /_next/static/chunks/main-app.js?v=1786418680997 404 in 1337ms
+ ✓ Compiled /login in 345ms (415 modules)
+ GET /login 200 in 543ms
+ GET /_next/static/css/app/layout.css?v=1786418685412 404 in 60ms
+ GET /_next/static/chunks/main-app.js?v=1786418685412 404 in 60ms
+ GET /_next/static/chunks/app/login/page.js 404 in 59ms
+ GET /_next/static/chunks/app-pages-internals.js 404 in 61ms
+ ✓ Compiled in 408ms (425 modules)
+ ✓ Compiled in 268ms (425 modules)
+ ✓ Compiled in 1627ms (832 modules)
+ ✓ Compiled in 862ms (832 modules)
+ ✓ Compiled in 1434ms (832 modules)
+ ✓ Compiled in 837ms (832 modules)
+ ✓ Compiled in 809ms (832 modules)
+ ✓ Compiled in 1171ms (832 modules)
+ ✓ Compiled in 963ms (832 modules)
+ ✓ Compiled in 1244ms (832 modules)
+ ✓ Compiled in 1667ms (832 modules)
+ ✓ Compiled in 825ms (832 modules)
+ ✓ Compiled in 979ms (832 modules)
+ ✓ Compiled in 1512ms (832 modules)
+ ✓ Compiled in 1095ms (832 modules)
+ ✓ Compiled in 883ms (832 modules)
+ ✓ Compiled in 1599ms (832 modules)
+ ✓ Compiled in 991ms (832 modules)
+ ✓ Compiled in 824ms (832 modules)
+ ✓ Compiled in 1764ms (832 modules)
+ ✓ Compiled in 5.6s (832 modules)
+ ✓ Compiled in 1890ms (832 modules)
+ ✓ Compiled in 856ms (832 modules)
+ ✓ Compiled in 1021ms (832 modules)
+ ✓ Compiled in 874ms (832 modules)
+ ✓ Compiled in 1055ms (832 modules)
+ ✓ Compiled in 901ms (832 modules)
+ ✓ Compiled in 821ms (832 modules)
+ ✓ Compiled in 2.8s (832 modules)
+ ✓ Compiled in 2.4s (832 modules)
+ ✓ Compiled in 3.4s (832 modules)
+ ✓ Compiled in 1621ms (832 modules)
+ ✓ Compiled in 3.8s (834 modules)
+ ✓ Compiled in 941ms (834 modules)
+ ✓ Compiled in 1287ms (834 modules)
+ ✓ Compiled in 949ms (834 modules)
+ ✓ Compiled in 841ms (834 modules)
+ ✓ Compiled in 769ms (834 modules)
+ ✓ Compiled in 1060ms (834 modules)
+ ✓ Compiled in 1217ms (834 modules)
+ ✓ Compiled in 1743ms (834 modules)
+ ✓ Compiled in 1776ms (834 modules)
+ ✓ Compiled in 1292ms (834 modules)
+ ✓ Compiled in 8.2s (838 modules)
+ ✓ Compiled in 1567ms (838 modules)
+ ✓ Compiled in 5.1s (838 modules)
+ ✓ Compiled in 1384ms (838 modules)
+ ✓ Compiled in 1407ms (838 modules)
+ ✓ Compiled in 1289ms (838 modules)
+ ✓ Compiled in 612ms (838 modules)
+ ✓ Compiled in 4.5s (838 modules)
+ ✓ Compiled in 1739ms (838 modules)
+ ✓ Compiled in 4.4s (838 modules)
+ ✓ Compiled in 1396ms (838 modules)
+ ✓ Compiled in 1287ms (838 modules)
+ ✓ Compiled in 1338ms (838 modules)
+ ✓ Compiled in 2.4s (838 modules)
+ ✓ Compiled in 2.5s (838 modules)
+ ✓ Compiled in 3.5s (838 modules)
+ ✓ Compiled in 1640ms (838 modules)
+ ✓ Compiled in 1766ms (838 modules)
+ ✓ Compiled in 1913ms (838 modules)
+ ✓ Compiled in 1134ms (838 modules)
+ ✓ Compiled in 1327ms (838 modules)
+ ✓ Compiled in 1367ms (838 modules)
+ ✓ Compiled in 2.3s (838 modules)

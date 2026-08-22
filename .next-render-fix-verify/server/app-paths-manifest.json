@@ -1,0 +1,18 @@
+{
+  "/_not-found/page": "app/_not-found/page.js",
+  "/admin/page": "app/admin/page.js",
+  "/api/admin/users/route": "app/api/admin/users/route.js",
+  "/dashboard/page": "app/dashboard/page.js",
+  "/home/page": "app/home/page.js",
+  "/audit/page": "app/audit/page.js",
+  "/login/page": "app/login/page.js",
+  "/candidates/page": "app/candidates/page.js",
+  "/offers/page": "app/offers/page.js",
+  "/pipeline/page": "app/pipeline/page.js",
+  "/page": "app/page.js",
+  "/workspace/page": "app/workspace/page.js",
+  "/sourcing/page": "app/sourcing/page.js",
+  "/setup/page": "app/setup/page.js",
+  "/requisitions/page": "app/requisitions/page.js",
+  "/api/department-sections/route": "app/api/department-sections/route.js"
+}

@@ -79,7 +79,7 @@ requisitions.doc_id
   -> position_groups.group_id
 ```
 
-Candidates store `doc_group_id`, not direct `doc_id` or direct `group_id`. When a feature needs site, position, person in charge, or available requisitions, resolve through `document_groups` to the shared `group_id`.
+Candidates store direct `group_id`; optional `doc_group_id` preserves requisition-match context. Resolve site, position, owner, and eligible requisitions through the group’s current `document_groups` links.
 
 The active journey is group-scoped end to end. Candidate detail, offer filtering, and requisition matching should inherit the relevant `document_groups` context rather than assuming a standalone record view.
 
@@ -284,7 +284,7 @@ Add Match:
 
 - Only show requisitions with no existing `document_groups` match at all.
 - Show doc option labels with position context, for example `DOC-001 - Accountant`.
-- Unmatch uses `app_unmatch_group_requisition` and is blocked when candidates reference the `doc_group_id`.
+- Unmatch uses `app_unmatch_group_requisition`; candidates remain in their `group_id` pool while `doc_group_id` is reassigned or cleared.
 
 ## Candidate Rules
 

@@ -1,0 +1,769 @@
+  ▲ Next.js 14.2.35
+  - Local:        http://localhost:3003
+  - Environments: .env.local
+  - Experiments (use with caution):
+    · cpus
+
+ ✓ Starting...
+
+   We detected TypeScript in your project and reconfigured your tsconfig.json file for you. Strict-mode is set to false by default.
+   The following suggested values were added to your tsconfig.json. These values can be changed to fit your project's needs:
+
+   	- include was updated to add 'next-local-manual/types/**/*.ts'
+
+ ✓ Ready in 3.5s
+ ○ Compiling / ...
+ ✓ Compiled / in 5.3s (473 modules)
+ GET / 307 in 5561ms
+ ○ Compiling /home ...
+ ✓ Compiled /home in 17.7s (830 modules)
+ GET /home 200 in 84ms
+ GET /home 200 in 99ms
+ ○ Compiling /login ...
+ ✓ Compiled /login in 1233ms (828 modules)
+ GET /login 200 in 1626ms
+ GET /home 200 in 199ms
+ GET /login 200 in 77ms
+ GET /home 200 in 81ms
+ GET /login 200 in 120ms
+ ✓ Compiled /workspace in 494ms (822 modules)
+ ✓ Compiled /requisitions in 460ms (824 modules)
+ ✓ Compiled /api/department-sections in 382ms (444 modules)
+ GET /api/department-sections 200 in 515ms
+ GET /api/department-sections 200 in 35ms
+ GET /api/department-sections 200 in 43ms
+ GET /api/department-sections 200 in 32ms
+ GET /api/department-sections 200 in 34ms
+ GET /api/department-sections 200 in 31ms
+ ✓ Compiled /sourcing in 476ms (859 modules)
+ ✓ Compiled in 2.2s (840 modules)
+ GET /sourcing?lang=en&sourcingWeek=2026-08-10 200 in 738ms
+ ✓ Compiled in 1114ms (840 modules)
+ GET /sourcing?lang=en&sourcingWeek=2026-08-10 200 in 884ms
+ ✓ Compiled in 1100ms (840 modules)
+ ✓ Compiled in 8.3s (844 modules)
+ ✓ Compiled in 1265ms (844 modules)
+ ✓ Compiled in 1180ms (844 modules)
+ ✓ Compiled in 3.4s (844 modules)
+ ✓ Compiled in 1119ms (844 modules)
+ ✓ Compiled in 990ms (844 modules)
+ ✓ Compiled in 1174ms (844 modules)
+ ✓ Compiled in 596ms (844 modules)
+ ✓ Compiled / in 270ms (423 modules)
+ GET / 307 in 469ms
+ GET /home 200 in 191ms
+ GET / 307 in 42ms
+ GET /home 200 in 98ms
+ GET / 307 in 77ms
+ GET /home 200 in 58ms
+ GET / 307 in 131ms
+ GET /home 200 in 78ms
+ ✓ Compiled /pipeline in 404ms (840 modules)
+ GET /pipeline?lang=en&site=KT1&pic=Bob&sourcingWeek=2026-07-06 200 in 594ms
+ GET /pipeline 200 in 54ms
+ GET /sourcing?sourcingWeek=2026-07-06 200 in 90ms
+ GET /home 200 in 107ms
+ ○ Compiling /_not-found ...
+ ✓ Compiled /_not-found in 1451ms (847 modules)
+ GET /.well-known/appspecific/com.chrome.devtools.json 404 in 1672ms
+ ✓ Compiled in 3.2s (844 modules)
+ ✓ Compiled / in 222ms (423 modules)
+ GET / 307 in 384ms
+ GET /home 200 in 213ms
+ GET / 307 in 92ms
+ GET /home 200 in 97ms
+ ✓ Compiled /pipeline in 477ms (425 modules)
+ GET /pipeline?lang=en&site=KT1&pic=Bob&sourcingWeek=2026-07-06 200 in 644ms
+ GET /pipeline 200 in 69ms
+ GET /sourcing?sourcingWeek=2026-07-06 200 in 86ms
+ GET /home 200 in 72ms
+ GET /workspace 200 in 107ms
+ GET /requisitions 200 in 105ms
+ ✓ Compiled /candidates in 410ms (842 modules)
+ GET /candidates 200 in 544ms
+ ✓ Compiled /offers in 434ms (844 modules)
+ GET /offers 200 in 552ms
+ ✓ Compiled /dashboard in 416ms (846 modules)
+ GET /dashboard 200 in 548ms
+ ✓ Compiled /audit in 428ms (848 modules)
+ GET /audit 200 in 529ms
+ ✓ Compiled in 2.2s (862 modules)
+ GET / 307 in 123ms
+ GET /home 200 in 130ms
+ GET / 307 in 114ms
+ GET /home 200 in 43ms
+ GET /pipeline?lang=en&site=KT1&pic=Bob&sourcingWeek=2026-07-06 200 in 88ms
+ GET /pipeline 200 in 70ms
+ GET /sourcing?sourcingWeek=2026-07-06 200 in 88ms
+ GET /home 200 in 72ms
+ GET /workspace 200 in 63ms
+ GET /requisitions 200 in 114ms
+ GET /candidates 200 in 86ms
+ GET /offers 200 in 58ms
+ GET /dashboard 200 in 91ms
+ GET /audit 200 in 78ms
+ GET / 307 in 106ms
+ GET /home 200 in 79ms
+ GET / 307 in 115ms
+ GET /home 200 in 76ms
+ GET /dashboard?reportView=pim&reportMonth=2026-07&details=open&funnel=open 200 in 416ms
+ GET /pipeline 200 in 984ms
+ GET /candidates 200 in 842ms
+ GET /login 200 in 882ms
+ GET /pipeline 200 in 568ms
+ GET /pipeline?lang=en&site=KT1&pic=Bob&sourcingWeek=2026-07-06 200 in 462ms
+ GET /pipeline 200 in 250ms
+ GET /requisitions 200 in 206ms
+ GET /pipeline 200 in 93ms
+ ○ Compiling /admin ...
+ ✓ Compiled /admin in 2.6s (864 modules)
+ GET /login 200 in 2846ms
+ GET /admin 200 in 3175ms
+ GET /candidates 200 in 3072ms
+ GET /pipeline 200 in 3089ms
+ GET /pipeline 200 in 648ms
+ GET /pipeline?pipelineSearch=C-REF 200 in 427ms
+ GET /requisitions 200 in 259ms
+ GET /sourcing?sourcingWeek=2026-07-06 200 in 413ms
+ GET /pipeline?pipelineSearch=REQ-KT2-1 200 in 282ms
+ GET /home 200 in 425ms
+ GET /requisitions 200 in 450ms
+ GET /dashboard?reportView=pim&reportMonth=2026-06&details=open 200 in 469ms
+ GET /pipeline 200 in 344ms
+ GET /pipeline?pipelineSearch=Analyst 200 in 194ms
+ GET /offers 200 in 237ms
+ GET /home 200 in 133ms
+ ○ Compiling /api/department-sections ...
+ ✓ Compiled /api/department-sections in 1050ms (468 modules)
+ GET /api/department-sections 200 in 2006ms
+ GET /api/department-sections 200 in 2010ms
+ GET /pipeline?pipelineSearch=Alice 200 in 983ms
+ GET /pipeline 200 in 755ms
+ GET /workspace 200 in 138ms
+ GET /pipeline 200 in 79ms
+ GET /requisitions 200 in 230ms
+ GET /requisitions?lang=th&detailType=requisition&detailId=REQ-HQ-1 200 in 234ms
+ GET /candidates 200 in 219ms
+ GET /candidates 200 in 162ms
+ GET /offers 200 in 147ms
+ GET /workspace 200 in 369ms
+ GET /pipeline 200 in 543ms
+ GET /dashboard 200 in 148ms
+ GET /requisitions?detailType=requisition&detailId=REQ-UNMATCHED-1 200 in 105ms
+ GET /audit 200 in 275ms
+ GET /pipeline?lang=en&site=KT1&pic=Bob&sourcingWeek=2026-07-06 200 in 222ms
+ GET /home 200 in 247ms
+ GET /dashboard?reportView=mtd&reportMonth=2026-06 200 in 196ms
+ GET /requisitions 200 in 300ms
+ GET /pipeline 200 in 249ms
+ GET /requisitions?lang=en&sourcingWeek=2026-07-20&reqSearch=Engineer&reqFilters=%7B%22owner%22%3A%22Alice%22%7D 200 in 140ms
+ GET /workspace?type=requisition&id=REQ-HQ-1&section=overview&sourcingWeek=2026-07-06 200 in 231ms
+ GET /pipeline 200 in 201ms
+ GET /pipeline 200 in 183ms
+ GET /requisitions 200 in 103ms
+ GET /home 200 in 91ms
+ GET /workspace 200 in 100ms
+ GET /candidates 200 in 249ms
+ GET /pipeline 200 in 100ms
+ GET /workspace?type=requisition&id=REQ-KT1-1&sourcingWeek=2026-07-06 200 in 81ms
+ GET /offers 200 in 159ms
+ GET /workspace?type=requisition&id=REQ-CLOSED-1 200 in 282ms
+ GET /pipeline 200 in 128ms
+ GET /workspace?type=requisition&id=REQ-HQ-1&sourcingWeek=2026-07-06 200 in 138ms
+ GET /workspace?type=requisition&id=REQ-HQ-1&sourcingWeek=2026-07-06 200 in 106ms
+ GET /candidates?candSearch=REQ-HQ-1 200 in 206ms
+ GET /pipeline 200 in 170ms
+ GET /home 200 in 351ms
+ GET /workspace?type=group&id=GRP-TECH&sourcingWeek=2026-07-06 200 in 399ms
+ GET /requisitions 200 in 349ms
+ GET /home 200 in 84ms
+ GET /api/department-sections 200 in 120ms
+ GET /api/department-sections 200 in 138ms
+ GET /api/department-sections 200 in 115ms
+ GET /api/department-sections 200 in 118ms
+ GET /workspace?type=group&id=GRP-TECH&sourcingWeek=2026-07-06&lang=en&section=pipeline 200 in 138ms
+ GET /home 200 in 116ms
+ GET /candidates 200 in 107ms
+ GET /pipeline 200 in 178ms
+ GET /workspace?type=group&id=GRP-ENG&section=pipeline&sourcingWeek=2026-07-06 200 in 93ms
+ GET /home 200 in 168ms
+ GET /offers 200 in 227ms
+ GET /workspace?type=requisition&id=REQ-KT1-1&section=overview 200 in 106ms
+ GET /home 200 in 252ms
+ GET /pipeline 200 in 159ms
+ GET /sourcing?sourceSearch=GRP-TECH&reqSearch=REQ-KT1-1&sourcingWeek=2026-07-06 200 in 222ms
+ GET /workspace?type=requisition&id=REQ-KT2-1&section=outcome 200 in 91ms
+ GET /home 200 in 76ms
+ GET /sourcing?sourcingWeek=2026-07-06 200 in 173ms
+ GET /pipeline 200 in 86ms
+ GET /workspace 200 in 72ms
+ GET /home 200 in 170ms
+ GET /workspace?type=group&id=GRP-ENG&section=sourcing&sourcingWeek=2026-07-06 200 in 204ms
+ GET /pipeline 200 in 85ms
+ GET /workspace 200 in 92ms
+ GET /sourcing?sourcingWeek=2026-07-06 200 in 137ms
+ GET /workspace?type=group&id=GRP-ENG&section=sourcing&sourcingWeek=2026-07-13 200 in 110ms
+ GET /api/department-sections 200 in 45ms
+ GET /workspace 200 in 93ms
+ GET /workspace?sourcingWeek=2026-07-06 200 in 86ms
+ GET /offers 200 in 264ms
+ GET /workspace 200 in 99ms
+ GET /audit 200 in 88ms
+ GET /workspace?type=requisition&id=REQ-KT2-1 200 in 91ms
+ GET /workspace?type=requisition&id=REQ-KT2-1 200 in 64ms
+ GET /sourcing?sourcingWeek=2026-07-06 200 in 104ms
+ GET /sourcing?sourcingWeek=2026-07-06 200 in 98ms
+ GET /pipeline?pipelineSearch=C-PHONE 200 in 61ms
+ GET /candidates 200 in 71ms
+ GET /home 200 in 86ms
+ GET /workspace?type=requisition&id=REQ-HQ-1 200 in 70ms
+ GET /pipeline 200 in 88ms
+ GET /candidates 200 in 67ms
+ GET /sourcing?sourcingWeek=2026-07-06 200 in 97ms
+ GET /workspace?type=requisition&id=REQ-KT2-1 200 in 84ms
+ GET /workspace?type=requisition&id=REQ-HQ-1&section=sourcing&sourcingWeek=2026-07-06 200 in 67ms
+ GET /pipeline 200 in 56ms
+ GET /workspace?type=requisition&id=REQ-HQ-1 200 in 73ms
+ GET / 307 in 121ms
+ GET /home 200 in 59ms
+ GET / 307 in 82ms
+ GET /home 200 in 47ms
+ GET /candidates 200 in 343ms
+ GET /dashboard?reportView=pim&reportMonth=2026-07&details=open&funnel=open 200 in 268ms
+ GET /pipeline 200 in 274ms
+ GET /login 200 in 232ms
+ GET /requisitions 200 in 102ms
+ GET /admin 200 in 129ms
+ GET /login 200 in 51ms
+ GET /pipeline?lang=en&site=KT1&pic=Bob&sourcingWeek=2026-07-06 200 in 64ms
+ GET /candidates 200 in 80ms
+ GET /requisitions 200 in 72ms
+ GET /pipeline 200 in 79ms
+ GET /api/department-sections 200 in 43ms
+ GET /api/department-sections 200 in 55ms
+ GET /sourcing?sourcingWeek=2026-07-06 200 in 82ms
+ GET /home 200 in 66ms
+ GET /workspace 200 in 60ms
+ GET /requisitions 200 in 92ms
+ GET /candidates 200 in 57ms
+ GET /dashboard?reportView=pim&reportMonth=2026-06&details=open 200 in 64ms
+ GET /offers 200 in 87ms
+ GET /dashboard 200 in 101ms
+ GET /audit 200 in 55ms
+ GET /candidates 200 in 52ms
+ GET /pipeline 200 in 105ms
+ GET /pipeline 200 in 62ms
+ GET /pipeline 200 in 53ms
+ GET /pipeline?pipelineSearch=C-REF 200 in 78ms
+ GET /pipeline 200 in 100ms
+ GET /pipeline?pipelineSearch=REQ-KT2-1 200 in 80ms
+ GET /dashboard?reportView=mtd&reportMonth=2026-06 200 in 59ms
+ GET /pipeline?pipelineSearch=Analyst 200 in 85ms
+ GET /pipeline?pipelineSearch=Alice 200 in 82ms
+ GET /pipeline 200 in 87ms
+ GET /pipeline 200 in 85ms
+ GET /requisitions 200 in 109ms
+ GET /pipeline 200 in 58ms
+ GET /pipeline 200 in 71ms
+ GET /home 200 in 71ms
+ GET /offers 200 in 66ms
+ GET /pipeline 200 in 74ms
+ GET /pipeline 200 in 66ms
+ GET /pipeline 200 in 71ms
+ GET /pipeline 200 in 70ms
+ GET /requisitions?lang=th&detailType=requisition&detailId=REQ-HQ-1 200 in 87ms
+ GET /home 200 in 105ms
+ GET /workspace 200 in 102ms
+ GET /home 200 in 82ms
+ GET /pipeline 200 in 92ms
+ GET /pipeline 200 in 77ms
+ GET /requisitions?detailType=requisition&detailId=REQ-UNMATCHED-1 200 in 67ms
+ GET /requisitions 200 in 94ms
+ GET /pipeline 200 in 86ms
+ GET /pipeline 200 in 98ms
+ GET /home 200 in 75ms
+ GET /requisitions?lang=en&sourcingWeek=2026-07-20&reqSearch=Engineer&reqFilters=%7B%22owner%22%3A%22Alice%22%7D 200 in 91ms
+ GET /pipeline 200 in 150ms
+ GET /pipeline 200 in 64ms
+ GET /requisitions 200 in 89ms
+ GET /candidates 200 in 72ms
+ GET /offers 200 in 72ms
+ GET /pipeline?lang=en&site=KT1&pic=Bob&sourcingWeek=2026-07-06 200 in 71ms
+ GET /workspace?type=requisition&id=REQ-HQ-1&section=overview&sourcingWeek=2026-07-06 200 in 91ms
+ GET /workspace 200 in 88ms
+ GET /workspace?type=requisition&id=REQ-CLOSED-1 200 in 76ms
+ GET /home 200 in 75ms
+ GET /candidates?candSearch=REQ-HQ-1 200 in 72ms
+ GET /requisitions 200 in 59ms
+ GET /home 200 in 221ms
+ GET /workspace?type=requisition&id=REQ-KT1-1&sourcingWeek=2026-07-06 200 in 54ms
+ GET /home 200 in 88ms
+ GET /api/department-sections 200 in 101ms
+ GET /api/department-sections 200 in 110ms
+ GET /api/department-sections 200 in 101ms
+ GET /api/department-sections 200 in 106ms
+ GET /candidates 200 in 49ms
+ GET /workspace?type=requisition&id=REQ-HQ-1&sourcingWeek=2026-07-06 200 in 52ms
+ GET /home 200 in 52ms
+ GET /offers 200 in 59ms
+ GET /home 200 in 78ms
+ GET /sourcing?sourceSearch=GRP-TECH&reqSearch=REQ-KT1-1&sourcingWeek=2026-07-06 200 in 60ms
+ GET /home 200 in 64ms
+ GET /sourcing?sourcingWeek=2026-07-06 200 in 55ms
+ GET /sourcing?sourcingWeek=2026-07-06 200 in 62ms
+ GET /offers 200 in 46ms
+ GET /audit 200 in 53ms
+ GET /workspace?type=requisition&id=REQ-HQ-1&sourcingWeek=2026-07-06 200 in 78ms
+ GET /workspace?type=group&id=GRP-TECH&sourcingWeek=2026-07-06 200 in 73ms
+ GET /workspace?type=group&id=GRP-ENG&section=sourcing&sourcingWeek=2026-07-06 200 in 73ms
+ GET /workspace?type=group&id=GRP-TECH&sourcingWeek=2026-07-06&lang=en&section=pipeline 200 in 73ms
+ GET /workspace?type=group&id=GRP-ENG&section=sourcing&sourcingWeek=2026-07-13 200 in 105ms
+ GET /workspace?type=group&id=GRP-ENG&section=pipeline&sourcingWeek=2026-07-06 200 in 62ms
+ GET /workspace?sourcingWeek=2026-07-06 200 in 54ms
+ GET /workspace?type=requisition&id=REQ-KT1-1&section=overview 200 in 162ms
+ GET /sourcing?sourcingWeek=2026-07-06 200 in 72ms
+ GET /workspace?type=requisition&id=REQ-KT2-1 200 in 95ms
+ GET /workspace?type=requisition&id=REQ-KT2-1&section=outcome 200 in 59ms
+ GET /sourcing?sourcingWeek=2026-07-06 200 in 96ms
+ GET /workspace 200 in 102ms
+ GET /workspace?type=requisition&id=REQ-KT2-1 200 in 111ms
+ GET /pipeline?pipelineSearch=C-PHONE 200 in 68ms
+ GET /workspace 200 in 74ms
+ GET /api/department-sections 200 in 38ms
+ GET /api/department-sections 200 in 40ms
+ GET /workspace 200 in 87ms
+ GET /workspace 200 in 72ms
+ GET /candidates 200 in 79ms
+ GET /home 200 in 75ms
+ GET /workspace?type=requisition&id=REQ-HQ-1 200 in 66ms
+ GET /pipeline 200 in 59ms
+ GET /candidates 200 in 60ms
+ GET /sourcing?sourcingWeek=2026-07-06 200 in 81ms
+ GET /workspace?type=requisition&id=REQ-KT2-1 200 in 96ms
+ GET /workspace?type=requisition&id=REQ-HQ-1&section=sourcing&sourcingWeek=2026-07-06 200 in 79ms
+ GET /pipeline 200 in 79ms
+ GET / 307 in 98ms
+ GET /home 200 in 62ms
+ GET / 307 in 95ms
+ GET /home 200 in 78ms
+ GET /pipeline 200 in 277ms
+ GET /login 200 in 257ms
+ GET /candidates 200 in 170ms
+ GET /dashboard?reportView=pim&reportMonth=2026-07&details=open&funnel=open 200 in 160ms
+ GET /requisitions 200 in 111ms
+ GET /admin 200 in 89ms
+ GET /pipeline?lang=en&site=KT1&pic=Bob&sourcingWeek=2026-07-06 200 in 53ms
+ GET /candidates 200 in 73ms
+ GET /requisitions 200 in 64ms
+ GET /pipeline 200 in 61ms
+ GET /api/department-sections 200 in 36ms
+ GET /api/department-sections 200 in 93ms
+ GET /sourcing?sourcingWeek=2026-07-06 200 in 63ms
+ GET /home 200 in 60ms
+ GET /workspace 200 in 48ms
+ GET /requisitions 200 in 58ms
+ GET /candidates 200 in 79ms
+ GET /offers 200 in 49ms
+ GET /dashboard?reportView=pim&reportMonth=2026-06&details=open 200 in 73ms
+ GET /dashboard 200 in 71ms
+ GET /audit 200 in 62ms
+ GET /candidates 200 in 75ms
+ GET /pipeline 200 in 129ms
+ GET /pipeline 200 in 110ms
+ GET /pipeline 200 in 52ms
+ GET /pipeline 200 in 68ms
+ GET /pipeline?pipelineSearch=C-REF 200 in 73ms
+ GET /pipeline?pipelineSearch=REQ-KT2-1 200 in 89ms
+ GET /pipeline 200 in 52ms
+ GET /pipeline?pipelineSearch=Analyst 200 in 56ms
+ GET /dashboard?reportView=mtd&reportMonth=2026-06 200 in 57ms
+ GET /pipeline?pipelineSearch=Alice 200 in 90ms
+ GET /pipeline 200 in 95ms
+ GET /pipeline 200 in 90ms
+ GET /pipeline 200 in 87ms
+ GET /pipeline 200 in 104ms
+ GET /requisitions 200 in 76ms
+ GET /pipeline 200 in 94ms
+ GET /home 200 in 60ms
+ GET /offers 200 in 55ms
+ GET /pipeline 200 in 74ms
+ GET /pipeline 200 in 103ms
+ GET /pipeline 200 in 123ms
+ GET /pipeline 200 in 56ms
+ GET /requisitions?lang=th&detailType=requisition&detailId=REQ-HQ-1 200 in 69ms
+ GET /home 200 in 41ms
+ GET /home 200 in 69ms
+ GET /workspace 200 in 80ms
+ GET /pipeline 200 in 123ms
+ GET /pipeline 200 in 135ms
+ GET /requisitions?detailType=requisition&detailId=REQ-UNMATCHED-1 200 in 80ms
+ GET /pipeline 200 in 99ms
+ GET /requisitions 200 in 75ms
+ GET /home 200 in 44ms
+ GET /requisitions?lang=en&sourcingWeek=2026-07-20&reqSearch=Engineer&reqFilters=%7B%22owner%22%3A%22Alice%22%7D 200 in 60ms
+ GET /pipeline 200 in 59ms
+ GET /requisitions 200 in 75ms
+ GET /candidates 200 in 73ms
+ GET /offers 200 in 72ms
+ GET /pipeline?lang=en&site=KT1&pic=Bob&sourcingWeek=2026-07-06 200 in 75ms
+ GET /workspace?type=requisition&id=REQ-HQ-1&section=overview&sourcingWeek=2026-07-06 200 in 75ms
+ GET /workspace 200 in 58ms
+ GET /workspace?type=requisition&id=REQ-CLOSED-1 200 in 75ms
+ GET /candidates?candSearch=REQ-HQ-1 200 in 85ms
+ GET /home 200 in 63ms
+ GET /requisitions 200 in 103ms
+ GET /workspace?type=requisition&id=REQ-KT1-1&sourcingWeek=2026-07-06 200 in 72ms
+ GET /home 200 in 95ms
+ GET /api/department-sections 200 in 80ms
+ GET /api/department-sections 200 in 92ms
+ GET /api/department-sections 200 in 79ms
+ GET /api/department-sections 200 in 86ms
+ GET /workspace?type=requisition&id=REQ-HQ-1&sourcingWeek=2026-07-06 200 in 67ms
+ GET /candidates 200 in 50ms
+ GET /home 200 in 76ms
+ GET /offers 200 in 67ms
+ GET /home 200 in 90ms
+ GET /sourcing?sourceSearch=GRP-TECH&reqSearch=REQ-KT1-1&sourcingWeek=2026-07-06 200 in 88ms
+ GET /home 200 in 73ms
+ GET /sourcing?sourcingWeek=2026-07-06 200 in 48ms
+ GET /home 200 in 61ms
+ GET /sourcing?sourcingWeek=2026-07-06 200 in 58ms
+ GET /offers 200 in 73ms
+ GET /audit 200 in 74ms
+ GET /workspace?type=requisition&id=REQ-HQ-1&sourcingWeek=2026-07-06 200 in 70ms
+ GET /workspace?type=group&id=GRP-TECH&sourcingWeek=2026-07-06 200 in 78ms
+ GET /workspace?type=group&id=GRP-TECH&sourcingWeek=2026-07-06&lang=en&section=pipeline 200 in 73ms
+ GET /workspace?type=group&id=GRP-ENG&section=pipeline&sourcingWeek=2026-07-06 200 in 73ms
+ GET /workspace?type=requisition&id=REQ-KT1-1&section=overview 200 in 74ms
+ GET /workspace?type=requisition&id=REQ-KT2-1&section=outcome 200 in 66ms
+ GET /workspace 200 in 78ms
+ GET /workspace 200 in 76ms
+ GET /api/department-sections 200 in 32ms
+ GET /api/department-sections 200 in 36ms
+ GET /workspace 200 in 62ms
+ GET /workspace 200 in 71ms
+ GET /sourcing?sourcingWeek=2026-07-06 200 in 38ms
+ GET /sourcing?sourcingWeek=2026-07-06 200 in 85ms
+ GET /pipeline?pipelineSearch=C-PHONE 200 in 77ms
+ GET /workspace?type=group&id=GRP-ENG&section=sourcing&sourcingWeek=2026-07-06 200 in 73ms
+ GET /workspace?type=group&id=GRP-ENG&section=sourcing&sourcingWeek=2026-07-13 200 in 84ms
+ GET /workspace?sourcingWeek=2026-07-06 200 in 80ms
+ GET /workspace?type=requisition&id=REQ-KT2-1 200 in 69ms
+ GET /workspace?type=requisition&id=REQ-KT2-1 200 in 82ms
+ GET /candidates 200 in 54ms
+ GET /home 200 in 58ms
+ GET /workspace?type=requisition&id=REQ-HQ-1 200 in 71ms
+ GET /pipeline 200 in 74ms
+ GET /candidates 200 in 72ms
+ GET /sourcing?sourcingWeek=2026-07-06 200 in 98ms
+ GET /workspace?type=requisition&id=REQ-KT2-1 200 in 61ms
+ GET /workspace?type=requisition&id=REQ-HQ-1&section=sourcing&sourcingWeek=2026-07-06 200 in 66ms
+ GET /pipeline 200 in 63ms
+ GET /workspace?type=requisition&id=REQ-HQ-1 200 in 61ms
+ GET / 307 in 79ms
+ GET /home 200 in 57ms
+ GET / 307 in 115ms
+ GET /home 200 in 60ms
+ GET /pipeline?lang=en&site=KT1&pic=Bob&sourcingWeek=2026-07-06 200 in 63ms
+ GET /pipeline 200 in 46ms
+ GET /sourcing?sourcingWeek=2026-07-06 200 in 57ms
+ GET /home 200 in 79ms
+ GET /workspace 200 in 73ms
+ GET /requisitions 200 in 93ms
+ GET /candidates 200 in 53ms
+ GET /offers 200 in 48ms
+ GET /dashboard 200 in 56ms
+ GET /audit 200 in 48ms
+ GET /workspace?type=requisition&id=REQ-HQ-1 200 in 57ms
+ GET / 307 in 84ms
+ GET /home 200 in 62ms
+ GET / 307 in 101ms
+ GET /home 200 in 75ms
+ GET /pipeline 200 in 45ms
+ GET /pipeline?pipelineSearch=C-REF 200 in 56ms
+ GET /pipeline?pipelineSearch=REQ-KT2-1 200 in 63ms
+ GET /pipeline?pipelineSearch=Analyst 200 in 77ms
+ GET /pipeline?pipelineSearch=Alice 200 in 71ms
+ GET /pipeline 200 in 55ms
+ GET /pipeline 200 in 76ms
+ GET /pipeline 200 in 69ms
+ GET /home 200 in 91ms
+ GET /pipeline 200 in 88ms
+ GET /pipeline 200 in 88ms
+ GET /pipeline 200 in 76ms
+ GET /pipeline?lang=en&site=KT1&pic=Bob&sourcingWeek=2026-07-06 200 in 88ms
+ GET /workspace?type=requisition&id=REQ-HQ-1&section=overview&sourcingWeek=2026-07-06 200 in 81ms
+ GET /workspace 200 in 71ms
+ GET /workspace?type=requisition&id=REQ-CLOSED-1 200 in 76ms
+ GET /candidates?candSearch=REQ-HQ-1 200 in 71ms
+ GET /requisitions 200 in 65ms
+ GET /api/department-sections 200 in 46ms
+ GET /api/department-sections 200 in 54ms
+ GET /api/department-sections 200 in 43ms
+ GET /api/department-sections 200 in 45ms
+ GET /candidates 200 in 68ms
+ GET /offers 200 in 65ms
+ GET /sourcing?sourceSearch=GRP-TECH&reqSearch=REQ-KT1-1&sourcingWeek=2026-07-06 200 in 98ms
+ GET /sourcing?sourcingWeek=2026-07-06 200 in 62ms
+ GET /sourcing?sourcingWeek=2026-07-06 200 in 78ms
+ GET /sourcing?sourcingWeek=2026-07-06 200 in 63ms
+ GET /pipeline?pipelineSearch=C-PHONE 200 in 78ms
+ GET /candidates 200 in 88ms
+ GET /home 200 in 74ms
+ GET /workspace?type=requisition&id=REQ-HQ-1 200 in 67ms
+ GET /pipeline 200 in 80ms
+ GET /candidates 200 in 60ms
+ GET /sourcing?sourcingWeek=2026-07-06 200 in 75ms
+ GET /workspace?type=requisition&id=REQ-KT1-1&sourcingWeek=2026-07-06 200 in 76ms
+ GET /workspace?type=requisition&id=REQ-HQ-1&sourcingWeek=2026-07-06 200 in 75ms
+ GET /workspace?type=group&id=GRP-ENG&section=sourcing&sourcingWeek=2026-07-06 200 in 66ms
+ GET /workspace?type=group&id=GRP-ENG&section=sourcing&sourcingWeek=2026-07-13 200 in 64ms
+ GET /workspace?sourcingWeek=2026-07-06 200 in 62ms
+ GET /workspace?type=requisition&id=REQ-KT2-1 200 in 76ms
+ GET /workspace?type=requisition&id=REQ-KT2-1 200 in 74ms
+ GET /workspace?type=requisition&id=REQ-KT2-1 200 in 50ms
+ GET /workspace?type=requisition&id=REQ-HQ-1&section=sourcing&sourcingWeek=2026-07-06 200 in 58ms
+ GET /pipeline 200 in 65ms
+ GET /workspace?type=requisition&id=REQ-HQ-1 200 in 68ms
+ GET /workspace?lang=en&sourcingWeek=2026-08-10&type=group&id=GRP-0010&section=pipeline 200 in 81ms
+ ○ Compiling /_not-found ...
+ ✓ Compiled /_not-found in 1085ms (842 modules)
+ GET /.well-known/appspecific/com.chrome.devtools.json 404 in 1278ms
+ GET /pipeline?lang=en&sourcingWeek=2026-08-10 200 in 221ms
+ ✓ Compiled in 3.8s (839 modules)
+ ✓ Compiled in 1447ms (839 modules)
+ ✓ Compiled in 3.3s (839 modules)
+ ✓ Compiled / in 331ms (418 modules)
+ GET / 307 in 490ms
+ GET /home 200 in 109ms
+ GET / 307 in 98ms
+ GET /home 200 in 60ms
+ GET /pipeline?lang=en&site=KT1&pic=Bob&sourcingWeek=2026-07-06 200 in 93ms
+ GET /pipeline 200 in 54ms
+ GET /sourcing?sourcingWeek=2026-07-06 200 in 104ms
+ GET /home 200 in 69ms
+ GET /workspace 200 in 78ms
+ ✓ Compiled /requisitions in 239ms (420 modules)
+ GET /requisitions 200 in 417ms
+ GET /candidates 200 in 78ms
+ ✓ Compiled /offers in 449ms (422 modules)
+ GET /offers 200 in 621ms
+ ✓ Compiled /dashboard in 233ms (424 modules)
+ GET /dashboard 200 in 375ms
+ ✓ Compiled /audit in 199ms (426 modules)
+ GET /audit 200 in 365ms
+ GET /workspace?type=requisition&id=REQ-HQ-1 200 in 109ms
+ GET /pipeline 200 in 90ms
+ GET /pipeline?pipelineSearch=C-REF 200 in 55ms
+ GET /pipeline?pipelineSearch=REQ-KT2-1 200 in 75ms
+ GET /pipeline?pipelineSearch=Analyst 200 in 56ms
+ GET /pipeline?pipelineSearch=Alice 200 in 74ms
+ GET /pipeline 200 in 65ms
+ GET /pipeline 200 in 70ms
+ GET /pipeline 200 in 72ms
+ GET /home 200 in 101ms
+ GET /pipeline 200 in 71ms
+ GET /pipeline 200 in 65ms
+ GET /pipeline 200 in 79ms
+ GET /pipeline?lang=en&sourcingWeek=2026-08-10 200 in 101ms
+ ○ Compiling /_not-found ...
+ ✓ Compiled /_not-found in 1310ms (842 modules)
+ GET /.well-known/appspecific/com.chrome.devtools.json 404 in 1487ms
+ ✓ Compiled in 2.3s (839 modules)
+ ✓ Compiled / in 290ms (418 modules)
+ GET / 307 in 552ms
+ GET /home 200 in 216ms
+ GET / 307 in 95ms
+ GET /home 200 in 80ms
+ GET /pipeline?lang=en&site=KT1&pic=Bob&sourcingWeek=2026-07-06 200 in 132ms
+ GET /pipeline 200 in 96ms
+ GET /sourcing?sourcingWeek=2026-07-06 200 in 122ms
+ GET /home 200 in 98ms
+ GET /workspace 200 in 95ms
+ ✓ Compiled /requisitions in 207ms (420 modules)
+ GET /requisitions 200 in 457ms
+ GET /candidates 200 in 101ms
+ ✓ Compiled /offers in 428ms (422 modules)
+ GET /offers 200 in 603ms
+ ✓ Compiled /dashboard in 256ms (424 modules)
+ GET /dashboard 200 in 431ms
+ ✓ Compiled /audit in 247ms (426 modules)
+ GET /audit 200 in 395ms
+ GET /workspace?type=requisition&id=REQ-HQ-1 200 in 103ms
+ GET /workspace?type=requisition&id=REQ-KT1-1&sourcingWeek=2026-07-06 200 in 72ms
+ GET /workspace?type=requisition&id=REQ-HQ-1&sourcingWeek=2026-07-06 200 in 84ms
+ GET /workspace?type=group&id=GRP-ENG&section=sourcing&sourcingWeek=2026-07-06 200 in 52ms
+ GET /workspace?type=group&id=GRP-ENG&section=sourcing&sourcingWeek=2026-07-13 200 in 83ms
+ GET /workspace?sourcingWeek=2026-07-06 200 in 92ms
+ GET /workspace?type=requisition&id=REQ-KT2-1 200 in 76ms
+ GET /workspace?type=requisition&id=REQ-KT2-1 200 in 86ms
+ GET /workspace?type=requisition&id=REQ-KT2-1 200 in 85ms
+ GET /workspace?type=requisition&id=REQ-HQ-1&section=sourcing&sourcingWeek=2026-07-06 200 in 78ms
+ GET /pipeline 200 in 107ms
+ GET /workspace?type=requisition&id=REQ-HQ-1 200 in 71ms
+ GET /workspace?type=requisition&id=REQ-HQ-1&sourcingWeek=2026-07-06 200 in 65ms
+ GET /workspace?type=group&id=GRP-TECH&sourcingWeek=2026-07-06 200 in 74ms
+ GET /workspace?type=group&id=GRP-TECH&sourcingWeek=2026-07-06&lang=en&section=pipeline 200 in 67ms
+ GET /workspace?type=group&id=GRP-ENG&section=pipeline&sourcingWeek=2026-07-06 200 in 57ms
+ GET /workspace?type=requisition&id=REQ-KT1-1&section=overview 200 in 79ms
+ GET /workspace?type=requisition&id=REQ-KT2-1&section=outcome 200 in 59ms
+ GET /workspace 200 in 92ms
+ GET /workspace 200 in 62ms
+ ○ Compiling /api/department-sections ...
+ ✓ Compiled /api/department-sections in 567ms (451 modules)
+ GET /workspace 200 in 967ms
+ GET /workspace 200 in 63ms
+ GET /workspace?lang=en&sourcingWeek=2026-08-10&type=group&id=GRP-0011&section=overview 200 in 53ms
+ ○ Compiling /_not-found ...
+ ✓ Compiled /_not-found in 923ms (842 modules)
+ GET /.well-known/appspecific/com.chrome.devtools.json 404 in 1079ms
+ ✓ Compiled /dashboard in 450ms (412 modules)
+ ✓ Compiled in 2.4s (839 modules)
+ GET /workspace?lang=en&sourcingWeek=2026-08-10&type=group&id=GRP-0010&section=pipeline 200 in 312ms
+ ✓ Compiled /_not-found in 521ms (842 modules)
+ GET /.well-known/appspecific/com.chrome.devtools.json 404 in 623ms
+ ✓ Compiled in 3.7s (842 modules)
+ GET /workspace?lang=en&sourcingWeek=2026-08-10&type=group&id=GRP-0010&section=pipeline 200 in 2218ms
+ GET /.well-known/appspecific/com.chrome.devtools.json 404 in 22ms
+ ✓ Compiled / in 287ms (419 modules)
+ GET / 307 in 459ms
+ GET /home 200 in 110ms
+ GET / 307 in 80ms
+ GET /home 200 in 52ms
+ ✓ Compiled /pipeline in 202ms (421 modules)
+ GET /pipeline?lang=en&site=KT1&pic=Bob&sourcingWeek=2026-07-06 200 in 370ms
+ GET /pipeline 200 in 77ms
+ GET /sourcing?sourcingWeek=2026-07-06 200 in 88ms
+ GET /home 200 in 90ms
+ GET /workspace 200 in 80ms
+ ✓ Compiled /requisitions in 177ms (423 modules)
+ GET /requisitions 200 in 308ms
+ GET /candidates 200 in 75ms
+ ✓ Compiled /offers in 284ms (425 modules)
+ GET /offers 200 in 389ms
+ GET /dashboard 200 in 75ms
+ ✓ Compiled /audit in 189ms (427 modules)
+ GET /audit 200 in 311ms
+ GET /workspace?type=requisition&id=REQ-HQ-1 200 in 66ms
+ GET /workspace?type=requisition&id=REQ-HQ-1&section=pipeline 200 in 60ms
+ GET / 307 in 104ms
+ GET /home 200 in 78ms
+ GET / 307 in 110ms
+ GET /home 200 in 67ms
+ GET /pipeline?lang=en&site=KT1&pic=Bob&sourcingWeek=2026-07-06 200 in 128ms
+ GET /pipeline 200 in 74ms
+ GET /sourcing?sourcingWeek=2026-07-06 200 in 91ms
+ GET /home 200 in 73ms
+ GET /workspace 200 in 77ms
+ GET /requisitions 200 in 94ms
+ GET /candidates 200 in 112ms
+ GET /offers 200 in 82ms
+ GET /dashboard 200 in 109ms
+ GET /audit 200 in 42ms
+ GET /workspace?type=requisition&id=REQ-HQ-1 200 in 58ms
+ GET /workspace?type=requisition&id=REQ-HQ-1&section=pipeline 200 in 106ms
+ GET / 307 in 74ms
+ GET /home 200 in 59ms
+ GET / 307 in 112ms
+ GET /home 200 in 83ms
+ GET /pipeline?lang=en&site=KT1&pic=Bob&sourcingWeek=2026-07-06 200 in 67ms
+ GET /pipeline 200 in 100ms
+ GET /sourcing?sourcingWeek=2026-07-06 200 in 60ms
+ GET /home 200 in 102ms
+ GET /workspace 200 in 73ms
+ GET /requisitions 200 in 77ms
+ GET /candidates 200 in 81ms
+ GET /offers 200 in 50ms
+ GET /dashboard 200 in 53ms
+ GET /audit 200 in 54ms
+ GET /workspace?type=requisition&id=REQ-HQ-1 200 in 94ms
+ GET /workspace?type=requisition&id=REQ-HQ-1&section=pipeline 200 in 73ms
+ ✓ Compiled in 2.6s (855 modules)
+ GET / 307 in 118ms
+ GET /home 200 in 126ms
+ GET / 307 in 99ms
+ GET /home 200 in 64ms
+ GET /pipeline?lang=en&site=KT1&pic=Bob&sourcingWeek=2026-07-06 200 in 100ms
+ GET /pipeline 200 in 67ms
+ GET /sourcing?sourcingWeek=2026-07-06 200 in 100ms
+ GET /home 200 in 79ms
+ GET /workspace 200 in 114ms
+ GET /requisitions 200 in 78ms
+ GET /candidates 200 in 104ms
+ GET /offers 200 in 100ms
+ GET /dashboard 200 in 88ms
+ GET /audit 200 in 87ms
+ GET /workspace?type=requisition&id=REQ-HQ-1 200 in 66ms
+ GET /workspace?type=requisition&id=REQ-HQ-1&section=pipeline 200 in 84ms
+ ✓ Compiled in 2.1s (839 modules)
+ ✓ Compiled / in 241ms (418 modules)
+ GET / 307 in 447ms
+ GET /home 200 in 224ms
+ GET / 307 in 112ms
+ GET /home 200 in 66ms
+ ✓ Compiled /pipeline in 179ms (420 modules)
+ GET /pipeline?lang=en&site=KT1&pic=Bob&sourcingWeek=2026-07-06 200 in 371ms
+ GET /pipeline 200 in 61ms
+ GET /sourcing?sourcingWeek=2026-07-06 200 in 108ms
+ GET /home 200 in 84ms
+ GET /workspace 200 in 107ms
+ ✓ Compiled /requisitions in 164ms (422 modules)
+ GET /requisitions 200 in 280ms
+ GET /candidates 200 in 90ms
+ ✓ Compiled /offers in 333ms (424 modules)
+ GET /offers 200 in 481ms
+ GET /dashboard 200 in 106ms
+ ✓ Compiled /audit in 201ms (426 modules)
+ GET /audit 200 in 313ms
+ GET /workspace?type=requisition&id=REQ-HQ-1 200 in 102ms
+ GET /workspace?type=requisition&id=REQ-HQ-1&section=pipeline 200 in 57ms
+ GET /pipeline?lang=en&sourcingWeek=2026-08-10 200 in 70ms
+ ○ Compiling /_not-found ...
+ ✓ Compiled /_not-found in 881ms (850 modules)
+ GET /.well-known/appspecific/com.chrome.devtools.json 404 in 1096ms
+ ✓ Compiled in 2.1s (839 modules)
+ ✓ Compiled in 1376ms (839 modules)
+ ✓ Compiled in 1341ms (839 modules)
+ ✓ Compiled in 1307ms (839 modules)
+ ✓ Compiled / in 381ms (418 modules)
+ GET / 307 in 565ms
+ ✓ Compiled /home in 272ms (420 modules)
+ GET /home 200 in 469ms
+ GET / 307 in 121ms
+ GET /home 200 in 76ms
+ GET /pipeline?lang=en&site=KT1&pic=Bob&sourcingWeek=2026-07-06 200 in 98ms
+ GET /pipeline 200 in 53ms
+ GET /sourcing?sourcingWeek=2026-07-06 200 in 129ms
+ GET /home 200 in 77ms
+ GET /workspace 200 in 115ms
+ ✓ Compiled /requisitions in 294ms (422 modules)
+ GET /requisitions 200 in 479ms
+ GET /candidates 200 in 105ms
+ ✓ Compiled /offers in 296ms (424 modules)
+ GET /offers 200 in 465ms
+ GET /dashboard 200 in 65ms
+ ✓ Compiled /audit in 217ms (426 modules)
+ GET /audit 200 in 356ms
+ GET /workspace?type=requisition&id=REQ-HQ-1 200 in 84ms
+ GET /workspace?type=requisition&id=REQ-HQ-1&section=pipeline 200 in 81ms
+ ✓ Compiled in 4.7s (855 modules)
+ GET / 307 in 114ms
+ GET /home 200 in 136ms
+ GET / 307 in 92ms
+ GET /home 200 in 74ms
+ GET /pipeline?lang=en&site=KT1&pic=Bob&sourcingWeek=2026-07-06 200 in 92ms
+ GET /pipeline 200 in 94ms
+ GET /sourcing?sourcingWeek=2026-07-06 200 in 101ms
+ GET /home 200 in 68ms
+ GET /workspace 200 in 53ms
+ GET /requisitions 200 in 111ms
+ GET /candidates 200 in 84ms
+ GET /offers 200 in 115ms
+ GET /dashboard 200 in 106ms
+ GET /audit 200 in 101ms
+ GET /workspace?type=requisition&id=REQ-HQ-1 200 in 76ms
+ GET /workspace?type=requisition&id=REQ-HQ-1&section=pipeline 200 in 95ms
+ GET /workspace?lang=en&sourcingWeek=2026-08-10&type=group&id=GRP-0010&section=pipeline 200 in 60ms
+ ○ Compiling /_not-found ...
+ ✓ Compiled /_not-found in 647ms (844 modules)
+ GET /.well-known/appspecific/com.chrome.devtools.json 404 in 829ms

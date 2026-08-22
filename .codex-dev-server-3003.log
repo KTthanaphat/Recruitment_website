@@ -1,0 +1,66 @@
+  ▲ Next.js 14.2.35
+  - Local:        http://localhost:3003
+  - Environments: .env.local
+  - Experiments (use with caution):
+    · cpus
+
+ ✓ Starting...
+ ✓ Ready in 4.4s
+ ○ Compiling /login ...
+ ✓ Compiled /login in 8.1s (585 modules)
+ GET /login 200 in 8527ms
+ GET /login 200 in 101ms
+ GET /login 200 in 85ms
+ GET /login 200 in 132ms
+ ○ Compiling /home ...
+ ✓ Compiled /home in 3.5s (825 modules)
+ ✓ Compiled /pipeline in 489ms (813 modules)
+ ✓ Compiled /workspace in 492ms (815 modules)
+ ○ Compiling /requisitions ...
+ ✓ Compiled /requisitions in 530ms (817 modules)
+ ○ Compiling /candidates ...
+ ✓ Compiled /candidates in 573ms (819 modules)
+ ○ Compiling /sourcing ...
+ ✓ Compiled /sourcing in 660ms (819 modules)
+ ○ Compiling /api/department-sections ...
+ ✓ Compiled /api/department-sections in 540ms (444 modules)
+ GET /api/department-sections 200 in 708ms
+ GET /api/department-sections 200 in 46ms
+ GET /workspace?lang=th&sourcingWeek=2026-07-20&type=group&id=GRP-0010&section=pipeline&doc=test01&focusType=candidate&focusId=CAN-0007 200 in 276ms
+ GET /workspace?lang=th&sourcingWeek=2026-07-20&type=group&id=GRP-0010&section=pipeline&doc=test01&focusType=candidate&focusId=CAN-0007 200 in 93ms
+ ✓ Compiled in 983ms (422 modules)
+ ✓ Compiled in 1613ms (833 modules)
+ ✓ Compiled in 968ms (833 modules)
+ ○ Compiling /_error ...
+ GET /workspace?lang=th&sourcingWeek=2026-07-20&type=group&id=GRP-0010&section=pipeline&doc=test01&focusType=candidate&focusId=CAN-0007 500 in 2623ms
+ GET /workspace?lang=th&sourcingWeek=2026-07-20&type=group&id=GRP-0010&section=pipeline&doc=test01&focusType=candidate&focusId=CAN-0007 500 in 216624ms
+ GET /workspace?lang=th&sourcingWeek=2026-07-20&type=group&id=GRP-0010&section=pipeline&doc=test01&focusType=candidate&focusId=CAN-0007 500 in 1800336ms
+ GET /login 200 in 14947ms
+  ▲ Next.js 14.2.35
+  - Local:        http://localhost:3003
+  - Environments: .env.local
+  - Experiments (use with caution):
+    · cpus
+
+ ✓ Starting...
+ ✓ Ready in 8.4s
+  ▲ Next.js 14.2.35
+  - Local:        http://localhost:3003
+  - Environments: .env.local
+  - Experiments (use with caution):
+    · cpus
+
+ ✓ Starting...
+
+   We detected TypeScript in your project and reconfigured your tsconfig.json file for you. Strict-mode is set to false by default.
+   The following suggested values were added to your tsconfig.json. These values can be changed to fit your project's needs:
+
+   	- include was updated to add '..\..\..\AppData\Local\recruitment-tracking-cloud\.next/types/**/*.ts'
+
+ ✓ Ready in 3.7s
+ ○ Compiling / ...
+ ✓ Compiled / in 4.8s (450 modules)
+ ○ Compiling /_error ...
+ ✓ Compiled /_error in 6.6s (677 modules)
+ GET / 500 in 13039ms
+[?25h

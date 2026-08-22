@@ -1,0 +1,7 @@
+{
+  "/login/page": "app/login/page.js",
+  "/sourcing/page": "app/sourcing/page.js",
+  "/home/page": "app/home/page.js",
+  "/workspace/page": "app/workspace/page.js",
+  "/pipeline/page": "app/pipeline/page.js"
+}

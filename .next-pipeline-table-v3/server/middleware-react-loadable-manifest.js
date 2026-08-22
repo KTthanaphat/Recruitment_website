@@ -1,0 +1,1 @@
+self.__REACT_LOADABLE_MANIFEST="{\"components\\\\dashboard\\\\VacancyWaterfallView.tsx -> xlsx\":{\"id\":\"components\\\\dashboard\\\\VacancyWaterfallView.tsx -> xlsx\",\"files\":[\"static/chunks/_app-pages-browser_node_modules_pnpm_xlsx_0_18_5_node_modules_xlsx_xlsx_mjs.js\"]}}"

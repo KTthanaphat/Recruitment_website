@@ -1,0 +1,308 @@
+  ▲ Next.js 14.2.35
+  - Local:        http://localhost:3002
+  - Environments: .env.local
+  - Experiments (use with caution):
+    · cpus
+
+ ✓ Starting...
+ ✓ Ready in 3.2s
+ ○ Compiling /login ...
+ ✓ Compiled /login in 8.5s (585 modules)
+ GET /login 200 in 8890ms
+ GET /login 200 in 97ms
+ GET /login 200 in 81ms
+ ○ Compiling /home ...
+ ✓ Compiled /home in 3.5s (825 modules)
+ GET /home 200 in 3900ms
+ GET /login 200 in 92ms
+ ○ Compiling / ...
+ ✓ Compiled / in 621ms (820 modules)
+ GET / 307 in 847ms
+ GET /home 200 in 182ms
+ GET / 307 in 365ms
+ GET /home 200 in 107ms
+ GET / 307 in 79ms
+ GET /home 200 in 63ms
+ GET / 307 in 91ms
+ GET /home 200 in 69ms
+ GET / 307 in 80ms
+ GET /home 200 in 49ms
+ ○ Compiling /pipeline ...
+ ✓ Compiled /pipeline in 2.4s (836 modules)
+ GET /pipeline 200 in 2812ms
+ GET /pipeline 200 in 2814ms
+ GET /pipeline 200 in 68ms
+ GET /pipeline 200 in 62ms
+ GET /pipeline 200 in 80ms
+ GET /pipeline 200 in 74ms
+ GET /pipeline 200 in 66ms
+ GET /pipeline 200 in 82ms
+ GET /pipeline 200 in 50ms
+ GET /home 200 in 108ms
+ GET /pipeline 200 in 82ms
+ GET /pipeline 200 in 162ms
+ ✓ Compiled in 907ms (828 modules)
+ ✓ Compiled in 1052ms (828 modules)
+ ✓ Compiled in 1207ms (828 modules)
+ ✓ Compiled in 887ms (828 modules)
+ ✓ Compiled / in 406ms (413 modules)
+ GET / 307 in 579ms
+ GET /home 200 in 150ms
+ GET / 307 in 58ms
+ GET /home 200 in 49ms
+ GET /pipeline 200 in 83ms
+ GET /pipeline 200 in 55ms
+ GET /pipeline 200 in 107ms
+ GET /pipeline 200 in 69ms
+ GET /home 200 in 64ms
+ GET /pipeline 200 in 59ms
+ GET /pipeline 200 in 94ms
+ GET /pipeline 200 in 77ms
+ GET /pipeline 200 in 52ms
+ GET /pipeline 200 in 52ms
+ GET /pipeline 200 in 59ms
+ GET /pipeline 200 in 53ms
+ GET /pipeline 200 in 66ms
+ ○ Compiling /candidates ...
+ ✓ Compiled /candidates in 891ms (830 modules)
+ ✓ Compiled /workspace in 449ms (818 modules)
+ ✓ Compiled in 1527ms (828 modules)
+ ✓ Compiled / in 314ms (413 modules)
+ ○ Compiling /_error ...
+ ✓ Compiled /_error in 1966ms (1063 modules)
+ GET / 500 in 2752ms
+ GET / 500 in 52ms
+ GET / 500 in 38ms
+ GET / 500 in 35ms
+ GET / 500 in 29ms
+ GET / 500 in 27ms
+ GET / 500 in 30ms
+ GET / 500 in 29ms
+ GET / 500 in 24ms
+ GET / 500 in 33ms
+ GET / 500 in 130ms
+ GET / 500 in 30ms
+ GET / 500 in 26ms
+ GET / 500 in 36ms
+ GET / 500 in 51ms
+ GET / 500 in 30ms
+ GET / 500 in 29ms
+ ○ Compiling /_not-found ...
+ ✓ Compiled /_not-found in 833ms (1052 modules)
+ GET / 404 in 1004ms
+ GET /index.html 404 in 41ms
+ GET / 404 in 67ms
+ GET /index.html 404 in 40ms
+ GET / 404 in 36ms
+ GET / 404 in 22ms
+ GET / 404 in 36ms
+ GET / 404 in 28ms
+ GET / 404 in 29ms
+ GET / 404 in 29ms
+ GET / 404 in 26ms
+ GET / 404 in 27ms
+ GET / 404 in 23ms
+ GET / 404 in 21ms
+ GET / 404 in 33ms
+ GET / 404 in 27ms
+ GET / 404 in 27ms
+ GET / 404 in 28ms
+ GET / 404 in 25ms
+ GET / 404 in 29ms
+ GET / 404 in 29ms
+ GET / 404 in 28ms
+ GET / 404 in 24ms
+ GET / 404 in 26ms
+ GET / 404 in 27ms
+ GET / 404 in 27ms
+ GET / 404 in 29ms
+ GET / 404 in 27ms
+ GET / 404 in 29ms
+ GET / 404 in 26ms
+ GET / 404 in 30ms
+ GET / 404 in 23ms
+ GET / 404 in 28ms
+ GET / 404 in 25ms
+ GET / 404 in 26ms
+ GET / 404 in 24ms
+ GET / 404 in 28ms
+ GET / 404 in 27ms
+ GET / 404 in 21ms
+ GET / 404 in 25ms
+ GET / 404 in 27ms
+ GET / 404 in 27ms
+ GET / 404 in 26ms
+ GET / 404 in 29ms
+ GET / 404 in 28ms
+ GET / 404 in 21ms
+ GET / 404 in 22ms
+ GET / 404 in 27ms
+ GET / 404 in 29ms
+ GET / 404 in 21ms
+ GET / 404 in 28ms
+ GET / 404 in 22ms
+ GET / 404 in 23ms
+ GET / 404 in 31ms
+ GET / 404 in 26ms
+ GET / 404 in 22ms
+ GET / 404 in 31ms
+ GET / 404 in 22ms
+ GET / 404 in 25ms
+ GET / 404 in 88ms
+ GET / 404 in 37ms
+ GET / 404 in 26ms
+ GET / 404 in 25ms
+ GET / 404 in 30ms
+ GET / 404 in 33ms
+ GET / 404 in 25ms
+ GET / 404 in 22ms
+ GET / 404 in 34ms
+ GET / 404 in 26ms
+ GET / 404 in 31ms
+ GET / 404 in 31ms
+ GET / 404 in 26ms
+ GET / 404 in 25ms
+ GET / 404 in 22ms
+ GET / 404 in 27ms
+ GET / 404 in 33ms
+ GET / 404 in 25ms
+ GET / 404 in 26ms
+ GET / 404 in 27ms
+ GET / 404 in 32ms
+ GET / 404 in 24ms
+ GET / 404 in 25ms
+ GET / 404 in 22ms
+ GET / 404 in 33ms
+ GET / 404 in 29ms
+ GET / 404 in 21ms
+ GET / 404 in 24ms
+ GET / 404 in 26ms
+ GET / 404 in 31ms
+ GET / 404 in 25ms
+ GET / 404 in 26ms
+ GET / 404 in 22ms
+ GET / 404 in 27ms
+ GET / 404 in 29ms
+ GET / 404 in 22ms
+ GET / 404 in 26ms
+ GET / 404 in 22ms
+ GET / 404 in 28ms
+ GET / 404 in 31ms
+ GET / 404 in 26ms
+ GET / 404 in 22ms
+ GET / 404 in 27ms
+ GET /login 500 in 3710ms
+ ✓ Compiled in 5.6s (608 modules)
+ ✓ Compiled in 1446ms (1055 modules)
+ ✓ Compiled in 1033ms (1055 modules)
+ ✓ Compiled in 3.3s (609 modules)
+ ✓ Compiled in 2.3s (1055 modules)
+ ✓ Compiled in 1582ms (1055 modules)
+ ✓ Compiled in 899ms (1055 modules)
+ ✓ Compiled in 777ms (1055 modules)
+ ✓ Compiled in 1460ms (1055 modules)
+ ✓ Compiled in 1238ms (1055 modules)
+ ✓ Compiled in 340ms (609 modules)
+ ✓ Compiled in 924ms (1055 modules)
+ ✓ Compiled in 1348ms (1055 modules)
+ ✓ Compiled in 1326ms (1055 modules)
+ ✓ Compiled in 345ms (609 modules)
+ ✓ Compiled in 713ms (1055 modules)
+ ✓ Compiled in 617ms (1055 modules)
+ ✓ Compiled in 1065ms (1055 modules)
+ ✓ Compiled in 1103ms (1055 modules)
+ ✓ Compiled in 1413ms (1055 modules)
+ ✓ Compiled in 820ms (1055 modules)
+ ✓ Compiled in 1161ms (1055 modules)
+ ✓ Compiled in 1045ms (1055 modules)
+ ✓ Compiled in 1086ms (1055 modules)
+ ✓ Compiled in 1364ms (1055 modules)
+ ✓ Compiled in 1340ms (1055 modules)
+ ✓ Compiled in 1002ms (1055 modules)
+ ✓ Compiled in 1135ms (1055 modules)
+ ✓ Compiled in 1439ms (1055 modules)
+ ✓ Compiled in 1275ms (1055 modules)
+ ✓ Compiled in 1106ms (1055 modules)
+ ✓ Compiled in 1250ms (1055 modules)
+ ✓ Compiled in 1421ms (1055 modules)
+ ✓ Compiled in 1859ms (1055 modules)
+ ✓ Compiled in 1215ms (1055 modules)
+ ✓ Compiled in 1574ms (1055 modules)
+ ✓ Compiled in 301ms (609 modules)
+ ✓ Compiled in 682ms (1055 modules)
+ ✓ Compiled in 751ms (1055 modules)
+ ✓ Compiled in 1011ms (1055 modules)
+ ✓ Compiled in 744ms (1055 modules)
+ ✓ Compiled in 1049ms (1055 modules)
+ ✓ Compiled in 626ms (1055 modules)
+ ✓ Compiled in 670ms (1055 modules)
+ ✓ Compiled in 627ms (1055 modules)
+ ✓ Compiled in 1043ms (1055 modules)
+ ✓ Compiled in 1186ms (1055 modules)
+ ✓ Compiled in 800ms (1055 modules)
+ ✓ Compiled in 4.3s (1055 modules)
+ ✓ Compiled in 871ms (1055 modules)
+ ✓ Compiled in 4.2s (1055 modules)
+ ✓ Compiled in 1247ms (1055 modules)
+ ✓ Compiled in 1294ms (1055 modules)
+ ✓ Compiled in 9.6s (1055 modules)
+ ✓ Compiled in 3.5s (1055 modules)
+ ✓ Compiled in 1379ms (1055 modules)
+ ✓ Compiled in 1614ms (1055 modules)
+ ✓ Compiled in 1278ms (1055 modules)
+ ✓ Compiled in 1724ms (1055 modules)
+ ✓ Compiled in 1319ms (1055 modules)
+ ✓ Compiled in 3.5s (1053 modules)
+ ✓ Compiled in 983ms (1051 modules)
+ ✓ Compiled in 982ms (1051 modules)
+ ✓ Compiled in 969ms (1051 modules)
+ ✓ Compiled in 1058ms (1051 modules)
+ ✓ Compiled in 785ms (1051 modules)
+ ✓ Compiled in 12.7s (1051 modules)
+ ✓ Compiled in 12.2s (1051 modules)
+ ✓ Compiled in 2.1s (1051 modules)
+ ✓ Compiled in 1753ms (1051 modules)
+ ✓ Compiled in 1249ms (1051 modules)
+ ✓ Compiled in 953ms (1051 modules)
+ ✓ Compiled in 981ms (1051 modules)
+ ✓ Compiled in 1372ms (1051 modules)
+ ✓ Compiled in 1700ms (1051 modules)
+ ✓ Compiled in 1617ms (1051 modules)
+ ✓ Compiled in 1489ms (1051 modules)
+ ✓ Compiled in 1284ms (1051 modules)
+ ✓ Compiled in 945ms (1051 modules)
+ ✓ Compiled in 1562ms (1051 modules)
+ ✓ Compiled in 1377ms (1051 modules)
+ ✓ Compiled in 1320ms (1051 modules)
+ ✓ Compiled in 1401ms (1051 modules)
+ ✓ Compiled in 4.9s (1051 modules)
+ ✓ Compiled in 3.8s (1051 modules)
+  ▲ Next.js 14.2.35
+  - Local:        http://localhost:3002
+  - Environments: .env.local
+  - Experiments (use with caution):
+    · cpus
+
+ ✓ Starting...
+ ✓ Ready in 7.6s
+  ▲ Next.js 14.2.35
+  - Local:        http://localhost:3002
+  - Environments: .env.local
+  - Experiments (use with caution):
+    · cpus
+
+ ✓ Starting...
+
+   We detected TypeScript in your project and reconfigured your tsconfig.json file for you. Strict-mode is set to false by default.
+   The following suggested values were added to your tsconfig.json. These values can be changed to fit your project's needs:
+
+   	- include was updated to add '..\..\..\AppData\Local\recruitment-tracking-cloud\.next/types/**/*.ts'
+
+ ✓ Ready in 3.7s
+ ○ Compiling / ...
+ ✓ Compiled / in 6.7s (473 modules)
+ ○ Compiling /_error ...
+ ✓ Compiled /_error in 7.5s (691 modules)
+ GET / 500 in 16071ms
+ GET / 500 in 73ms
+[?25h

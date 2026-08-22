@@ -243,6 +243,56 @@ test("group details can add an eligible requisition to an existing group", async
   expect(mock.rpcCalls.at(-1)?.payload).toEqual({ group_id: "GRP-ENG", doc_id: "REQ-UNMATCHED-1" });
 });
 
+test("group details use compact checkbox-style channel controls, Save, and icon-only unmatch", async ({ page }) => {
+  const mock = await installMockSupabase(page, { role: "admin_recruiter" });
+  await page.goto("/sourcing?sourcingWeek=2026-07-06");
+  await expectWorkspaceReady(page);
+
+  const group = page.getByRole("article").filter({ hasText: "GRP-ENG" });
+  await group.getByRole("button", { name: "Details" }).click();
+  const detailDialog = page.getByRole("dialog", { name: "Group details · GRP-ENG" });
+  const facebookToggle = detailDialog.getByRole("switch", { name: "Toggle Facebook" });
+  await expect(facebookToggle).toHaveAttribute("aria-checked", "true");
+  const checkboxBounds = await facebookToggle.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    return { width: bounds.width, height: bounds.height };
+  });
+  expect(checkboxBounds).toEqual({ width: 20, height: 20 });
+  await expect(detailDialog.getByRole("button", { name: "Save" })).toBeVisible();
+
+  await facebookToggle.click();
+  const saveDialog = page.getByRole("dialog", { name: "Confirm Save" });
+  await expect(saveDialog).toContainText("disable Facebook - GRP-ENG");
+  await saveDialog.getByRole("button", { name: "Save Changes" }).click();
+  await expect.poll(() => mock.rpcCalls.at(-1)?.endpoint).toBe("app_set_sourcing_group_channel_v1");
+  expect(mock.rpcCalls.at(-1)?.payload).toEqual({
+    group_id: "GRP-ENG",
+    channel: "fb",
+    enabled: false,
+    effective_week: "2026-07-06",
+    expected_updated_at: "2026-07-01T00:00:00"
+  });
+
+  await group.getByRole("button", { name: "Details" }).click();
+  const reopenedDetailDialog = page.getByRole("dialog", { name: "Group details · GRP-ENG" });
+  await reopenedDetailDialog.getByRole("button", { name: "Unmatch REQ-HQ-1" }).click();
+  const destructiveDialog = page.getByRole("dialog", { name: "Confirm destructive action" });
+  await expect(destructiveDialog).toContainText("Unmatch sourcing group GRP-ENG from requisition REQ-HQ-1");
+  await destructiveDialog.getByRole("button", { name: "Delete / Unmatch" }).click();
+  await expect.poll(() => mock.rpcCalls.at(-1)?.endpoint).toBe("app_unmatch_group_requisition");
+  expect(mock.rpcCalls.at(-1)?.payload).toMatchObject({ doc_group_id: "DG-HQ-ENG", doc_id: "REQ-HQ-1", group_id: "GRP-ENG" });
+});
+
+test("group details localize the Save label", async ({ page }) => {
+  await installMockSupabase(page, { role: "admin_recruiter", language: "th" });
+  await page.goto("/sourcing?sourcingWeek=2026-07-06");
+  await expect(page.getByRole("heading", { name: "แหล่งผู้สมัคร" }).first()).toBeVisible();
+
+  const group = page.getByRole("article").filter({ hasText: "GRP-ENG" });
+  await group.getByRole("button", { name: /รายละเอียด/ }).click();
+  await expect(page.getByRole("dialog").getByRole("button", { name: "บันทึก" })).toBeVisible();
+});
+
 test("sourcing unmatch uses destructive confirmation and RPC", async ({ page }) => {
   const mock = await installMockSupabase(page, { role: "admin_recruiter" });
   await page.goto("/sourcing?sourcingWeek=2026-07-06");

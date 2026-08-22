@@ -97,7 +97,7 @@ Hiring Workspace behavior:
 - The same candidate, requisition, and offer records are reused across the journey, with each surface opening the correct transactional action for the current stage.
 - Group-aware navigation keeps `group_id` context available when moving between Sourcing, Candidates, Pipeline, and Offer-related actions.
 - Workspace actions should preserve the current `lang`, `site`, `pic`, and `sourcingWeek` query parameters where applicable.
-- Workspace selection is group-first. Treat `/workspace?type=group&id=...` as the primary hiring-case entry point when a group exists, and treat requisition workspace URLs as a compatible focused slice of the same journey.
+- Workspace selection is group-first. Treat `/workspace?type=group&id=...` as the primary hiring-case entry point when a group exists, and treat requisition workspace URLs as a compatible focused slice of the same journey. Groups-picker card titles truncate to one line while their native tooltip preserves the full display position.
 - Workspace URL context is breadcrumb state, not disposable filter state. `type`, `id`, optional `doc`, and `section` identify the current hiring case, while `lang`, `site`, `pic`, and `sourcingWeek` remain preserved navigation context across links and actions.
 - Group-level workspace tabs show aggregate group information by default. Selecting a `doc` narrows Sourcing, Pipeline, Offer, and Activity to that requisition, and changing `doc` preserves the active `section`.
 - When no workspace is selected, `/workspace` renders the searchable workspace picker directly instead of a redundant empty workspace header.
@@ -242,6 +242,7 @@ Sourcing:
 - Records > Sourcing header order is `New Group`, Work Board/History toggle, then Week Starting. New Group uses `app_create_and_match_sourcing_group_v2` to create the group and one or more selected eligible requisition links in one transaction, then opens aggregate group Workspace Sourcing. System Admin and Admin Recruiter may select eligible open requisitions from one site; Site Recruiters may select only their assigned-site, matching-nickname/PIC requisitions; Viewer sees no setup action. The red unmatched exception panel retains its System Admin/Admin Recruiter-only Link Group action for historical cleanup.
 - Site Recruiters can inspect every linked open group at their assigned site. Peer-owned cards remain read-only; only a PIC of an active, open linked requisition can save sourcing data or alter that group's matches.
 - Weekly sourcing updates only show channels marked on the group or match snapshot.
+- Group Details uses compact channel checkboxes, Save for display-name changes, and a confirmed icon-only Unmatch command.
 - Weekly sourcing saves applicant counts only. It does not clear or change channel booleans; channel marking is changed through sourcing setup. Unsaved weeks prefill applicant inputs from the latest saved group update.
 - The Sourcing Conversion Quality panel is collapsible in Records > Sourcing and collapsed by default there.
 - AppShell's compact top-right Site and Person in Charge selectors are the only Site/PIC controls. Shared `site` and `pic` URL parameters filter Records > Sourcing and Workspace > Sourcing; legacy `sourcingSite` and `sourcingOwner` links are read only when shared values are absent, then replaced without browser history. The filters constrain weekly cards, bulk scope, and the read-only Sourcing Groups table; Workspace also intersects them with its selected hiring case. Site Recruiters cannot widen their authorized scope.
@@ -250,11 +251,11 @@ Sourcing:
 - Add Match shows only requisitions that do not already have any `document_groups` match.
 - Workspace’s Groups picker remains in the Groups toggle after creating an unlinked group; after a link succeeds, it opens that matched group’s workspace rather than the requisitions toggle.
 - Doc ID options include position context, for example `DOC-001 - Accountant`.
-- Unmatch removes one `document_groups` link between a requisition and a sourcing group. It is blocked when candidates reference that match.
+- Unmatch removes one `document_groups` link. Candidates remain in the group pool; their requisition-match reference moves to another group match when available, otherwise clears.
 
 Candidates:
 
-- Candidates remain linked by `doc_group_id`; the UI resolves that to group-level context.
+- Candidates belong to `group_id`; optional `doc_group_id` preserves requisition-match context and may be reassigned or cleared by Unmatch.
 - Candidate channel is a dropdown filtered by the selected group’s marked sourcing channels.
 - New Candidate lists only Group IDs linked to ongoing requisitions with remaining headcount. Site Recruiters additionally require their assigned Site and PIC; Admin Recruiter and System Admin retain all eligible groups. `app_upsert_candidate` enforces the same new-record rule.
 - Candidate required fields are Name, Phone, Group ID, Channel, and First Contact Date. Candidate ID remains optional in New mode because it is generated.
@@ -361,13 +362,13 @@ Important newer fields:
 - `recruitment_logs.stage_instance_id`, Outcome detail fields, Pending edit metadata, record origin/migration note, and supersession metadata.
 - sourcing channel flags and applicant counts for LinkedIn, Walk-in, Referral, and Others.
 
-Candidates store `doc_group_id`, not a direct `group_id`. Group-level behavior is resolved through `document_groups`.
+Candidates store direct `group_id`; `doc_group_id` is optional requisition-match context. Group-level behavior remains available after a requisition is unmatched.
 
 New group-scope migration:
 
 - The current schema changes standardize Hiring Workspace behavior around group scope.
 - Group-scoped lookups now drive the workspace journey, document URL context, candidate matching, and offer availability rules.
-- Any future migration in this area should keep `document_groups`, `position_groups`, and `doc_group_id` aligned so the five-section workspace continues to resolve context consistently.
+- Any future migration in this area should keep `document_groups`, `position_groups`, `candidates.group_id`, and optional `doc_group_id` aligned.
 
 Protected RPC functions handle all recruitment writes:
 
@@ -392,7 +393,7 @@ Protected RPC functions handle all recruitment writes:
 - Anonymous users cannot read or write recruitment data.
 - Authenticated users receive access by `profiles.role`.
 - System admins can delete recruitment records through explicit destructive confirmation. User profiles are excluded from this delete policy.
-- Delete/unmatch actions are guarded by RPC authorization and dependency checks; candidate-linked requisitions and matches are blocked instead of orphaning candidate history.
+- Delete/unmatch actions are RPC-authorized; unmatching preserves the group candidate pool and does not orphan candidate history.
 - Roles: `system_admin`, `admin_recruiter`, `site_recruiter`, `viewer`.
 - `system_admin`: full recruitment-data access and user administration.
 - `admin_recruiter`: full recruitment-data editor, setup/group/match editor, but not user administrator.

@@ -1,0 +1,254 @@
+  ▲ Next.js 14.2.35
+  - Local:        http://localhost:3000
+  - Environments: .env.local
+  - Experiments (use with caution):
+    · cpus
+
+ ✓ Starting...
+
+   We detected TypeScript in your project and reconfigured your tsconfig.json file for you. Strict-mode is set to false by default.
+   The following suggested values were added to your tsconfig.json. These values can be changed to fit your project's needs:
+
+   	- include was updated to add '.next-local-host/types/**/*.ts'
+
+ ✓ Ready in 2.5s
+ ○ Compiling /pipeline ...
+ ✓ Compiled /pipeline in 8.3s (826 modules)
+ GET /pipeline 200 in 88ms
+ GET /pipeline 200 in 76ms
+ ○ Compiling /login ...
+ ✓ Compiled /login in 1066ms (829 modules)
+ GET /login 200 in 1231ms
+ GET /pipeline 200 in 109ms
+ GET /login 200 in 115ms
+ ✓ Compiled /home in 340ms (817 modules)
+ ✓ Compiled in 1601ms (824 modules)
+ ✓ Compiled / in 418ms (833 modules)
+ GET / 307 in 535ms
+ GET /home 200 in 212ms
+ GET / 307 in 140ms
+ GET /home 200 in 87ms
+ GET /pipeline 200 in 87ms
+ GET /pipeline 200 in 104ms
+ GET /pipeline 200 in 101ms
+ GET /pipeline 200 in 75ms
+ GET /pipeline 200 in 102ms
+ GET /pipeline 200 in 89ms
+ GET /pipeline 200 in 80ms
+ GET /pipeline 200 in 75ms
+ GET /pipeline 200 in 64ms
+ GET /pipeline 200 in 75ms
+ GET /pipeline 200 in 70ms
+ ○ Compiling /candidates ...
+ ✓ Compiled /candidates in 533ms (813 modules)
+ ✓ Compiled /workspace in 346ms (815 modules)
+ ○ Compiling /offers ...
+ ✓ Compiled /offers in 509ms (817 modules)
+ ✓ Compiled /sourcing in 348ms (819 modules)
+ ✓ Compiled /requisitions in 363ms (821 modules)
+ ○ Compiling /api/department-sections ...
+ ✓ Compiled /api/department-sections in 531ms (441 modules)
+ GET /api/department-sections 200 in 704ms
+ GET /api/department-sections 200 in 26ms
+ ✓ Compiled in 2.2s (833 modules)
+ ✓ Compiled in 1706ms (833 modules)
+ ✓ Compiled in 281ms (426 modules)
+ ✓ Compiled in 1248ms (833 modules)
+ ✓ Compiled in 1346ms (833 modules)
+ ✓ Compiled in 1305ms (833 modules)
+ ✓ Compiled in 1425ms (833 modules)
+ ✓ Compiled in 1007ms (833 modules)
+ ✓ Compiled in 2.4s (833 modules)
+ ✓ Compiled in 1539ms (833 modules)
+ GET /requisitions?lang=en&pic=Vena&sourcingWeek=2026-08-10 200 in 391ms
+ ○ Compiling /home ...
+ ✓ Compiled /home in 526ms (409 modules)
+ ○ Compiling /dashboard ...
+ ✓ Compiled /dashboard in 642ms (835 modules)
+ ✓ Compiled /api/department-sections in 253ms (440 modules)
+ GET /api/department-sections 200 in 353ms
+ GET /api/department-sections 200 in 20ms
+ GET /api/department-sections 200 in 26ms
+ GET /api/department-sections 200 in 22ms
+ ✓ Compiled /sourcing in 237ms (409 modules)
+ ✓ Compiled in 374ms (426 modules)
+ ✓ Compiled in 276ms (426 modules)
+ ✓ Compiled in 1717ms (833 modules)
+ ✓ Compiled in 862ms (833 modules)
+ ✓ Compiled in 2s (833 modules)
+ ✓ Compiled in 1011ms (833 modules)
+ ✓ Compiled in 948ms (833 modules)
+ ✓ Compiled in 1403ms (833 modules)
+ ✓ Compiled in 999ms (833 modules)
+ ✓ Compiled in 1365ms (833 modules)
+ ✓ Compiled in 1784ms (833 modules)
+ ✓ Compiled in 905ms (833 modules)
+ ✓ Compiled in 1106ms (833 modules)
+ ✓ Compiled in 1352ms (833 modules)
+ ✓ Compiled in 1154ms (833 modules)
+ ✓ Compiled in 1792ms (833 modules)
+ GET /sourcing?lang=en&sourcingWeek=2026-08-10 200 in 295ms
+ ○ Compiling /pipeline ...
+ ✓ Compiled /pipeline in 608ms (409 modules)
+ GET /workspace?type=group&id=GRP-0010 200 in 173ms
+ ✓ Compiled in 1883ms (833 modules)
+ ✓ Compiled in 1123ms (833 modules)
+ ✓ Compiled in 936ms (833 modules)
+ ✓ Compiled in 1136ms (833 modules)
+ ✓ Compiled in 5.7s (833 modules)
+ ✓ Compiled in 1952ms (833 modules)
+ ✓ Compiled in 916ms (833 modules)
+ ✓ Compiled in 1012ms (833 modules)
+ ✓ Compiled in 957ms (833 modules)
+ ✓ Compiled in 2.1s (833 modules)
+ ✓ Compiled in 916ms (833 modules)
+ ✓ Compiled in 911ms (833 modules)
+ ✓ Compiled in 1486ms (833 modules)
+ ✓ Compiled in 2.7s (833 modules)
+ ✓ Compiled in 4.1s (833 modules)
+ ✓ Compiled in 1482ms (833 modules)
+ ✓ Compiled in 3.9s (835 modules)
+ ✓ Compiled in 1145ms (835 modules)
+ ✓ Compiled in 1419ms (835 modules)
+ ✓ Compiled in 1287ms (835 modules)
+ ✓ Compiled in 941ms (835 modules)
+ ✓ Compiled in 817ms (835 modules)
+ ✓ Compiled in 1119ms (835 modules)
+ ✓ Compiled / in 436ms (416 modules)
+ GET / 307 in 645ms
+ ✓ Compiled /home in 238ms (418 modules)
+ GET /home 200 in 473ms
+ GET / 307 in 121ms
+ GET /home 200 in 76ms
+ GET / 307 in 121ms
+ GET /home 200 in 59ms
+ GET / 307 in 136ms
+ GET /home 200 in 93ms
+ GET /pipeline 200 in 100ms
+ GET /workspace?type=requisition&id=REQ-HQ-1&sourcingWeek=2026-07-06 200 in 280ms
+ GET /candidates 200 in 291ms
+ GET /workspace?type=group&id=GRP-TECH&sourcingWeek=2026-07-06 200 in 91ms
+ GET /pipeline 200 in 90ms
+ GET /workspace?type=group&id=GRP-TECH&sourcingWeek=2026-07-06&lang=en&section=pipeline 200 in 74ms
+ GET /pipeline 200 in 48ms
+ GET /workspace?type=group&id=GRP-ENG&section=pipeline&sourcingWeek=2026-07-06 200 in 71ms
+ GET /workspace?type=requisition&id=REQ-KT1-1&section=overview 200 in 94ms
+ GET /workspace?type=requisition&id=REQ-KT2-1&section=outcome 200 in 84ms
+ GET /pipeline 200 in 51ms
+ GET /workspace 200 in 69ms
+ GET /pipeline 200 in 79ms
+ GET /workspace 200 in 50ms
+ ○ Compiling /api/department-sections ...
+ ✓ Compiled /api/department-sections in 758ms (451 modules)
+ GET /workspace 200 in 1040ms
+ GET /pipeline 200 in 866ms
+ GET /workspace 200 in 90ms
+ GET /pipeline 200 in 86ms
+ GET /pipeline 200 in 65ms
+ GET /pipeline 200 in 81ms
+ GET /pipeline 200 in 98ms
+ GET /candidates 200 in 112ms
+ GET /candidates 200 in 93ms
+ GET / 307 in 131ms
+ GET /home 200 in 88ms
+ GET / 307 in 90ms
+ GET /home 200 in 47ms
+ GET /candidates 200 in 41ms
+ GET /candidates 200 in 81ms
+ GET /candidates 200 in 64ms
+ GET /pipeline 200 in 86ms
+ GET /pipeline 200 in 64ms
+ GET /pipeline 200 in 61ms
+ GET /pipeline 200 in 77ms
+ GET /pipeline 200 in 88ms
+ GET /pipeline 200 in 72ms
+ GET /pipeline 200 in 84ms
+ GET /pipeline 200 in 74ms
+ GET /pipeline 200 in 83ms
+ GET /pipeline 200 in 70ms
+ GET /workspace?type=requisition&id=REQ-HQ-1&sourcingWeek=2026-07-06 200 in 83ms
+ GET /workspace?type=group&id=GRP-TECH&sourcingWeek=2026-07-06 200 in 84ms
+ GET /workspace?type=group&id=GRP-TECH&sourcingWeek=2026-07-06&lang=en&section=pipeline 200 in 60ms
+ GET /workspace?type=group&id=GRP-ENG&section=pipeline&sourcingWeek=2026-07-06 200 in 81ms
+ GET /workspace?type=requisition&id=REQ-KT1-1&section=overview 200 in 52ms
+ GET /workspace?type=requisition&id=REQ-KT2-1&section=outcome 200 in 64ms
+ GET /workspace 200 in 62ms
+ GET /workspace 200 in 74ms
+ GET /api/department-sections 200 in 47ms
+ GET /api/department-sections 200 in 50ms
+ GET /workspace 200 in 52ms
+ GET /workspace 200 in 83ms
+ GET / 307 in 96ms
+ GET /home 200 in 83ms
+ GET / 307 in 105ms
+ GET /home 200 in 106ms
+ GET /workspace?type=requisition&id=REQ-HQ-1&sourcingWeek=2026-07-06 200 in 71ms
+ GET /workspace?type=group&id=GRP-TECH&sourcingWeek=2026-07-06 200 in 85ms
+ GET /workspace?type=group&id=GRP-TECH&sourcingWeek=2026-07-06&lang=en&section=pipeline 200 in 49ms
+ GET /workspace?type=group&id=GRP-ENG&section=pipeline&sourcingWeek=2026-07-06 200 in 71ms
+ GET /workspace?type=requisition&id=REQ-KT1-1&section=overview 200 in 88ms
+ GET /workspace?type=requisition&id=REQ-KT2-1&section=outcome 200 in 62ms
+ GET /workspace 200 in 89ms
+ GET /workspace 200 in 57ms
+ GET /api/department-sections 200 in 37ms
+ GET /api/department-sections 200 in 38ms
+ GET /workspace 200 in 73ms
+ GET /workspace 200 in 89ms
+ GET / 307 in 107ms
+ GET /home 200 in 74ms
+ GET / 307 in 107ms
+ GET /home 200 in 62ms
+ GET /pipeline 200 in 87ms
+ GET /pipeline 200 in 63ms
+ GET /pipeline 200 in 78ms
+ GET /pipeline 200 in 64ms
+ GET /pipeline 200 in 78ms
+ GET /pipeline 200 in 69ms
+ GET /pipeline 200 in 76ms
+ GET /pipeline 200 in 64ms
+ GET /pipeline 200 in 65ms
+ GET /pipeline 200 in 82ms
+ GET / 307 in 141ms
+ GET /home 200 in 74ms
+ GET / 307 in 93ms
+ GET /home 200 in 60ms
+ GET /candidates 200 in 72ms
+ GET /candidates 200 in 69ms
+ GET /candidates 200 in 67ms
+ GET / 307 in 99ms
+ GET /home 200 in 59ms
+ GET / 307 in 104ms
+ GET /home 200 in 70ms
+ GET /candidates 200 in 63ms
+ GET / 307 in 112ms
+ GET /home 200 in 72ms
+ GET / 307 in 90ms
+ GET /home 200 in 92ms
+ GET /candidates 200 in 70ms
+ ✓ Compiled in 1417ms (835 modules)
+ ✓ Compiled in 1984ms (835 modules)
+ ✓ Compiled in 1997ms (835 modules)
+ ✓ Compiled in 1244ms (835 modules)
+ ✓ Compiled in 8.5s (839 modules)
+ ✓ Compiled in 1560ms (839 modules)
+ ✓ Compiled in 7.9s (839 modules)
+ ✓ Compiled in 1599ms (839 modules)
+ ✓ Compiled in 1712ms (839 modules)
+ ✓ Compiled in 1433ms (839 modules)
+ ✓ Compiled in 661ms (839 modules)
+ ✓ Compiled in 4.5s (839 modules)
+ ✓ Compiled in 1974ms (839 modules)
+ ✓ Compiled in 5.4s (839 modules)
+ ✓ Compiled in 1468ms (839 modules)
+ ✓ Compiled in 1454ms (839 modules)
+ ✓ Compiled in 1506ms (839 modules)
+ ✓ Compiled in 2.3s (839 modules)
+ ✓ Compiled in 3s (839 modules)
+ ✓ Compiled in 3.6s (839 modules)
+ ✓ Compiled in 1807ms (839 modules)
+ ✓ Compiled in 2s (839 modules)
+ ✓ Compiled in 1977ms (839 modules)
+ ✓ Compiled in 1374ms (839 modules)
+ ✓ Compiled in 1290ms (839 modules)
+ ✓ Compiled in 1386ms (839 modules)
+ ✓ Compiled in 2.2s (839 modules)

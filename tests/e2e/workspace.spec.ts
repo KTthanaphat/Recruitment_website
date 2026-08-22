@@ -90,6 +90,24 @@ test("workspace picker lists open requisitions and groups when no target is sele
   await expect(page.getByRole("button", { name: /GRP-ENG/ })).toBeVisible();
 });
 
+test("workspace group cards truncate long titles and retain the full native tooltip", async ({ page }) => {
+  const mock = await installMockSupabase(page, { role: "admin_recruiter" });
+  const longTitle = "Senior Procurement Operations and Supplier Development Specialist with Regional Strategic Sourcing Responsibilities";
+  const group = mock.data.position_groups.find((row) => row.group_id === "GRP-ENG");
+  if (!group) throw new Error("Missing GRP-ENG test fixture");
+  group.group_position = longTitle;
+
+  await page.goto("/workspace");
+  await expectWorkspaceReady(page);
+  await page.getByRole("button", { name: "Groups" }).click();
+
+  const title = page.locator(`strong[title="${longTitle}"]`);
+  await expect(title).toBeVisible();
+  await expect(title).toHaveClass(/truncate/);
+  await expect(title).toHaveAttribute("title", longTitle);
+  await expect(page.getByText("Group ID: GRP-ENG")).toBeVisible();
+});
+
 test("site recruiter sees workspace records assigned to them or in their assigned site", async ({ page }) => {
   await installMockSupabase(page, { role: "site_recruiter" });
   await page.goto("/workspace");

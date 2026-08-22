@@ -1,0 +1,569 @@
+
+Running 78 tests using 4 workers
+
+  ok  1 [chromium] › tests\e2e\i18n.spec.ts:4:5 › Thai dictionary has every English translation key (14ms)
+  ok  4 [chromium] › tests\e2e\login.spec.ts:3:5 › login page renders (1.9s)
+  ok  2 [chromium] › tests\e2e\auth-permissions.spec.ts:4:5 › viewer can read pipeline but cannot update candidates (2.3s)
+  ok  6 [chromium] › tests\e2e\login.spec.ts:10:5 › protected workspace does not show operational empty state while unavailable (930ms)
+  ok  3 [chromium] › tests\e2e\forms-validation.spec.ts:15:5 › candidate creation form enforces required fields before review (3.0s)
+  ok  7 [chromium] › tests\e2e\auth-permissions.spec.ts:16:5 › system admin can access user administration (1.1s)
+  ok  8 [chromium] › tests\e2e\mobile-operations.spec.ts:4:5 › phone navigation keeps core destinations visible and moves secondary routes into More (1.3s)
+  ok 11 [chromium] › tests\e2e\mobile-operations.spec.ts:23:5 › phone Pipeline and Sourcing retain internal, not page-level, wide-data scrolling (1.5s)
+  x   5 [chromium] › tests\e2e\dashboard-reports.spec.ts:4:5 › dashboard report uses calendar views, persists its month, and keeps expandable sections (7.1s)
+  x   9 [chromium] › tests\e2e\forms-validation.spec.ts:37:5 › candidate identity fields guide Thai input and reject an invalid mobile number (5.9s)
+  x  10 [chromium] › tests\e2e\auth-permissions.spec.ts:25:5 › admin recruiters can assign a recruiter while site recruiters stay locked to their own assignment (6.2s)
+  ok 12 [chromium] › tests\e2e\mobile-operations.spec.ts:40:5 › phone Audit uses a filter sheet and key recruiter routes have no page overflow (5.5s)
+  ok 15 [chromium] › tests\e2e\pipeline-actions.spec.ts:9:5 › pending-stage menu is keyboard reachable and keeps paired-status actions before forward moves (1.8s)
+  x  16 [chromium] › tests\e2e\pipeline-board.spec.ts:4:5 › pipeline board renders active, failed, passed, aging, and filtered candidates (1.8s)
+  ok 17 [chromium] › tests\e2e\pipeline-actions.spec.ts:26:5 › edit pending details preloads its exact values and calls the v2 pending RPC (1.3s)
+  x  13 [chromium] › tests\e2e\dashboard-reports.spec.ts:34:5 › dashboard active-period vacancy follows PR date and resolved close date (6.5s)
+  ok 19 [chromium] › tests\e2e\pipeline-actions.spec.ts:51:5 › Pass stage preserves Pending details and sends only editable Outcome plus next Pending data (1.9s)
+  ok 20 [chromium] › tests\e2e\pipeline-actions.spec.ts:89:5 › system admin can edit Pending details outside Site and PIC scope (1.7s)
+  x  14 [chromium] › tests\e2e\forms-validation.spec.ts:53:5 › candidate reference name is required only for Referral channel (7.3s)
+  ok 22 [chromium] › tests\e2e\pipeline-actions.spec.ts:108:5 › Fail stage is atomic and never sends or creates next pending data (1.7s)
+  ok 18 [chromium] › tests\e2e\pipeline-board.spec.ts:64:5 › pipeline search, grouping, and board filters narrow by pipeline context (5.4s)
+  ok 23 [chromium] › tests\e2e\pipeline-actions.spec.ts:130:5 › Test has a separate next-round action while Pass stage exits to Reference Check (1.6s)
+  x  25 [chromium] › tests\e2e\pipeline-board.spec.ts:97:5 › passed Offer card without an offer opens offer creation flow (1.5s)
+  ok 26 [chromium] › tests\e2e\pipeline-actions.spec.ts:152:5 › passing Line Interview starts Test at round 1 (1.5s)
+  x  21 [chromium] › tests\e2e\dashboard-reports.spec.ts:82:5 › dashboard active-period labels localize and fit at 390px (6.4s)
+  ok 28 [chromium] › tests\e2e\pipeline-actions.spec.ts:169:5 › forward menu jump opens confirmation without a write and submits paired pass records plus target pending (1.8s)
+  ok 24 [chromium] › tests\e2e\requisition-identity.spec.ts:4:5 › requisition identity is consistent across records, Home, offers, and Pipeline boundaries (4.7s)
+  ok 27 [chromium] › tests\e2e\pipeline-board.spec.ts:109:5 › viewer can inspect pipeline but cannot update stages or create offers (1.9s)
+  ok 30 [chromium] › tests\e2e\requisition-identity.spec.ts:30:5 › requisition detail localizes its ID label while keeping the formatted heading (1.4s)
+  ok 29 [chromium] › tests\e2e\pipeline-actions.spec.ts:201:5 › candidate detail separates current pending details from outcome history and stays read-only for viewers (1.5s)
+  ok 31 [chromium] › tests\e2e\pipeline-board.spec.ts:122:5 › failed candidates remain pipeline workflow state, not data quality issues (2.7s)
+  ok 32 [chromium] › tests\e2e\dashboard-reports.spec.ts:91:5 › home records use tabbed vertical panels while work queue keeps contained overflow (2.2s)
+  ok 33 [chromium] › tests\e2e\requisition-identity.spec.ts:40:5 › long requisition titles wrap at 390px without page-level overflow (2.7s)
+  ok 35 [chromium] › tests\e2e\pipeline-board.spec.ts:136:5 › candidate card opens detail drawer and can be closed by Escape (1.6s)
+  ok 36 [chromium] › tests\e2e\tables-url-state.spec.ts:4:5 › requisition table search and advanced filters persist in URL (2.3s)
+  ok 39 [chromium] › tests\e2e\tables-url-state.spec.ts:23:5 › record tables use a shared scroll viewport with frozen desktop headers (2.0s)
+  ok 40 [chromium] › tests\e2e\wave-4.spec.ts:4:5 › grouped sidebar gates admin and preserves global navigation context (865ms)
+  ok 41 [chromium] › tests\e2e\wave-4.spec.ts:65:5 › workspace section tabs persist in URL history and render one section (950ms)
+  ok 42 [chromium] › tests\e2e\wave-4.spec.ts:91:5 › workspace picker searches requisitions and groups (824ms)
+  x  37 [chromium] › tests\e2e\ux-enhancements.spec.ts:15:5 › home shows role-aware prioritized work queue (6.3s)
+  x  38 [chromium] › tests\e2e\pipeline-board.spec.ts:153:5 › pipeline layout avoids page overflow on mobile while board scrolls internally (6.1s)
+  ok 43 [chromium] › tests\e2e\wave-4.spec.ts:110:5 › workspace direct URL to closed work shows invalid target picker (952ms)
+  ok 44 [chromium] › tests\e2e\wave-4.spec.ts:119:5 › candidate document search filters linked records (1.1s)
+  ok 46 [chromium] › tests\e2e\workspace-lifecycle.spec.ts:4:5 › workspace journey follows the five-tab order without global recommendations (1.4s)
+  ok 45 [chromium] › tests\e2e\ux-enhancements.spec.ts:45:5 › home groups recruitment records into ordered role-aware tabs (2.8s)
+  ok 47 [chromium] › tests\e2e\wave-4.spec.ts:129:5 › record tables expose only magnifying-glass detail controls and drawer change actions (4.0s)
+  ok 49 [chromium] › tests\e2e\ux-enhancements.spec.ts:78:5 › welcome popup uses monthly accepted vacancies with bilingual weekday messages (2.2s)
+  ok 50 [chromium] › tests\e2e\wave-4.spec.ts:171:5 › sourcing contextual filters focus the matching group (1.1s)
+  ok 51 [chromium] › tests\e2e\ux-enhancements.spec.ts:102:5 › welcome popup counts only valid accepted offers in the current Bangkok month (995ms)
+  ok 53 [chromium] › tests\e2e\ux-enhancements.spec.ts:121:5 › monthly fill rate keeps recruiter scope and existing CSV threshold bands (853ms)
+  ok 54 [chromium] › tests\e2e\ux-enhancements.spec.ts:138:5 › sourcing shows weekly health and can copy previous week (900ms)
+  ok 55 [chromium] › tests\e2e\ux-enhancements.spec.ts:151:5 › offers show status, requisition impact, and quick links (902ms)
+  x  48 [chromium] › tests\e2e\workspace-lifecycle.spec.ts:15:5 › embedded sourcing saves through the intercepted RPC and embedded pipeline opens a stage menu (6.9s)
+  ok 56 [chromium] › tests\e2e\ux-enhancements.spec.ts:162:5 › audit filters records and shows readable field diff (922ms)
+  ok 57 [chromium] › tests\e2e\workspace.spec.ts:4:5 › workspace opens requisition context with connected panels (831ms)
+  x  52 [chromium] › tests\e2e\wave-4.spec.ts:181:5 › sourcing shows unmatched groups with match action and no weekly save fields (6.0s)
+  ok 58 [chromium] › tests\e2e\workspace.spec.ts:23:5 › workspace opens sourcing group context and survives refresh URL (1.6s)
+  ok 59 [chromium] › tests\e2e\workspace.spec.ts:40:5 › group workspace shows aggregate records and keeps section when selecting requisition context (843ms)
+  ok 60 [chromium] › tests\e2e\workspace.spec.ts:55:5 › workspace uses group-first breadcrumbs for requisition context (716ms)
+  ok 61 [chromium] › tests\e2e\workspace.spec.ts:65:5 › legacy outcome section resolves to canonical offer section (737ms)
+  ok 62 [chromium] › tests\e2e\workspace.spec.ts:75:5 › workspace picker lists open requisitions and groups when no target is selected (750ms)
+  ok 63 [chromium] › tests\e2e\workspace.spec.ts:93:5 › empty workspace picker keeps New Requisition available (749ms)
+  ok 64 [chromium] › tests\e2e\workspace.spec.ts:107:5 › workspace picker exposes contextual group setup actions only to setup managers (1.4s)
+  ok 65 [chromium] › tests\e2e\wave-4.spec.ts:199:5 › sourcing unmatch uses destructive confirmation and RPC (1.0s)
+  ok 66 [chromium] › tests\e2e\wave-4.spec.ts:220:5 › system admin sees unmatched group delete action and confirmation (923ms)
+  x  34 [chromium] › tests\e2e\pipeline-actions.spec.ts:215:5 › Reference Check requires available references to be checked before Pass (30.1s)
+  ok 68 [chromium] › tests\e2e\workspace-lifecycle.spec.ts:48:5 › workspace group sourcing tab exposes editable applicant fields (1.0s)
+  ok 69 [chromium] › tests\e2e\workspace-lifecycle.spec.ts:60:5 › unsaved sourcing week defaults applicant counts from latest saved update (726ms)
+  ok 70 [chromium] › tests\e2e\workspace-lifecycle.spec.ts:70:5 › workspace picker selection keeps sourcing editor scoped to selected group (878ms)
+  ok 71 [chromium] › tests\e2e\workspace-lifecycle.spec.ts:85:5 › Offer action opens the update path without asserting backend persistence (824ms)
+  x  67 [chromium] › tests\e2e\wave-4.spec.ts:232:5 › pipeline URL search focuses a candidate and Actions is keyboard dismissible (6.1s)
+  x  73 [chromium] › tests\e2e\wave-4.spec.ts:248:5 › candidate drawer has one action hierarchy and modal becomes topmost (6.1s)
+  ok 74 [chromium] › tests\e2e\wave-4.spec.ts:280:5 › key views have no page-level overflow at 390px (3.4s)
+  x  72 [chromium] › tests\e2e\workspace-lifecycle.spec.ts:97:5 › pipeline no-activity menu opens the start-process modal (30.0s)
+  ok 75 [chromium] › tests\e2e\workspace-lifecycle.spec.ts:110:5 › viewer sees disabled explanations for workspace updates (952ms)
+  ok 76 [chromium] › tests\e2e\workspace-lifecycle.spec.ts:125:5 › viewer can inspect workspace sourcing but cannot save applicant counts (772ms)
+  x  77 [chromium] › tests\e2e\workspace-lifecycle.spec.ts:137:5 › passing Offer hands off to workspace offer creation with proposed accepted date (30.0s)
+  ok 78 [chromium] › tests\e2e\workspace-lifecycle.spec.ts:168:5 › workspace has no horizontal overflow at 390px (1.0s)
+
+
+  1) [chromium] › tests\e2e\auth-permissions.spec.ts:25:5 › admin recruiters can assign a recruiter while site recruiters stay locked to their own assignment 
+
+    Error: expect(locator).toBeDisabled() failed
+
+    Locator: getByRole('dialog', { name: 'Create Requisition' }).locator('select[name="department"]')
+    Expected: disabled
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeDisabled" with timeout 5000ms
+      - waiting for getByRole('dialog', { name: 'Create Requisition' }).locator('select[name="department"]')
+
+
+      33 |   const adminDepartment = adminDialog.locator('select[name="department"]');
+      34 |   const adminSection = adminDialog.locator('select[name="section"]');
+    > 35 |   await expect(adminDepartment).toBeDisabled();
+         |                                 ^
+      36 |   await adminSite.selectOption("HQ");
+      37 |   await expect(adminDepartment.locator("option", { hasText: "Finance Department" })).toHaveCount(1);
+      38 |   await expect(adminSection).toBeDisabled();
+        at C:\Users\thanaphat-krea\OneDrive - GFPT Public Company Limited\HR_database\recruitment_website\tests\e2e\auth-permissions.spec.ts:35:33
+
+    Error Context: test-results\auth-permissions-admin-rec-e4492-ked-to-their-own-assignment-chromium\error-context.md
+
+  2) [chromium] › tests\e2e\dashboard-reports.spec.ts:4:5 › dashboard report uses calendar views, persists its month, and keeps expandable sections 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByText('Selected date range: 01/07/2026 - 31/07/2026')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for getByText('Selected date range: 01/07/2026 - 31/07/2026')
+
+
+      10 |   await expect(page.getByRole("button", { name: /Requisitions Active in Selected Period/ })).toBeVisible();
+      11 |   await expect(page.getByRole("button", { name: /Recruitment Pipeline Health in Selected Range/ })).toBeVisible();
+    > 12 |   await expect(page.getByText("Selected date range: 01/07/2026 - 31/07/2026")).toBeVisible();
+         |                                                                                ^
+      13 |   await expect(page.getByLabel("Metric view")).toHaveValue("pim");
+      14 |   await expect(page.getByLabel("Report month")).toHaveValue("2026-07");
+      15 |   await expect(page.getByRole("heading", { name: "Recruitment Pipeline Health" })).toBeVisible();
+        at C:\Users\thanaphat-krea\OneDrive - GFPT Public Company Limited\HR_database\recruitment_website\tests\e2e\dashboard-reports.spec.ts:12:80
+
+    Error Context: test-results\dashboard-reports-dashboar-e4397-d-keeps-expandable-sections-chromium\error-context.md
+
+  3) [chromium] › tests\e2e\dashboard-reports.spec.ts:34:5 › dashboard active-period vacancy follows PR date and resolved close date 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByText('Eligible vacancies', { exact: true })
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for getByText('Eligible vacancies', { exact: true })
+
+
+      69 |   await expectWorkspaceReady(page);
+      70 |
+    > 71 |   await expect(page.getByText("Eligible vacancies", { exact: true })).toBeVisible();
+         |                                                                       ^
+      72 |   await expect(page.getByText("Closed In Period", { exact: true }).first()).toBeVisible();
+      73 |   await expect(page.getByText("Accepted Fallback", { exact: true }).first()).toBeVisible();
+      74 |   await expect(page.getByText("No Close Date", { exact: true }).first()).toBeVisible();
+        at C:\Users\thanaphat-krea\OneDrive - GFPT Public Company Limited\HR_database\recruitment_website\tests\e2e\dashboard-reports.spec.ts:71:71
+
+    Error Context: test-results\dashboard-reports-dashboar-5a93f-ate-and-resolved-close-date-chromium\error-context.md
+
+  4) [chromium] › tests\e2e\dashboard-reports.spec.ts:82:5 › dashboard active-period labels localize and fit at 390px 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByText('อัตราที่เข้าเกณฑ์', { exact: true })
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for getByText('อัตราที่เข้าเกณฑ์', { exact: true })
+
+
+      85 |   await page.goto("/dashboard?reportView=mtd&reportMonth=2026-06");
+      86 |   await expect(page.locator("[data-app-header-actions]")).toBeVisible();
+    > 87 |   await expect(page.getByText("อัตราที่เข้าเกณฑ์", { exact: true })).toBeVisible();
+         |                                                                      ^
+      88 |   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      89 | });
+      90 |
+        at C:\Users\thanaphat-krea\OneDrive - GFPT Public Company Limited\HR_database\recruitment_website\tests\e2e\dashboard-reports.spec.ts:87:70
+
+    Error Context: test-results\dashboard-reports-dashboar-d3750-s-localize-and-fit-at-390px-chromium\error-context.md
+
+  5) [chromium] › tests\e2e\forms-validation.spec.ts:37:5 › candidate identity fields guide Thai input and reject an invalid mobile number 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByRole('button', { name: 'Refresh' })
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for getByRole('button', { name: 'Refresh' })
+
+
+       at support\mock-supabase.ts:104
+
+      102 | export async function expectWorkspaceReady(page: Page) {
+      103 |   const header = page.locator("[data-app-header-actions]");
+    > 104 |   await expect(page.getByRole("button", { name: "Refresh" })).toBeVisible();
+          |                                                               ^
+      105 |   await expect(header.getByLabel("Site", { exact: true })).toBeVisible();
+      106 |   await expect(header.getByLabel("Person in Charge", { exact: true })).toBeVisible();
+      107 |   await expect(page.getByText("Loading recruitment records...")).toHaveCount(0);
+        at expectWorkspaceReady (C:\Users\thanaphat-krea\OneDrive - GFPT Public Company Limited\HR_database\recruitment_website\tests\e2e\support\mock-supabase.ts:104:63)
+        at C:\Users\thanaphat-krea\OneDrive - GFPT Public Company Limited\HR_database\recruitment_website\tests\e2e\forms-validation.spec.ts:40:29
+
+    Error Context: test-results\forms-validation-candidate-5a83b-ct-an-invalid-mobile-number-chromium\error-context.md
+
+  6) [chromium] › tests\e2e\forms-validation.spec.ts:53:5 › candidate reference name is required only for Referral channel 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByRole('dialog', { name: 'Confirm Save' })
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for getByRole('dialog', { name: 'Confirm Save' })
+
+
+      73 |   await dialog.getByLabel("Reference Name").fill("Khun Ref");
+      74 |   await dialog.getByRole("button", { name: "Review changes" }).click();
+    > 75 |   await expect(page.getByRole("dialog", { name: "Confirm Save" })).toBeVisible();
+         |                                                                    ^
+      76 | });
+      77 |
+        at C:\Users\thanaphat-krea\OneDrive - GFPT Public Company Limited\HR_database\recruitment_website\tests\e2e\forms-validation.spec.ts:75:68
+
+    Error Context: test-results\forms-validation-candidate-1e0d2-d-only-for-Referral-channel-chromium\error-context.md
+
+  7) [chromium] › tests\e2e\pipeline-actions.spec.ts:215:5 › Reference Check requires available references to be checked before Pass 
+
+    Test timeout of 30000ms exceeded.
+
+    Error: locator.click: Test timeout of 30000ms exceeded.
+    Call log:
+      - waiting for getByRole('button', { name: 'Candidate actions for Rae Reference' })
+        - locator resolved to <button type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="stage-menu-C-REF" title="Candidate actions for Rae Reference" aria-label="Candidate actions for Rae Reference" class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:cursor-not-allowed disabled:bg-lightgray disabled:text-cool text-scarlet ring-[#F4B4AE] hover:bg-[#FFF1F0] hover:text-scarlet">…</button>
+      - attempting click action
+        2 × waiting for element to be visible, enabled and stable
+          - element is not stable
+        - retrying click action
+        - waiting 20ms
+        2 × waiting for element to be visible, enabled and stable
+          - element is not stable
+        - retrying click action
+          - waiting 100ms
+        - waiting for element to be visible, enabled and stable
+        - element is not stable
+      12 × retrying click action
+           - waiting 500ms
+           - waiting for element to be visible, enabled and stable
+           - element is visible, enabled and stable
+           - scrolling into view if needed
+           - done scrolling
+           - <div class="relative z-0 rounded-lg bg-white px-4 py-4">…</div> from <div class="fixed inset-0 z-50 flex justify-end bg-navy/45">…</div> subtree intercepts pointer events
+         - retrying click action
+           - waiting 500ms
+           - waiting for element to be visible, enabled and stable
+           - element is visible, enabled and stable
+           - scrolling into view if needed
+           - done scrolling
+           - <div class="flex flex-wrap items-start justify-between gap-3 rounded-md border border-[#D7DEE8] bg-lightgray/70 p-4">…</div> from <div class="fixed inset-0 z-50 flex justify-end bg-navy/45">…</div> subtree intercepts pointer events
+         - retrying click action
+           - waiting 500ms
+           - waiting for element to be visible, enabled and stable
+           - element is visible, enabled and stable
+           - scrolling into view if needed
+           - done scrolling
+           - <p class="mb-1 text-xs font-medium uppercase tracking-normal text-slate">Candidate Detail</p> from <div class="fixed inset-0 z-50 flex justify-end bg-navy/45">…</div> subtree intercepts pointer events
+         - retrying click action
+           - waiting 500ms
+           - waiting for element to be visible, enabled and stable
+           - element is visible, enabled and stable
+           - scrolling into view if needed
+           - done scrolling
+           - <p class="mb-1 text-xs font-medium uppercase tracking-normal text-slate">Candidate Detail</p> from <div class="fixed inset-0 z-50 flex justify-end bg-navy/45">…</div> subtree intercepts pointer events
+      - retrying click action
+        - waiting 500ms
+        - waiting for element to be visible, enabled and stable
+        - element is visible, enabled and stable
+        - scrolling into view if needed
+        - done scrolling
+        - <div class="relative z-0 rounded-lg bg-white px-4 py-4">…</div> from <div class="fixed inset-0 z-50 flex justify-end bg-navy/45">…</div> subtree intercepts pointer events
+      - retrying click action
+        - waiting 500ms
+        - waiting for element to be visible, enabled and stable
+        - element is visible, enabled and stable
+        - scrolling into view if needed
+        - done scrolling
+        - <div class="flex flex-wrap items-start justify-between gap-3 rounded-md border border-[#D7DEE8] bg-lightgray/70 p-4">…</div> from <div class="fixed inset-0 z-50 flex justify-end bg-navy/45">…</div> subtree intercepts pointer events
+      - retrying click action
+        - waiting 500ms
+        - waiting for element to be visible, enabled and stable
+        - element is visible, enabled and stable
+        - scrolling into view if needed
+        - done scrolling
+        - <p class="mb-1 text-xs font-medium uppercase tracking-normal text-slate">Candidate Detail</p> from <div class="fixed inset-0 z-50 flex justify-end bg-navy/45">…</div> subtree intercepts pointer events
+      - retrying click action
+        - waiting 500ms
+
+
+      233 |   await expect.poll(() => mock.rpcCalls.at(-1)?.endpoint).toBe("app_save_candidate_reference_check_v1");
+      234 |
+    > 235 |   await page.getByRole("button", { name: "Candidate actions for Rae Reference" }).click();
+          |                                                                                   ^
+      236 |   const readyMenu = page.getByRole("menu", { name: "Candidate actions for Rae Reference" });
+      237 |   await expect(readyMenu.getByRole("menuitem").filter({ hasText: "Pass stage" })).toBeEnabled();
+      238 | });
+        at C:\Users\thanaphat-krea\OneDrive - GFPT Public Company Limited\HR_database\recruitment_website\tests\e2e\pipeline-actions.spec.ts:235:83
+
+    Error Context: test-results\pipeline-actions-Reference-f7de5-s-to-be-checked-before-Pass-chromium\error-context.md
+
+  8) [chromium] › tests\e2e\pipeline-board.spec.ts:4:5 › pipeline board renders active, failed, passed, aging, and filtered candidates 
+
+    Error: locator.boundingBox: Error: strict mode violation: getByRole('button', { name: 'Site' }) resolved to 2 elements:
+        1) <button type="button" aria-label="Site" aria-expanded="false" aria-haspopup="listbox" aria-controls=":r0:-options" class="flex min-h-9 w-full items-center gap-2 rounded-xl border border-[#B8CCE4] bg-[#F8FAFD] text-primary px-3 text-left text-sm font-semibold text-navy shadow-sm transition hover:border-primary/60 hover:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:bg-[#F1F5F9]">…</button> aka getByLabel('Site')
+        2) <button type="button" aria-pressed="false" class="min-h-8 rounded-lg px-3 text-xs font-semibold ring-1 ring-inset transition-colors bg-white text-navy ring-[#C9D5E6] hover:bg-[#F8FAFD]">Site</button> aka getByText('Site', { exact: true })
+
+    Call log:
+      - waiting for getByRole('button', { name: 'Site' })
+
+
+      42 |   const ownerGroupButton = page.getByRole("button", { name: "Owner" });
+      43 |   const filterBox = await filterButton.boundingBox();
+    > 44 |   const siteBox = await siteGroupButton.boundingBox();
+         |                                         ^
+      45 |   const ownerBox = await ownerGroupButton.boundingBox();
+      46 |   expect(filterBox?.x ?? 0).toBeGreaterThan((siteBox?.x ?? 0) + (siteBox?.width ?? 0));
+      47 |   expect(filterBox?.x ?? 0).toBeGreaterThan((ownerBox?.x ?? 0) + (ownerBox?.width ?? 0));
+        at C:\Users\thanaphat-krea\OneDrive - GFPT Public Company Limited\HR_database\recruitment_website\tests\e2e\pipeline-board.spec.ts:44:41
+
+    Error Context: test-results\pipeline-board-pipeline-bo-3a7af-ing-and-filtered-candidates-chromium\error-context.md
+
+  9) [chromium] › tests\e2e\pipeline-board.spec.ts:97:5 › passed Offer card without an offer opens offer creation flow 
+
+    Error: expect(locator).toHaveValue(expected) failed
+
+    Locator: getByRole('dialog', { name: /Offer/ }).getByLabel('Candidate')
+    Expected: "C-OFFER-NO-OFFER"
+    Error: Not an input element
+
+    Call log:
+      - Expect "toHaveValue" with timeout 5000ms
+      - waiting for getByRole('dialog', { name: /Offer/ }).getByLabel('Candidate')
+
+
+      103 |   const dialog = page.getByRole("dialog", { name: /Offer/ });
+      104 |   await expect(dialog).toBeVisible();
+    > 105 |   await expect(dialog.getByLabel("Candidate")).toHaveValue("C-OFFER-NO-OFFER");
+          |                                                ^
+      106 |   await expect(dialog.getByLabel("Accepted Date")).toHaveValue("2026-07-18");
+      107 | });
+      108 |
+        at C:\Users\thanaphat-krea\OneDrive - GFPT Public Company Limited\HR_database\recruitment_website\tests\e2e\pipeline-board.spec.ts:105:48
+
+    Error Context: test-results\pipeline-board-passed-Offe-c38d5-r-opens-offer-creation-flow-chromium\error-context.md
+
+  10) [chromium] › tests\e2e\pipeline-board.spec.ts:153:5 › pipeline layout avoids page overflow on mobile while board scrolls internally 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+    Call Log:
+    - Timeout 5000ms exceeded while waiting on the predicate
+
+      160 |   expect(overflow).toBeLessThanOrEqual(1);
+      161 |   const board = page.getByLabel("Candidate Pipeline").first();
+    > 162 |   await expect.poll(async () => board.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+          |                                                                                                         ^
+      163 | });
+      164 |
+        at C:\Users\thanaphat-krea\OneDrive - GFPT Public Company Limited\HR_database\recruitment_website\tests\e2e\pipeline-board.spec.ts:162:105
+
+    Error Context: test-results\pipeline-board-pipeline-la-9adb5-le-board-scrolls-internally-chromium\error-context.md
+
+  11) [chromium] › tests\e2e\ux-enhancements.spec.ts:15:5 › home shows role-aware prioritized work queue 
+
+    Error: expect(locator).toHaveCSS(expected) failed
+
+    Locator:  locator('[data-app-header-actions]').getByLabel('Site', { exact: true })
+    Expected: "rgb(232, 240, 255)"
+    Received: "rgb(248, 250, 253)"
+    Timeout:  5000ms
+
+    Call log:
+      - Expect "toHaveCSS" with timeout 5000ms
+      - waiting for locator('[data-app-header-actions]').getByLabel('Site', { exact: true })
+        14 × locator resolved to <button type="button" aria-label="Site" aria-expanded="false" aria-haspopup="listbox" aria-controls=":r0:-options" class="flex min-h-9 w-full items-center gap-2 rounded-xl border border-[#B8CCE4] bg-[#F8FAFD] text-primary px-3 text-left text-sm font-semibold text-navy shadow-sm transition hover:border-primary/60 hover:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:bg-[#F1F5F9]">…</button>
+           - unexpected value "rgb(248, 250, 253)"
+
+
+      31 |   const languageBox = await header.getByRole("button", { name: "TH" }).boundingBox();
+      32 |   const refreshBox = await header.getByRole("button", { name: "Refresh" }).boundingBox();
+    > 33 |   await expect(header.getByLabel("Site", { exact: true })).toHaveCSS("background-color", "rgb(232, 240, 255)");
+         |                                                            ^
+      34 |   await expect(header.getByLabel("Person in Charge", { exact: true })).toHaveCSS("background-color", "rgb(232, 240, 255)");
+      35 |   expect(siteBox?.x ?? 0).toBeLessThan(ownerBox?.x ?? 0);
+      36 |   expect(ownerBox?.x ?? 0).toBeLessThan(languageBox?.x ?? 0);
+        at C:\Users\thanaphat-krea\OneDrive - GFPT Public Company Limited\HR_database\recruitment_website\tests\e2e\ux-enhancements.spec.ts:33:60
+
+    Error Context: test-results\ux-enhancements-home-shows-role-aware-prioritized-work-queue-chromium\error-context.md
+
+  12) [chromium] › tests\e2e\wave-4.spec.ts:181:5 › sourcing shows unmatched groups with match action and no weekly save fields 
+
+    Error: expect(locator).toHaveValue(expected) failed
+
+    Locator: getByRole('dialog', { name: 'Match Requisition and Group' }).getByLabel('Group ID')
+    Expected: "GRP-BUY"
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toHaveValue" with timeout 5000ms
+      - waiting for getByRole('dialog', { name: 'Match Requisition and Group' }).getByLabel('Group ID')
+
+
+      193 |   const matchDialog = page.getByRole("dialog", { name: "Match Requisition and Group" });
+      194 |   await expect(matchDialog).toBeVisible();
+    > 195 |   await expect(matchDialog.getByLabel("Group ID")).toHaveValue("GRP-BUY");
+          |                                                    ^
+      196 |   await expect(matchDialog.getByLabel("Doc ID")).toContainText("Senior Procurement Operations and Supplier Development Specialist — REQ-UNMATCHED-1");
+      197 | });
+      198 |
+        at C:\Users\thanaphat-krea\OneDrive - GFPT Public Company Limited\HR_database\recruitment_website\tests\e2e\wave-4.spec.ts:195:52
+
+    Error Context: test-results\wave-4-sourcing-shows-unma-63785-n-and-no-weekly-save-fields-chromium\error-context.md
+
+  13) [chromium] › tests\e2e\wave-4.spec.ts:232:5 › pipeline URL search focuses a candidate and Actions is keyboard dismissible 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: locator('#pipeline-candidate-C-PHONE').getByRole('menu', { name: 'Actions for Pat Phone' })
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for locator('#pipeline-candidate-C-PHONE').getByRole('menu', { name: 'Actions for Pat Phone' })
+
+
+      240 |   await actions.focus();
+      241 |   await page.keyboard.press("Enter");
+    > 242 |   await expect(card.getByRole("menu", { name: "Actions for Pat Phone" })).toBeVisible();
+          |                                                                           ^
+      243 |   await page.keyboard.press("Escape");
+      244 |   await expect(card.getByRole("menu", { name: "Actions for Pat Phone" })).toHaveCount(0);
+      245 |   await expect(actions).toBeFocused();
+        at C:\Users\thanaphat-krea\OneDrive - GFPT Public Company Limited\HR_database\recruitment_website\tests\e2e\wave-4.spec.ts:242:75
+
+    Error Context: test-results\wave-4-pipeline-URL-search-9e226-ons-is-keyboard-dismissible-chromium\error-context.md
+
+  14) [chromium] › tests\e2e\wave-4.spec.ts:248:5 › candidate drawer has one action hierarchy and modal becomes topmost 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByRole('dialog', { name: 'Process Update' })
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for getByRole('dialog', { name: 'Process Update' })
+
+
+      272 |   await drawer.getByRole("button", { name: "Update process" }).click();
+      273 |   const modal = page.getByRole("dialog", { name: "Process Update" });
+    > 274 |   await expect(modal).toBeVisible();
+          |                       ^
+      275 |   await expect(page.locator('aside[role="dialog"][aria-hidden="true"]')).toHaveCount(1);
+      276 |   await page.keyboard.press("Escape");
+      277 |   await expect(modal).toHaveCount(0);
+        at C:\Users\thanaphat-krea\OneDrive - GFPT Public Company Limited\HR_database\recruitment_website\tests\e2e\wave-4.spec.ts:274:23
+
+    Error Context: test-results\wave-4-candidate-drawer-ha-3d244-y-and-modal-becomes-topmost-chromium\error-context.md
+
+  15) [chromium] › tests\e2e\workspace-lifecycle.spec.ts:15:5 › embedded sourcing saves through the intercepted RPC and embedded pipeline opens a stage menu 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: locator('#pipeline-candidate-C-PHONE').getByRole('menu', { name: 'Actions for Pat Phone' })
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for locator('#pipeline-candidate-C-PHONE').getByRole('menu', { name: 'Actions for Pat Phone' })
+
+
+      42 |   const card = page.locator("#pipeline-candidate-C-PHONE");
+      43 |   await card.getByRole("button", { name: "Candidate actions for Pat Phone" }).click();
+    > 44 |   await expect(card.getByRole("menu", { name: "Actions for Pat Phone" })).toBeVisible();
+         |                                                                           ^
+      45 |   await expect(card.getByRole("menuitem", { name: /HR Interview/ })).toBeVisible();
+      46 | });
+      47 |
+        at C:\Users\thanaphat-krea\OneDrive - GFPT Public Company Limited\HR_database\recruitment_website\tests\e2e\workspace-lifecycle.spec.ts:44:75
+
+    Error Context: test-results\workspace-lifecycle-embedd-30807-pipeline-opens-a-stage-menu-chromium\error-context.md
+
+  16) [chromium] › tests\e2e\workspace-lifecycle.spec.ts:97:5 › pipeline no-activity menu opens the start-process modal 
+
+    Test timeout of 30000ms exceeded.
+
+    Error: locator.click: Test timeout of 30000ms exceeded.
+    Call log:
+      - waiting for locator('#pipeline-candidate-C-NO-ACTIVITY').getByRole('menuitem', { name: 'Start phone screen for Nora No Activity' })
+
+
+      103 |   const card = page.locator("#pipeline-candidate-C-NO-ACTIVITY");
+      104 |   await card.getByRole("button", { name: "Candidate actions for Nora No Activity" }).click();
+    > 105 |   await card.getByRole("menuitem", { name: "Start phone screen for Nora No Activity" }).click();
+          |                                                                                         ^
+      106 |   await expect(page.getByRole("dialog", { name: "Process Update" })).toBeVisible();
+      107 |   await expect(page.getByRole("dialog", { name: "Process Update" }).getByLabel("Candidate")).toHaveValue("C-NO-ACTIVITY");
+      108 | });
+        at C:\Users\thanaphat-krea\OneDrive - GFPT Public Company Limited\HR_database\recruitment_website\tests\e2e\workspace-lifecycle.spec.ts:105:89
+
+    Error Context: test-results\workspace-lifecycle-pipeli-c22bd-ens-the-start-process-modal-chromium\error-context.md
+
+  17) [chromium] › tests\e2e\workspace-lifecycle.spec.ts:137:5 › passing Offer hands off to workspace offer creation with proposed accepted date 
+
+    Test timeout of 30000ms exceeded.
+
+    Error: locator.click: Test timeout of 30000ms exceeded.
+    Call log:
+      - waiting for getByRole('menuitem', { name: 'Pass stage' })
+
+
+      142 |   const card = page.locator("#pipeline-candidate-C-OFFER-READY");
+      143 |   await card.getByRole("button", { name: "Candidate actions for Nina Offer Ready" }).click();
+    > 144 |   await page.getByRole("menuitem", { name: "Pass stage" }).click();
+          |                                                            ^
+      145 |   const processDialog = page.getByRole("dialog", { name: "Complete Stage" });
+      146 |   const proposedAcceptedDate = await processDialog.locator('input[name="outcome_date"]').inputValue();
+      147 |   await processDialog.getByRole("button", { name: "Review changes" }).click();
+        at C:\Users\thanaphat-krea\OneDrive - GFPT Public Company Limited\HR_database\recruitment_website\tests\e2e\workspace-lifecycle.spec.ts:144:60
+
+    Error Context: test-results\workspace-lifecycle-passin-724ca-with-proposed-accepted-date-chromium\error-context.md
+
+  17 failed
+    [chromium] › tests\e2e\auth-permissions.spec.ts:25:5 › admin recruiters can assign a recruiter while site recruiters stay locked to their own assignment 
+    [chromium] › tests\e2e\dashboard-reports.spec.ts:4:5 › dashboard report uses calendar views, persists its month, and keeps expandable sections 
+    [chromium] › tests\e2e\dashboard-reports.spec.ts:34:5 › dashboard active-period vacancy follows PR date and resolved close date 
+    [chromium] › tests\e2e\dashboard-reports.spec.ts:82:5 › dashboard active-period labels localize and fit at 390px 
+    [chromium] › tests\e2e\forms-validation.spec.ts:37:5 › candidate identity fields guide Thai input and reject an invalid mobile number 
+    [chromium] › tests\e2e\forms-validation.spec.ts:53:5 › candidate reference name is required only for Referral channel 
+    [chromium] › tests\e2e\pipeline-actions.spec.ts:215:5 › Reference Check requires available references to be checked before Pass 
+    [chromium] › tests\e2e\pipeline-board.spec.ts:4:5 › pipeline board renders active, failed, passed, aging, and filtered candidates 
+    [chromium] › tests\e2e\pipeline-board.spec.ts:97:5 › passed Offer card without an offer opens offer creation flow 
+    [chromium] › tests\e2e\pipeline-board.spec.ts:153:5 › pipeline layout avoids page overflow on mobile while board scrolls internally 
+    [chromium] › tests\e2e\ux-enhancements.spec.ts:15:5 › home shows role-aware prioritized work queue 
+    [chromium] › tests\e2e\wave-4.spec.ts:181:5 › sourcing shows unmatched groups with match action and no weekly save fields 
+    [chromium] › tests\e2e\wave-4.spec.ts:232:5 › pipeline URL search focuses a candidate and Actions is keyboard dismissible 
+    [chromium] › tests\e2e\wave-4.spec.ts:248:5 › candidate drawer has one action hierarchy and modal becomes topmost 
+    [chromium] › tests\e2e\workspace-lifecycle.spec.ts:15:5 › embedded sourcing saves through the intercepted RPC and embedded pipeline opens a stage menu 
+    [chromium] › tests\e2e\workspace-lifecycle.spec.ts:97:5 › pipeline no-activity menu opens the start-process modal 
+    [chromium] › tests\e2e\workspace-lifecycle.spec.ts:137:5 › passing Offer hands off to workspace offer creation with proposed accepted date 
+  61 passed (2.1m)

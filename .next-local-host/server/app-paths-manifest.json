@@ -1,0 +1,7 @@
+{
+  "/dashboard/page": "app/dashboard/page.js",
+  "/candidates/page": "app/candidates/page.js",
+  "/workspace/page": "app/workspace/page.js",
+  "/sourcing/page": "app/sourcing/page.js",
+  "/pipeline/page": "app/pipeline/page.js"
+}
