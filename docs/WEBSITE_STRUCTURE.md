@@ -135,7 +135,7 @@ Home is the operational landing page.
 Current order:
 
 1. Today's Work / Workspace Watchlist with one compact four-metric strip for open requisitions, urgent items, aging candidates, and sourcing gaps.
-2. Recruitment Calendar for unresolved canonical Pending stage events with an optional `estimated_action_date`, plus offered-candidate start-working events from `offers.first_working_date`, inside the current authorized Site/PIC filter scope.
+2. Recruitment Calendar for unresolved canonical Pending stage events with an optional `estimated_action_date`, plus offered-candidate start-working events from `offers.first_working_date`, inside the current authorized Site/PIC filter scope. Future starts remain neutral; due unconfirmed starts are red, confirmed starts are green, and confirmed no-shows are omitted. Calendar cards open Candidate Detail, where a due-start warning provides Confirm start. Card color communicates status without visible status text.
 3. Recruitment Records tabs in this fixed order:
    - Open Headcount
    - Candidate Pipeline
@@ -258,16 +258,16 @@ Candidates:
 - Candidates belong to `group_id`; optional `doc_group_id` preserves requisition-match context and may be reassigned or cleared by Unmatch.
 - Candidate channel is a dropdown filtered by the selected group’s marked sourcing channels.
 - New Candidate lists only Group IDs linked to ongoing requisitions with remaining headcount. Site Recruiters additionally require their assigned Site and PIC; Admin Recruiter and System Admin retain all eligible groups. `app_upsert_candidate` enforces the same new-record rule.
-- Candidate required fields are Name, Phone, Group ID, Channel, and First Contact Date. Candidate ID remains optional in New mode because it is generated.
+- New Candidate required fields are Name, Group ID, Channel, and First Contact Date. Phone and Email are optional in New mode; supplied phone must be a valid Thai 10-digit number and supplied email must be valid. Email remains optional in Change mode, while Phone is required. Candidate ID remains optional in New mode because it is generated.
 - New Requisition shows a Doc ID example (`RMP-0000-00-00-0000`) and a localized Line Manager name example. Pipeline Pending and Outcome remarks show localized, stage-aware guidance only; placeholder text is never saved.
 - PR Approved Date, First Contact Date, and Pipeline Outcome date use the shared day-date selector. It displays Gregorian `DD/MM/YYYY`, submits the unchanged `YYYY-MM-DD` value, and uses Asia/Bangkok for today defaults; chronology and validation rules are unchanged.
 - Name remains the official required identity; Nickname is optional, stored as nullable text, and every candidate label uses `Full name (nickname)` when a nickname exists (otherwise the full name alone).
 - New and Change Candidate use localized identity placeholders. Thai Name is `โปรดใส่ชื่อจริง นามสกุล (เช่น จริงใจ กล้าหาญ)` and Thai Phone is `โปรดหมายเลขโทรศัพท์ 10 หลัก (เช่น 0941231234)`; the Name example is guidance only.
-- Phone No. is stored only as exactly ten digits matching `^0[0-9]{9}$`. New and Change writes validate the same rule in the client and `app_upsert_candidate`; valid values display as `000-000-0000`. Existing invalid legacy values remain readable unchanged but must be corrected before a Change save.
+- Phone No. is optional for New Candidate and is stored as `NULL` when omitted. Any supplied value, and every Change write, must be exactly ten digits matching `^0[0-9]{9}$`; valid values display as `000-000-0000`. Existing invalid legacy values remain readable unchanged but must be corrected before a Change save.
 - Reference Name is visible and required only when Channel is `Referral`; changing to another channel omits `ref_name` from the submitted candidate payload.
 - Candidate contact and Pipeline stage dates may precede PR Approved Date, so recruiters can record pre-approval outreach. They still follow the existing Pipeline chronology and Bangkok-business-date rules.
 - Candidate folder URL is stored in `candidate_folder_url` and shown as an external link in candidate detail.
-- Candidate detail shows a pipeline journey above the timeline.
+- Candidate detail shows a pipeline journey above the timeline and displays optional candidate email when present.
 - Candidate Pipeline Journey includes a derived first `Resume Screening` dot. It is shown as passed for recorded candidates, but it is not stored in `recruitment_logs` and is not an active Pipeline board column.
 - Candidate detail keeps stage/result in tags instead of duplicate summary boxes. The Update process action only appears when the candidate is updateable; secondary navigation remains in the detail drawer action menu. Record tables/cards expose only the magnifying-glass View detail action.
 

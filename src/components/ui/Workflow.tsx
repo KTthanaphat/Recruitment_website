@@ -89,11 +89,11 @@ export function DataQualityPanel({
   );
 }
 
-export function InlineDataQualityIssues({ issues, language = "en" }: { issues: DataQualityIssue[]; language?: Language }) {
+export function InlineDataQualityIssues({ canResolve, issues, language = "en", onResolve }: { canResolve?: (issue: DataQualityIssue) => boolean; issues: DataQualityIssue[]; language?: Language; onResolve?: (issue: DataQualityIssue) => void }) {
   if (issues.length === 0) return null;
   return (
     <div className="grid gap-2">
-      {issues.slice(0, 3).map((issue) => <DataQualityIssueCard key={issue.id} issue={issue} compact language={language} />)}
+      {issues.slice(0, 3).map((issue) => <DataQualityIssueCard key={issue.id} issue={issue} compact language={language} onResolve={onResolve && (!canResolve || canResolve(issue)) ? onResolve : undefined} />)}
     </div>
   );
 }

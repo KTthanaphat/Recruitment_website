@@ -613,6 +613,7 @@ declare
   v_legacy_doc_group_id text := nullif(payload ->> 'doc_group_id', '');
   v_nickname text := nullif(btrim(payload ->> 'nickname'), '');
   v_phone_no text := nullif(payload ->> 'phone_no', '');
+  v_email text := nullif(btrim(payload ->> 'email'), '');
   v_references jsonb := coalesce(payload -> 'references', '[]'::jsonb);
   v_reference jsonb;
   v_exists boolean;
@@ -622,8 +623,11 @@ begin
   if v_group_id is null then
     select group_id into v_group_id from public.document_groups where doc_group_id = v_legacy_doc_group_id;
   end if;
-  if v_phone_no is null or v_phone_no !~ '^0[0-9]{9}$' then
+  if (v_mode = 'change' and v_phone_no is null) or (v_phone_no is not null and v_phone_no !~ '^0[0-9]{9}$') then
     raise exception 'CANDIDATE_PHONE_INVALID: Phone No. must be exactly 10 digits beginning with 0.';
+  end if;
+  if v_email is not null and v_email !~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$' then
+    raise exception 'CANDIDATE_EMAIL_INVALID: Enter a valid email address.';
   end if;
   if not app_private.can_manage_sourcing_group(v_group_id) then raise exception 'You can create candidates only for sourcing groups you manage.'; end if;
 
@@ -658,12 +662,13 @@ begin
   if v_mode = 'change' and not app_private.can_manage_candidate(v_candidate_id) then raise exception 'You can edit candidates only for requisitions where you are person in charge.'; end if;
 
   perform set_config('app.action', 'candidate:' || v_mode, true);
-  insert into public.candidates (candidate_id, name, nickname, phone_no, doc_group_id, group_id, channel, ref_name, first_contact_date, candidate_folder_url)
+  insert into public.candidates (candidate_id, name, nickname, phone_no, email, doc_group_id, group_id, channel, ref_name, first_contact_date, candidate_folder_url)
   values (
     v_candidate_id,
     nullif(payload ->> 'name', ''),
     v_nickname,
     v_phone_no,
+    v_email,
     v_doc_group_id,
     v_group_id,
     nullif(payload ->> 'channel', ''),
@@ -675,6 +680,7 @@ begin
     name = excluded.name,
     nickname = excluded.nickname,
     phone_no = excluded.phone_no,
+    email = excluded.email,
     doc_group_id = excluded.doc_group_id,
     group_id = excluded.group_id,
     channel = excluded.channel,

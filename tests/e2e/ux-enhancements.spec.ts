@@ -155,6 +155,38 @@ test("home calendar shows filtered unresolved estimates and opens candidate deta
   expect(mobileWorkBox?.y ?? 0).toBeLessThan(mobileCalendarBox?.y ?? 0);
 });
 
+test("home calendar distinguishes due, confirmed, future, and no-show start-work events", async ({ page }) => {
+  const mock = await installMockSupabase(page, { role: "admin_recruiter" });
+  const baseOffer = mock.data.offers[1];
+  mock.data.offers = [
+    { ...baseOffer, offer_id: 21, candidate_id: "C-OFFER-PASS", first_working_date: "2026-07-20", start_confirmation: null },
+    { ...baseOffer, offer_id: 22, candidate_id: "C-PHONE", first_working_date: "2026-07-21", start_confirmation: "started" },
+    { ...baseOffer, offer_id: 23, candidate_id: "C-HR", first_working_date: "2026-07-25", start_confirmation: null },
+    { ...baseOffer, offer_id: 24, candidate_id: "C-LINE", first_working_date: "2026-07-22", start_confirmation: "did_not_start" }
+  ];
+  await page.goto("/home");
+  await expectWorkspaceReady(page);
+  const calendar = page.getByRole("heading", { name: "Recruitment Calendar" }).locator("xpath=ancestor::section[1]");
+  const due = calendar.getByRole("button", { name: /Open Olivia Offer Pass.*Start confirmation pending/ });
+  const confirmed = calendar.getByRole("button", { name: /Open Pat Phone.*Started work confirmed/ });
+  const future = calendar.getByRole("button", { name: /Open Hana HR, Start working/ });
+  await expect(due).toBeVisible();
+  await expect(confirmed).toBeVisible();
+  await expect(future).toBeVisible();
+  await expect(calendar.getByRole("button", { name: /Liam Line.*Start working/ })).toHaveCount(0);
+  await expect(due).toHaveClass(/bg-\[#FFF8F7\]/);
+  await expect(confirmed).toHaveClass(/bg-\[#F2FBF5\]/);
+  await due.click();
+  const candidateDetail = page.getByRole("dialog", { name: /C-OFFER-PASS/ });
+  await expect(candidateDetail.getByText("New hire confirmation due")).toHaveCount(1);
+  await candidateDetail.getByRole("button", { name: "Confirm start" }).click();
+  await expect(page.getByRole("dialog", { name: "New Hire Confirmation" })).toBeVisible();
+  await page.getByRole("dialog", { name: "New Hire Confirmation" }).getByRole("button", { name: "Cancel" }).click();
+  await page.setViewportSize({ width: 360, height: 800 });
+  await calendar.locator('[data-recruitment-calendar="mobile"] button[aria-label^="21/07/2026"]').click();
+  await expect(calendar.getByRole("button", { name: /Open Pat Phone.*Started work confirmed/ })).toBeVisible();
+});
+
 test("welcome popup uses monthly accepted vacancies with bilingual weekday messages", async ({ page }) => {
   await installMockSupabase(page, { role: "admin_recruiter", language: "en" });
   await page.goto("/home");

@@ -96,6 +96,7 @@ export type Candidate = {
   name: string;
   nickname: string | null;
   phone_no: string | null;
+  email: string | null;
   /** Legacy source requisition link. New candidates are group-level and leave this empty. */
   doc_group_id: string | null;
   group_id: string | null;

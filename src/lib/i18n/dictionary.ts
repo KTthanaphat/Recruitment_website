@@ -964,6 +964,8 @@ Object.assign(en, {
   calendarEventsCount: "{count} event{plural}",
   stageEvent: "Stage event",
   startWorkingEvent: "Start working",
+  startConfirmationPending: "Start confirmation pending",
+  startedWorkConfirmed: "Started work confirmed",
   showAllEvents: "Show all {count} events on {date}"
 });
 Object.assign(th, {
@@ -988,6 +990,8 @@ Object.assign(th, {
   calendarEventsCount: "{count} เหตุการณ์",
   stageEvent: "เหตุการณ์ขั้นตอน",
   startWorkingEvent: "เริ่มงาน",
+  startConfirmationPending: "รอยืนยันการเริ่มงาน",
+  startedWorkConfirmed: "ยืนยันเริ่มงานแล้ว",
   showAllEvents: "แสดงเหตุการณ์ทั้งหมด {count} รายการ วันที่ {date}"
 });
 
@@ -1187,14 +1191,17 @@ Object.assign(en, {
   remark: "Remark",
   candidateId: "Candidate ID",
   phoneNo: "Phone No.",
+  email: "Email",
   nickname: "Nickname",
   candidateNamePlaceholder: "Enter first and last name (e.g. Jai Dee Klahan)",
   candidatePhonePlaceholder: "Enter a 10-digit phone number (e.g. 0941231234)",
+  candidateEmailPlaceholder: "Enter an email address (optional)",
   requisitionDocIdPlaceholder: "RMP-0000-00-00-0000",
   lineManagerPlaceholder: "Enter first and last name (e.g. Jane Smith)",
   pipelinePendingRemarkPlaceholder: "Enter details for {stage}.",
   pipelineOutcomeRemarkPlaceholder: "Enter details from the {stage} outcome.",
   candidatePhoneInvalid: "Phone No. must be exactly 10 digits beginning with 0.",
+  candidateEmailInvalid: "Enter a valid email address.",
   groupId: "Group ID",
   referenceName: "Reference Name",
   firstContactDate: "First Contact Date",
@@ -1452,10 +1459,13 @@ Object.assign(th, {
   remark: "หมายเหตุ",
   candidateId: "รหัสผู้สมัคร",
   phoneNo: "เบอร์โทร",
+  email: "อีเมล",
   nickname: "ชื่อเล่น",
   candidateNamePlaceholder: "โปรดใส่ชื่อจริง นามสกุล (เช่น จริงใจ กล้าหาญ)",
   candidatePhonePlaceholder: "โปรดหมายเลขโทรศัพท์ 10 หลัก (เช่น 0941231234)",
+  candidateEmailPlaceholder: "โปรดระบุอีเมล (ไม่บังคับ)",
   candidatePhoneInvalid: "เบอร์โทรต้องเป็นตัวเลข 10 หลักและขึ้นต้นด้วย 0",
+  candidateEmailInvalid: "โปรดระบุอีเมลให้ถูกต้อง",
   groupId: "Group ID",
   referenceName: "ชื่ออ้างอิง",
   firstContactDate: "วันที่ติดต่อครั้งแรก",

@@ -11,13 +11,14 @@ import { ACTIVE_PIPELINE_STAGES, processIndex, processLabel } from "@/lib/consta
 import { formatCandidateName, formatDate } from "@/lib/format";
 import { translate } from "@/lib/i18n/dictionary";
 import { candidatePipelineCapability } from "@/lib/operations";
-import type { EnrichedCandidate, Language, Offer, ProcessStage, Profile, RecruitmentLog } from "@/types/recruitment";
+import type { EnrichedCandidate, EnrichedOffer, Language, ProcessStage, Profile, RecruitmentLog } from "@/types/recruitment";
 
 type CalendarEvent = {
   candidateId: string;
   candidateName: string;
   date: string;
   eventType: "stage" | "start_work";
+  startWorkStatus?: "scheduled" | "confirmation_pending" | "started";
   overdue: boolean;
   owner: string | null;
   round: number;
@@ -45,7 +46,7 @@ export function RecruitmentCalendar({
   candidates: EnrichedCandidate[];
   className?: string;
   language: Language;
-  offers: Offer[];
+  offers: EnrichedOffer[];
   profile: Profile | null;
   recruitmentLogs: RecruitmentLog[];
   onEditPending?: (candidate: EnrichedCandidate) => void;
@@ -77,7 +78,7 @@ export function RecruitmentCalendar({
     });
     const startWorkEvents = offers.flatMap((offer): CalendarEvent[] => {
       const candidate = candidateById.get(offer.candidate_id);
-      if (!candidate || !offer.first_working_date) return [];
+      if (!candidate || !offer.first_working_date || offer.start_confirmation === "did_not_start") return [];
       return [{
         candidateId: candidate.candidate_id,
         candidateName: formatCandidateName(candidate),
@@ -88,7 +89,12 @@ export function RecruitmentCalendar({
         round: 1,
         site: candidate.site,
         stage: "Offer",
-        position: candidate.group_position
+        position: candidate.group_position,
+        startWorkStatus: offer.start_confirmation === "started"
+          ? "started"
+          : offer.first_working_date <= today
+            ? "confirmation_pending"
+            : "scheduled"
       }];
     });
     return [...stageEvents, ...startWorkEvents].sort(compareEvents);
@@ -204,7 +210,7 @@ function CalendarEventDetail({ candidate, event, language, profile, onEditPendin
   const canEdit = isStageEvent && candidatePipelineCapability(candidate!, [event.log!], profile).canWrite;
   if (!isStageEvent) {
     return <div className="rounded-md border border-[#D7DEE8] bg-white p-3 shadow-[0_6px_16px_rgba(11,19,43,0.025)]">
-      <div className="flex min-w-0 flex-wrap items-center justify-between gap-2"><strong className="min-w-0 break-words text-navy">{event.candidateName}</strong><Tag tone="teal">{translate(language, "startWorkingEvent")}</Tag></div>
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-2"><strong className="min-w-0 break-words text-navy">{event.candidateName}</strong><Tag tone={event.startWorkStatus === "started" ? "success" : event.startWorkStatus === "confirmation_pending" ? "danger" : "teal"}>{event.startWorkStatus === "started" ? translate(language, "startedWorkConfirmed") : event.startWorkStatus === "confirmation_pending" ? translate(language, "startConfirmationPending") : translate(language, "startWorkingEvent")}</Tag></div>
       <p className="mt-1 break-words text-sm font-medium text-slate">{event.position ?? "-"}</p>
       <p className="mt-1 text-sm font-semibold text-primary">{formatDate(event.date, language)}</p>
       <div className="mt-3"><Button type="button" size="sm" variant="secondary" onClick={() => onOpenCandidate(event.candidateId)}>{translate(language, "viewDetail")}</Button></div>
@@ -230,17 +236,24 @@ function CalendarEventButton({ compact = false, event, language, mobile = false,
   const isStartWork = event.eventType === "start_work";
   const detail = isStartWork ? event.position ?? "-" : `${processLabel(event.stage, language)} · ${translate(language, "round")} ${event.round}`;
   const eventType = translate(language, isStartWork ? "startWorkingEvent" : "stageEvent");
+  const startWorkStatus = isStartWork && event.startWorkStatus && event.startWorkStatus !== "scheduled"
+    ? `, ${translate(language, event.startWorkStatus === "started" ? "startedWorkConfirmed" : "startConfirmationPending")}`
+    : "";
   const label = translate(language, "calendarEventLabel", {
     date: formatDate(event.date, language),
     eventType,
     name: event.candidateName,
-    overdue: event.overdue ? `, ${translate(language, "overdue")}` : ""
+    overdue: `${event.overdue ? `, ${translate(language, "overdue")}` : ""}${startWorkStatus}`
   });
-  return <button type="button" aria-label={label} title={label} className={`${mobile ? "min-h-11 p-3" : compact ? "min-h-7 px-1 py-0.5" : "min-h-9 p-1.5"} min-w-0 rounded-md border text-left focus:outline-none focus:ring-2 focus:ring-primary/30 ${event.overdue ? "border-[#F4B4AE] bg-[#FFF8F7] text-scarlet hover:bg-[#FFF1F0]" : "border-[rgb(var(--app-primary-rgb)/0.22)] bg-[rgb(var(--app-primary-rgb)/0.08)] text-navy hover:bg-[#F1F7FF]"}`} onClick={() => onOpenCandidate(event.candidateId)}>
+  const colorClass = event.startWorkStatus === "started"
+    ? "border-[#9ED8B8] bg-[#F2FBF5] text-[#177245] hover:bg-[#E5F7EB]"
+    : event.startWorkStatus === "confirmation_pending" || event.overdue
+      ? "border-[#F4B4AE] bg-[#FFF8F7] text-scarlet hover:bg-[#FFF1F0]"
+      : "border-[rgb(var(--app-primary-rgb)/0.22)] bg-[rgb(var(--app-primary-rgb)/0.08)] text-navy hover:bg-[#F1F7FF]";
+  return <button type="button" aria-label={label} title={label} className={`${mobile ? "min-h-11 p-3" : compact ? "min-h-7 px-1 py-0.5" : "min-h-9 p-1.5"} min-w-0 rounded-md border text-left focus:outline-none focus:ring-2 focus:ring-primary/30 ${colorClass}`} onClick={() => onOpenCandidate(event.candidateId)}>
     <strong className={`block truncate font-semibold ${compact ? "text-[11px] leading-3" : "text-xs"}`}>{event.candidateName}</strong>
     <span className={`flex min-w-0 items-center gap-1 font-medium ${compact ? "text-[10px] leading-3" : "text-[11px]"}`}><span className="shrink-0" aria-hidden="true">{isStartWork ? <BriefcaseBusiness size={compact ? 11 : 13} /> : <CalendarClock size={compact ? 11 : 13} />}</span><span className="truncate">{detail}</span></span>
     {mobile ? <span className="mt-1 block truncate text-[11px] font-medium">{event.site ?? "-"} · {event.owner ?? "-"}</span> : null}
-    {event.overdue ? <span className={`${compact ? "text-[9px] leading-3" : "mt-0.5 text-[10px]"} block font-semibold`}>{translate(language, "overdue")}</span> : null}
   </button>;
 }
 

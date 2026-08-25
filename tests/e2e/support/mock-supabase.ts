@@ -595,6 +595,7 @@ function candidate(candidateId: string, name: string, docGroupId: string, channe
     candidate_id: candidateId,
     name,
     phone_no: "0800000000",
+    email: null,
     doc_group_id: docGroupId,
     channel,
     ref_name: null,

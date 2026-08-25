@@ -298,7 +298,7 @@ Candidate form:
 - Channel is a dropdown.
 - Options are based on the selected group/match marked channels.
 - If no channels are marked, show a disabled no-channel option.
-- Required fields are Name, Phone, Group ID, Channel, and First Contact Date. Candidate ID stays optional in New mode.
+- New Candidate required fields are Name, Group ID, Channel, and First Contact Date. Phone and Email are optional in New mode; Email remains optional in Change mode while Phone is required. Supplied values are validated. Candidate ID stays optional in New mode. Canonical display/calendar rules remain in `docs/WEBSITE_STRUCTURE.md`.
 - Reference Name is visible and required only when Channel is `Referral`; non-referral submissions clear/omit `ref_name`.
 - First Contact Date must be on or after the oldest non-null PR Approved Date among requisitions linked through the selected group. Skip only this PR-date comparison when no linked requisition has a PR Approved Date.
 

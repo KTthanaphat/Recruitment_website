@@ -178,7 +178,7 @@ Unrelated findings were deliberately excluded: signup role bootstrap, candidate-
 | Database tests | `tests/db/candidate-pipeline-paired-status.sql`, `tests/db/workspace-group-authorization.sql` |
 | Browser fixtures/tests | `tests/e2e/support/mock-supabase.ts`, `tests/e2e/pipeline-actions.spec.ts` |
 
-Candidate identity contract: `app_upsert_candidate` accepts nullable trimmed `nickname`, while `phone_no` is required for every New/Change write and must match `^0[0-9]{9}$` (`CANDIDATE_PHONE_INVALID` otherwise). Candidate UI uses the shared label and phone formatters; focused coverage belongs with candidate/form, Pipeline, Workspace, Offer, and daily-summary checks.
+Candidate identity contract: `app_upsert_candidate` accepts nullable trimmed `nickname`, `phone_no`, and `email` for New writes. Supplied email is format-validated but non-unique; Change writes require a valid phone number. Current presentation rules are canonical in `docs/WEBSITE_STRUCTURE.md`; ownership and focused coverage are in `docs/FEATURE_FILE_MAP.md`.
 
 ## Verification record
 

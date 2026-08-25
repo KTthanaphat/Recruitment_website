@@ -1361,6 +1361,7 @@ function buildPayload(modal: Exclude<ModalName, null>, formData: FormData) {
       name: emptyToNull(formData.get("name")),
       nickname: emptyToNull(formData.get("nickname")),
       phone_no: emptyToNull(formData.get("phone_no")),
+      email: emptyToNull(formData.get("email")),
       group_id: emptyToNull(formData.get("group_id")),
       channel,
       ref_name: channel === "Referral" ? emptyToNull(formData.get("ref_name")) : null,
@@ -1615,7 +1616,7 @@ function validateCandidatePayload(payload: Record<string, unknown>, language: La
   const requiredFields = [
     ...(valueAsString(payload.mode) === "change" ? ["candidate_id"] : []),
     "name",
-    "phone_no",
+    ...(valueAsString(payload.mode) === "change" ? ["phone_no"] : []),
     "group_id",
     "channel",
     "first_contact_date",
@@ -1633,8 +1634,13 @@ function validateCandidatePayload(payload: Record<string, unknown>, language: La
     throw new Error(translate(language, "candidateFirstContactDateInvalid"));
   }
 
-  if (!/^0[0-9]{9}$/.test(valueAsString(payload.phone_no))) {
+  const phoneNo = valueAsString(payload.phone_no);
+  if (phoneNo && !/^0[0-9]{9}$/.test(phoneNo)) {
     throw new Error(translate(language, "candidatePhoneInvalid"));
+  }
+  const email = valueAsString(payload.email);
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new Error(translate(language, "candidateEmailInvalid"));
   }
 
 }
@@ -1644,6 +1650,7 @@ function candidateRequiredFieldLabel(language: Language, field: string) {
     candidate_id: translate(language, "candidateId"),
     name: translate(language, "name"),
     phone_no: translate(language, "phoneNo"),
+    email: translate(language, "email"),
     group_id: translate(language, "groupId"),
     channel: translate(language, "channel"),
     first_contact_date: translate(language, "firstContactDate"),
@@ -2203,7 +2210,8 @@ function CandidatePrefillFields({
       </Field>
       <Field label={translate(language, "name")}><TextInput name="name" required placeholder={translate(language, "candidateNamePlaceholder")} defaultValue={selected?.name ?? ""} /></Field>
       <Field label={translate(language, "nickname")}><TextInput name="nickname" defaultValue={selected?.nickname ?? ""} /></Field>
-      <Field label={translate(language, "phoneNo")}><TextInput name="phone_no" type="tel" inputMode="numeric" maxLength={10} pattern="0[0-9]{9}" required placeholder={translate(language, "candidatePhonePlaceholder")} defaultValue={selected?.phone_no ?? ""} /></Field>
+      <Field label={translate(language, "phoneNo")}><TextInput name="phone_no" type="tel" inputMode="numeric" maxLength={10} pattern="0[0-9]{9}" required={mode === "change"} placeholder={translate(language, "candidatePhonePlaceholder")} defaultValue={selected?.phone_no ?? ""} /></Field>
+      <Field label={translate(language, "email")}><TextInput name="email" type="text" inputMode="email" autoComplete="email" placeholder={translate(language, "candidateEmailPlaceholder")} defaultValue={selected?.email ?? ""} /></Field>
       <Field label={translate(language, "groupId")}>
         <CreateSelectInput name="group_id" required value={selectedGroupId} disabled={mode === "new" && (defaults.lock_group_id || eligibleGroups.length === 0)} onChange={(event) => setSelectedGroupId(event.target.value)}>
           <option value="">{eligibleGroups.length === 0 ? translate(language, "noEligibleGroups") : translate(language, "selectGroup")}</option>
@@ -3396,7 +3404,15 @@ function buildDetailBodyV2(
     ),
     body: (
       <div className="grid min-w-0 gap-4">
-        <InlineDataQualityIssues issues={issues} language={language} />
+        <InlineDataQualityIssues
+          canResolve={(issue) => canEditOffers && issue.entity === "offer" && offers.some((offer) => String(offer.offer_id) === issue.entityId && offer.accepted_date && offer.first_working_date && offer.first_working_date <= today() && offer.start_confirmation === null)}
+          issues={issues}
+          language={language}
+          onResolve={(issue) => {
+            const offer = offers.find((row) => String(row.offer_id) === issue.entityId);
+            if (offer) onConfirmOfferStart(offer);
+          }}
+        />
         <DetailDisclosure title="Workflow" summary={`${logs.length} process updates`} defaultOpen>
           <div className="grid gap-4">
             {!updateDisabledReason.blocked ? (
@@ -3421,6 +3437,7 @@ function buildDetailBodyV2(
         </DetailDisclosure>
         <DetailGrid rows={[
           [translate(language, "phoneNo"), formatThaiMobilePhone(candidate.phone_no)],
+          [translate(language, "email"), candidate.email ?? "-"],
           [translate(language, "nickname"), candidate.nickname ?? "-"],
           ["Group ID", candidate.group_id ?? candidate.doc_group_id ?? "-"],
           ["Doc IDs", candidate.doc_ids.join(", ") || "-"],

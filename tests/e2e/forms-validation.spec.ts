@@ -25,7 +25,7 @@ test("candidate creation form enforces required fields before review", async ({ 
   await expect(page.getByRole("dialog", { name: "Confirm Save" })).toHaveCount(0);
 
   await dialog.getByRole("textbox", { name: "Name", exact: true }).fill("QA Candidate");
-  await dialog.getByLabel("Phone No.").fill("0812345678");
+  await expect(dialog.getByLabel("Phone No.")).not.toHaveAttribute("required", "");
   await selectCommandOption(page, "group_id", "GRP-ENG");
   await selectCommandOption(page, "channel", "Facebook");
   await setDateValue(page, "first_contact_date", "2026-05-31");
@@ -48,6 +48,29 @@ test("candidate identity fields guide Thai input and reject an invalid mobile nu
   await dialog.getByLabel("เบอร์โทร").fill("812345678");
   await dialog.getByRole("button", { name: /ตรวจสอบ|Review/ }).click();
   await expect(page.getByText("เบอร์โทรต้องเป็นตัวเลข 10 หลักและขึ้นต้นด้วย 0")).toBeVisible();
+});
+
+test("candidate email is optional, shown in detail, and validated when supplied", async ({ page }) => {
+  const mock = await installMockSupabase(page, { role: "admin_recruiter" });
+  const candidate = mock.data.candidates.find((row) => row.candidate_id === "C-PHONE");
+  if (!candidate) throw new Error("Expected candidate fixture.");
+  candidate.email = "pat.phone@example.com";
+
+  await page.goto("/candidates?detailType=candidate&detailId=C-PHONE");
+  await expectWorkspaceReady(page);
+  await expect(page.getByRole("dialog", { name: /C-PHONE/ })).toContainText("Email");
+  await expect(page.getByRole("dialog", { name: /C-PHONE/ })).toContainText("pat.phone@example.com");
+
+  await page.getByRole("button", { name: "New" }).click();
+  const dialog = page.getByRole("dialog", { name: "Create Candidate" });
+  await expect(dialog.getByLabel("Email")).not.toHaveAttribute("required", "");
+  await dialog.getByRole("textbox", { name: "Name", exact: true }).fill("Email Validation");
+  await dialog.getByLabel("Email").fill("not-an-email");
+  await selectCommandOption(page, "group_id", "GRP-ENG");
+  await selectCommandOption(page, "channel", "Facebook");
+  await setDateValue(page, "first_contact_date", "2026-05-31");
+  await dialog.getByRole("button", { name: "Review changes" }).click();
+  await expect(page.getByText("Enter a valid email address.")).toBeVisible();
 });
 
 test("candidate reference name is required only for Referral channel", async ({ page }) => {

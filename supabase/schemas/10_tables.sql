@@ -23,7 +23,7 @@ create table if not exists public.requisitions (
   position text not null,
   department text not null,
   section text,
-  level text,
+  level text check (level ~ '^(0|[1-9]|1[0-4])$'),
   head_count integer not null default 1 check (head_count > 0),
   person_in_charge text,
   line_manager text,
@@ -83,6 +83,7 @@ create table if not exists public.candidates (
   name text not null,
   nickname text,
   phone_no text,
+  email text,
   -- Candidates are managed by group_id. doc_group_id is an optional legacy anchor
   -- for older views and becomes null when the final requisition is unmatched.
   doc_group_id text references public.document_groups(doc_group_id) on delete set null,
