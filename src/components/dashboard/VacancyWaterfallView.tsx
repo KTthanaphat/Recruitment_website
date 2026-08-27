@@ -891,11 +891,16 @@ function buildLiveWaterfallRows(
   if (!startDate || !endDate || startDate > endDate) return [];
 
   const rows: WaterfallRow[] = [];
-  const requisitionsById = new Map(requisitions.map((row) => [row.doc_id, row]));
+  // The movement chart and Active in Selected Period must use one population.
+  // In particular, an offer from a closed/expired requisition cannot reduce a
+  // waterfall whose corresponding vacancy was excluded from its opening bars.
+  const eligibleRequisitions = requisitions.filter((requisition) =>
+    isReportEligible(requisition, data, startDate, endDate, reportView)
+  );
+  const requisitionsById = new Map(eligibleRequisitions.map((row) => [row.doc_id, row]));
   const coveredOffers = offers.filter(countsTowardHeadcount);
 
-  for (const requisition of requisitions) {
-    if (!isReportEligible(requisition, data, startDate, endDate, reportView)) continue;
+  for (const requisition of eligibleRequisitions) {
     const openedDate = dateOnly(requisition.pr_approved_date) ?? dateOnly(requisition.created_at);
     if (!openedDate) continue;
 

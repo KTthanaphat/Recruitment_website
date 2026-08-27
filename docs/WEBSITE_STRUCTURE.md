@@ -176,7 +176,7 @@ The waterfall uses a localized dropdown with MTD, YTD, PIM, and Custom range. It
 - YTD: 1 January through selected month end; PR date ≤ end, derived SLA deadline ≥ 1 January, and no resolved close before 1 January.
 - PIM: selected month start through end; PR date ≤ end and no resolved close before start.
 - Custom range: required inclusive Start/End dates, with PIM eligibility; invalid or reversed ranges show no report data and disable exports. Calendar views use `reportView` + `reportMonth`; custom uses `reportView=custom` + `start` + `end`.
-- Cancelled requisitions are excluded. Close date is latest `filled` requisition log, falling back to latest accepted offer for legacy rows. Filled vacancy counts are accepted offers in range; denominator is eligible original headcount; Open Requisitions are eligible rows with `ongoing` status.
+- Cancelled requisitions are excluded. Close date is latest `filled` requisition log, falling back to latest accepted offer for legacy rows. Filled vacancy counts are accepted offers in range whose requisition is also eligible for the selected report; denominator is eligible original headcount; Open Requisitions are eligible rows with `ongoing` status. The waterfall and Active in Selected Period share this eligibility population.
 - Dashboard calls the authenticated, read-only company report RPC. It exposes no candidate information and does not alter raw record or write permissions.
 
 - Week Start: open headcount before the selected start date.

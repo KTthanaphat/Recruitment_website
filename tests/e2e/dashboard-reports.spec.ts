@@ -142,6 +142,46 @@ test("dashboard active-period vacancy follows PR date and resolved close date", 
   await expect(page.getByRole("heading", { name: "Vacancy Waterfall" })).toBeVisible();
 });
 
+test("waterfall counts fills only from requisitions active in the selected period", async ({ page }) => {
+  const mock = await installMockSupabase(page, { role: "admin_recruiter" });
+  const requisitionTemplate = mock.data.requisitions[0];
+  const offerTemplate = mock.data.offers[0];
+  mock.data.requisitions.splice(0, mock.data.requisitions.length,
+    {
+      ...requisitionTemplate,
+      doc_id: "REQ-EXPIRED-HQ",
+      site: "HQ",
+      position: "Expired HQ role",
+      level: "3",
+      status: "filled",
+      head_count: 1,
+      pr_approved_date: "2025-06-30"
+    },
+    {
+      ...requisitionTemplate,
+      doc_id: "REQ-AUGUST-HQ",
+      site: "HQ",
+      position: "August HQ role",
+      level: "3",
+      status: "filled",
+      head_count: 1,
+      pr_approved_date: "2026-08-17"
+    }
+  );
+  mock.data.offers.splice(0, mock.data.offers.length,
+    { ...offerTemplate, offer_id: 801, candidate_id: "C-EXPIRED", doc_id: "REQ-EXPIRED-HQ", accepted_date: "2026-08-03", start_confirmation: null },
+    { ...offerTemplate, offer_id: 802, candidate_id: "C-AUGUST", doc_id: "REQ-AUGUST-HQ", accepted_date: "2026-08-20", start_confirmation: null }
+  );
+  mock.data.requisition_logs.splice(0, mock.data.requisition_logs.length);
+
+  await page.goto("/dashboard?reportView=mtd&reportMonth=2026-08&details=open");
+  await expectWorkspaceReady(page);
+
+  await expect(page.getByText("August HQ role", { exact: true })).toBeVisible();
+  await expect(page.getByText("Expired HQ role", { exact: true })).toHaveCount(0);
+  await expect(page.locator(".vacancy-waterfall-svg")).not.toContainText("-1");
+});
+
 test("dashboard active-period labels localize and fit at 390px", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await installMockSupabase(page, { role: "admin_recruiter", language: "th" });
