@@ -227,6 +227,24 @@ test("candidate detail separates current pending details from outcome history an
   await expect(page.getByRole("button", { name: "Candidate actions for Pat Phone" })).toHaveCount(0);
 });
 
+test("candidate detail shows a completed stage's outcome remark, including legacy remark values", async ({ page }) => {
+  const mock = await installMockSupabase(page, { role: "viewer" });
+  const phoneScreen = mock.data.recruitment_logs.find((log) => log.log_id === 1);
+  if (!phoneScreen) throw new Error("Expected the Phone Screen fixture.");
+  phoneScreen.result = 0;
+  phoneScreen.outcome_date = "2026-07-24";
+  phoneScreen.outcome_remark = null;
+  phoneScreen.remark = "Legacy phone-screen outcome detail";
+
+  await page.goto("/pipeline");
+  await expectWorkspaceReady(page);
+
+  await page.getByRole("button", { name: /^Pat Phone/ }).click();
+  const dialog = page.getByRole("dialog", { name: /C-PHONE/ });
+  await expect(dialog.getByText("Completed stage history")).toBeVisible();
+  await expect(dialog.getByText("Remark: Legacy phone-screen outcome detail")).toBeVisible();
+});
+
 test("candidate detail opens the same Edit Pending Details workflow for an authorized recruiter", async ({ page }) => {
   await installMockSupabase(page, { role: "admin_recruiter" });
   await page.goto("/pipeline");

@@ -3511,6 +3511,7 @@ function buildDetailBodyV2(
                     <p className="mt-1 text-sm font-medium text-slate">{translate(language, "pendingDetails")}: {formatDate(record.pending.openedDate, language)} / {record.pending.interviewer ?? translate(language, "noInterviewer")}</p>
                     {record.pending.estimatedActionDate ? <p className="mt-1 text-sm font-semibold text-primary">{translate(language, "estimatedDateValue", { date: formatDate(record.pending.estimatedActionDate, language) })}</p> : null}
                     <p className="mt-1 text-sm font-medium text-slate">{translate(language, "outcome")}: {formatDate(record.outcome?.date, language)} / {record.outcome?.interviewer ?? translate(language, "noInterviewer")}</p>
+                    {record.outcome?.remark ? <p className="mt-1 break-words text-sm text-slate">{translate(language, "remark")}: {record.outcome.remark}</p> : null}
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       {record.pending.editedAt ? <Tag tone="muted">{translate(language, "edited")}</Tag> : null}
                       {record.origin === "migration" ? <Tag tone="muted">{translate(language, "migrated")}</Tag> : null}
