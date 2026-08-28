@@ -17,6 +17,8 @@ venv/
 # Next.js / Node
 node_modules/
 .next/
+# Generated atomic production-build output and Webpack caches.
+next-build-atomic/
 next-local-cache/
 out/
 coverage/
