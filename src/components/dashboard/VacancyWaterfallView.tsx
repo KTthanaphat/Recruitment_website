@@ -70,13 +70,12 @@ type RequisitionDetailRow = {
   person_in_charge: string;
   stage_counts: Record<ProcessStage, number>;
   sla_state: RequisitionSlaState;
-  filled_status: "Open" | "Filled";
   filled_date: string | null;
   period_status: "ongoing" | "filled" | "cancel";
   period_detail: string | null;
 };
 type StageCountMode = "status" | "activity";
-type ExportColumnKey = "site" | "department" | "department_th" | "section" | "section_th" | "position" | "level" | "vacancy" | "request_type" | "requisition_date" | "person_in_charge" | "status" | "detail" | "applicants" | ProcessStage | "actual_age" | "sla" | "filled_status" | "filled_date";
+type ExportColumnKey = "site" | "department" | "department_th" | "section" | "section_th" | "position" | "level" | "vacancy" | "request_type" | "requisition_date" | "person_in_charge" | "status" | "detail" | "applicants" | ProcessStage | "actual_age" | "sla" | "filled_date";
 type StageCandidateMatch = { candidateId: string; name: string; stage: ProcessStage; pendingDate: string; resultDate: string | null; remark: string | null; result: 0 | 1 | null };
 type StageCandidateReportDetail = StageCandidateMatch & { personInCharge: string };
 
@@ -671,15 +670,15 @@ function RightSegmentBrackets({
 }
 
 function defaultExportColumns(): ExportColumnKey[] {
-  return ["site", "department", "section", "position", "level", "vacancy", "request_type", "requisition_date", "person_in_charge", "status", "detail", "applicants", ...detailStages, "actual_age", "sla", "filled_status", "filled_date"];
+  return ["site", "department", "section", "position", "level", "vacancy", "request_type", "requisition_date", "person_in_charge", "status", "detail", "applicants", ...detailStages, "actual_age", "sla", "filled_date"];
 }
 
 function exportColumnLabel(key: ExportColumnKey, language: Language) {
-  return key === "department" ? "Department" : key === "section" ? "Section" : key === "department_th" ? translate(language, "departmentThai") : key === "section_th" ? translate(language, "sectionThai") : key === "request_type" ? translate(language, "requestType") : key === "requisition_date" ? translate(language, "requisitionDate") : key === "person_in_charge" ? translate(language, "personInCharge") : key === "actual_age" ? translate(language, "actualAge") : key === "filled_status" ? translate(language, "filledStatus") : key === "filled_date" ? translate(language, "filledDate") : key === "applicants" ? translate(language, "applicants") : key === "sla" ? translate(language, "currentSla") : detailStages.includes(key as ProcessStage) ? processStageLabel(language, key as ProcessStage) : translate(language, key);
+  return key === "department" ? "Department" : key === "section" ? "Section" : key === "department_th" ? translate(language, "departmentThai") : key === "section_th" ? translate(language, "sectionThai") : key === "request_type" ? translate(language, "requestType") : key === "requisition_date" ? translate(language, "requisitionDate") : key === "person_in_charge" ? translate(language, "personInCharge") : key === "actual_age" ? translate(language, "actualAge") : key === "filled_date" ? translate(language, "filledDate") : key === "applicants" ? translate(language, "applicants") : key === "sla" ? translate(language, "currentSla") : detailStages.includes(key as ProcessStage) ? processStageLabel(language, key as ProcessStage) : translate(language, key);
 }
 
 function ActiveRequisitionExportModal({ open, language, rows, organizationRows, columns, onClose, onColumnsChange, onExportXlsx, onExportPng }: { open: boolean; language: Language; rows: RequisitionDetailRow[]; organizationRows: DepartmentSectionRow[]; columns: ExportColumnKey[]; onClose: () => void; onColumnsChange: (columns: ExportColumnKey[]) => void; onExportXlsx: () => void; onExportPng: () => void }) {
-  const registry: ExportColumnKey[] = ["site", "department", "department_th", "section", "section_th", "position", "level", "vacancy", "request_type", "requisition_date", "person_in_charge", "status", "detail", "applicants", ...detailStages, "actual_age", "sla", "filled_status", "filled_date"];
+  const registry: ExportColumnKey[] = ["site", "department", "department_th", "section", "section_th", "position", "level", "vacancy", "request_type", "requisition_date", "person_in_charge", "status", "detail", "applicants", ...detailStages, "actual_age", "sla", "filled_date"];
   const label = (key: ExportColumnKey) => exportColumnLabel(key, language);
   const [dragging, setDragging] = useState<ExportColumnKey | null>(null);
   const [insertBefore, setInsertBefore] = useState<ExportColumnKey | null>(null);
@@ -689,7 +688,7 @@ function ActiveRequisitionExportModal({ open, language, rows, organizationRows, 
 function previewValue(value: string | number) { const text = String(value); return text.length > 28 ? `${text.slice(0, 25)}...` : text; }
 function exportFieldDescription(key: ExportColumnKey, language: Language) {
   const english: Partial<Record<ExportColumnKey, string>> = {
-    site: "Site: The operating location responsible for the requisition.", department: "Department: The requisition's department in the selected system language.", department_th: "Department (Thai): The canonical Thai department name stored with the requisition.", section: "Section: The requisition's section in the selected system language.", section_th: "Section (Thai): The canonical Thai section name stored with the requisition.", position: "Position: The requested job title.", level: "Job Level: The approved job grade for the requisition.", vacancy: "Vacancy: Total approved headcount requested.", request_type: "Request Type: Whether the requisition is new or a replacement.", requisition_date: "Requisition Date: The approved opening date (pr_approved_date).", person_in_charge: "Person in Charge: The recruiter assigned to manage the requisition.", status: "Status: The latest requisition status on or before the selected period end date.", detail: "Detail: The remark attached to that latest historical status record.", applicants: "Applicants: Applicants recorded through sourcing during the selected period.", actual_age: "Actual Age: Age of the requisition since the requisition opened (pr_approved_date).", sla: "Current SLA: The requisition's SLA age and whether it is within the defined service level.", filled_status: "Filled Status: Whether the requisition was filled at the end of the selected period.", filled_date: "Filled Date: The date the requisition was filled, when applicable."
+    site: "Site: The operating location responsible for the requisition.", department: "Department: The requisition's department in the selected system language.", department_th: "Department (Thai): The canonical Thai department name stored with the requisition.", section: "Section: The requisition's section in the selected system language.", section_th: "Section (Thai): The canonical Thai section name stored with the requisition.", position: "Position: The requested job title.", level: "Job Level: The approved job grade for the requisition.", vacancy: "Vacancy: Total approved headcount requested.", request_type: "Request Type: Whether the requisition is new or a replacement.", requisition_date: "Requisition Date: The approved opening date (pr_approved_date).", person_in_charge: "Person in Charge: The recruiter assigned to manage the requisition.", status: "Status: The period-end requisition state used by the Vacancy Waterfall: the latest status log on or before the selected period end date.", detail: "Detail: The remark attached to that latest historical status record.", applicants: "Applicants: Applicants recorded through sourcing during the selected period.", actual_age: "Actual Age: Age of the requisition since the requisition opened (pr_approved_date).", sla: "Current SLA: The requisition's SLA age and whether it is within the defined service level.", filled_date: "Filled Date: The latest filled-status date on or before the selected period end date, when the period-end Status is Filled."
   };
   const stage = detailStages.includes(key as ProcessStage) ? `${processStageLabel(language, key as ProcessStage)}: Unique candidates with a current pipeline record or a completed result in this stage, depending on the selected mode.` : null;
   return stage ?? english[key] ?? translate(language, "exportFieldDescription", { field: exportColumnLabel(key, language) });
@@ -697,7 +696,7 @@ function exportFieldDescription(key: ExportColumnKey, language: Language) {
 
 function exportValue(row: RequisitionDetailRow, key: ExportColumnKey, language: Language, organizationRows: DepartmentSectionRow[] = []): string | number {
   if (detailStages.includes(key as ProcessStage)) return row.stage_counts[key as ProcessStage] ?? 0;
-  const values: Record<string, string | number> = { site: row.site, department: organizationLabel(organizationRows, language, row.site, row.department, "department"), department_th: organizationLabel(organizationRows, "th", row.site, row.department, "department"), section: organizationLabel(organizationRows, language, row.site, row.section, "section") || "-", section_th: organizationLabel(organizationRows, "th", row.site, row.section, "section") || "-", position: row.position, level: row.level, vacancy: row.vacancy, request_type: requestTypeLabel(language, row.request_type), requisition_date: formatDate(row.requisition_date, language), person_in_charge: row.person_in_charge, status: translate(language, row.period_status === "ongoing" ? "ongoing" : row.period_status === "filled" ? "filled" : "cancel"), detail: row.period_detail ?? "-", applicants: row.applicant_count, actual_age: row.actual_age_days === null ? "-" : `${row.actual_age_days}d`, sla: slaExportValue(row.sla_state, language), filled_status: translate(language, row.filled_status === "Filled" ? "filled" : "open"), filled_date: row.filled_date ? formatDate(row.filled_date, language) : "-" };
+  const values: Record<string, string | number> = { site: row.site, department: organizationLabel(organizationRows, language, row.site, row.department, "department"), department_th: organizationLabel(organizationRows, "th", row.site, row.department, "department"), section: organizationLabel(organizationRows, language, row.site, row.section, "section") || "-", section_th: organizationLabel(organizationRows, "th", row.site, row.section, "section") || "-", position: row.position, level: row.level, vacancy: row.vacancy, request_type: requestTypeLabel(language, row.request_type), requisition_date: formatDate(row.requisition_date, language), person_in_charge: row.person_in_charge, status: translate(language, row.period_status === "ongoing" ? "ongoing" : row.period_status === "filled" ? "filled" : "cancel"), detail: row.period_detail ?? "-", applicants: row.applicant_count, actual_age: row.actual_age_days === null ? "-" : `${row.actual_age_days}d`, sla: slaExportValue(row.sla_state, language), filled_date: row.filled_date ? formatDate(row.filled_date, language) : "-" };
   return values[key];
 }
 
@@ -731,7 +730,6 @@ function RequisitionDetailTable({ rows, language, printMode = false, onStageClic
     })),
     { key: "actual_age", label: translate(language, "actualAge"), value: (row) => row.actual_age_days === null ? "-" : `${row.actual_age_days}d`, sortValue: (row) => row.actual_age_days ?? Number.POSITIVE_INFINITY },
     { key: "sla", label: translate(language, "currentSla"), value: (row) => slaExportValue(row.sla_state, language), sortValue: (row) => row.sla_state.ageDays ?? Number.POSITIVE_INFINITY },
-    { key: "filled_status", label: translate(language, "filledStatus"), value: (row) => translate(language, row.filled_status === "Filled" ? "filled" : "open") },
     { key: "filled_date", label: translate(language, "filledDate"), value: (row) => row.filled_date ? formatDate(row.filled_date, language) : "-", sortValue: (row) => row.filled_date ?? "" }
   ];
   const table = useTableControls(rows, columns);
@@ -781,7 +779,6 @@ function RequisitionDetailTable({ rows, language, printMode = false, onStageClic
               ))}
               <td className={`${detailCellClass("Actual Age")} border border-[#D7DEE8] px-2 py-2`}>{row.actual_age_days === null ? "-" : `${row.actual_age_days}d`}</td>
               <td className={`${detailCellClass("Current SLA")} border border-[#D7DEE8] px-2 py-2`}>{slaStatusCell(row.sla_state)}</td>
-              <td className={`${detailCellClass("Filled Status")} border border-[#D7DEE8] px-2 py-2`}>{translate(language, row.filled_status === "Filled" ? "filled" : "open")}</td>
               <td className={`${detailCellClass("Filled Date")} border border-[#D7DEE8] px-2 py-2`}>{row.filled_date ? formatDate(row.filled_date, language) : "-"}</td>
             </tr>
           ))}
@@ -824,7 +821,6 @@ function requisitionDetailHeaders(language: Language) {
     ...detailStages.map((stage) => processStageLabel(language, stage)),
     translate(language, "actualAge"),
     translate(language, "currentSla"),
-    translate(language, "filledStatus"),
     translate(language, "filledDate")
   ];
 }
@@ -847,7 +843,6 @@ function requisitionDetailExportRow(row: RequisitionDetailRow, language: Languag
       if (header === translate(language, "applicants")) return [header, row.applicant_count];
       if (header === translate(language, "actualAge")) return [header, row.actual_age_days === null ? "-" : `${row.actual_age_days}d`];
       if (header === translate(language, "currentSla")) return [header, slaExportValue(row.sla_state, language)];
-      if (header === translate(language, "filledStatus")) return [header, translate(language, row.filled_status === "Filled" ? "filled" : "open")];
       if (header === translate(language, "filledDate")) return [header, row.filled_date ? formatDate(row.filled_date, language) : "-"];
       const stage = stageHeaders.get(header);
       return [header, stage ? row.stage_counts[stage] ?? 0 : 0];
@@ -871,7 +866,7 @@ function detailColumnClass(header: string) {
   if (["Department", "Position", "Person in Charge"].includes(header)) return "detail-text min-w-36 max-w-56 whitespace-normal";
   if (["Requisition Type"].includes(header)) return "min-w-32 whitespace-nowrap";
   if (["Requisition Date", "Filled Date"].includes(header)) return "min-w-28 whitespace-nowrap";
-  if (["SLA", "Filled Status"].includes(header)) return "min-w-24 whitespace-nowrap";
+  if (["SLA"].includes(header)) return "min-w-24 whitespace-nowrap";
   if (isDetailStageHeader(header)) return "min-w-16 whitespace-nowrap text-right";
   if (["Vacancy", "Applicants"].includes(header)) return "min-w-16 whitespace-nowrap text-right";
   return "min-w-20 whitespace-nowrap";
@@ -1028,9 +1023,8 @@ function buildActiveRequisitionRows(data: DashboardData, requisitions: EnrichedR
       const groupIds = groupIdsForRequisition(data, requisition.doc_id);
       const relatedDocGroupIds = docGroupIdsForGroupIds(data, groupIds);
       const stageCounts = stageCountMode === "status" ? pipelineStatusCountsForDocGroups(data, relatedDocGroupIds, endDate) : stageActivityCountsForDocGroups(data, relatedDocGroupIds, startDate, endDate);
-      const closeDate = resolvedCloseDate(requisition, data);
       const snapshot = requisitionSnapshotAt(data, requisition, endDate);
-      const filledStatus: RequisitionDetailRow["filled_status"] = snapshot.status === "filled" ? "Filled" : "Open";
+      const filledDate = snapshot.status === "filled" ? filledDateAtPeriodEnd(data, requisition.doc_id, endDate) : null;
 
       return {
         doc_id: requisition.doc_id,
@@ -1048,10 +1042,9 @@ function buildActiveRequisitionRows(data: DashboardData, requisitions: EnrichedR
         stage_counts: stageCounts,
         sla_state: getRequisitionSlaState(
           requisition,
-          { endDate: filledStatus === "Filled" ? closeDate ?? todayDate() : todayDate() }
+          { endDate: snapshot.status === "filled" ? filledDate ?? todayDate() : todayDate() }
         ),
-        filled_status: filledStatus,
-        filled_date: filledStatus === "Filled" ? closeDate : null,
+        filled_date: filledDate,
         period_status: snapshot.status,
         period_detail: snapshot.remark
       };
@@ -1062,7 +1055,7 @@ function buildActiveRequisitionRows(data: DashboardData, requisitions: EnrichedR
 function isReportEligible(requisition: EnrichedRequisition, data: DashboardData, startDate: string, endDate: string, reportView: ReportView) {
   const prDate = validDateOnly(requisition.pr_approved_date);
   const snapshot = requisitionSnapshotAt(data, requisition, endDate);
-  const closeDate = snapshot.status === "filled" ? latestValidDate(data.requisition_logs.filter((log) => log.doc_id === requisition.doc_id && log.status === "filled" && log.log_date <= endDate).map((log) => log.log_date)) : null;
+  const closeDate = snapshot.status === "filled" ? filledDateAtPeriodEnd(data, requisition.doc_id, endDate) : null;
   if (!prDate || snapshot.status === "cancel" || prDate > endDate || Boolean(closeDate && closeDate < startDate)) return false;
   if (reportView === "pim" || reportView === "custom") return true;
   const slaDays = getSlaDays(requisition.level);
@@ -1070,18 +1063,11 @@ function isReportEligible(requisition: EnrichedRequisition, data: DashboardData,
   return Boolean(slaDeadline && slaDeadline >= startDate);
 }
 
-function resolvedCloseDate(requisition: EnrichedRequisition, data: DashboardData) {
-  if (requisition.status !== "filled") return null;
-  const filledLogDate = latestValidDate(
-    data.requisition_logs
-      .filter((log) => log.doc_id === requisition.doc_id && log.status === "filled")
-      .map((log) => log.log_date)
-  );
-  if (filledLogDate) return filledLogDate;
+function filledDateAtPeriodEnd(data: DashboardData, docId: string, endDate: string) {
   return latestValidDate(
-    data.offers
-      .filter((offer) => offer.doc_id === requisition.doc_id && countsTowardHeadcount(offer))
-      .map((offer) => offer.accepted_date)
+    data.requisition_logs
+      .filter((log) => log.doc_id === docId && log.status === "filled" && log.log_date <= endDate)
+      .map((log) => log.log_date)
   );
 }
 
@@ -1279,7 +1265,7 @@ function levelMatchesBands(level: string | null | undefined, bands: FunnelLevelB
 function compareRequisitionDetailRows(a: RequisitionDetailRow, b: RequisitionDetailRow) {
   const siteDelta = a.site.localeCompare(b.site);
   if (siteDelta !== 0) return siteDelta;
-  const statusDelta = (a.filled_status === "Open" ? 0 : 1) - (b.filled_status === "Open" ? 0 : 1);
+  const statusDelta = (a.period_status === "ongoing" ? 0 : 1) - (b.period_status === "ongoing" ? 0 : 1);
   if (statusDelta !== 0) return statusDelta;
   const dateA = a.filled_date ?? "9999-12-31";
   const dateB = b.filled_date ?? "9999-12-31";
@@ -1574,7 +1560,7 @@ function addCalendarDays(value: string, days: number) {
 }
 
 function buildReportSummary(requisitionRows: RequisitionDetailRow[], offers: EnrichedOffer[], startDate: string, endDate: string, language: Language) {
-  const openRequisitions = requisitionRows.filter((row) => row.filled_status === "Open").length;
+  const openRequisitions = requisitionRows.filter((row) => row.period_status === "ongoing").length;
   const activeVacancy = requisitionRows.reduce((sum, row) => sum + row.vacancy, 0);
   const filled = offers.filter((offer) => {
     const date = validDateOnly(offer.accepted_date);
