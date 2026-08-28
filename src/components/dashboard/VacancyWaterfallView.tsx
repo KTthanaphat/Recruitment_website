@@ -1,8 +1,9 @@
 "use client";
 
-import { CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, ImageDown, SlidersHorizontal } from "lucide-react";
+import { ArrowLeftRight, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, Download, ImageDown, Info, SlidersHorizontal } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { Modal } from "@/components/ui/Modal";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { CommandMonthSelector, CommandSelector } from "@/components/ui/CommandSelector";
 import { DayDateSelector, Field } from "@/components/ui/Field";
@@ -18,6 +19,7 @@ import {
 } from "@/lib/constants";
 import { formatLocalDateInput } from "@/lib/dates";
 import { formatDate, formatNumber } from "@/lib/format";
+import { organizationLabel, type DepartmentSectionRow } from "@/lib/department-section-data";
 import { processStageLabel, requestTypeLabel, translate } from "@/lib/i18n/dictionary";
 import { getRequisitionSlaState, getSlaDays, type RequisitionSlaState, todayDate } from "@/lib/sla";
 import { countsTowardHeadcount, countsTowardHeadcountAt } from "@/lib/offer-headcount";
@@ -28,6 +30,7 @@ import type {
   EnrichedRequisition,
   Language,
   ProcessStage,
+  RequisitionStatus,
   RequisitionRequestType,
   VacancyWaterfallCategory
 } from "@/types/recruitment";
@@ -56,6 +59,7 @@ type RequisitionDetailRow = {
   doc_id: string;
   site: string;
   department: string;
+  section: string | null;
   position: string;
   level: string;
   vacancy: number;
@@ -68,7 +72,12 @@ type RequisitionDetailRow = {
   sla_state: RequisitionSlaState;
   filled_status: "Open" | "Filled";
   filled_date: string | null;
+  period_status: "ongoing" | "filled" | "cancel";
+  period_detail: string | null;
 };
+type StageCountMode = "status" | "activity";
+type ExportColumnKey = "site" | "department" | "department_th" | "section" | "section_th" | "position" | "level" | "vacancy" | "request_type" | "requisition_date" | "person_in_charge" | "status" | "detail" | "applicants" | ProcessStage | "actual_age" | "sla" | "filled_status" | "filled_date";
+type StageCandidateMatch = { candidateId: string; name: string; stage: ProcessStage; pendingDate: string; resultDate: string | null; interviewer: string | null; remark: string | null; result: 0 | 1 | null };
 
 export function VacancyWaterfallView({
   language,
@@ -93,6 +102,12 @@ export function VacancyWaterfallView({
   const [funnelOpen, setFunnelOpen] = useState(false);
   const [exportPreparing, setExportPreparing] = useState(false);
   const [exportError, setExportError] = useState(false);
+  const [stageCountMode, setStageCountMode] = useState<StageCountMode>("status");
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportColumns, setExportColumns] = useState<ExportColumnKey[]>([]);
+  const [organizationRows, setOrganizationRows] = useState<DepartmentSectionRow[]>([]);
+  const [stageDrilldown, setStageDrilldown] = useState<{ row: RequisitionDetailRow; stage: ProcessStage; matches: StageCandidateMatch[] } | null>(null);
+  const [reportCandidate, setReportCandidate] = useState<StageCandidateMatch | null>(null);
   const [urlStateReady, setUrlStateReady] = useState(false);
   const chartExportRef = useRef<HTMLDivElement | null>(null);
   const requisitionExportRef = useRef<HTMLDivElement | null>(null);
@@ -108,8 +123,8 @@ export function VacancyWaterfallView({
     [data, endDate, offers, reportView, requisitions, startDate]
   );
   const requisitionRows = useMemo(
-    () => buildActiveRequisitionRows(data, requisitions, startDate, endDate, reportView),
-    [data, endDate, reportView, requisitions, startDate]
+    () => buildActiveRequisitionRows(data, requisitions, startDate, endDate, reportView, stageCountMode),
+    [data, endDate, reportView, requisitions, stageCountMode, startDate]
   );
   const funnelRows = useMemo(
     () => buildDashboardPipelineFunnelRows(data, requisitions, funnelStartDate, funnelEndDate, funnelLevelBands, funnelChannel, language),
@@ -138,6 +153,12 @@ export function VacancyWaterfallView({
     if (params.get("funnel") === "open") setFunnelOpen(true);
     if (params.get("funnel") === "closed") setFunnelOpen(false);
     setUrlStateReady(true);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/department-sections").then((response) => response.ok ? response.json() : []).then((rows: DepartmentSectionRow[]) => { if (active) setOrganizationRows(Array.isArray(rows) ? rows : []); }).catch(() => { if (active) setOrganizationRows([]); });
+    return () => { active = false; };
   }, []);
 
   useEffect(() => {
@@ -191,27 +212,25 @@ export function VacancyWaterfallView({
     }
   }
 
-  async function exportRequisitionDetailXlsx() {
+  async function exportRequisitionDetailXlsx(selectedColumns: ExportColumnKey[] = defaultExportColumns()) {
     setExportPreparing(true);
     try {
-      const headers = requisitionDetailHeaders(language);
+      const headers = selectedColumns.map((column) => exportColumnLabel(column, language));
       const { Workbook } = await import("exceljs");
       const workbook = new Workbook();
       const worksheet = workbook.addWorksheet(translate(language, "activeRequisitionsSheet"));
-      const rows = requisitionRows.map((row) => headers.map((header) => requisitionDetailExportRow(row, language)[header]));
+      const rows = requisitionRows.map((row) => selectedColumns.map((column) => exportValue(row, column, language, organizationRows)));
       worksheet.views = [{ showGridLines: false }];
       worksheet.getColumn(1).width = 2;
       for (let index = 2; index < headers.length + 2; index += 1) worksheet.getColumn(index).width = 20;
       worksheet.addTable({ name: "ActiveRequisitionsTable", ref: "B2", headerRow: true, totalsRow: false, style: { theme: "TableStyleMedium2", showRowStripes: true }, columns: headers.map((name) => ({ name, filterButton: true })), rows });
-      const departmentColumn = headers.indexOf(translate(language, "department")) + 2;
-      const positionColumn = headers.indexOf(translate(language, "position")) + 2;
       for (let row = 2; row < rows.length + 3; row += 1) {
         for (let column = 2; column < headers.length + 2; column += 1) {
           const cell = worksheet.getCell(row, column);
           cell.font = { name: "Sarabun" };
           cell.alignment = {
             vertical: "middle",
-            horizontal: row === 2 || (column !== departmentColumn && column !== positionColumn) ? "center" : "left",
+            horizontal: row === 2 ? "center" : "left",
             wrapText: row > 2
           };
         }
@@ -302,13 +321,15 @@ export function VacancyWaterfallView({
             <ChevronDown className={`shrink-0 transition-transform motion-reduce:transition-none ${detailsOpen ? "rotate-180" : ""}`} size={20} />
           </button>
           <div className="flex flex-wrap gap-2 print:hidden">
-            <Button type="button" size="sm" variant="secondary" icon={<ImageDown size={16} />} disabled={exportPreparing || !validReportRange} onClick={exportRequisitionDetailXlsx}>{translate(language, "exportDetailXlsx")}</Button>
-            <Button type="button" size="sm" variant="secondary" icon={<ImageDown size={16} />} disabled={exportPreparing || !validReportRange} onClick={() => exportPng(requisitionExportRef.current, `active-requisitions-${startDate}-to-${endDate}.png`)}>{translate(language, "exportPng")}</Button>
+            <Button type="button" size="sm" variant="secondary" icon={<Download size={16} />} disabled={exportPreparing || !validReportRange} onClick={() => { setExportColumns(defaultExportColumns()); setExportOpen(true); }}>{translate(language, "export")}</Button>
           </div>
         </div>
         {detailsOpen ? (
           <div className="min-w-0 max-w-full overflow-hidden border-t border-[#E4E9F2] bg-white p-4 sm:p-6 lg:p-8">
-            <RequisitionDetailTable rows={requisitionRows} language={language} />
+            <div className="mb-3 inline-flex rounded-xl border border-[#C9D5E6] bg-[#F8FAFD] p-1" role="group" aria-label={translate(language, "stageCountMode")}>
+              {(["status", "activity"] as StageCountMode[]).map((mode) => <button key={mode} type="button" className={`rounded-lg px-3 py-2 text-sm font-semibold ${stageCountMode === mode ? "bg-primary text-white shadow-sm" : "text-slate hover:bg-white"}`} aria-pressed={stageCountMode === mode} onClick={() => setStageCountMode(mode)}>{translate(language, mode === "status" ? "pipelineStatus" : "pipelineActivity")}</button>)}
+            </div>
+            <RequisitionDetailTable rows={requisitionRows} language={language} onStageClick={(row, stage) => setStageDrilldown({ row, stage, matches: stageCandidatesForRequisition(data, row.doc_id, stage, stageCountMode, startDate, endDate) })} />
           </div>
         ) : null}
       </section>
@@ -357,6 +378,9 @@ export function VacancyWaterfallView({
         <ReportHeader exportMode language={language} title={translate(language, "activeRequisitionsSelectedRange")} startDate={startDate} endDate={endDate} />
         <RequisitionDetailTable rows={requisitionRows} language={language} printMode />
       </div>
+      <ActiveRequisitionExportModal open={exportOpen} language={language} rows={requisitionRows} organizationRows={organizationRows} columns={exportColumns} onClose={() => setExportOpen(false)} onColumnsChange={setExportColumns} onExportXlsx={() => exportRequisitionDetailXlsx(exportColumns)} onExportPng={() => exportPng(requisitionExportRef.current, `active-requisitions-${startDate}-to-${endDate}.png`)} />
+      <StageCandidateModal language={language} drilldown={stageDrilldown} onClose={() => setStageDrilldown(null)} onOpenCandidate={setReportCandidate} />
+      <ReportCandidateDetail language={language} candidate={reportCandidate} onClose={() => setReportCandidate(null)} />
 
       <div ref={chartExportRef} className="export-report-surface" aria-hidden="true">
         <ReportHeader exportMode language={language} title={translate(language, "vacancyWaterfall")} startDate={startDate} endDate={endDate} />
@@ -645,16 +669,59 @@ function RightSegmentBrackets({
   );
 }
 
-function RequisitionDetailTable({ rows, language, printMode = false }: { rows: RequisitionDetailRow[]; language: Language; printMode?: boolean }) {
+function defaultExportColumns(): ExportColumnKey[] {
+  return ["site", "department", "section", "position", "level", "vacancy", "request_type", "requisition_date", "person_in_charge", "status", "detail", "applicants", ...detailStages, "actual_age", "sla", "filled_status", "filled_date"];
+}
+
+function exportColumnLabel(key: ExportColumnKey, language: Language) {
+  return key === "department" ? "Department" : key === "section" ? "Section" : key === "department_th" ? translate(language, "departmentThai") : key === "section_th" ? translate(language, "sectionThai") : key === "request_type" ? translate(language, "requestType") : key === "requisition_date" ? translate(language, "requisitionDate") : key === "person_in_charge" ? translate(language, "personInCharge") : key === "actual_age" ? translate(language, "actualAge") : key === "filled_status" ? translate(language, "filledStatus") : key === "filled_date" ? translate(language, "filledDate") : key === "applicants" ? translate(language, "applicants") : key === "sla" ? translate(language, "currentSla") : detailStages.includes(key as ProcessStage) ? processStageLabel(language, key as ProcessStage) : translate(language, key);
+}
+
+function ActiveRequisitionExportModal({ open, language, rows, organizationRows, columns, onClose, onColumnsChange, onExportXlsx, onExportPng }: { open: boolean; language: Language; rows: RequisitionDetailRow[]; organizationRows: DepartmentSectionRow[]; columns: ExportColumnKey[]; onClose: () => void; onColumnsChange: (columns: ExportColumnKey[]) => void; onExportXlsx: () => void; onExportPng: () => void }) {
+  const registry: ExportColumnKey[] = ["site", "department", "department_th", "section", "section_th", "position", "level", "vacancy", "request_type", "requisition_date", "person_in_charge", "status", "detail", "applicants", ...detailStages, "actual_age", "sla", "filled_status", "filled_date"];
+  const label = (key: ExportColumnKey) => exportColumnLabel(key, language);
+  const [dragging, setDragging] = useState<ExportColumnKey | null>(null);
+  const [insertBefore, setInsertBefore] = useState<ExportColumnKey | null>(null);
+  return <Modal open={open} title={translate(language, "export")} onClose={onClose} width="max-w-6xl"><div className="grid gap-4"><p className="text-sm text-slate">{translate(language, "exportColumnHelp")}</p><div className="grid max-h-52 grid-cols-1 gap-2 overflow-y-auto rounded-xl border border-[#D7DEE8] p-3 sm:grid-cols-2 lg:grid-cols-4">{registry.map((key) => <label key={key} className="flex min-w-0 items-center justify-between gap-2 rounded-lg border border-[#E4E9F2] bg-white px-3 py-2.5 shadow-sm transition hover:border-[#B8CCE4] hover:bg-[#F8FAFD]"><span className="flex min-w-0 items-center gap-1.5 text-sm font-medium text-navy"><span className="truncate">{label(key)}</span><span className="group relative shrink-0"><Info size={14} className="text-slate" aria-label={translate(language, "exportFieldDescription", { field: label(key) })} /><span role="tooltip" className="pointer-events-none absolute bottom-full right-0 z-30 mb-2 w-64 rounded-lg bg-navy px-3 py-2 text-xs font-normal leading-relaxed text-white opacity-0 shadow-xl transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">{exportFieldDescription(key, language)}<span className="absolute right-1.5 top-full border-x-4 border-t-4 border-x-transparent border-t-navy" /></span></span></span><input type="checkbox" checked={columns.includes(key)} onChange={() => onColumnsChange(columns.includes(key) ? columns.filter((value) => value !== key) : [...columns, key])} /></label>)}</div><div className="overflow-x-auto rounded-xl border border-[#D7DEE8]"><table className="min-w-max text-xs"><thead><tr>{columns.map((key) => <th key={key} className={`border-b bg-[#F8FAFD] px-3 py-2 text-left transition-[padding,margin] ${insertBefore === key && dragging !== key ? "border-l-4 border-l-primary pl-7" : ""}`} onDragEnter={(event) => { event.preventDefault(); if (dragging && dragging !== key) setInsertBefore(key); }} onDragOver={(event) => { event.preventDefault(); if (dragging && dragging !== key) setInsertBefore(key); }} onDrop={(event) => { event.preventDefault(); const from = (event.dataTransfer.getData("text/plain") || dragging) as ExportColumnKey | null; if (from && from !== key) { const next = columns.filter((item) => item !== from); const targetIndex = next.indexOf(key); if (targetIndex >= 0) { next.splice(targetIndex, 0, from); onColumnsChange(next); } } setDragging(null); setInsertBefore(null); }}><button type="button" draggable onDragStart={(event) => { event.dataTransfer.setData("text/plain", key); event.dataTransfer.effectAllowed = "move"; setDragging(key); }} onDragEnd={() => { setDragging(null); setInsertBefore(null); }} className="inline-flex cursor-grab items-center gap-1.5 font-semibold text-navy active:cursor-grabbing"><ArrowLeftRight size={15} aria-hidden="true" /> {label(key)}</button></th>)}</tr></thead><tbody>{rows.slice(0, 5).map((row) => <tr key={row.doc_id}>{columns.map((key) => <td key={key} className="max-w-44 truncate border-t px-3 py-2" title={String(exportValue(row, key, language, organizationRows))}>{previewValue(exportValue(row, key, language, organizationRows))}</td>)}</tr>)}</tbody></table></div><div className="flex flex-wrap justify-end gap-2"><Button type="button" variant="secondary" onClick={() => onColumnsChange(defaultExportColumns())}>{translate(language, "restoreDefault")}</Button><Button type="button" variant="secondary" disabled={!columns.length} onClick={onExportPng}>{translate(language, "exportPng")}</Button><Button type="button" disabled={!columns.length} onClick={onExportXlsx}>{translate(language, "exportDetailXlsx")}</Button></div></div></Modal>;
+}
+
+function previewValue(value: string | number) { const text = String(value); return text.length > 28 ? `${text.slice(0, 25)}...` : text; }
+function exportFieldDescription(key: ExportColumnKey, language: Language) {
+  const english: Partial<Record<ExportColumnKey, string>> = {
+    site: "Site: The operating location responsible for the requisition.", department: "Department: The requisition's department in the selected system language.", department_th: "Department (Thai): The canonical Thai department name stored with the requisition.", section: "Section: The requisition's section in the selected system language.", section_th: "Section (Thai): The canonical Thai section name stored with the requisition.", position: "Position: The requested job title.", level: "Job Level: The approved job grade for the requisition.", vacancy: "Vacancy: Total approved headcount requested.", request_type: "Request Type: Whether the requisition is new or a replacement.", requisition_date: "Requisition Date: The approved opening date (pr_approved_date).", person_in_charge: "Person in Charge: The recruiter assigned to manage the requisition.", status: "Status: The latest requisition status on or before the selected period end date.", detail: "Detail: The remark attached to that latest historical status record.", applicants: "Applicants: Applicants recorded through sourcing during the selected period.", actual_age: "Actual Age: Age of the requisition since the requisition opened (pr_approved_date).", sla: "Current SLA: The requisition's SLA age and whether it is within the defined service level.", filled_status: "Filled Status: Whether the requisition was filled at the end of the selected period.", filled_date: "Filled Date: The date the requisition was filled, when applicable."
+  };
+  const stage = detailStages.includes(key as ProcessStage) ? `${processStageLabel(language, key as ProcessStage)}: Unique candidates with a current pipeline record or a completed result in this stage, depending on the selected mode.` : null;
+  return stage ?? english[key] ?? translate(language, "exportFieldDescription", { field: exportColumnLabel(key, language) });
+}
+
+function exportValue(row: RequisitionDetailRow, key: ExportColumnKey, language: Language, organizationRows: DepartmentSectionRow[] = []): string | number {
+  if (detailStages.includes(key as ProcessStage)) return row.stage_counts[key as ProcessStage] ?? 0;
+  const values: Record<string, string | number> = { site: row.site, department: organizationLabel(organizationRows, language, row.site, row.department, "department"), department_th: organizationLabel(organizationRows, "th", row.site, row.department, "department"), section: organizationLabel(organizationRows, language, row.site, row.section, "section") || "-", section_th: organizationLabel(organizationRows, "th", row.site, row.section, "section") || "-", position: row.position, level: row.level, vacancy: row.vacancy, request_type: requestTypeLabel(language, row.request_type), requisition_date: formatDate(row.requisition_date, language), person_in_charge: row.person_in_charge, status: translate(language, row.period_status === "ongoing" ? "ongoing" : row.period_status === "filled" ? "filled" : "cancel"), detail: row.period_detail ?? "-", applicants: row.applicant_count, actual_age: row.actual_age_days === null ? "-" : `${row.actual_age_days}d`, sla: slaExportValue(row.sla_state, language), filled_status: translate(language, row.filled_status === "Filled" ? "filled" : "open"), filled_date: row.filled_date ? formatDate(row.filled_date, language) : "-" };
+  return values[key];
+}
+
+function StageCandidateModal({ language, drilldown, onClose, onOpenCandidate }: { language: Language; drilldown: { row: RequisitionDetailRow; stage: ProcessStage; matches: StageCandidateMatch[] } | null; onClose: () => void; onOpenCandidate: (candidate: StageCandidateMatch) => void }) {
+  const label = drilldown ? `${processStageLabel(language, drilldown.stage)} · ${drilldown.row.doc_id}` : "";
+  return <Modal open={Boolean(drilldown)} title={`Candidates in ${label}`} onClose={onClose} width="max-w-4xl"><div className="grid gap-3"><p className="text-sm text-slate">{drilldown?.matches.length ?? 0} candidates in the selected report context.</p>{drilldown?.matches.length ? <div className="max-h-[55vh] overflow-auto rounded-xl border border-[#D7DEE8]"><table className="min-w-full text-sm"><thead className="sticky top-0 bg-[#F8FAFD] text-left"><tr>{["Candidate", "ID", "Pending Date", "Result Date", "Interviewer"].map((header) => <th key={header} className="border-b px-3 py-2 font-semibold text-navy">{header}</th>)}</tr></thead><tbody>{drilldown.matches.map((match) => <tr key={match.candidateId} className="hover:bg-[#F8FAFD]"><td className="border-b px-3 py-2"><button type="button" className="font-semibold text-primary underline" onClick={() => onOpenCandidate(match)}>{match.name}</button></td><td className="border-b px-3 py-2">{match.candidateId}</td><td className="border-b px-3 py-2">{formatDate(match.pendingDate, language)}</td><td className="border-b px-3 py-2">{match.resultDate ? formatDate(match.resultDate, language) : "—"}</td><td className="border-b px-3 py-2">{match.interviewer ?? "—"}</td></tr>)}</tbody></table></div> : <EmptyState message={translate(language, "noData")} />}</div></Modal>;
+}
+
+function ReportCandidateDetail({ language, candidate, onClose }: { language: Language; candidate: StageCandidateMatch | null; onClose: () => void }) {
+  return <Modal open={Boolean(candidate)} title="Candidate Report Detail" onClose={onClose} width="max-w-lg"><dl className="grid grid-cols-2 gap-3 text-sm"><dt className="text-slate">Candidate</dt><dd className="font-semibold text-navy">{candidate?.name}</dd><dt className="text-slate">ID</dt><dd>{candidate?.candidateId}</dd><dt className="text-slate">Stage</dt><dd>{candidate ? processStageLabel(language, candidate.stage) : ""}</dd><dt className="text-slate">Pending Date</dt><dd>{candidate ? formatDate(candidate.pendingDate, language) : ""}</dd><dt className="text-slate">Result Date</dt><dd>{candidate?.resultDate ? formatDate(candidate.resultDate, language) : "—"}</dd><dt className="text-slate">Interviewer</dt><dd>{candidate?.interviewer ?? "—"}</dd></dl></Modal>;
+}
+
+function RequisitionDetailTable({ rows, language, printMode = false, onStageClick }: { rows: RequisitionDetailRow[]; language: Language; printMode?: boolean; onStageClick?: (row: RequisitionDetailRow, stage: ProcessStage) => void }) {
   const columns: TableColumn<RequisitionDetailRow>[] = [
     { key: "site", label: translate(language, "site"), value: (row) => row.site },
     { key: "department", label: translate(language, "department"), value: (row) => row.department },
+    { key: "section", label: translate(language, "section"), value: (row) => row.section ?? "-" },
     { key: "position", label: translate(language, "position"), value: (row) => row.position },
     { key: "level", label: translate(language, "jobLevel"), value: (row) => row.level },
     { key: "vacancy", label: translate(language, "vacancy"), value: (row) => row.vacancy },
     { key: "request_type", label: translate(language, "requestType"), value: (row) => requestTypeLabel(language, row.request_type) },
     { key: "requisition_date", label: translate(language, "requisitionDate"), value: (row) => formatDate(row.requisition_date, language), sortValue: (row) => row.requisition_date },
     { key: "person_in_charge", label: translate(language, "personInCharge"), value: (row) => row.person_in_charge },
+    { key: "status", label: translate(language, "status"), value: (row) => translate(language, row.period_status === "ongoing" ? "ongoing" : row.period_status === "filled" ? "filled" : "cancel") },
+    { key: "detail", label: translate(language, "detail"), value: (row) => row.period_detail ?? "-" },
     { key: "applicants", label: translate(language, "applicants"), value: (row) => row.applicant_count },
     ...detailStages.map((stage): TableColumn<RequisitionDetailRow> => ({
       key: stage,
@@ -698,15 +765,18 @@ function RequisitionDetailTable({ rows, language, printMode = false }: { rows: R
             <tr key={row.doc_id} className="align-top">
               <td className={`${detailCellClass("Site")} border border-[#D7DEE8] px-2 py-2`}>{row.site}</td>
               <td className={`${detailCellClass("Department")} border border-[#D7DEE8] px-2 py-2`}>{row.department}</td>
+              <td className={`${detailCellClass("Section")} border border-[#D7DEE8] px-2 py-2`}>{row.section ?? "-"}</td>
               <td className={`${detailCellClass("Position")} border border-[#D7DEE8] px-2 py-2`}>{row.position}</td>
               <td className={`${detailCellClass("Job Level")} border border-[#D7DEE8] px-2 py-2`}>{row.level}</td>
               <td className={`${detailCellClass("Vacancy")} border border-[#D7DEE8] px-2 py-2 text-right`}>{row.vacancy}</td>
               <td className={`${detailCellClass("Requisition Type")} border border-[#D7DEE8] px-2 py-2`}>{requestTypeLabel(language, row.request_type)}</td>
               <td className={`${detailCellClass("Requisition Date")} border border-[#D7DEE8] px-2 py-2`}>{formatDate(row.requisition_date, language)}</td>
               <td className={`${detailCellClass("Person in Charge")} border border-[#D7DEE8] px-2 py-2`}>{row.person_in_charge}</td>
+              <td className={`${detailCellClass("Status")} border border-[#D7DEE8] px-2 py-2`}>{translate(language, row.period_status === "ongoing" ? "ongoing" : row.period_status === "filled" ? "filled" : "cancel")}</td>
+              <td className={`${detailCellClass("Detail")} border border-[#D7DEE8] px-2 py-2`}>{row.period_detail ?? "-"}</td>
               <td className={`${detailCellClass("Applicants")} border border-[#D7DEE8] px-2 py-2 text-right`}>{row.applicant_count}</td>
               {detailStages.map((stage) => (
-                <td key={stage} className={`${detailCellClass(stage)} border border-[#D7DEE8] px-2 py-2 text-right`}>{row.stage_counts[stage] ?? 0}</td>
+                <td key={stage} className={`${detailCellClass(stage)} border border-[#D7DEE8] px-2 py-2 text-right`}>{(row.stage_counts[stage] ?? 0) > 0 && !printMode && onStageClick ? <button type="button" className="rounded px-1 font-semibold text-primary underline decoration-primary/40 underline-offset-2 hover:bg-primary/10 focus:outline-none focus:ring-2 focus:ring-primary/30" onClick={() => onStageClick(row, stage)} aria-label={`View ${row.stage_counts[stage]} candidates in ${processStageLabel(language, stage)}`}>{row.stage_counts[stage]}</button> : row.stage_counts[stage] ?? 0}</td>
               ))}
               <td className={`${detailCellClass("Actual Age")} border border-[#D7DEE8] px-2 py-2`}>{row.actual_age_days === null ? "-" : `${row.actual_age_days}d`}</td>
               <td className={`${detailCellClass("Current SLA")} border border-[#D7DEE8] px-2 py-2`}>{slaStatusCell(row.sla_state)}</td>
@@ -740,12 +810,15 @@ function requisitionDetailHeaders(language: Language) {
   return [
     translate(language, "site"),
     translate(language, "department"),
+    translate(language, "section"),
     translate(language, "position"),
     translate(language, "jobLevel"),
     translate(language, "vacancy"),
     translate(language, "requestType"),
     translate(language, "requisitionDate"),
     translate(language, "personInCharge"),
+    translate(language, "status"),
+    translate(language, "detail"),
     translate(language, "applicants"),
     ...detailStages.map((stage) => processStageLabel(language, stage)),
     translate(language, "actualAge"),
@@ -761,12 +834,15 @@ function requisitionDetailExportRow(row: RequisitionDetailRow, language: Languag
     requisitionDetailHeaders(language).map((header) => {
       if (header === translate(language, "site")) return [header, row.site];
       if (header === translate(language, "department")) return [header, row.department];
+      if (header === translate(language, "section")) return [header, row.section ?? "-"];
       if (header === translate(language, "position")) return [header, row.position];
       if (header === translate(language, "jobLevel")) return [header, row.level];
       if (header === translate(language, "vacancy")) return [header, row.vacancy];
       if (header === translate(language, "requestType")) return [header, requestTypeLabel(language, row.request_type)];
       if (header === translate(language, "requisitionDate")) return [header, formatDate(row.requisition_date, language)];
       if (header === translate(language, "personInCharge")) return [header, row.person_in_charge];
+      if (header === translate(language, "status")) return [header, translate(language, row.period_status === "ongoing" ? "ongoing" : row.period_status === "filled" ? "filled" : "cancel")];
+      if (header === translate(language, "detail")) return [header, row.period_detail ?? "-"];
       if (header === translate(language, "applicants")) return [header, row.applicant_count];
       if (header === translate(language, "actualAge")) return [header, row.actual_age_days === null ? "-" : `${row.actual_age_days}d`];
       if (header === translate(language, "currentSla")) return [header, slaExportValue(row.sla_state, language)];
@@ -919,7 +995,7 @@ function buildLiveWaterfallRows(
     const acceptedDate = dateOnly(offer.accepted_date);
     if (!acceptedDate || acceptedDate < startDate || acceptedDate > endDate) continue;
     const requisition = requisitionsById.get(offer.doc_id);
-    if (!requisition || requisition.status === "cancel") continue;
+    if (!requisition || requisitionSnapshotAt(data, requisition, endDate).status === "cancel") continue;
     rows.push(waterfallRow("Filled", requisition.site, requisition.request_type ?? "New", -1));
   }
 
@@ -928,7 +1004,7 @@ function buildLiveWaterfallRows(
     const noShowDate = dateOnly(offer.start_confirmed_at);
     if (!noShowDate || noShowDate < startDate || noShowDate > endDate) continue;
     const requisition = requisitionsById.get(offer.doc_id);
-    if (!requisition || requisition.status === "cancel") continue;
+    if (!requisition || requisitionSnapshotAt(data, requisition, endDate).status === "cancel") continue;
     rows.push(waterfallRow("Open", requisition.site, requisition.request_type ?? "New", 1));
   }
 
@@ -943,21 +1019,23 @@ function buildLiveWaterfallRows(
   return aggregateWaterfallRows([...groupedRows, ...Array.from(totals.values())]);
 }
 
-function buildActiveRequisitionRows(data: DashboardData, requisitions: EnrichedRequisition[], startDate: string, endDate: string, reportView: ReportView): RequisitionDetailRow[] {
+function buildActiveRequisitionRows(data: DashboardData, requisitions: EnrichedRequisition[], startDate: string, endDate: string, reportView: ReportView, stageCountMode: StageCountMode): RequisitionDetailRow[] {
   return requisitions
     .filter((requisition) => isReportEligible(requisition, data, startDate, endDate, reportView))
     .map((requisition) => {
       const requisitionDate = validDateOnly(requisition.pr_approved_date) ?? "";
       const groupIds = groupIdsForRequisition(data, requisition.doc_id);
       const relatedDocGroupIds = docGroupIdsForGroupIds(data, groupIds);
-      const stageCounts = stageHistoryCountsForDocGroups(data, relatedDocGroupIds);
+      const stageCounts = stageCountMode === "status" ? pipelineStatusCountsForDocGroups(data, relatedDocGroupIds, endDate) : stageActivityCountsForDocGroups(data, relatedDocGroupIds, startDate, endDate);
       const closeDate = resolvedCloseDate(requisition, data);
-      const filledStatus: RequisitionDetailRow["filled_status"] = requisition.status === "filled" ? "Filled" : "Open";
+      const snapshot = requisitionSnapshotAt(data, requisition, endDate);
+      const filledStatus: RequisitionDetailRow["filled_status"] = snapshot.status === "filled" ? "Filled" : "Open";
 
       return {
         doc_id: requisition.doc_id,
         site: requisition.site,
         department: requisition.department,
+        section: requisition.section,
         position: requisition.position,
         level: requisition.level ?? "-",
         vacancy: requisition.head_count,
@@ -972,7 +1050,9 @@ function buildActiveRequisitionRows(data: DashboardData, requisitions: EnrichedR
           { endDate: filledStatus === "Filled" ? closeDate ?? todayDate() : todayDate() }
         ),
         filled_status: filledStatus,
-        filled_date: filledStatus === "Filled" ? closeDate : null
+        filled_date: filledStatus === "Filled" ? closeDate : null,
+        period_status: snapshot.status,
+        period_detail: snapshot.remark
       };
     })
     .sort(compareRequisitionDetailRows);
@@ -980,8 +1060,9 @@ function buildActiveRequisitionRows(data: DashboardData, requisitions: EnrichedR
 
 function isReportEligible(requisition: EnrichedRequisition, data: DashboardData, startDate: string, endDate: string, reportView: ReportView) {
   const prDate = validDateOnly(requisition.pr_approved_date);
-  const closeDate = resolvedCloseDate(requisition, data);
-  if (!prDate || requisition.status === "cancel" || prDate > endDate || Boolean(closeDate && closeDate < startDate)) return false;
+  const snapshot = requisitionSnapshotAt(data, requisition, endDate);
+  const closeDate = snapshot.status === "filled" ? latestValidDate(data.requisition_logs.filter((log) => log.doc_id === requisition.doc_id && log.status === "filled" && log.log_date <= endDate).map((log) => log.log_date)) : null;
+  if (!prDate || snapshot.status === "cancel" || prDate > endDate || Boolean(closeDate && closeDate < startDate)) return false;
   if (reportView === "pim" || reportView === "custom") return true;
   const slaDays = getSlaDays(requisition.level);
   const slaDeadline = slaDays === null ? null : addCalendarDays(prDate, slaDays);
@@ -1101,7 +1182,7 @@ function applicantCountForGroups(data: DashboardData, groupIds: Set<string>, sta
     );
 }
 
-function stageHistoryCountsForDocGroups(data: DashboardData, docGroupIds: Set<string>) {
+function stageActivityCountsForDocGroups(data: DashboardData, docGroupIds: Set<string>, startDate: string, endDate: string) {
   const stageCandidates = Object.fromEntries(detailStages.map((stage) => [stage, new Set<string>()])) as Record<ProcessStage, Set<string>>;
   if (docGroupIds.size === 0) return emptyStageCounts();
 
@@ -1112,7 +1193,8 @@ function stageHistoryCountsForDocGroups(data: DashboardData, docGroupIds: Set<st
   );
 
   for (const log of data.recruitment_logs) {
-    if (!candidateIds.has(log.candidate_id) || !detailStages.includes(log.recruitment_process)) continue;
+    const activityDate = dateOnly(log.result === 1 ? (log.outcome_date ?? log.log_date) : log.log_date);
+    if (!activityDate || activityDate < startDate || activityDate > endDate || !candidateIds.has(log.candidate_id) || !detailStages.includes(log.recruitment_process)) continue;
     stageCandidates[log.recruitment_process].add(log.candidate_id);
   }
 
@@ -1393,6 +1475,36 @@ function DashboardDateFilter({
 
 function today() {
   return formatLocalDateInput();
+}
+
+function stageCandidatesForRequisition(data: DashboardData, docId: string, stage: ProcessStage, mode: StageCountMode, startDate: string, endDate: string): StageCandidateMatch[] {
+  const docGroupIds = docGroupIdsForGroupIds(data, groupIdsForRequisition(data, docId));
+  const candidates = data.candidates.filter((candidate) => Boolean(candidate.doc_group_id && docGroupIds.has(candidate.doc_group_id)));
+  return candidates.flatMap((candidate) => {
+    const logs = data.recruitment_logs.filter((log) => log.candidate_id === candidate.candidate_id && log.recruitment_process === stage);
+    const matching = mode === "activity"
+      ? logs.find((log) => { const date = dateOnly(log.result === 1 ? (log.outcome_date ?? log.log_date) : log.log_date); return Boolean(date && date >= startDate && date <= endDate); })
+      : logs.filter((log) => log.log_date <= endDate && (!log.outcome_date || log.outcome_date > endDate || log.result === null)).sort((a, b) => b.log_date.localeCompare(a.log_date) || b.log_id - a.log_id)[0];
+    if (!matching) return [];
+    return [{ candidateId: candidate.candidate_id, name: candidate.name, stage, pendingDate: matching.log_date, resultDate: dateOnly(matching.outcome_date), interviewer: matching.outcome_interviewer ?? matching.interviewer, remark: matching.outcome_remark ?? matching.remark, result: matching.result }];
+  }).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function pipelineStatusCountsForDocGroups(data: DashboardData, docGroupIds: Set<string>, endDate: string) {
+  const stageCandidates = Object.fromEntries(detailStages.map((stage) => [stage, new Set<string>()])) as Record<ProcessStage, Set<string>>;
+  const candidateIds = new Set(data.candidates.filter((candidate) => Boolean(candidate.doc_group_id && docGroupIds.has(candidate.doc_group_id))).map((candidate) => candidate.candidate_id));
+  for (const candidateId of candidateIds) {
+    const latest = data.recruitment_logs
+      .filter((log) => log.candidate_id === candidateId && detailStages.includes(log.recruitment_process) && log.log_date <= endDate && (!log.outcome_date || log.outcome_date > endDate || log.result === null))
+      .sort((a, b) => b.log_date.localeCompare(a.log_date) || b.log_id - a.log_id)[0];
+    if (latest) stageCandidates[latest.recruitment_process].add(candidateId);
+  }
+  return Object.fromEntries(detailStages.map((stage) => [stage, stageCandidates[stage].size])) as Record<ProcessStage, number>;
+}
+
+function requisitionSnapshotAt(data: DashboardData, requisition: EnrichedRequisition, endDate: string) {
+  const latest = data.requisition_logs.filter((log) => log.doc_id === requisition.doc_id && log.log_date <= endDate).sort((a, b) => a.log_date.localeCompare(b.log_date) || a.log_id - b.log_id).at(-1);
+  return { status: (latest?.status ?? "ongoing") as RequisitionStatus, remark: latest?.remark ?? null };
 }
 
 async function waitForExportSurface() {

@@ -14,6 +14,19 @@ export type SelectOption = {
   label: string;
 };
 
+/** Resolve a canonical Thai stored value into the label for the active UI language. */
+export function organizationLabel(rows: DepartmentSectionRow[], language: Language, site: string, value: string | null | undefined, kind: "department" | "section") {
+  const raw = value?.trim() ?? "";
+  if (!raw) return raw;
+  const row = rows.find((item) => siteMatches(item, site) && (kind === "department"
+    ? item.dep === raw || item.depEn === raw
+    : item.sec === raw || item.secEn === raw));
+  if (!row) return raw;
+  return language === "th"
+    ? (kind === "department" ? row.dep : row.sec) || raw
+    : (kind === "department" ? row.depEn : row.secEn) || raw;
+}
+
 export function parseDepartmentSectionCsv(csv: string): DepartmentSectionRow[] {
   const [headerLine, ...lines] = csv.trim().split(/\r?\n/);
   const headers = parseCsvLine(headerLine);
@@ -38,7 +51,7 @@ export function departmentOptions(rows: DepartmentSectionRow[], language: Langua
     .filter((row) => siteMatches(row, site))
     .map((row) => ({
       value: canonicalDepartment(row),
-      label: language === "th" ? row.dep || canonicalDepartment(row) : canonicalDepartment(row)
+      label: language === "th" ? row.dep || canonicalDepartment(row) : row.depEn || canonicalDepartment(row)
     })));
 }
 
@@ -49,7 +62,7 @@ export function sectionOptionsForDepartment(rows: DepartmentSectionRow[], langua
     .filter((row) => siteMatches(row, site) && departmentMatches(row, normalized))
     .map((row) => ({
       value: canonicalSection(row),
-      label: language === "th" ? row.sec || canonicalSection(row) : canonicalSection(row)
+      label: language === "th" ? row.sec || canonicalSection(row) : row.secEn || canonicalSection(row)
     }))
     .filter((option) => option.value));
 }
@@ -92,11 +105,11 @@ function departmentMatches(row: DepartmentSectionRow, department: string) {
 }
 
 function canonicalDepartment(row: DepartmentSectionRow) {
-  return (row.depEn || row.dep).trim();
+  return (row.dep || row.depEn).trim();
 }
 
 function canonicalSection(row: DepartmentSectionRow) {
-  return (row.secEn || row.sec).trim();
+  return (row.sec || row.secEn).trim();
 }
 
 function uniqueOptions(options: SelectOption[]) {

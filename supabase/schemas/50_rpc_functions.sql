@@ -16,6 +16,8 @@ declare
   v_person_in_charge text := nullif(payload ->> 'person_in_charge', '');
   v_request_type text := coalesce(nullif(payload ->> 'request_type', ''), 'New');
   v_replacement_names text := nullif(payload ->> 'replacement_names', '');
+  v_department text := nullif(payload ->> 'department', '');
+  v_section text := nullif(payload ->> 'section', '');
 begin
   perform app_private.assert_recruitment_writer();
   if v_doc_id is null then raise exception 'Doc ID is required.'; end if;
@@ -43,6 +45,13 @@ begin
     from public.requisitions where doc_id = v_doc_id;
   end if;
 
+  select d.department_th, coalesce(d.section_th, v_section) into v_department, v_section
+  from public.department_section_directory d
+  where d.site = v_site
+    and (v_department = d.department_th or v_department = d.department_en)
+    and (v_section is null or v_section = d.section_th or v_section = d.section_en)
+  limit 1;
+
   perform set_config('app.action', 'requisition:' || v_mode, true);
 
   insert into public.requisitions (
@@ -54,8 +63,8 @@ begin
     nullif(payload ->> 'pr_approved_date', '')::date,
     v_site,
     nullif(payload ->> 'position', ''),
-    nullif(payload ->> 'department', ''),
-    nullif(payload ->> 'section', ''),
+    v_department,
+    v_section,
     nullif(payload ->> 'level', ''),
     coalesce(nullif(payload ->> 'head_count', '')::integer, 1),
     v_person_in_charge,

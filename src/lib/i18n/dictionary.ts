@@ -909,6 +909,8 @@ Object.assign(th, {
 
 Object.assign(en, { referenceCheckSummary: "Checked {date} / {minutes} min — {summary}" });
 Object.assign(th, { referenceCheckSummary: "ตรวจสอบเมื่อ {date} / {minutes} นาที — {summary}" });
+Object.assign(en, { export: "Export", stageCountMode: "Stage count mode", pipelineStatus: "Pipeline Status", pipelineActivity: "Pipeline Activity", departmentThai: "Department (Thai)", sectionThai: "Section (Thai)", exportColumnHelp: "Choose columns, drag headings to set their order, then export the current table view.", exportFieldDescription: "Export field: {field}", restoreDefault: "Restore default", ongoing: "Ongoing", cancel: "Cancelled" });
+Object.assign(th, { export: "ส่งออก", stageCountMode: "รูปแบบจำนวนขั้นตอน", pipelineStatus: "สถานะ Pipeline", pipelineActivity: "กิจกรรม Pipeline", departmentThai: "ฝ่าย (ภาษาไทย)", sectionThai: "แผนก (ภาษาไทย)", exportColumnHelp: "เลือกคอลัมน์ ลากหัวตารางเพื่อจัดลำดับ แล้วส่งออกมุมมองตารางปัจจุบัน", exportFieldDescription: "ฟิลด์ส่งออก: {field}", restoreDefault: "คืนค่าเริ่มต้น", ongoing: "กำลังดำเนินการ", cancel: "ยกเลิก" });
 
 Object.assign(th, {
   linkGroup: "เชื่อมโยงกลุ่ม",
