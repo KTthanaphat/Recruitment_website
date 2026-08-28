@@ -142,6 +142,32 @@ test("dashboard active-period vacancy follows PR date and resolved close date", 
   await expect(page.getByRole("heading", { name: "Vacancy Waterfall" })).toBeVisible();
 });
 
+test("active requisitions use the latest status at the selected period end", async ({ page }) => {
+  const mock = await installMockSupabase(page, { role: "admin_recruiter" });
+  const base = mock.data.requisitions[0];
+  const baseOffer = mock.data.offers[0];
+  mock.data.requisitions.push(
+    { ...base, doc_id: "REQ-FILLED-IN-PERIOD", position: "Filled in period", status: "filled", pr_approved_date: "2026-06-01", head_count: 1 },
+    { ...base, doc_id: "REQ-FILLED-FROM-OFFER", position: "Filled from accepted offer", status: "ongoing", pr_approved_date: "2026-06-01", head_count: 1 },
+    { ...base, doc_id: "REQ-CANCELLED-IN-PERIOD", position: "Cancelled in period", status: "cancel", pr_approved_date: "2026-06-01", head_count: 1 }
+  );
+  mock.data.requisition_logs.push(
+    { log_id: 901, doc_id: "REQ-FILLED-IN-PERIOD", log_date: "2026-06-20", status: "filled", remark: "Offer accepted", created_at: "2026-06-20T00:00:00" },
+    { log_id: 902, doc_id: "REQ-CANCELLED-IN-PERIOD", log_date: "2026-06-18", status: "cancel", remark: "Demand withdrawn", created_at: "2026-06-18T00:00:00" }
+  );
+  mock.data.offers.push({ ...baseOffer, offer_id: 903, candidate_id: "C-AUTO-FILLED", doc_id: "REQ-FILLED-FROM-OFFER", accepted_date: "2026-06-21", start_confirmation: null });
+
+  await page.goto("/dashboard?reportView=pim&reportMonth=2026-06&details=open");
+  await expectWorkspaceReady(page);
+
+  await expect(page.getByRole("columnheader", { name: "Status at Period End" })).toBeVisible();
+  await expect(page.getByText("Filled in period", { exact: true }).first()).toBeVisible();
+  const offerFilledRow = page.locator(".dashboard-detail-scroll tbody tr").filter({ hasText: "Filled from accepted offer" });
+  await expect(offerFilledRow).toContainText("Filled");
+  await expect(offerFilledRow).toContainText("21/06/2026");
+  await expect(page.getByText("Cancelled in period", { exact: true })).toHaveCount(0);
+});
+
 test("waterfall counts fills only from requisitions active in the selected period", async ({ page }) => {
   const mock = await installMockSupabase(page, { role: "admin_recruiter" });
   const requisitionTemplate = mock.data.requisitions[0];

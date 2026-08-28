@@ -688,7 +688,7 @@ function ActiveRequisitionExportModal({ open, language, rows, organizationRows, 
 function previewValue(value: string | number) { const text = String(value); return text.length > 28 ? `${text.slice(0, 25)}...` : text; }
 function exportFieldDescription(key: ExportColumnKey, language: Language) {
   const english: Partial<Record<ExportColumnKey, string>> = {
-    site: "Site: The operating location responsible for the requisition.", department: "Department: The requisition's department in the selected system language.", department_th: "Department (Thai): The canonical Thai department name stored with the requisition.", section: "Section: The requisition's section in the selected system language.", section_th: "Section (Thai): The canonical Thai section name stored with the requisition.", position: "Position: The requested job title.", level: "Job Level: The approved job grade for the requisition.", vacancy: "Vacancy: Total approved headcount requested.", request_type: "Request Type: Whether the requisition is new or a replacement.", requisition_date: "Requisition Date: The approved opening date (pr_approved_date).", person_in_charge: "Person in Charge: The recruiter assigned to manage the requisition.", status: "Status: The period-end requisition state used by the Vacancy Waterfall: the latest status log on or before the selected period end date.", detail: "Detail: The remark attached to that latest historical status record.", applicants: "Applicants: Applicants recorded through sourcing during the selected period.", actual_age: "Actual Age: Age of the requisition since the requisition opened (pr_approved_date).", sla: "Current SLA: The requisition's SLA age and whether it is within the defined service level.", filled_date: "Filled Date: The latest filled-status date on or before the selected period end date, when the period-end Status is Filled."
+    site: "Site: The operating location responsible for the requisition.", department: "Department: The requisition's department in the selected system language.", department_th: "Department (Thai): The canonical Thai department name stored with the requisition.", section: "Section: The requisition's section in the selected system language.", section_th: "Section (Thai): The canonical Thai section name stored with the requisition.", position: "Position: The requested job title.", level: "Job Level: The approved job grade for the requisition.", vacancy: "Vacancy: Total approved headcount requested.", request_type: "Request Type: Whether the requisition is new or a replacement.", requisition_date: "Requisition Date: The approved opening date (pr_approved_date).", person_in_charge: "Person in Charge: The recruiter assigned to manage the requisition.", status: "Status at Period End: Requisition state at the selected period end. Filled is derived from accepted offer coverage; Cancelled is a recorded status action.", detail: "Detail: The remark attached to that latest historical status record.", applicants: "Applicants: Applicants recorded through sourcing during the selected period.", actual_age: "Actual Age: Age of the requisition since the requisition opened (pr_approved_date).", sla: "Current SLA: The requisition's SLA age and whether it is within the defined service level.", filled_date: "Filled Date: The most recent date that accepted offers met the approved headcount, as of the selected period end."
   };
   const stage = detailStages.includes(key as ProcessStage) ? `${processStageLabel(language, key as ProcessStage)}: Unique candidates with a current pipeline record or a completed result in this stage, depending on the selected mode.` : null;
   return stage ?? english[key] ?? translate(language, "exportFieldDescription", { field: exportColumnLabel(key, language) });
@@ -720,7 +720,7 @@ function RequisitionDetailTable({ rows, language, printMode = false, onStageClic
     { key: "request_type", label: translate(language, "requestType"), value: (row) => requestTypeLabel(language, row.request_type) },
     { key: "requisition_date", label: translate(language, "requisitionDate"), value: (row) => formatDate(row.requisition_date, language), sortValue: (row) => row.requisition_date },
     { key: "person_in_charge", label: translate(language, "personInCharge"), value: (row) => row.person_in_charge },
-    { key: "status", label: translate(language, "status"), value: (row) => translate(language, row.period_status === "ongoing" ? "ongoing" : row.period_status === "filled" ? "filled" : "cancel") },
+    { key: "status", label: translate(language, "statusAtPeriodEnd"), value: (row) => translate(language, row.period_status === "ongoing" ? "ongoing" : row.period_status === "filled" ? "filled" : "cancel") },
     { key: "detail", label: translate(language, "detail"), value: (row) => row.period_detail ?? "-" },
     { key: "applicants", label: translate(language, "applicants"), value: (row) => row.applicant_count },
     ...detailStages.map((stage): TableColumn<RequisitionDetailRow> => ({
@@ -771,7 +771,7 @@ function RequisitionDetailTable({ rows, language, printMode = false, onStageClic
               <td className={`${detailCellClass("Requisition Type")} border border-[#D7DEE8] px-2 py-2`}>{requestTypeLabel(language, row.request_type)}</td>
               <td className={`${detailCellClass("Requisition Date")} border border-[#D7DEE8] px-2 py-2`}>{formatDate(row.requisition_date, language)}</td>
               <td className={`${detailCellClass("Person in Charge")} border border-[#D7DEE8] px-2 py-2`}>{row.person_in_charge}</td>
-              <td className={`${detailCellClass("Status")} border border-[#D7DEE8] px-2 py-2`}>{translate(language, row.period_status === "ongoing" ? "ongoing" : row.period_status === "filled" ? "filled" : "cancel")}</td>
+              <td className={`${detailCellClass("Status at Period End")} border border-[#D7DEE8] px-2 py-2`}>{translate(language, row.period_status === "ongoing" ? "ongoing" : row.period_status === "filled" ? "filled" : "cancel")}</td>
               <td className={`${detailCellClass("Detail")} border border-[#D7DEE8] px-2 py-2`}>{row.period_detail ?? "-"}</td>
               <td className={`${detailCellClass("Applicants")} border border-[#D7DEE8] px-2 py-2 text-right`}>{row.applicant_count}</td>
               {detailStages.map((stage) => (
@@ -815,7 +815,7 @@ function requisitionDetailHeaders(language: Language) {
     translate(language, "requestType"),
     translate(language, "requisitionDate"),
     translate(language, "personInCharge"),
-    translate(language, "status"),
+    translate(language, "statusAtPeriodEnd"),
     translate(language, "detail"),
     translate(language, "applicants"),
     ...detailStages.map((stage) => processStageLabel(language, stage)),
@@ -838,7 +838,7 @@ function requisitionDetailExportRow(row: RequisitionDetailRow, language: Languag
       if (header === translate(language, "requestType")) return [header, requestTypeLabel(language, row.request_type)];
       if (header === translate(language, "requisitionDate")) return [header, formatDate(row.requisition_date, language)];
       if (header === translate(language, "personInCharge")) return [header, row.person_in_charge];
-      if (header === translate(language, "status")) return [header, translate(language, row.period_status === "ongoing" ? "ongoing" : row.period_status === "filled" ? "filled" : "cancel")];
+      if (header === translate(language, "statusAtPeriodEnd")) return [header, translate(language, row.period_status === "ongoing" ? "ongoing" : row.period_status === "filled" ? "filled" : "cancel")];
       if (header === translate(language, "detail")) return [header, row.period_detail ?? "-"];
       if (header === translate(language, "applicants")) return [header, row.applicant_count];
       if (header === translate(language, "actualAge")) return [header, row.actual_age_days === null ? "-" : `${row.actual_age_days}d`];
@@ -1024,7 +1024,7 @@ function buildActiveRequisitionRows(data: DashboardData, requisitions: EnrichedR
       const relatedDocGroupIds = docGroupIdsForGroupIds(data, groupIds);
       const stageCounts = stageCountMode === "status" ? pipelineStatusCountsForDocGroups(data, relatedDocGroupIds, endDate) : stageActivityCountsForDocGroups(data, relatedDocGroupIds, startDate, endDate);
       const snapshot = requisitionSnapshotAt(data, requisition, endDate);
-      const filledDate = snapshot.status === "filled" ? filledDateAtPeriodEnd(data, requisition.doc_id, endDate) : null;
+      const filledDate = snapshot.filledDate;
 
       return {
         doc_id: requisition.doc_id,
@@ -1055,28 +1055,12 @@ function buildActiveRequisitionRows(data: DashboardData, requisitions: EnrichedR
 function isReportEligible(requisition: EnrichedRequisition, data: DashboardData, startDate: string, endDate: string, reportView: ReportView) {
   const prDate = validDateOnly(requisition.pr_approved_date);
   const snapshot = requisitionSnapshotAt(data, requisition, endDate);
-  const closeDate = snapshot.status === "filled" ? filledDateAtPeriodEnd(data, requisition.doc_id, endDate) : null;
+  const closeDate = snapshot.filledDate;
   if (!prDate || snapshot.status === "cancel" || prDate > endDate || Boolean(closeDate && closeDate < startDate)) return false;
   if (reportView === "pim" || reportView === "custom") return true;
   const slaDays = getSlaDays(requisition.level);
   const slaDeadline = slaDays === null ? null : addCalendarDays(prDate, slaDays);
   return Boolean(slaDeadline && slaDeadline >= startDate);
-}
-
-function filledDateAtPeriodEnd(data: DashboardData, docId: string, endDate: string) {
-  return latestValidDate(
-    data.requisition_logs
-      .filter((log) => log.doc_id === docId && log.status === "filled" && log.log_date <= endDate)
-      .map((log) => log.log_date)
-  );
-}
-
-function latestValidDate(values: Array<string | null | undefined>) {
-  return values
-    .map(validDateOnly)
-    .filter((value): value is string => Boolean(value))
-    .sort()
-    .at(-1) ?? null;
 }
 
 function validDateOnly(value: string | null | undefined) {
@@ -1490,8 +1474,42 @@ function pipelineStatusCountsForDocGroups(data: DashboardData, docGroupIds: Set<
 }
 
 function requisitionSnapshotAt(data: DashboardData, requisition: EnrichedRequisition, endDate: string) {
-  const latest = data.requisition_logs.filter((log) => log.doc_id === requisition.doc_id && log.log_date <= endDate).sort((a, b) => a.log_date.localeCompare(b.log_date) || a.log_id - b.log_id).at(-1);
-  return { status: (latest?.status ?? "ongoing") as RequisitionStatus, remark: latest?.remark ?? null };
+  const logs = data.requisition_logs.filter((log) => log.doc_id === requisition.doc_id);
+  const latest = logs.filter((log) => log.log_date <= endDate).sort((a, b) => a.log_date.localeCompare(b.log_date) || a.log_id - b.log_id).at(-1);
+  // Cancellation is a deliberate terminal action. Offer coverage, rather
+  // than a requisition log, is the source of truth for Filled: automatic
+  // offer updates do not create requisition_log rows.
+  if (latest?.status === "cancel" || (logs.length === 0 && requisition.status === "cancel")) {
+    return { status: "cancel" as RequisitionStatus, remark: latest?.remark ?? null, filledDate: null };
+  }
+
+  const offerFilledDate = offerFilledDateAtPeriodEnd(data, requisition, endDate);
+  if (offerFilledDate) return { status: "filled" as RequisitionStatus, remark: latest?.remark ?? null, filledDate: offerFilledDate };
+
+  if (latest?.status === "filled") {
+    return { status: "filled" as RequisitionStatus, remark: latest.remark ?? null, filledDate: validDateOnly(latest.log_date) };
+  }
+
+  return { status: "ongoing" as RequisitionStatus, remark: latest?.remark ?? null, filledDate: null };
+}
+
+function offerFilledDateAtPeriodEnd(data: DashboardData, requisition: EnrichedRequisition, endDate: string) {
+  const acceptanceDates = Array.from(new Set(
+    data.offers
+      .filter((offer) => offer.doc_id === requisition.doc_id)
+      .map((offer) => validDateOnly(offer.accepted_date))
+      .filter((date): date is string => Boolean(date && date <= endDate))
+  )).sort();
+
+  let filledDate: string | null = null;
+  for (const date of acceptanceDates) {
+    const coverageDate = addCalendarDays(date, 1);
+    const coveredHeadcount = data.offers.filter((offer) => offer.doc_id === requisition.doc_id && countsTowardHeadcountAt(offer, coverageDate)).length;
+    if (coveredHeadcount >= requisition.head_count) filledDate = date;
+  }
+
+  const coveredAtPeriodEnd = data.offers.filter((offer) => offer.doc_id === requisition.doc_id && countsTowardHeadcountAt(offer, addCalendarDays(endDate, 1))).length;
+  return coveredAtPeriodEnd >= requisition.head_count ? filledDate : null;
 }
 
 async function waitForExportSurface() {

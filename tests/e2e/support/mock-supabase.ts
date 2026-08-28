@@ -79,6 +79,14 @@ export async function installMockSupabase(page: Page, options: MockSupabaseOptio
     const body = route.request().postDataJSON() as { payload?: Record<string, unknown> } | undefined;
     const payload = body?.payload ?? {};
     rpcCalls.push({ endpoint, payload });
+    if (endpoint === "app_dashboard_company_report") {
+      await json(route, {
+        requisitions: data.requisitions,
+        requisition_logs: data.requisition_logs,
+        offers: data.offers.filter((offer) => offer.accepted_date !== null)
+      });
+      return;
+    }
     applyRpcMutation(data, endpoint, payload);
     const completedOffer = endpoint === "app_complete_pipeline_stage_v2"
       && asRecord(payload.outcome).result === "pass"
