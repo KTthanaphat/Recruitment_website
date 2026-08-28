@@ -77,7 +77,8 @@ type RequisitionDetailRow = {
 };
 type StageCountMode = "status" | "activity";
 type ExportColumnKey = "site" | "department" | "department_th" | "section" | "section_th" | "position" | "level" | "vacancy" | "request_type" | "requisition_date" | "person_in_charge" | "status" | "detail" | "applicants" | ProcessStage | "actual_age" | "sla" | "filled_status" | "filled_date";
-type StageCandidateMatch = { candidateId: string; name: string; stage: ProcessStage; pendingDate: string; resultDate: string | null; interviewer: string | null; remark: string | null; result: 0 | 1 | null };
+type StageCandidateMatch = { candidateId: string; name: string; stage: ProcessStage; pendingDate: string; resultDate: string | null; remark: string | null; result: 0 | 1 | null };
+type StageCandidateReportDetail = StageCandidateMatch & { personInCharge: string };
 
 export function VacancyWaterfallView({
   language,
@@ -107,7 +108,7 @@ export function VacancyWaterfallView({
   const [exportColumns, setExportColumns] = useState<ExportColumnKey[]>([]);
   const [organizationRows, setOrganizationRows] = useState<DepartmentSectionRow[]>([]);
   const [stageDrilldown, setStageDrilldown] = useState<{ row: RequisitionDetailRow; stage: ProcessStage; matches: StageCandidateMatch[] } | null>(null);
-  const [reportCandidate, setReportCandidate] = useState<StageCandidateMatch | null>(null);
+  const [reportCandidate, setReportCandidate] = useState<StageCandidateReportDetail | null>(null);
   const [urlStateReady, setUrlStateReady] = useState(false);
   const chartExportRef = useRef<HTMLDivElement | null>(null);
   const requisitionExportRef = useRef<HTMLDivElement | null>(null);
@@ -379,7 +380,7 @@ export function VacancyWaterfallView({
         <RequisitionDetailTable rows={requisitionRows} language={language} printMode />
       </div>
       <ActiveRequisitionExportModal open={exportOpen} language={language} rows={requisitionRows} organizationRows={organizationRows} columns={exportColumns} onClose={() => setExportOpen(false)} onColumnsChange={setExportColumns} onExportXlsx={() => exportRequisitionDetailXlsx(exportColumns)} onExportPng={() => exportPng(requisitionExportRef.current, `active-requisitions-${startDate}-to-${endDate}.png`)} />
-      <StageCandidateModal language={language} drilldown={stageDrilldown} onClose={() => setStageDrilldown(null)} onOpenCandidate={setReportCandidate} />
+      <StageCandidateModal language={language} drilldown={stageDrilldown} onClose={() => setStageDrilldown(null)} onOpenCandidate={(candidate) => setReportCandidate({ ...candidate, personInCharge: stageDrilldown?.row.person_in_charge ?? "" })} />
       <ReportCandidateDetail language={language} candidate={reportCandidate} onClose={() => setReportCandidate(null)} />
 
       <div ref={chartExportRef} className="export-report-surface" aria-hidden="true">
@@ -702,11 +703,11 @@ function exportValue(row: RequisitionDetailRow, key: ExportColumnKey, language: 
 
 function StageCandidateModal({ language, drilldown, onClose, onOpenCandidate }: { language: Language; drilldown: { row: RequisitionDetailRow; stage: ProcessStage; matches: StageCandidateMatch[] } | null; onClose: () => void; onOpenCandidate: (candidate: StageCandidateMatch) => void }) {
   const label = drilldown ? `${processStageLabel(language, drilldown.stage)} · ${drilldown.row.doc_id}` : "";
-  return <Modal open={Boolean(drilldown)} title={`Candidates in ${label}`} onClose={onClose} width="max-w-4xl"><div className="grid gap-3"><p className="text-sm text-slate">{drilldown?.matches.length ?? 0} candidates in the selected report context.</p>{drilldown?.matches.length ? <div className="max-h-[55vh] overflow-auto rounded-xl border border-[#D7DEE8]"><table className="min-w-full text-sm"><thead className="sticky top-0 bg-[#F8FAFD] text-left"><tr>{["Candidate", "ID", "Pending Date", "Result Date", "PIC"].map((header) => <th key={header} className="border-b px-3 py-2 font-semibold text-navy">{header}</th>)}</tr></thead><tbody>{drilldown.matches.map((match) => <tr key={match.candidateId} className="hover:bg-[#F8FAFD]"><td className="border-b px-3 py-2"><button type="button" className="font-semibold text-primary underline" onClick={() => onOpenCandidate(match)}>{match.name}</button></td><td className="border-b px-3 py-2">{match.candidateId}</td><td className="border-b px-3 py-2">{formatDate(match.pendingDate, language)}</td><td className="border-b px-3 py-2">{match.resultDate ? formatDate(match.resultDate, language) : "—"}</td><td className="border-b px-3 py-2">{match.interviewer ?? "—"}</td></tr>)}</tbody></table></div> : <EmptyState message={translate(language, "noData")} />}</div></Modal>;
+  return <Modal open={Boolean(drilldown)} title={`Candidates in ${label}`} onClose={onClose} width="max-w-4xl"><div className="grid gap-3"><p className="text-sm text-slate">{drilldown?.matches.length ?? 0} candidates in the selected report context.</p>{drilldown?.matches.length ? <div className="max-h-[55vh] overflow-auto rounded-xl border border-[#D7DEE8]"><table className="min-w-full text-sm"><thead className="sticky top-0 bg-[#F8FAFD] text-left"><tr>{["Candidate", "ID", "Pending Date", "Result Date", "Person in Charge"].map((header) => <th key={header} className="border-b px-3 py-2 font-semibold text-navy">{header}</th>)}</tr></thead><tbody>{drilldown.matches.map((match) => <tr key={match.candidateId} className="hover:bg-[#F8FAFD]"><td className="border-b px-3 py-2"><button type="button" className="font-semibold text-primary underline" onClick={() => onOpenCandidate(match)}>{match.name}</button></td><td className="border-b px-3 py-2">{match.candidateId}</td><td className="border-b px-3 py-2">{formatDate(match.pendingDate, language)}</td><td className="border-b px-3 py-2">{match.resultDate ? formatDate(match.resultDate, language) : "—"}</td><td className="border-b px-3 py-2">{drilldown.row.person_in_charge || "—"}</td></tr>)}</tbody></table></div> : <EmptyState message={translate(language, "noData")} />}</div></Modal>;
 }
 
-function ReportCandidateDetail({ language, candidate, onClose }: { language: Language; candidate: StageCandidateMatch | null; onClose: () => void }) {
-  return <Modal open={Boolean(candidate)} title="Candidate Report Detail" onClose={onClose} width="max-w-lg"><dl className="grid grid-cols-2 gap-3 text-sm"><dt className="text-slate">Candidate</dt><dd className="font-semibold text-navy">{candidate?.name}</dd><dt className="text-slate">ID</dt><dd>{candidate?.candidateId}</dd><dt className="text-slate">Stage</dt><dd>{candidate ? processStageLabel(language, candidate.stage) : ""}</dd><dt className="text-slate">Pending Date</dt><dd>{candidate ? formatDate(candidate.pendingDate, language) : ""}</dd><dt className="text-slate">Result Date</dt><dd>{candidate?.resultDate ? formatDate(candidate.resultDate, language) : "—"}</dd><dt className="text-slate">PIC</dt><dd>{candidate?.interviewer ?? "—"}</dd></dl></Modal>;
+function ReportCandidateDetail({ language, candidate, onClose }: { language: Language; candidate: StageCandidateReportDetail | null; onClose: () => void }) {
+  return <Modal open={Boolean(candidate)} title="Candidate Report Detail" onClose={onClose} width="max-w-lg"><dl className="grid grid-cols-2 gap-3 text-sm"><dt className="text-slate">Candidate</dt><dd className="font-semibold text-navy">{candidate?.name}</dd><dt className="text-slate">ID</dt><dd>{candidate?.candidateId}</dd><dt className="text-slate">Stage</dt><dd>{candidate ? processStageLabel(language, candidate.stage) : ""}</dd><dt className="text-slate">Pending Date</dt><dd>{candidate ? formatDate(candidate.pendingDate, language) : ""}</dd><dt className="text-slate">Result Date</dt><dd>{candidate?.resultDate ? formatDate(candidate.resultDate, language) : "—"}</dd><dt className="text-slate">Person in Charge</dt><dd>{candidate?.personInCharge || "—"}</dd></dl></Modal>;
 }
 
 function RequisitionDetailTable({ rows, language, printMode = false, onStageClick }: { rows: RequisitionDetailRow[]; language: Language; printMode?: boolean; onStageClick?: (row: RequisitionDetailRow, stage: ProcessStage) => void }) {
@@ -1486,7 +1487,7 @@ function stageCandidatesForRequisition(data: DashboardData, docId: string, stage
       ? logs.find((log) => { const date = dateOnly(log.result === 1 ? (log.outcome_date ?? log.log_date) : log.log_date); return Boolean(date && date >= startDate && date <= endDate); })
       : logs.filter((log) => log.log_date <= endDate && (!log.outcome_date || log.outcome_date > endDate || log.result === null)).sort((a, b) => b.log_date.localeCompare(a.log_date) || b.log_id - a.log_id)[0];
     if (!matching) return [];
-    return [{ candidateId: candidate.candidate_id, name: candidate.name, stage, pendingDate: matching.log_date, resultDate: dateOnly(matching.outcome_date), interviewer: matching.outcome_interviewer ?? matching.interviewer, remark: matching.outcome_remark ?? matching.remark, result: matching.result }];
+    return [{ candidateId: candidate.candidate_id, name: candidate.name, stage, pendingDate: matching.log_date, resultDate: dateOnly(matching.outcome_date), remark: matching.outcome_remark ?? matching.remark, result: matching.result }];
   }).sort((a, b) => a.name.localeCompare(b.name));
 }
 
