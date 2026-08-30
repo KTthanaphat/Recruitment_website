@@ -161,9 +161,13 @@ test("active requisitions use the latest status at the selected period end", asy
   await expectWorkspaceReady(page);
 
   await expect(page.getByRole("columnheader", { name: "Status at Period End" })).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "SLA at Period End" })).toBeVisible();
   await expect(page.getByText("Filled in period", { exact: true }).first()).toBeVisible();
+  const manuallyFilledRow = page.locator(".dashboard-detail-scroll tbody tr").filter({ hasText: "Filled in period" });
+  await expect(manuallyFilledRow).toContainText("(19d)");
   const offerFilledRow = page.locator(".dashboard-detail-scroll tbody tr").filter({ hasText: "Filled from accepted offer" });
   await expect(offerFilledRow).toContainText("Filled");
+  await expect(offerFilledRow).toContainText("(20d)");
   await expect(offerFilledRow).toContainText("21/06/2026");
   await expect(page.getByText("Cancelled in period", { exact: true })).toHaveCount(0);
 });

@@ -224,10 +224,17 @@ export function VacancyWaterfallView({
       worksheet.getColumn(1).width = 2;
       for (let index = 2; index < headers.length + 2; index += 1) worksheet.getColumn(index).width = 20;
       worksheet.addTable({ name: "ActiveRequisitionsTable", ref: "B2", headerRow: true, totalsRow: false, style: { theme: "TableStyleMedium2", showRowStripes: true }, columns: headers.map((name) => ({ name, filterButton: true })), rows });
+      const whiteBorder = {
+        top: { style: "thin" as const, color: { argb: "FFFFFFFF" } },
+        left: { style: "thin" as const, color: { argb: "FFFFFFFF" } },
+        bottom: { style: "thin" as const, color: { argb: "FFFFFFFF" } },
+        right: { style: "thin" as const, color: { argb: "FFFFFFFF" } }
+      };
       for (let row = 2; row < rows.length + 3; row += 1) {
         for (let column = 2; column < headers.length + 2; column += 1) {
           const cell = worksheet.getCell(row, column);
           cell.font = { name: "Sarabun" };
+          cell.border = whiteBorder;
           cell.alignment = {
             vertical: "middle",
             horizontal: row === 2 ? "center" : "left",
@@ -674,7 +681,7 @@ function defaultExportColumns(): ExportColumnKey[] {
 }
 
 function exportColumnLabel(key: ExportColumnKey, language: Language) {
-  return key === "department" ? "Department" : key === "section" ? "Section" : key === "department_th" ? translate(language, "departmentThai") : key === "section_th" ? translate(language, "sectionThai") : key === "request_type" ? translate(language, "requestType") : key === "requisition_date" ? translate(language, "requisitionDate") : key === "person_in_charge" ? translate(language, "personInCharge") : key === "actual_age" ? translate(language, "actualAge") : key === "filled_date" ? translate(language, "filledDate") : key === "applicants" ? translate(language, "applicants") : key === "sla" ? translate(language, "currentSla") : detailStages.includes(key as ProcessStage) ? processStageLabel(language, key as ProcessStage) : translate(language, key);
+  return key === "department" ? "Department" : key === "section" ? "Section" : key === "department_th" ? translate(language, "departmentThai") : key === "section_th" ? translate(language, "sectionThai") : key === "request_type" ? translate(language, "requestType") : key === "requisition_date" ? translate(language, "requisitionDate") : key === "person_in_charge" ? translate(language, "personInCharge") : key === "actual_age" ? translate(language, "actualAge") : key === "filled_date" ? translate(language, "filledDate") : key === "applicants" ? translate(language, "applicants") : key === "sla" ? translate(language, "slaAtPeriodEnd") : detailStages.includes(key as ProcessStage) ? processStageLabel(language, key as ProcessStage) : translate(language, key);
 }
 
 function ActiveRequisitionExportModal({ open, language, rows, organizationRows, columns, onClose, onColumnsChange, onExportXlsx, onExportPng }: { open: boolean; language: Language; rows: RequisitionDetailRow[]; organizationRows: DepartmentSectionRow[]; columns: ExportColumnKey[]; onClose: () => void; onColumnsChange: (columns: ExportColumnKey[]) => void; onExportXlsx: () => void; onExportPng: () => void }) {
@@ -688,7 +695,7 @@ function ActiveRequisitionExportModal({ open, language, rows, organizationRows, 
 function previewValue(value: string | number) { const text = String(value); return text.length > 28 ? `${text.slice(0, 25)}...` : text; }
 function exportFieldDescription(key: ExportColumnKey, language: Language) {
   const english: Partial<Record<ExportColumnKey, string>> = {
-    site: "Site: The operating location responsible for the requisition.", department: "Department: The requisition's department in the selected system language.", department_th: "Department (Thai): The canonical Thai department name stored with the requisition.", section: "Section: The requisition's section in the selected system language.", section_th: "Section (Thai): The canonical Thai section name stored with the requisition.", position: "Position: The requested job title.", level: "Job Level: The approved job grade for the requisition.", vacancy: "Vacancy: Total approved headcount requested.", request_type: "Request Type: Whether the requisition is new or a replacement.", requisition_date: "Requisition Date: The approved opening date (pr_approved_date).", person_in_charge: "Person in Charge: The recruiter assigned to manage the requisition.", status: "Status at Period End: Requisition state at the selected period end. Filled is derived from accepted offer coverage; Cancelled is a recorded status action.", detail: "Detail: The remark attached to that latest historical status record.", applicants: "Applicants: Applicants recorded through sourcing during the selected period.", actual_age: "Actual Age: Age of the requisition since the requisition opened (pr_approved_date).", sla: "Current SLA: The requisition's SLA age and whether it is within the defined service level.", filled_date: "Filled Date: The most recent date that accepted offers met the approved headcount, as of the selected period end."
+    site: "Site: The operating location responsible for the requisition.", department: "Department: The requisition's department in the selected system language.", department_th: "Department (Thai): The canonical Thai department name stored with the requisition.", section: "Section: The requisition's section in the selected system language.", section_th: "Section (Thai): The canonical Thai section name stored with the requisition.", position: "Position: The requested job title.", level: "Job Level: The approved job grade for the requisition.", vacancy: "Vacancy: Total approved headcount requested.", request_type: "Request Type: Whether the requisition is new or a replacement.", requisition_date: "Requisition Date: The approved opening date (pr_approved_date).", person_in_charge: "Person in Charge: The recruiter assigned to manage the requisition.", status: "Status at Period End: Requisition state at the selected period end. Filled is derived from accepted offer coverage; Cancelled is a recorded status action.", detail: "Detail: The remark attached to that latest historical status record.", applicants: "Applicants: Applicants recorded through sourcing during the selected period.", actual_age: "Actual Age: Age of the requisition since the requisition opened (pr_approved_date).", sla: "SLA at Period End: SLA age at the filled date when filled; otherwise at the selected period end.", filled_date: "Filled Date: The most recent date that accepted offers met the approved headcount, as of the selected period end."
   };
   const stage = detailStages.includes(key as ProcessStage) ? `${processStageLabel(language, key as ProcessStage)}: Unique candidates with a current pipeline record or a completed result in this stage, depending on the selected mode.` : null;
   return stage ?? english[key] ?? translate(language, "exportFieldDescription", { field: exportColumnLabel(key, language) });
@@ -729,7 +736,7 @@ function RequisitionDetailTable({ rows, language, printMode = false, onStageClic
       value: (row) => row.stage_counts[stage] ?? 0
     })),
     { key: "actual_age", label: translate(language, "actualAge"), value: (row) => row.actual_age_days === null ? "-" : `${row.actual_age_days}d`, sortValue: (row) => row.actual_age_days ?? Number.POSITIVE_INFINITY },
-    { key: "sla", label: translate(language, "currentSla"), value: (row) => slaExportValue(row.sla_state, language), sortValue: (row) => row.sla_state.ageDays ?? Number.POSITIVE_INFINITY },
+    { key: "sla", label: translate(language, "slaAtPeriodEnd"), value: (row) => slaExportValue(row.sla_state, language), sortValue: (row) => row.sla_state.ageDays ?? Number.POSITIVE_INFINITY },
     { key: "filled_date", label: translate(language, "filledDate"), value: (row) => row.filled_date ? formatDate(row.filled_date, language) : "-", sortValue: (row) => row.filled_date ?? "" }
   ];
   const table = useTableControls(rows, columns);
@@ -778,7 +785,7 @@ function RequisitionDetailTable({ rows, language, printMode = false, onStageClic
                 <td key={stage} className={`${detailCellClass(stage)} border border-[#D7DEE8] px-2 py-2 text-right`}>{(row.stage_counts[stage] ?? 0) > 0 && !printMode && onStageClick ? <button type="button" className="rounded px-1 font-semibold text-primary underline decoration-primary/40 underline-offset-2 hover:bg-primary/10 focus:outline-none focus:ring-2 focus:ring-primary/30" onClick={() => onStageClick(row, stage)} aria-label={`View ${row.stage_counts[stage]} candidates in ${processStageLabel(language, stage)}`}>{row.stage_counts[stage]}</button> : row.stage_counts[stage] ?? 0}</td>
               ))}
               <td className={`${detailCellClass("Actual Age")} border border-[#D7DEE8] px-2 py-2`}>{row.actual_age_days === null ? "-" : `${row.actual_age_days}d`}</td>
-              <td className={`${detailCellClass("Current SLA")} border border-[#D7DEE8] px-2 py-2`}>{slaStatusCell(row.sla_state)}</td>
+              <td className={`${detailCellClass("SLA at Period End")} border border-[#D7DEE8] px-2 py-2`}>{slaStatusCell(row.sla_state)}</td>
               <td className={`${detailCellClass("Filled Date")} border border-[#D7DEE8] px-2 py-2`}>{row.filled_date ? formatDate(row.filled_date, language) : "-"}</td>
             </tr>
           ))}
@@ -820,7 +827,7 @@ function requisitionDetailHeaders(language: Language) {
     translate(language, "applicants"),
     ...detailStages.map((stage) => processStageLabel(language, stage)),
     translate(language, "actualAge"),
-    translate(language, "currentSla"),
+    translate(language, "slaAtPeriodEnd"),
     translate(language, "filledDate")
   ];
 }
@@ -842,7 +849,7 @@ function requisitionDetailExportRow(row: RequisitionDetailRow, language: Languag
       if (header === translate(language, "detail")) return [header, row.period_detail ?? "-"];
       if (header === translate(language, "applicants")) return [header, row.applicant_count];
       if (header === translate(language, "actualAge")) return [header, row.actual_age_days === null ? "-" : `${row.actual_age_days}d`];
-      if (header === translate(language, "currentSla")) return [header, slaExportValue(row.sla_state, language)];
+      if (header === translate(language, "slaAtPeriodEnd")) return [header, slaExportValue(row.sla_state, language)];
       if (header === translate(language, "filledDate")) return [header, row.filled_date ? formatDate(row.filled_date, language) : "-"];
       const stage = stageHeaders.get(header);
       return [header, stage ? row.stage_counts[stage] ?? 0 : 0];
@@ -1040,10 +1047,9 @@ function buildActiveRequisitionRows(data: DashboardData, requisitions: EnrichedR
         actual_age_days: calendarDayAge(requisitionDate, todayDate()),
         person_in_charge: requisition.person_in_charge ?? "-",
         stage_counts: stageCounts,
-        sla_state: getRequisitionSlaState(
-          requisition,
-          { endDate: snapshot.status === "filled" ? filledDate ?? todayDate() : todayDate() }
-        ),
+        sla_state: getRequisitionSlaState(requisition, {
+          endDate: snapshot.status === "filled" ? filledDate ?? endDate : endDate
+        }),
         filled_date: filledDate,
         period_status: snapshot.status,
         period_detail: snapshot.remark
