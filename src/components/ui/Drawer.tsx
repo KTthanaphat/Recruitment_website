@@ -13,6 +13,9 @@ export function Drawer({
   closeLabel = "Close",
   headerActions,
   headerMeta,
+  headerContent,
+  backAction,
+  variant = "side",
   inactive = false,
   children,
   onClose
@@ -23,6 +26,9 @@ export function Drawer({
   closeLabel?: string;
   headerActions?: ReactNode;
   headerMeta?: ReactNode;
+  headerContent?: ReactNode;
+  backAction?: ReactNode;
+  variant?: "side" | "candidate-workspace";
   inactive?: boolean;
   children: ReactNode;
   onClose: () => void;
@@ -52,13 +58,16 @@ export function Drawer({
         aria-labelledby={titleId}
         tabIndex={-1}
         onKeyDown={(event) => trapDrawerTabKey(event, panelRef.current)}
-        className="h-full min-w-0 w-full overflow-x-hidden overflow-y-auto overscroll-contain bg-white shadow-2xl outline-none sm:max-w-2xl"
+        className={`h-full min-w-0 w-full overflow-x-hidden overflow-y-auto overscroll-contain bg-white shadow-2xl outline-none ${variant === "candidate-workspace" ? "sm:max-w-2xl sm:border-l sm:border-[#D7DEE8]" : "sm:max-w-2xl"}`}
       >
         <div className="sticky top-0 z-30 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-3 border-b border-[#D7DEE8] bg-white px-4 py-4 sm:px-5">
           <div className="min-w-0">
-            <p className="mb-1 text-xs font-medium uppercase tracking-normal text-slate">{eyebrow}</p>
-            <h3 id={titleId} className="break-words text-xl font-semibold text-navy">{title}</h3>
-            {headerMeta ? <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2">{headerMeta}</div> : null}
+            {headerContent ? <><h3 id={titleId} className="sr-only">{title}</h3>{headerContent}</> : <>
+              {backAction ? <div className="mb-2">{backAction}</div> : null}
+              <p className="mb-1 text-xs font-medium uppercase tracking-normal text-slate">{eyebrow}</p>
+              <h3 id={titleId} className="break-words text-xl font-semibold text-navy">{title}</h3>
+              {headerMeta ? <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2">{headerMeta}</div> : null}
+            </>}
           </div>
           <div className="flex items-start justify-end gap-2">
             {headerActions}

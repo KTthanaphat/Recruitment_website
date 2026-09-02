@@ -19,12 +19,16 @@ export type RecordAction = {
   tone?: "primary" | "secondary" | "danger";
   disabledReason?: DisabledReason;
   external?: boolean;
+  /** Candidate drawer actions can use the borderless utility treatment. */
+  flat?: boolean;
 };
 
 export type RecordActionGroupProps = {
   label: string;
   primary?: RecordAction;
+  inlineAction?: ReactNode;
   items: RecordAction[];
+  flat?: boolean;
 };
 
 export type RecordQuickAction = RecordAction & {
@@ -52,7 +56,7 @@ export function RecordQuickActions({ actions, label }: { actions: RecordQuickAct
   );
 }
 
-export function RecordActionGroup({ label, primary, items }: RecordActionGroupProps) {
+export function RecordActionGroup({ label, primary, inlineAction, items, flat = false }: RecordActionGroupProps) {
   const searchParams = useSearchParams();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -112,18 +116,20 @@ export function RecordActionGroup({ label, primary, items }: RecordActionGroupPr
   return (
     <div ref={rootRef} className="relative flex min-w-0 flex-wrap items-center gap-2">
       {primary ? <RecordActionControl action={withContext(primary)} prominent onComplete={() => setOpen(false)} /> : null}
+      {inlineAction}
       {items.length > 0 ? (
         <>
           <Button
             ref={triggerRef}
             type="button"
             size="icon-sm"
-            variant="secondary"
+            variant={flat ? "ghost" : "secondary"}
             icon={<MoreVertical size={17} />}
             aria-haspopup="menu"
             aria-expanded={open}
             aria-label={`More actions for ${label}`}
             title={`More actions for ${label}`}
+            className={flat ? "text-primary hover:bg-[#F1F6FC] hover:text-primary" : undefined}
             onClick={() => setOpen((current) => !current)}
           >
             <span className="sr-only">More</span>
@@ -179,7 +185,7 @@ function RecordActionControl({
         role={menuItem ? "menuitem" : undefined}
         aria-label={iconOnly ? action.label : undefined}
         title={iconOnly ? action.label : undefined}
-        className={`${className} ${prominent ? "bg-primary text-white hover:bg-primary/90" : menuItem ? actionMenuClass(action.tone) : actionClass(action.tone)}`}
+        className={`${className} ${action.flat ? "bg-transparent text-primary hover:bg-[#F1F6FC] hover:text-primary" : prominent ? "bg-primary text-white hover:bg-primary/90" : menuItem ? actionMenuClass(action.tone) : actionClass(action.tone)}`}
         href={action.href}
         target={action.external ? "_blank" : undefined}
         rel={action.external ? "noreferrer" : undefined}
@@ -196,7 +202,7 @@ function RecordActionControl({
       type="button"
       aria-label={iconOnly ? action.label : undefined}
       title={blocked ? action.disabledReason?.detail : iconOnly ? action.label : undefined}
-      className={`${className} ${prominent ? "bg-primary text-white hover:bg-primary/90" : menuItem ? actionMenuClass(action.tone) : actionClass(action.tone)}`}
+      className={`${className} ${action.flat ? "bg-transparent text-primary hover:bg-[#F1F6FC] hover:text-primary" : prominent ? "bg-primary text-white hover:bg-primary/90" : menuItem ? actionMenuClass(action.tone) : actionClass(action.tone)}`}
       disabled={blocked}
       onClick={() => {
         action.onSelect?.();

@@ -222,7 +222,7 @@ test("candidate detail separates current pending details from outcome history an
   await expect(dialog.getByText("Current stage")).toBeVisible();
   await expect(dialog.getByText("Pending details")).toBeVisible();
   await expect(dialog.getByText("Estimated: 25/07/2026")).toBeVisible();
-  await expect(dialog.getByText("Awaiting outcome")).toBeVisible();
+  await expect(dialog.getByText("Awaiting outcome")).toHaveCount(0);
   await expect(dialog.getByText("Resume Screening")).toBeVisible();
   await expect(page.getByRole("button", { name: "Candidate actions for Pat Phone" })).toHaveCount(0);
 });
@@ -256,6 +256,23 @@ test("candidate detail opens the same Edit Pending Details workflow for an autho
   const pendingDialog = page.getByRole("dialog", { name: "Edit Pending Details" });
   await expect(pendingDialog).toBeVisible();
   await expect(pendingDialog.locator('input[name="estimated_action_date"]')).toHaveValue("2026-07-25");
+});
+
+test("candidate detail Journey Update opens the in-place Pipeline action popup", async ({ page }) => {
+  await installMockSupabase(page, { role: "admin_recruiter" });
+  await page.goto("/pipeline");
+  await expectWorkspaceReady(page);
+
+  await page.getByRole("button", { name: /^Pat Phone/ }).click();
+  const detail = page.getByRole("dialog", { name: /C-PHONE/ });
+  await detail.getByRole("button", { name: "Update", exact: true }).click();
+  const actions = page.getByRole("dialog", { name: "Candidate actions for Pat Phone" });
+  await expect(actions.getByRole("menuitem", { name: "Pass stage" })).toBeVisible();
+  await actions.getByRole("menuitem", { name: "Edit pending details" }).click();
+  const pendingDialog = page.getByRole("dialog", { name: "Edit Pending Details" });
+  await expect(pendingDialog).toBeVisible();
+  await pendingDialog.getByRole("button", { name: "Close" }).click();
+  await expect(detail).toBeVisible();
 });
 
 test("Reference Check requires available references to be checked before Pass", async ({ page }) => {

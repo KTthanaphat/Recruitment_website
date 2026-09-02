@@ -431,9 +431,7 @@ Shared UI behavior:
 - Pipeline Funnel uses one dominant assigned-site data fill with subdued neutral grid/table structure.
 - Magnifying-glass icon buttons for record View actions.
 - Requisitions, Candidates, and Offers tables/cards expose only the magnifying-glass View detail action. Workspace, related-record navigation, and write actions do not appear in table/card rows.
-- Detail drawers keep the 3-dot action menu for secondary actions. Write roles see `Change record` in that menu, which opens the existing change modal for the current requisition or candidate; viewers do not see it. Menu options remain neutral text rows, not blue highlighted options.
-- Workspace uses the `LampDesk` icon in the sidebar.
-- Record detail drawer headers may keep a compact action menu for secondary drawer navigation. The primary `Open workspace` action remains an icon-only `LampDesk` button with tooltip and `aria-label`; related links and process updates live in the drawer body.
+- Detail drawers keep neutral 3-dot secondary actions; write roles see `Change record`, viewers do not. Candidate Detail orders flat LampDesk, Pencil, and More actions; its four-node trend Journey Update opens the same eligible process commands in place. The outer Journey card owns spacing; StageRail owns state/a11y. Collapsible References and Activity use their policy callout/current card/timeline surfaces; Profile copies populated raw values.
 - Compact pagination footer: `< Page X of Y >`.
 - Data tables use shared sortable/filterable headers with sort cycling, filled filter inputs, and filtered rows applied before pagination.
 - Requisitions, Candidates, and Offers desktop tables use the shared `table-scroll` viewport with horizontal and vertical overflow plus a sticky table header. Sourcing is card-based; Pipeline keeps its own stage headers. Mobile record cards remain non-sticky.

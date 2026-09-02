@@ -1,4 +1,4 @@
-import { Check, Circle, Clock3, X } from "lucide-react";
+import { BadgeCheck, BriefcaseBusiness, Check, Circle, ClipboardCheck, Clock3, FileText, Phone, ShieldCheck, UserRoundCheck, X } from "lucide-react";
 import {
   isDerivedResumeScreeningStage,
   PIPELINE_JOURNEY_STAGES,
@@ -19,9 +19,10 @@ type StageRailProps = {
   language?: Language;
   ariaLabel?: string;
   showSummary?: boolean;
+  variant?: "default" | "candidate-workspace";
 };
 
-export function StageRail({ logs, currentStage, currentResult, compact = false, label, language = "en", ariaLabel, showSummary = compact }: StageRailProps) {
+export function StageRail({ logs, currentStage, currentResult, compact = false, label, language = "en", ariaLabel, showSummary = compact, variant = "default" }: StageRailProps) {
   const currentPendingStage = logs?.find((log) => log.result === null)?.recruitment_process;
   const activeStage = currentStage && currentStage !== "No activity" ? currentStage : undefined;
   const activeIndex = activeStage ? PIPELINE_JOURNEY_STAGES.indexOf(activeStage) : -1;
@@ -44,11 +45,11 @@ export function StageRail({ logs, currentStage, currentResult, compact = false, 
     : translate(language, "noActivity");
 
   return (
-    <div className={compact ? "relative z-0 grid gap-1.5" : "relative z-0 rounded-lg bg-white px-4 py-4"}>
+    <div className={compact ? "relative z-0 grid gap-1.5" : variant === "candidate-workspace" ? "relative z-0 overflow-x-auto pb-1 pt-4" : "relative z-0 rounded-lg bg-white px-4 py-4"}>
       {label ? <h4 className={compact ? "text-xs font-semibold text-navy" : "mb-4 font-semibold text-navy"}>{label}</h4> : null}
       <ol
         aria-label={ariaLabel ?? label ?? translate(language, "candidatePipelineJourney")}
-        className={compact ? "relative z-0 grid h-4 w-36 max-w-full items-center" : "relative z-0 grid gap-4 md:grid-cols-7 md:gap-2 md:justify-items-center"}
+        className={compact ? "relative z-0 grid h-4 w-36 max-w-full items-center" : `relative z-0 grid min-w-[44rem] gap-4 md:grid-cols-7 md:gap-2 md:justify-items-center ${variant === "candidate-workspace" ? "md:min-w-0" : ""}`}
         style={compact ? { gridTemplateColumns: `repeat(${stageItems.length}, minmax(0, 1fr))` } : undefined}
       >
         {compact ? (
@@ -80,7 +81,7 @@ export function StageRail({ logs, currentStage, currentResult, compact = false, 
                 className="relative z-[1] grid place-items-center"
                 title={`${pipelineDisplayLabel(stage, language)}: ${stageStateLabel(language, state)}`}
               >
-                <span className={`block shrink-0 rounded-full ${isCurrent ? "size-3.5" : "size-3"} ${stageDotClass(state, isCurrent)} ring-2 ring-white`} aria-hidden="true" />
+                <span className={`block shrink-0 rounded-full ${isCurrent ? "size-3.5" : "size-3"} ${stageDotClass(state, isCurrent, variant === "candidate-workspace")} ring-2 ring-white`} aria-hidden="true" />
                 <span className="sr-only">{pipelineDisplayLabel(stage, language)}: {stageStateLabel(language, state)}</span>
               </li>
             );
@@ -89,20 +90,22 @@ export function StageRail({ logs, currentStage, currentResult, compact = false, 
           return (
             <li
               key={stage}
+              aria-label={variant === "candidate-workspace" ? `${pipelineDisplayLabel(stage, language)}: ${stageStateLabel(language, state)}` : undefined}
               className="relative z-[1] grid grid-cols-[1.5rem_minmax(0,1fr)] items-start gap-3 md:flex md:w-full md:flex-col md:items-center md:text-center"
             >
               {index < PIPELINE_JOURNEY_STAGES.length - 1 ? (
                 <>
                   <span data-stage-connector={`${stage}->${stageItems[index + 1]?.stage}`} data-stage-connector-state={stageConnectorState(state, nextState)} className={`absolute left-3 top-6 h-[calc(100%+1rem)] w-1 rounded-full md:hidden ${stageConnectorClass(state, nextState)}`} aria-hidden="true" />
-                  <span data-stage-connector={`${stage}->${stageItems[index + 1]?.stage}`} data-stage-connector-state={stageConnectorState(state, nextState)} className={`absolute left-[calc(50%+0.75rem)] right-[calc(-50%+0.75rem)] top-3 z-0 hidden h-1 rounded-full md:block ${stageConnectorClass(state, nextState)}`} aria-hidden="true" />
+                  <span data-stage-connector={`${stage}->${stageItems[index + 1]?.stage}`} data-stage-connector-state={stageConnectorState(state, nextState)} className={`absolute z-0 hidden h-1 rounded-full md:block ${variant === "candidate-workspace" ? "left-[calc(50%+1.5rem)] right-[calc(-50%+1.5rem)] top-6" : "left-[calc(50%+0.75rem)] right-[calc(-50%+0.75rem)] top-3"} ${stageConnectorClass(state, nextState)}`} aria-hidden="true" />
                 </>
               ) : null}
-              <span className={`relative z-[1] grid shrink-0 place-items-center rounded-full ring-4 md:mx-auto ${isCurrent ? "size-8" : "size-6"} ${stageDotClass(state, isCurrent)}`}>
-                <StageIcon state={state} current={isCurrent} />
+              <span className={`relative z-[1] grid shrink-0 place-items-center rounded-full ring-4 md:mx-auto ${variant === "candidate-workspace" ? "size-12" : (isCurrent ? "size-8" : "size-6")} ${stageDotClass(state, isCurrent, variant === "candidate-workspace")}`}>
+                <StageIcon stage={stage} state={state} current={isCurrent} workspace={variant === "candidate-workspace"} />
+                {variant === "candidate-workspace" && state === "passed" ? <span className="absolute -bottom-1 -right-1 grid size-5 place-items-center rounded-full bg-[#16A34A] text-white ring-2 ring-white" aria-hidden="true"><Check size={12} strokeWidth={3} /></span> : null}
               </span>
-              <div className="min-w-0 md:mt-3 md:flex md:min-h-[72px] md:flex-col md:items-center md:justify-start">
+              <div className="min-w-0 md:mt-2 md:flex md:flex-col md:items-center md:justify-start">
                 <p className="text-xs font-semibold leading-tight text-navy">{pipelineDisplayLabel(stage, language)}</p>
-                <p className="mt-1 text-xs font-medium text-slate">{stageStateLabel(language, state)}</p>
+                {variant !== "candidate-workspace" ? <p className="mt-1 text-xs font-medium text-slate">{stageStateLabel(language, state)}</p> : null}
               </div>
             </li>
           );
@@ -133,11 +136,11 @@ function stageStateFromCurrent(stage: PipelineDisplayStage, index: number, activ
   return "pending";
 }
 
-function stageDotClass(state: StageRailState, current: boolean) {
+function stageDotClass(state: StageRailState, current: boolean, workspace = false) {
   if (state === "passed") return current ? "bg-primary ring-[#BFEFFF] text-white shadow-[0_0_0_1px_rgba(255,255,255,0.85),0_6px_18px_rgb(var(--app-primary-rgb)/0.24)]" : "bg-primary ring-[#E4F8FF] text-white";
   if (state === "failed") return current ? "bg-scarlet ring-[#FFE1E1] text-white" : "bg-scarlet ring-[#FFF1F0] text-white";
-  if (state === "pending") return current ? "bg-[#FFD43B] ring-[#FFF2A8] text-navy shadow-[0_0_0_1px_rgba(255,255,255,0.9),0_6px_18px_rgba(255,212,59,0.28)]" : "bg-[#FFD43B] ring-[#FFF8D6] text-navy";
-  return "bg-[#DDEBFF] ring-[#F5FAFF] text-slate";
+  if (state === "pending") return current ? `bg-[#FFD43B] ring-[#FFF2A8] ${workspace ? "text-white" : "text-navy"} shadow-[0_0_0_1px_rgba(255,255,255,0.9),0_6px_18px_rgba(255,212,59,0.28)]` : `bg-[#FFD43B] ring-[#FFF8D6] ${workspace ? "text-white" : "text-navy"}`;
+  return workspace ? "bg-[#EEF1F4] ring-[#F7F8FA] text-[#667085]" : "bg-[#DDEBFF] ring-[#F5FAFF] text-slate";
 }
 
 function stageConnectorState(state: StageRailState, nextState?: StageRailState) {
@@ -156,7 +159,11 @@ function stageConnectorClass(state: StageRailState, nextState?: StageRailState) 
   return "bg-[#DCEBFF]";
 }
 
-function StageIcon({ state, current }: { state: StageRailState; current: boolean }) {
+function StageIcon({ stage, state, current, workspace }: { stage: PipelineDisplayStage; state: StageRailState; current: boolean; workspace: boolean }) {
+  if (workspace) {
+    const Icon = stage === "Resume Screening" ? FileText : stage === "Phone Screen" ? Phone : stage === "HR Interview" ? UserRoundCheck : stage === "Line Interview" ? BadgeCheck : stage === "Test" ? ClipboardCheck : stage === "Reference Check" ? ShieldCheck : BriefcaseBusiness;
+    return <Icon size={state === "pending" || current ? 22 : 18} strokeWidth={2.2} />;
+  }
   if (!current) return null;
   if (state === "passed") return <Check size={14} strokeWidth={3} />;
   if (state === "failed") return <X size={14} strokeWidth={3} />;

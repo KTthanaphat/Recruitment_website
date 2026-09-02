@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Plus, X } from "lucide-react";
+import { Activity, AlertTriangle, Bookmark, BriefcaseBusiness, Building2, ContactRound, Copy, CopyCheck, EyeOff, Files, Info, LampDesk, Mail, Pencil, Phone, Plus, Send, UserRound, UsersRound, X } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AdminView } from "@/components/admin/AdminView";
 import { AuditView } from "@/components/audit/AuditView";
@@ -63,7 +63,7 @@ import {
 } from "@/lib/data";
 import { boolFromForm, emptyToNull, formatCandidateName, formatDate, formatNumber, formatRequisitionOptionLabel, formatRequisitionTitle, formatThaiMobilePhone, resultText, statusTone } from "@/lib/format";
 import { fillReadinessLabel, requisitionStatusLabel, requestTypeLabel, roleLabel, translate } from "@/lib/i18n/dictionary";
-import { activeProcessStage, candidatePipelineCapability, candidateProcessDisabledReason, deriveDataQualityIssues, latestSuccessfulOfferPassDate, pipelineStageRecords, requisitionFillReadiness } from "@/lib/operations";
+import { activeProcessStage, candidatePipelineCapability, candidateProcessDisabledReason, deriveDataQualityIssues, latestSuccessfulOfferPassDate, pipelineMoveDisabledReason, pipelineStageRecords, requisitionFillReadiness } from "@/lib/operations";
 import { getRequisitionSlaState } from "@/lib/sla";
 import { clearStoredSupabaseSession, hasSupabaseConfig, supabase, withAuthTimeout } from "@/lib/supabase/client";
 import { asNumber, requireFields } from "@/lib/validation/forms";
@@ -71,11 +71,14 @@ import { buildContextualHref, pushWorkspaceUrlState, readWorkspaceUrlState as re
 import type {
   DashboardData,
   DashboardReportData,
+  CandidateReference,
+  CandidateReferenceCheck,
   EnrichedCandidate,
   EnrichedRequisition,
   Language,
   Offer,
   OfferPassHandoff,
+  Profile,
   ProcessStage,
   RecruitmentLog,
   RequisitionRequestType,
@@ -277,6 +280,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const [guideStep, setGuideStep] = useState<GuideStep>(null);
   const [guideContext, setGuideContext] = useState<GuideContext>({});
   const [detail, setDetail] = useState<{ type: "requisition" | "candidate"; id: string } | null>(null);
+  const [journeyActionCandidateId, setJourneyActionCandidateId] = useState<string | null>(null);
   const [workspaceTarget, setWorkspaceTarget] = useState<{ type: "requisition" | "group" | null; id: string | null }>({ type: null, id: null });
   const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -672,16 +676,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     setActiveModal("pipeline_start");
   }
 
-  const openProcessFromDetail = useCallback((candidateId: string) => {
-    const candidate = enrichedCandidates.find((row) => row.candidate_id === candidateId);
-    if (!candidate) return;
-    if (candidate.latest_process === "No activity") {
-      openInitialProcessUpdate(candidate);
-      return;
-    }
-    setDetail(null);
-    router.push(`/pipeline?pipelineSearch=${encodeURIComponent(candidateId)}&detailType=candidate&detailId=${encodeURIComponent(candidateId)}`);
-  }, [enrichedCandidates, router]);
+  const openProcessFromDetail = useCallback((candidateId: string) => setJourneyActionCandidateId(candidateId), []);
 
   const openDetailRequisitionChange = useCallback((docId: string) => {
     setModalDefaults({ mode: "change", selectedId: docId });
@@ -1290,13 +1285,33 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
         onStay={() => setOfferPassHandoff(null)}
       />
 
+      <CandidateJourneyActions
+        candidate={enrichedCandidates.find((candidate) => candidate.candidate_id === journeyActionCandidateId) ?? null}
+        language={language}
+        logs={journeyActionCandidateId ? latestLogsForCandidate(data, journeyActionCandidateId) : []}
+        references={data.candidate_references.filter((reference) => reference.candidate_id === journeyActionCandidateId)}
+        checks={data.candidate_reference_checks}
+        profile={data.profile}
+        onClose={() => setJourneyActionCandidateId(null)}
+        onStart={(candidate) => { setJourneyActionCandidateId(null); openInitialProcessUpdate(candidate); }}
+        onPass={(candidate) => { setJourneyActionCandidateId(null); openStageOutcome(candidate, "pass"); }}
+        onFail={(candidate) => { setJourneyActionCandidateId(null); openStageOutcome(candidate, "fail"); }}
+        onTest={(candidate) => { setJourneyActionCandidateId(null); openMaintainTest(candidate); }}
+        onReferences={(candidate) => { setJourneyActionCandidateId(null); setDetail({ type: "candidate", id: candidate.candidate_id }); }}
+        onOffer={(candidate) => { setJourneyActionCandidateId(null); openOfferUpdate(candidate); }}
+        onEditPending={(candidate) => { setJourneyActionCandidateId(null); openPendingEdit(candidate); }}
+        onMove={(candidate, stage) => { setJourneyActionCandidateId(null); openProcessForMove(candidate, stage); }}
+      />
+
       <Drawer
         open={Boolean(detail)}
         eyebrow={detail?.type === "candidate" ? "Candidate Detail" : "Requisition Detail"}
         title={detailBody.title}
         headerMeta={detailBody.headerMeta}
+        headerContent={detailBody.headerContent}
         headerActions={detailBody.headerActions}
-        inactive={Boolean(activeModal || pendingAction || destructiveAction || offerPassHandoff)}
+        variant={detail?.type === "candidate" ? "candidate-workspace" : "side"}
+        inactive={Boolean(activeModal || pendingAction || destructiveAction || offerPassHandoff || journeyActionCandidateId)}
         onClose={() => setDetail(null)}
       >
         {detailBody.body}
@@ -3238,6 +3253,7 @@ function OfferPassHandoffPrompt({
 type DetailBodyResult = {
   title: string;
   headerMeta?: ReactNode;
+  headerContent?: ReactNode;
   headerActions?: ReactNode;
   body: ReactNode;
 };
@@ -3356,6 +3372,9 @@ function buildDetailBodyV2(
     const stageOrder = ACTIVE_PIPELINE_STAGES.indexOf(a.stage) - ACTIVE_PIPELINE_STAGES.indexOf(b.stage);
     return stageOrder || a.round - b.round || a.logId - b.logId;
   });
+  const completedStageRecords = stageRecords.filter((record) => Boolean(record.outcome));
+  const recentCompletedStageRecords = completedStageRecords.slice(-3).reverse();
+  const olderCompletedStageRecords = completedStageRecords.slice(0, -3).reverse();
   const canEditCurrentPending = candidatePipelineCapability(candidate, logs, data.profile).canWrite;
   const canEditOffers = canWrite && (
     data.profile?.role === "system_admin" ||
@@ -3378,16 +3397,14 @@ function buildDetailBodyV2(
 
   return {
     title: `${candidate.candidate_id} / ${formatCandidateName(candidate)}`,
-    headerMeta: (
-      <>
-        <Tag tone={candidate.latest_result === 0 ? "danger" : candidate.accepted_date ? "success" : "teal"}>{processLabel(candidate.latest_process, language)}</Tag>
-        <Tag tone={statusTone(resultText(candidate.latest_result).toLowerCase())}>{resultText(candidate.latest_result, language)}</Tag>
-      </>
-    ),
+    headerContent: <CandidateDetailHeader candidate={candidate} language={language} />,
       headerActions: (
+        <div className="flex items-center gap-1">
         <RecordActionGroup
           label={formatCandidateName(candidate)}
-          primary={{ id: "workspace", label: "Open workspace", href: href(`/workspace?type=${candidate.group_id ? "group" : "requisition"}&id=${encodeURIComponent(candidate.group_id ?? candidate.doc_ids[0] ?? "")}&section=overview`), tone: "primary", iconOnly: true }}
+          flat
+          primary={{ id: "workspace", label: "Open workspace", href: href(`/workspace?type=${candidate.group_id ? "group" : "requisition"}&id=${encodeURIComponent(candidate.group_id ?? candidate.doc_ids[0] ?? "")}&section=overview`), icon: <LampDesk size={17} aria-hidden="true" />, iconOnly: true, flat: true }}
+          inlineAction={canWrite ? <Button type="button" variant="ghost" size="icon-sm" className="text-primary hover:bg-[#F1F6FC] hover:text-primary" icon={<Pencil size={17} aria-hidden="true" />} aria-label="Edit candidate" title="Edit candidate" onClick={() => onChangeCandidate(candidate.candidate_id)} /> : null}
           items={[
             ...(canWrite ? [{ id: "change-record", label: translate(language, "changeRecord"), onSelect: () => onChangeCandidate(candidate.candidate_id) }] : []),
             ...(canDeleteRecords ? [{
@@ -3400,10 +3417,11 @@ function buildDetailBodyV2(
             { id: "same-group", href: href(`/candidates?candSearch=${encodeURIComponent(candidate.group_position ?? candidate.doc_group_id ?? "")}`), label: "Same group" },
             { id: "pipeline", href: href(`/pipeline?pipelineSearch=${encodeURIComponent(candidate.candidate_id)}&detailType=candidate&detailId=${encodeURIComponent(candidate.candidate_id)}`), label: "Open in pipeline" }
         ]}
-      />
+        />
+        </div>
     ),
     body: (
-      <div className="grid min-w-0 gap-4">
+      <div className="candidate-detail-workspace grid min-w-0 gap-5">
         <InlineDataQualityIssues
           canResolve={(issue) => canEditOffers && issue.entity === "offer" && offers.some((offer) => String(offer.offer_id) === issue.entityId && offer.accepted_date && offer.first_working_date && offer.first_working_date <= today() && offer.start_confirmation === null)}
           issues={issues}
@@ -3413,47 +3431,35 @@ function buildDetailBodyV2(
             if (offer) onConfirmOfferStart(offer);
           }}
         />
-        <DetailDisclosure title="Workflow" summary={`${logs.length} process updates`} defaultOpen>
-          <div className="grid gap-4">
-            {!updateDisabledReason.blocked ? (
-              <div className="flex flex-wrap items-start justify-between gap-3 rounded-md border border-[#D7DEE8] bg-lightgray/70 p-4">
-                <div className="min-w-0">
-                  <p className="text-xs font-medium uppercase tracking-normal text-slate">Update process</p>
-                  <p className="mt-1 text-sm font-medium text-slate">Move this candidate through the workflow using the process controls.</p>
-                </div>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  disabled={!canWrite}
-                  onClick={() => onUpdateCandidate(candidate.candidate_id)}
-                >
-                  Update process
-                </Button>
-              </div>
-            ) : null}
-            <CandidateJourney language={language} logs={logs} />
+        <section className="rounded-xl border border-[#D7DEE8] bg-white p-4 shadow-[0_10px_28px_rgba(11,19,43,0.035)] sm:p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <SectionHeading icon={<JourneyTrendIcon />} title="Candidate Pipeline Journey" />
+            {!updateDisabledReason.blocked ? <Button type="button" size="sm" variant="primary" icon={<BriefcaseBusiness size={17} />} disabled={!canWrite} onClick={() => onUpdateCandidate(candidate.candidate_id)}>Update</Button> : null}
           </div>
-        </DetailDisclosure>
-        <DetailGrid rows={[
-          [translate(language, "phoneNo"), formatThaiMobilePhone(candidate.phone_no)],
-          [translate(language, "email"), candidate.email ?? "-"],
-          [translate(language, "nickname"), candidate.nickname ?? "-"],
-          ["Group ID", candidate.group_id ?? candidate.doc_group_id ?? "-"],
-          ["Doc IDs", candidate.doc_ids.join(", ") || "-"],
-          ["Group Position", candidate.group_position ?? "-"],
-          ["Site", candidate.site ?? "-"],
-          ["Owner", candidate.person_in_charge ?? "-"],
-          ["Channel", candidate.channel ?? "-"],
-          ["Reference", candidate.ref_name ?? "-"]
+          {updateDisabledReason.blocked ? <div className="mt-3"><DisabledReasonHint language={language} reason={updateDisabledReason} /></div> : null}
+          <div className="mt-4"><CandidateJourney language={language} logs={logs} /></div>
+        </section>
+        <section className="rounded-xl border border-[#D7DEE8] bg-white p-4 shadow-[0_10px_28px_rgba(11,19,43,0.035)] sm:p-5">
+          <SectionHeading className="mb-3" icon={<ContactRound size={19} />} title="Candidate profile" />
+        <DetailGrid workspace language={language} rows={[
+          { label: translate(language, "phoneNo"), value: formatThaiMobilePhone(candidate.phone_no), copyValue: candidate.phone_no, icon: <Phone size={18} /> },
+          { label: translate(language, "email"), value: candidate.email ?? "-", copyValue: candidate.email, icon: <Mail size={18} /> },
+          { label: translate(language, "nickname"), value: candidate.nickname ?? "-", copyValue: candidate.nickname, icon: <UserRound size={18} /> },
+          { label: "Group ID", value: candidate.group_id ?? candidate.doc_group_id ?? "-", copyValue: candidate.group_id ?? candidate.doc_group_id, icon: <UsersRound size={18} /> },
+          { label: "Doc IDs", value: candidate.doc_ids.join(", ") || "-", copyValue: candidate.doc_ids.join(", ") || undefined, icon: <Files size={18} /> },
+          { label: "Group Position", value: candidate.group_position ?? "-", copyValue: candidate.group_position, icon: <BriefcaseBusiness size={18} /> },
+          { label: "Site", value: candidate.site ?? "-", copyValue: candidate.site, icon: <Building2 size={18} /> },
+          { label: "Owner", value: candidate.person_in_charge ?? "-", copyValue: candidate.person_in_charge, icon: <UserRound size={18} /> },
+          { label: "Channel", value: candidate.channel ?? "-", copyValue: candidate.channel, icon: <Send size={18} /> },
+          { label: "Reference", value: candidate.ref_name ?? "-", copyValue: candidate.ref_name, icon: <Bookmark size={18} /> }
         ]} />
         <DetailDisclosure title={translate(language, "contactReferences")} summary={translate(language, "referenceProgress", { checked: checkedReferenceCount, available: availableReferenceCount })} defaultOpen={candidate.latest_process === "Reference Check" && candidate.latest_result === null}>
           <div className="grid gap-3">
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-[#D7DEE8] bg-lightgray/70 p-3">
-              <p className="text-sm font-medium text-slate">{translate(language, "referencePassRequirement")}</p>
-              {canWrite ? <Button type="button" size="icon-sm" variant="secondary" icon={<Plus size={17} />} aria-label={translate(language, "addReference")} title={translate(language, "addReference")} onClick={() => onEditReference(candidate.candidate_id)} /> : null}
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#C8D8FF] bg-[#F8FBFF] px-3 py-2">
+              <div className="flex min-w-0 items-start gap-2 text-primary"><Info className="mt-0.5 shrink-0" size={15} aria-hidden="true" /><div className="grid gap-0"><p className="text-[11px] font-semibold leading-snug text-navy">{translate(language, "referencePassRequirement")}</p>{references.length === 0 ? <p className="text-[11px] leading-snug text-slate">{translate(language, "noContactReferences")}</p> : null}</div></div>
+              {canWrite ? <Button type="button" size="icon-sm" variant="ghost" className="text-primary hover:bg-[#E8F0FF] hover:text-primary" icon={<Plus size={17} />} aria-label={translate(language, "addReference")} title={translate(language, "addReference")} onClick={() => onEditReference(candidate.candidate_id)} /> : null}
             </div>
-            {references.length === 0 ? <p className="text-sm font-medium text-slate">{translate(language, "noContactReferences")}</p> : references.map((reference) => {
+            {references.length === 0 ? null : references.map((reference) => {
               const check = referenceChecks.get(reference.reference_id);
               const channel = reference.channel_type === "other" ? reference.other_channel_label ?? "Other" : reference.channel_type.toUpperCase();
               return (
@@ -3478,48 +3484,57 @@ function buildDetailBodyV2(
             })}
           </div>
         </DetailDisclosure>
-        <DetailDisclosure title="Activity" summary="Stage records and offers" defaultOpen>
+        <DetailDisclosure title={<SectionHeading icon={<Activity size={18} />} title="Activity" />} summary="Stage records and offers" defaultOpen>
           <div className="grid gap-4">
             <div>
-              <h4 className="mb-2 font-semibold text-navy">{translate(language, "currentStage")}</h4>
-              <div className="grid gap-2">
+              <h4 className="mb-1.5 text-sm font-semibold text-navy">{translate(language, "currentStage")}</h4>
+              <div className="grid gap-1.5">
                 {stageRecords.filter((record) => !record.outcome).map((record) => (
-                  <div key={record.stageInstanceId} className="min-w-0 rounded-md border border-[#D7DEE8] bg-white p-3 shadow-[0_6px_16px_rgba(11,19,43,0.025)]">
+                  <div key={record.stageInstanceId} className="min-w-0 rounded-md border border-[#F3D3A2] border-l-4 border-l-[#FFB20F] bg-[#FFFCF6] px-2.5 py-2 shadow-none">
                     <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-                      <strong className="min-w-0 break-words text-navy">{processLabel(record.stage, language)} / {translate(language, "round")} {record.round}</strong>
-                      <Tag tone="warning">{translate(language, "awaitingOutcome")}</Tag>
+                      <strong className="min-w-0 break-words text-sm text-navy">{processLabel(record.stage, language)} / {translate(language, "round")} {record.round}</strong>
+                      {canEditCurrentPending ? <Button type="button" size="icon-sm" variant="ghost" className="text-primary hover:bg-[#FFF4D8] hover:text-primary" icon={<Pencil size={16} aria-hidden="true" />} aria-label={translate(language, "edit")} title={translate(language, "edit")} onClick={() => onEditPending(candidate)} /> : null}
                     </div>
-                    <p className="mt-1 break-words text-sm font-medium text-slate">{translate(language, "pendingDetails")}: {formatDate(record.pending.openedDate, language)} / {record.pending.interviewer ?? translate(language, "noInterviewer")}</p>
-                    {record.pending.estimatedActionDate ? <p className="mt-1 break-words text-sm font-semibold text-primary">{translate(language, "estimatedDateValue", { date: formatDate(record.pending.estimatedActionDate, language) })}</p> : null}
-                    {record.pending.remark ? <p className="mt-1 break-words text-sm text-slate">{record.pending.remark}</p> : null}
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <p className="mt-0.5 break-words text-xs font-medium text-slate">{translate(language, "pendingDetails")}: {formatDate(record.pending.openedDate, language)} / {record.pending.interviewer ?? translate(language, "noInterviewer")}</p>
+                    {record.pending.estimatedActionDate ? <p className="mt-0.5 break-words text-xs font-semibold text-primary">{translate(language, "estimatedDateValue", { date: formatDate(record.pending.estimatedActionDate, language) })}</p> : null}
+                    {record.pending.remark ? <p className="mt-0.5 break-words text-xs text-slate">{record.pending.remark}</p> : null}
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
                       {record.pending.editedAt ? <Tag tone="muted">{translate(language, "edited")}</Tag> : null}
                       {record.origin === "migration" ? <Tag tone="muted">{translate(language, "migrated")}</Tag> : null}
-                      {canEditCurrentPending ? <Button type="button" size="sm" variant="secondary" onClick={() => onEditPending(candidate)}>{translate(language, "edit")}</Button> : null}
-                      <a className="text-xs font-semibold text-primary underline" href={`/audit?entity=recruitment_logs&entityId=${record.logId}`}>{translate(language, "viewAudit")}</a>
                     </div>
-                    {record.migrationNote ? <p className="mt-2 break-words text-xs font-medium text-slate">{record.migrationNote}</p> : null}
+                    {record.migrationNote ? <p className="mt-1 break-words text-[11px] font-medium text-slate">{record.migrationNote}</p> : null}
                   </div>
                 ))}
                 {stageRecords.every((record) => record.outcome) ? <p className="text-sm font-medium text-slate">{translate(language, "noData")}</p> : null}
               </div>
               <h4 className="mb-2 mt-4 font-semibold text-navy">{translate(language, "completedStageHistory")}</h4>
-              <div className="grid gap-2">
-                {stageRecords.filter((record) => record.outcome).map((record) => (
-                  <div key={record.stageInstanceId} className="min-w-0 rounded-md border border-[#D7DEE8] bg-white p-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-navy">{processLabel(record.stage, language)} / {translate(language, "round")} {record.round}</strong><Tag tone={record.outcome?.result === "pass" ? "success" : "danger"}>{record.outcome?.result === "pass" ? resultText(1, language) : resultText(0, language)}</Tag></div>
-                    <p className="mt-1 text-sm font-medium text-slate">{translate(language, "pendingDetails")}: {formatDate(record.pending.openedDate, language)} / {record.pending.interviewer ?? translate(language, "noInterviewer")}</p>
-                    {record.pending.estimatedActionDate ? <p className="mt-1 text-sm font-semibold text-primary">{translate(language, "estimatedDateValue", { date: formatDate(record.pending.estimatedActionDate, language) })}</p> : null}
-                    <p className="mt-1 text-sm font-medium text-slate">{translate(language, "outcome")}: {formatDate(record.outcome?.date, language)} / {record.outcome?.interviewer ?? translate(language, "noInterviewer")}</p>
-                    {record.outcome?.remark ? <p className="mt-1 break-words text-sm text-slate">{translate(language, "remark")}: {record.outcome.remark}</p> : null}
+              <div className="relative ml-2 grid gap-2 border-l border-[#D7DEE8] pl-5">
+                {recentCompletedStageRecords.map((record) => (
+                  <div key={record.stageInstanceId} className="relative min-w-0 rounded-md border border-[#D7DEE8] border-l-4 border-l-primary bg-white p-3">
+                    <span className="absolute -left-[1.9rem] top-3 grid size-4 place-items-center rounded-full bg-primary text-[10px] font-bold text-white ring-4 ring-white" aria-label={record.outcome?.result === "pass" ? translate(language, "passStage") : translate(language, "failStage")}>{record.outcome?.result === "pass" ? "✓" : "×"}</span>
+                    <div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-sm text-navy">{processLabel(record.stage, language)} / {translate(language, "round")} {record.round}</strong>{record.outcome?.result === "pass" ? <span className="inline-flex min-h-5 items-center rounded-md bg-[#E9F9EF] px-2 text-[11px] font-semibold text-[#167A3D]">{resultText(1, language)}</span> : <Tag tone="danger">{resultText(0, language)}</Tag>}</div>
+                    <p className="mt-1 text-xs font-medium text-slate">{translate(language, "pendingDetails")}: {formatDate(record.pending.openedDate, language)} / {record.pending.interviewer ?? translate(language, "noInterviewer")}</p>
+                    {record.pending.estimatedActionDate ? <p className="mt-1 text-xs font-semibold text-primary">{translate(language, "estimatedDateValue", { date: formatDate(record.pending.estimatedActionDate, language) })}</p> : null}
+                    <p className="mt-1 text-xs font-medium text-slate">{translate(language, "outcome")}: {formatDate(record.outcome?.date, language)} / {record.outcome?.interviewer ?? translate(language, "noInterviewer")}</p>
+                    {record.outcome?.remark ? <p className="mt-1 break-words text-xs text-slate">{translate(language, "remark")}: {record.outcome.remark}</p> : null}
                     <div className="mt-2 flex flex-wrap items-center gap-2">
-                      {record.pending.editedAt ? <Tag tone="muted">{translate(language, "edited")}</Tag> : null}
                       {record.origin === "migration" ? <Tag tone="muted">{translate(language, "migrated")}</Tag> : null}
-                      <a className="text-xs font-semibold text-primary underline" href={`/audit?entity=recruitment_logs&entityId=${record.logId}`}>{translate(language, "viewAudit")}</a>
                     </div>
                     {record.migrationNote ? <p className="mt-2 break-words text-xs font-medium text-slate">{record.migrationNote}</p> : null}
                   </div>
                 ))}
+                {olderCompletedStageRecords.length > 0 ? <details className="rounded-md border border-[#D7DEE8] bg-[#F8FAFD]">
+                  <summary className="cursor-pointer px-3 py-2 text-sm font-semibold text-primary">Show remaining history ({olderCompletedStageRecords.length})</summary>
+                  <div className="grid gap-2 border-t border-[#D7DEE8] p-3">
+                    {olderCompletedStageRecords.map((record) => <div key={record.stageInstanceId} className="min-w-0 rounded-md border border-[#D7DEE8] bg-white p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-sm text-navy">{processLabel(record.stage, language)} / {translate(language, "round")} {record.round}</strong>{record.outcome?.result === "pass" ? <span className="inline-flex min-h-5 items-center rounded-md bg-[#E9F9EF] px-2 text-[11px] font-semibold text-[#167A3D]">{resultText(1, language)}</span> : <Tag tone="danger">{resultText(0, language)}</Tag>}</div>
+                      <p className="mt-1 text-xs font-medium text-slate">{translate(language, "pendingDetails")}: {formatDate(record.pending.openedDate, language)} / {record.pending.interviewer ?? translate(language, "noInterviewer")}</p>
+                      <p className="mt-1 text-xs font-medium text-slate">{translate(language, "outcome")}: {formatDate(record.outcome?.date, language)} / {record.outcome?.interviewer ?? translate(language, "noInterviewer")}</p>
+                      {record.outcome?.remark ? <p className="mt-1 break-words text-xs text-slate">{translate(language, "remark")}: {record.outcome.remark}</p> : null}
+                      {record.origin === "migration" ? <div className="mt-2"><Tag tone="muted">{translate(language, "migrated")}</Tag></div> : null}
+                    </div>)}
+                  </div>
+                </details> : null}
               </div>
             </div>
             <div>
@@ -3713,8 +3728,96 @@ function replacementNamesDisplay(value: string | null | undefined) {
   return names.length > 0 ? names.join(", ") : "-";
 }
 
+function CandidateJourneyActions({
+  candidate, language, logs, references, checks, profile, onClose, onStart, onPass, onFail, onTest, onReferences, onOffer, onEditPending, onMove
+}: {
+  candidate: EnrichedCandidate | null;
+  language: Language;
+  logs: RecruitmentLog[];
+  references: CandidateReference[];
+  checks: CandidateReferenceCheck[];
+  profile: Profile | null;
+  onClose: () => void;
+  onStart: (candidate: EnrichedCandidate) => void;
+  onPass: (candidate: EnrichedCandidate) => void;
+  onFail: (candidate: EnrichedCandidate) => void;
+  onTest: (candidate: EnrichedCandidate) => void;
+  onReferences: (candidate: EnrichedCandidate) => void;
+  onOffer: (candidate: EnrichedCandidate) => void;
+  onEditPending: (candidate: EnrichedCandidate) => void;
+  onMove: (candidate: EnrichedCandidate, stage: ProcessStage) => void;
+}) {
+  if (!candidate) return null;
+  const capability = candidatePipelineCapability(candidate, logs, profile);
+  const baseDisabledReason = candidateProcessDisabledReason(candidate, logs, profile);
+  const canResolveCurrent = ACTIVE_PIPELINE_STAGES.includes(candidate.latest_process as ProcessStage) && candidate.latest_result === null;
+  const unresolvedReferences = references.filter((reference) => reference.status === "available" && !checks.some((check) => check.reference_id === reference.reference_id)).length;
+  const referencePassBlocked = candidate.latest_process === "Reference Check" && unresolvedReferences > 0;
+  const currentIndex = ACTIVE_PIPELINE_STAGES.indexOf(candidate.latest_process as ProcessStage);
+  const updateStages = candidate.latest_process === "No activity" ? [] : currentIndex === -1 ? ACTIVE_PIPELINE_STAGES : ACTIVE_PIPELINE_STAGES.slice(currentIndex + 2);
+  const buttonClass = "w-full justify-start text-left";
+  const actionName = formatCandidateName(candidate);
+
+  return (
+    <Modal open title={translate(language, "candidateActionsFor", { name: actionName })} closeLabel={translate(language, "close")} onClose={onClose} width="max-w-md">
+      <div role="menu" aria-label={translate(language, "candidateActionsFor", { name: actionName })} className="grid gap-1">
+        <DisabledReasonHint language={language} reason={capability.blocked ? capability : baseDisabledReason} />
+        {referencePassBlocked ? <p className="rounded-md bg-[#FFF4D8] px-3 py-2 text-xs font-medium text-[#A96300]">{translate(language, "referencePassBlocked", { count: unresolvedReferences })}</p> : null}
+        {candidate.latest_process === "No activity" ? <Button type="button" role="menuitem" variant="ghost" className={buttonClass} disabled={capability.blocked} onClick={() => onStart(candidate)}>{translate(language, "startPhoneScreen")}</Button> : null}
+        {candidate.latest_process === "Offer" ? <Button type="button" role="menuitem" variant="ghost" className={buttonClass} disabled={capability.blocked} onClick={() => onOffer(candidate)}>{translate(language, "updateOffer")}</Button> : null}
+        {canResolveCurrent ? <Button type="button" role="menuitem" variant="ghost" className={buttonClass} disabled={capability.blocked || referencePassBlocked} title={referencePassBlocked ? translate(language, "referencePassBlockedShort", { count: unresolvedReferences }) : undefined} onClick={() => onPass(candidate)}>{translate(language, "passStage")}</Button> : null}
+        {canResolveCurrent ? <Button type="button" role="menuitem" variant="ghost" className={`${buttonClass} text-scarlet hover:bg-[#FFF1F0] hover:text-scarlet`} disabled={capability.blocked} onClick={() => onFail(candidate)}>{translate(language, "failStage")}</Button> : null}
+        {candidate.latest_process === "Reference Check" && candidate.latest_result === null ? <Button type="button" role="menuitem" variant="ghost" className={buttonClass} disabled={capability.blocked} onClick={() => onReferences(candidate)}>{translate(language, "manageReferenceChecks")}</Button> : null}
+        {candidate.latest_process === "Test" ? <Button type="button" role="menuitem" variant="ghost" className={buttonClass} disabled={capability.blocked} onClick={() => onTest(candidate)}>{translate(language, "addAnotherTestRound")}</Button> : null}
+        {updateStages.map((stage) => {
+          const disabledReason = capability.blocked ? capability : pipelineMoveDisabledReason(candidate, stage, logs, profile);
+          return <Button key={stage} type="button" role="menuitem" variant="ghost" className={buttonClass} disabled={disabledReason.blocked} title={disabledReason.detail} onClick={() => onMove(candidate, stage)}>{processLabel(stage, language)}</Button>;
+        })}
+        {canResolveCurrent ? <Button type="button" role="menuitem" variant="ghost" className={buttonClass} disabled={capability.blocked} onClick={() => onEditPending(candidate)}>{translate(language, "editPendingDetails")}</Button> : null}
+      </div>
+    </Modal>
+  );
+}
+
 function CandidateJourney({ language, logs }: { language: Language; logs: RecruitmentLog[] }) {
-  return <StageRail language={language} logs={logs} label={translate(language, "candidatePipelineJourney")} />;
+  return <StageRail language={language} logs={logs} variant="candidate-workspace" />;
+}
+
+/** Four-node rise–fall–rise mark used by the candidate Journey heading. */
+function JourneyTrendIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.35" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3.5 17.5 8.5 11l5 4.2L20.5 6.5" />
+      <circle cx="3.5" cy="17.5" r="2" fill="white" />
+      <circle cx="8.5" cy="11" r="2" fill="white" />
+      <circle cx="13.5" cy="15.2" r="2" fill="white" />
+      <circle cx="20.5" cy="6.5" r="2" fill="white" />
+    </svg>
+  );
+}
+
+function CandidateDetailHeader({ candidate, language }: { candidate: EnrichedCandidate; language: Language }) {
+  const stageTone = candidate.latest_result === 0 ? "danger" : candidate.accepted_date ? "success" : "primary";
+  const resultTone = candidate.latest_result === 0 ? "danger" : candidate.latest_result === 1 ? "success" : "warning";
+  return (
+    <div className="flex min-w-0 items-center gap-3">
+      <span className="grid size-16 shrink-0 place-items-center rounded-full bg-[#F1F6FC] text-primary" aria-hidden="true"><UserRound size={31} strokeWidth={1.8} /></span>
+      <div className="min-w-0">
+        <p className="break-words text-xl font-semibold leading-tight text-navy">{formatCandidateName(candidate)} / {candidate.candidate_id}</p>
+        <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2">
+          <span className={`inline-flex min-h-6 items-center rounded-md px-2.5 text-xs font-semibold ${detailSoftTagClass(stageTone)}`}>{processLabel(candidate.latest_process, language)}</span>
+          <span className={`inline-flex min-h-6 items-center rounded-md px-2.5 text-xs font-semibold ${detailSoftTagClass(resultTone)}`}>{resultText(candidate.latest_result, language)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function detailSoftTagClass(tone: "primary" | "success" | "warning" | "danger") {
+  if (tone === "danger") return "bg-[#FFF0F1] text-[#C52B40]";
+  if (tone === "warning") return "bg-[#FFF4D8] text-[#A96300]";
+  if (tone === "success") return "bg-[#E9F9EF] text-[#167A3D]";
+  return "bg-[#E8F0FF] text-primary";
 }
 
 type PipelineFunnelCount = {
@@ -3765,17 +3868,56 @@ function buildPipelineFunnelRows(applicantTotal: number, stageCounts: PipelineFu
   });
 }
 
-function DetailGrid({ rows }: { rows: Array<[string, string]> }) {
+type DetailGridRow = [string, string] | { label: string; value: string; copyValue?: string | null; icon?: ReactNode };
+
+function DetailGrid({ rows, workspace = false, language = "en" }: { rows: DetailGridRow[]; workspace?: boolean; language?: Language }) {
+  const [copiedLabel, setCopiedLabel] = useState<string | null>(null);
+  async function copyValue(value: string, label: string) {
+    try {
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(value);
+      else {
+        const input = document.createElement("textarea");
+        input.value = value;
+        input.style.position = "fixed";
+        input.style.opacity = "0";
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand("copy");
+        input.remove();
+      }
+      setCopiedLabel(label);
+      window.setTimeout(() => setCopiedLabel((current) => current === label ? null : current), 1500);
+    } catch {
+      setCopiedLabel(null);
+    }
+  }
   return (
-    <dl className="grid min-w-0 gap-3 rounded-lg border border-[#D7DEE8] bg-lightgray p-4 sm:grid-cols-2">
-      {rows.map(([label, value]) => (
-        <div key={label} className="min-w-0">
-          <dt className="text-xs font-medium uppercase tracking-normal text-slate">{label}</dt>
-          <dd className="mt-1 break-words font-semibold text-navy">{value}</dd>
+    <div>
+    <dl className={`grid min-w-0 gap-x-6 gap-y-0 ${workspace ? "sm:grid-cols-2" : "rounded-lg border border-[#D7DEE8] bg-lightgray p-4 sm:grid-cols-2"}`}>
+      {rows.map((row, index) => {
+        const item = Array.isArray(row) ? { label: row[0], value: row[1] } : row;
+        const copyValueText = item.copyValue?.trim() || undefined;
+        const copied = copiedLabel === item.label;
+        return <div key={item.label} className={`min-w-0 ${workspace ? "grid grid-cols-[2.25rem_minmax(0,1fr)_auto] items-center gap-1.5 border-b border-[#E7EDF5] py-1.5 last:border-b-0 sm:[&:nth-last-child(-n+2)]:border-b-0" : ""}`}>
+          {workspace ? <span className="grid size-9 place-items-center rounded-lg bg-[#F1F6FC] text-primary" aria-hidden="true">{item.icon ?? detailFieldGlyph(index)}</span> : null}
+          <div className="min-w-0"><dt className="text-[11px] font-medium uppercase tracking-normal leading-tight text-slate">{item.label}</dt>
+          <dd className="mt-px break-words text-sm font-semibold leading-tight text-navy">{item.value}</dd></div>
+          {workspace && copyValueText ? <Button type="button" size="icon-sm" variant="ghost" className="text-slate hover:text-primary" icon={copied ? <CopyCheck size={16} aria-hidden="true" /> : <Copy size={16} aria-hidden="true" />} aria-label={copied ? translate(language, "copied") : translate(language, "copyValue", { label: item.label })} title={copied ? translate(language, "copied") : translate(language, "copyValue", { label: item.label })} onClick={() => void copyValue(copyValueText, item.label)} /> : null}
         </div>
-      ))}
+      })}
     </dl>
+      <p className="sr-only" aria-live="polite">{copiedLabel ? translate(language, "copied") : ""}</p>
+    </div>
   );
+}
+
+function detailFieldGlyph(index: number) {
+  const glyphs = ["☎", "✉", "◌", "◎", "▤", "▣", "⌂", "◉", "↪", "⌑"];
+  return <span className="text-base leading-none">{glyphs[index] ?? "•"}</span>;
+}
+
+function SectionHeading({ className = "", icon, title }: { className?: string; icon: ReactNode; title: string }) {
+  return <h4 className={`inline-flex items-center gap-2 text-lg font-semibold text-navy ${className}`}><span className="text-primary" aria-hidden="true">{icon}</span>{title}</h4>;
 }
 
 function DetailList({ title, rows }: { title: string; rows: string[] }) {
@@ -3793,13 +3935,13 @@ function DetailList({ title, rows }: { title: string; rows: string[] }) {
   );
 }
 
-function DetailDisclosure({ children, defaultOpen = false, summary, title }: { children: ReactNode; defaultOpen?: boolean; summary: string; title: string }) {
+function DetailDisclosure({ children, defaultOpen = false, summary, title }: { children: ReactNode; defaultOpen?: boolean; summary: string; title: ReactNode }) {
   return (
     <details className="group min-w-0 rounded-md border border-[#D7DEE8] bg-white" open={defaultOpen}>
       <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary/25 [&::-webkit-details-marker]:hidden">
-        <span className="font-semibold text-navy">{title}</span>
+        {typeof title === "string" ? <span className="font-semibold text-navy">{title}</span> : title}
         <span className="text-right text-xs font-medium text-slate group-open:hidden">{summary}</span>
-        <span className="hidden text-xs font-semibold text-primary group-open:inline">Hide</span>
+        <span className="hidden text-primary group-open:inline" title="Hide"><EyeOff size={16} aria-hidden="true" /><span className="sr-only">Hide</span></span>
       </summary>
       <div className="min-w-0 border-t border-[#D7DEE8] p-4">{children}</div>
     </details>
