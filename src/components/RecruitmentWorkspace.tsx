@@ -3453,7 +3453,8 @@ function buildDetailBodyV2(
           { label: "Channel", value: candidate.channel ?? "-", copyValue: candidate.channel, icon: <Send size={18} /> },
           { label: "Reference", value: candidate.ref_name ?? "-", copyValue: candidate.ref_name, icon: <Bookmark size={18} /> }
         ]} />
-        <DetailDisclosure title={translate(language, "contactReferences")} summary={translate(language, "referenceProgress", { checked: checkedReferenceCount, available: availableReferenceCount })} defaultOpen={candidate.latest_process === "Reference Check" && candidate.latest_result === null}>
+        </section>
+        <DetailDisclosure title={<SectionHeading icon={<UsersRound size={18} />} title={translate(language, "contactReferences")} />} summary={translate(language, "referenceProgress", { checked: checkedReferenceCount, available: availableReferenceCount })} defaultOpen>
           <div className="grid gap-3">
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#C8D8FF] bg-[#F8FBFF] px-3 py-2">
               <div className="flex min-w-0 items-start gap-2 text-primary"><Info className="mt-0.5 shrink-0" size={15} aria-hidden="true" /><div className="grid gap-0"><p className="text-[11px] font-semibold leading-snug text-navy">{translate(language, "referencePassRequirement")}</p>{references.length === 0 ? <p className="text-[11px] leading-snug text-slate">{translate(language, "noContactReferences")}</p> : null}</div></div>
