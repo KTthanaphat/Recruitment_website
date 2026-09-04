@@ -43,7 +43,7 @@ import {
   WRITABLE_REQUISITION_STATUSES,
   type PipelineDisplayStage
 } from "@/lib/constants";
-import { currentLocalWeekStart, formatLocalDateInput } from "@/lib/dates";
+import { currentLocalSourcingCycleSaturday, formatLocalDateInput, sourcingCycleSaturday } from "@/lib/dates";
 import { dailyWelcomeMessage } from "@/lib/daily-messages";
 import { appendLegacyOption, departmentOptions, sectionOptionsForDepartment, type DepartmentSectionRow } from "@/lib/department-section-data";
 import {
@@ -355,7 +355,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     } else if (savedFilters) {
       localStorage.removeItem("recruitment_filters");
     }
-    if (urlState.sourcingWeek) setSourcingWeek(urlState.sourcingWeek);
+    if (urlState.sourcingWeek) setSourcingWeek(sourcingCycleSaturday(urlState.sourcingWeek));
     if (urlState.detailType && urlState.detailId) setDetail({ type: urlState.detailType, id: urlState.detailId });
     setWorkspaceTarget({ type: urlState.workspaceType, id: urlState.workspaceId });
     setUrlStateReady(true);
@@ -371,7 +371,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
           return current.site === next.site && current.owner === next.owner ? current : next;
         });
       }
-      if (urlState.sourcingWeek) setSourcingWeek(urlState.sourcingWeek);
+      if (urlState.sourcingWeek) setSourcingWeek(sourcingCycleSaturday(urlState.sourcingWeek));
       setDetail((current) => {
         const next = urlState.detailType && urlState.detailId ? { type: urlState.detailType, id: urlState.detailId } : null;
         if (!current && !next) return current;
@@ -3989,7 +3989,7 @@ function today() {
 }
 
 function currentWeekStart() {
-  return currentLocalWeekStart();
+  return currentLocalSourcingCycleSaturday();
 }
 
 function offerPassHandoffFromResult(result: RpcResult, data: DashboardData): OfferPassHandoff | null {
