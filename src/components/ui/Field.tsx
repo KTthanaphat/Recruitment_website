@@ -78,6 +78,7 @@ export function DayDateSelector({
   name,
   nextMonthLabel = "Next month",
   onChange,
+  popoverAlign = "left",
   previousMonthLabel = "Previous month",
   required = false,
   value
@@ -90,6 +91,7 @@ export function DayDateSelector({
   name: string;
   nextMonthLabel?: string;
   onChange?: (event: ChangeEvent<HTMLInputElement>) => void;
+  popoverAlign?: "left" | "right";
   previousMonthLabel?: string;
   required?: boolean;
   value?: string;
@@ -157,7 +159,7 @@ export function DayDateSelector({
       <CalendarDays size={16} className="shrink-0 text-primary" aria-hidden="true" />
       <span className="min-w-0 flex-1 truncate" title={selectedValue ? displayDate(selectedValue) : ariaLabel}>{selectedValue ? displayDate(selectedValue) : ariaLabel}</span>
     </button>
-    {open ? <div id={`${id}-calendar`} role="dialog" aria-label={ariaLabel} className="absolute z-50 mt-2 w-[19rem] rounded-xl border border-[#C9D5E6] bg-white p-3 shadow-[0_18px_40px_rgba(11,19,43,0.18)] max-md:fixed max-md:inset-x-2 max-md:bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] max-md:mt-0 max-md:w-auto">
+    {open ? <div id={`${id}-calendar`} role="dialog" aria-label={ariaLabel} className={`absolute z-50 mt-2 w-[19rem] rounded-xl border border-[#C9D5E6] bg-white p-3 shadow-[0_18px_40px_rgba(11,19,43,0.18)] ${popoverAlign === "right" ? "right-0" : "left-0"} max-md:fixed max-md:inset-x-2 max-md:bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] max-md:mt-0 max-md:w-auto`}>
       <div className="mb-3 flex items-center justify-between rounded-lg bg-[#F8FAFD] p-1">
         <button type="button" className="grid size-8 place-items-center rounded-md text-slate hover:bg-white hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary/20" aria-label={previousMonthLabel} onClick={() => shiftMonth(-1)}><ChevronLeft size={17} /></button>
         <span className="text-sm font-semibold tabular-nums text-navy">{monthLabels[resolvedLanguage][month]} {year}</span>
