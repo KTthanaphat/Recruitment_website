@@ -24,6 +24,17 @@ export function currentLocalWeekStart(date: Date = new Date()) {
   ].join("-");
 }
 
+export function sourcingCycleSaturday(value: string) {
+  if (!value) return "";
+  const date = new Date(`${value.slice(0, 10)}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 1) % 7));
+  return date.toISOString().slice(0, 10);
+}
+
+export function currentLocalSourcingCycleSaturday(date: Date = new Date()) {
+  return sourcingCycleSaturday(formatLocalDateInput(date));
+}
+
 export function currentLocalYearStart(date: Date = new Date()) {
   return `${formatLocalDateInput(date).slice(0, 4)}-01-01`;
 }
