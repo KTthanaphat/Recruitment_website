@@ -42,6 +42,7 @@ export function PipelineBoardView({
   embedded = false,
   canWrite,
   offeredCandidateIds,
+  rejectionLetterSentCandidateIds,
   onNewCandidate,
   onOpen,
   onMove,
@@ -69,6 +70,7 @@ export function PipelineBoardView({
   embedded?: boolean;
   canWrite: boolean;
   offeredCandidateIds?: ReadonlySet<string>;
+  rejectionLetterSentCandidateIds?: ReadonlySet<string>;
   onNewCandidate?: () => void;
   onOpen: (candidateId: string) => void;
   onMove: (candidate: EnrichedCandidate, nextStage: ProcessStage) => void;
@@ -443,6 +445,7 @@ export function PipelineBoardView({
                         focused={focusedCandidateId === candidate.candidate_id}
                         onOpen={onOpen}
                         onCreateRejectionLetter={canWrite ? onCreateRejectionLetter : undefined}
+                        rejectionLetterSent={rejectionLetterSentCandidateIds?.has(candidate.candidate_id)}
                       />
                     ))}
                   </div>
@@ -726,6 +729,7 @@ function PipelineCandidateCard({
   focused = false,
   tone = "default",
   showCreateOffer = false,
+  rejectionLetterSent = false,
   onOpen,
   onMove,
   onFailCurrentStage,
@@ -758,6 +762,7 @@ function PipelineCandidateCard({
   focused?: boolean;
   tone?: "default" | "failed" | "passed";
   showCreateOffer?: boolean;
+  rejectionLetterSent?: boolean;
   onOpen: (candidateId: string) => void;
   onMove?: (candidate: EnrichedCandidate, nextStage: ProcessStage) => void;
   onFailCurrentStage?: (candidate: EnrichedCandidate) => void;
@@ -851,7 +856,7 @@ function PipelineCandidateCard({
         </button>
         <div className="flex shrink-0 items-center gap-1">
         {tone === "failed" && onCreateRejectionLetter ? (
-          <Button type="button" size="icon-sm" variant="ghost" className="text-scarlet hover:bg-[#FFF1F0] hover:text-scarlet" icon={<Mail size={17} aria-hidden="true" />} aria-label="Send rejection letter" title="Send rejection letter" onClick={(event) => { event.stopPropagation(); onCreateRejectionLetter(candidate); }} />
+          <Button type="button" size="icon-sm" variant="ghost" disabled={rejectionLetterSent} className="text-scarlet hover:bg-[#FFF1F0] hover:text-scarlet disabled:text-cool" icon={<Mail size={17} aria-hidden="true" />} aria-label="Send rejection letter" title={rejectionLetterSent ? "Rejection letter already sent" : "Send rejection letter"} onClick={(event) => { event.stopPropagation(); if (!rejectionLetterSent) onCreateRejectionLetter(candidate); }} />
         ) : null}
         {canWrite ? (
           <button

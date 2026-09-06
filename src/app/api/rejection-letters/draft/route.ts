@@ -31,6 +31,9 @@ export async function POST(request: NextRequest) {
       const names = [profile.nickname, profile.full_name].filter((name): name is string => Boolean(name?.trim())).map((name) => name.trim().toLowerCase());
       if (!(requisitions ?? []).some((row) => row.site === profile.site && !!row.person_in_charge && names.includes(row.person_in_charge.trim().toLowerCase()))) return NextResponse.json({ ok: false, error: "You can send emails only for candidates you manage." }, { status: 403 });
     }
+    const { data: existingDelivery, error: deliveryError } = await service.from("rejection_letter_drafts").select("draft_id").eq("candidate_id", payload.candidate_id).eq("failed_stage_instance_id", payload.failed_stage_instance_id).in("status", ["sending", "sent"]).maybeSingle();
+    if (deliveryError) throw new Error(deliveryError.message);
+    if (existingDelivery) return NextResponse.json({ ok: false, error: "A rejection letter has already been sent or is sending for this failed stage." }, { status: 409 });
     const { data: draft, error: insertError } = await service.from("rejection_letter_drafts").insert({ candidate_id: payload.candidate_id, failed_stage_instance_id: payload.failed_stage_instance_id, template_id: template.template_id, template_version: template.version, language: payload.language, recipient_email: payload.recipient_email, subject: payload.subject, body: payload.body, status: "sending", created_by: userId, retry_of_draft_id: payload.retry_of_draft_id || null }).select("draft_id").single();
     if (insertError || !draft) throw new Error(insertError?.message ?? "Could not create the email record.");
     draftId = draft.draft_id;

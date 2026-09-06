@@ -425,6 +425,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const enrichedCandidates = useMemo(() => enrichCandidates(data), [data]);
   const enrichedOffers = useMemo(() => enrichOffers(data), [data]);
   const offeredCandidateIds = useMemo(() => new Set(data.offers.map((offer) => offer.candidate_id)), [data.offers]);
+  const rejectionLetterSentCandidateIds = useMemo(() => new Set(data.rejection_letter_drafts.filter((draft) => draft.status === "sent").map((draft) => draft.candidate_id)), [data.rejection_letter_drafts]);
   const enrichedSourcingGroups = useMemo(() => enrichSourcingGroups(data, sourcingWeek), [data, sourcingWeek]);
   const homeSourcingGroups = useMemo(
     () => sourcingGroupsInScope(enrichedSourcingGroups, data.profile, filters.site, filters.owner),
@@ -1170,6 +1171,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
               candidateReferenceChecks={data.candidate_reference_checks}
               rows={workspaceScope.candidates}
               offeredCandidateIds={offeredCandidateIds}
+              rejectionLetterSentCandidateIds={rejectionLetterSentCandidateIds}
               onNewCandidate={eligibleCandidateGroups(data, data.profile, workspaceScope.groupIds).length > 0 ? () => dispatchWorkspaceAction({ kind: "candidate.create", docGroupIds: eligibleCandidateGroups(data, data.profile, workspaceScope.groupIds).flatMap((group) => data.document_groups.filter((match) => match.group_id === group.group_id).slice(0, 1).map((match) => match.doc_group_id)) }) : undefined}
               onOpen={openCandidateDetail}
               onMove={openProcessForMove}
@@ -1223,7 +1225,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       ) : null}
 
       {initialView === "pipeline" ? (
-        <PipelineBoardView language={language} rows={filteredCandidates} recruitmentLogs={data.recruitment_logs} recruitmentLogHistory={data.recruitment_log_history} candidateReferences={data.candidate_references} candidateReferenceChecks={data.candidate_reference_checks} profile={data.profile} dataQualityIssues={dataQualityIssues} canWrite={canWrite} offeredCandidateIds={offeredCandidateIds} onNewCandidate={() => setActiveModal("candidate")} onOpen={openCandidateDetail} onMove={openProcessForMove} onFailCurrentStage={(candidate) => openStageOutcome(candidate, "fail")} onMaintainTest={openMaintainTest} onStartProcess={openInitialProcessUpdate} onEditPending={openPendingEdit} onPassStage={(candidate) => openStageOutcome(candidate, "pass")} onManageReferenceChecks={(candidate) => openCandidateDetail(candidate.candidate_id)} onCreateOffer={(candidate) => dispatchWorkspaceAction({ kind: "offer.upsert", candidateId: candidate.candidate_id })} onUpdateOffer={openOfferUpdate} onEditCandidate={openDetailCandidateChange} onCorrectPipelineRecord={openPipelineRecordCorrection} onCreateRejectionLetter={openRejectionLetter} />
+        <PipelineBoardView language={language} rows={filteredCandidates} recruitmentLogs={data.recruitment_logs} recruitmentLogHistory={data.recruitment_log_history} candidateReferences={data.candidate_references} candidateReferenceChecks={data.candidate_reference_checks} profile={data.profile} dataQualityIssues={dataQualityIssues} canWrite={canWrite} offeredCandidateIds={offeredCandidateIds} rejectionLetterSentCandidateIds={rejectionLetterSentCandidateIds} onNewCandidate={() => setActiveModal("candidate")} onOpen={openCandidateDetail} onMove={openProcessForMove} onFailCurrentStage={(candidate) => openStageOutcome(candidate, "fail")} onMaintainTest={openMaintainTest} onStartProcess={openInitialProcessUpdate} onEditPending={openPendingEdit} onPassStage={(candidate) => openStageOutcome(candidate, "pass")} onManageReferenceChecks={(candidate) => openCandidateDetail(candidate.candidate_id)} onCreateOffer={(candidate) => dispatchWorkspaceAction({ kind: "offer.upsert", candidateId: candidate.candidate_id })} onUpdateOffer={openOfferUpdate} onEditCandidate={openDetailCandidateChange} onCorrectPipelineRecord={openPipelineRecordCorrection} onCreateRejectionLetter={openRejectionLetter} />
       ) : null}
 
       {initialView === "offers" ? <OffersView language={language} rows={filteredOffers} allOffers={data.offers} requisitions={filteredRequisitions} profile={data.profile} canWrite={canWrite} onNew={() => setActiveModal("offer")} onOpenCandidate={openCandidateDetail} /> : null}
@@ -3440,13 +3442,14 @@ function buildDetailBodyV2(
     issue.entityId === candidate.candidate_id || offers.some((offer) => String(offer.offer_id) === issue.entityId)
   );
   const failedLog = logs.find((log) => log.result === 0 && !log.superseded_at);
+  const rejectionLetterAlreadySent = Boolean(failedLog && data.rejection_letter_drafts.some((draft) => draft.candidate_id === candidate.candidate_id && draft.failed_stage_instance_id === failedLog.stage_instance_id && draft.status === "sent"));
 
   return {
     title: `${candidate.candidate_id} / ${formatCandidateName(candidate)}`,
     headerContent: <CandidateDetailHeader candidate={candidate} language={language} />,
       headerActions: (
         <div className="flex items-center gap-1">
-        {canWrite && failedLog ? <Button type="button" variant="ghost" size="icon-sm" className="text-scarlet hover:bg-[#FFF1F0] hover:text-scarlet" icon={<Mail size={17} aria-hidden="true" />} aria-label="Send rejection letter" title="Send rejection letter" onClick={() => onCreateRejectionLetter(candidate)} /> : null}
+        {canWrite && failedLog ? <Button type="button" variant="ghost" size="icon-sm" disabled={rejectionLetterAlreadySent} className="text-scarlet hover:bg-[#FFF1F0] hover:text-scarlet disabled:text-cool" icon={<Mail size={17} aria-hidden="true" />} aria-label="Send rejection letter" title={rejectionLetterAlreadySent ? "Rejection letter already sent" : "Send rejection letter"} onClick={() => { if (!rejectionLetterAlreadySent) onCreateRejectionLetter(candidate); }} /> : null}
         <RecordActionGroup
           label={formatCandidateName(candidate)}
           flat

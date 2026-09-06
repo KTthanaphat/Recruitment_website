@@ -3103,6 +3103,7 @@ create table if not exists public.rejection_letter_drafts (
   retry_of_draft_id uuid references public.rejection_letter_drafts(draft_id), created_by uuid references auth.users(id) on delete set null, created_at timestamptz not null default now(), finalized_at timestamptz
 );
 create index if not exists idx_rejection_letter_drafts_candidate_created on public.rejection_letter_drafts(candidate_id, created_at desc);
+create unique index if not exists uq_rejection_letter_delivery_per_failed_stage on public.rejection_letter_drafts(candidate_id, failed_stage_instance_id) where status in ('sending', 'sent');
 create index if not exists idx_rejection_letter_templates_active_language on public.rejection_letter_templates(language, updated_at desc) where active;
 alter table public.rejection_letter_templates enable row level security;
 alter table public.rejection_letter_drafts enable row level security;
