@@ -20,4 +20,5 @@ test("failed pipeline candidates use the send rejection letter composer without 
   const dialog = page.getByRole("dialog", { name: "Send rejection letter" });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText("Insert variable")).toHaveCount(0);
+  await expect(dialog.getByText("This email will be sent immediately from the shared HR mailbox.")).toBeVisible();
 });

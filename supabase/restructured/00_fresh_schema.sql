@@ -3090,7 +3090,7 @@ end;
 $$;
 create trigger propagate_corrected_outcome_date after insert on public.recruitment_logs for each row execute function app_private.propagate_corrected_outcome_date();
 
--- Human-reviewed Outlook rejection-letter drafts. The application never sends email.
+-- Rejection-letter delivery records. The application sends through the shared HR mailbox.
 create table if not exists public.rejection_letter_templates (
   template_id uuid primary key default gen_random_uuid(), name text not null check (nullif(btrim(name), '') is not null), language text not null check (language in ('th','en')),
   subject_template text not null check (nullif(btrim(subject_template), '') is not null), body_template text not null check (nullif(btrim(body_template), '') is not null), active boolean not null default true, version integer not null default 1 check (version > 0),
@@ -3099,7 +3099,7 @@ create table if not exists public.rejection_letter_templates (
 create table if not exists public.rejection_letter_drafts (
   draft_id uuid primary key default gen_random_uuid(), candidate_id text not null references public.candidates(candidate_id) on delete cascade, failed_stage_instance_id uuid not null references public.recruitment_logs(stage_instance_id),
   template_id uuid references public.rejection_letter_templates(template_id) on delete set null, template_version integer, language text not null check (language in ('th','en')), recipient_email text not null check (recipient_email ~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'),
-  subject text not null check (nullif(btrim(subject), '') is not null), body text not null check (nullif(btrim(body), '') is not null), status text not null check (status in ('creating','draft_created','failed')), shared_mailbox text, outlook_draft_id text, flow_run_id text, response_metadata jsonb, failure_summary text,
+  subject text not null check (nullif(btrim(subject), '') is not null), body text not null check (nullif(btrim(body), '') is not null), status text not null check (status in ('sending','sent','failed')), shared_mailbox text, outlook_draft_id text, flow_run_id text, response_metadata jsonb, failure_summary text,
   retry_of_draft_id uuid references public.rejection_letter_drafts(draft_id), created_by uuid references auth.users(id) on delete set null, created_at timestamptz not null default now(), finalized_at timestamptz
 );
 create index if not exists idx_rejection_letter_drafts_candidate_created on public.rejection_letter_drafts(candidate_id, created_at desc);

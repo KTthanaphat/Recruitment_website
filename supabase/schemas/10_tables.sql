@@ -285,7 +285,7 @@ create table if not exists public.rejection_letter_drafts (
   recipient_email text not null check (recipient_email ~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'),
   subject text not null check (nullif(btrim(subject), '') is not null),
   body text not null check (nullif(btrim(body), '') is not null),
-  status text not null check (status in ('creating', 'draft_created', 'failed')),
+  status text not null check (status in ('sending', 'sent', 'failed')),
   shared_mailbox text,
   outlook_draft_id text,
   flow_run_id text,

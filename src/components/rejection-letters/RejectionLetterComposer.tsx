@@ -37,7 +37,7 @@ export function RejectionLetterComposer({ open, candidate, failedLog, language, 
   }
   return <Modal open={open} title="Send rejection letter" onClose={onClose} width="max-w-4xl">
     <div className="grid gap-4">
-      <div className="rounded-md border border-[#F4B4AE] bg-[#FFF8F7] p-3 text-sm text-navy"><strong>{candidate?.name}</strong><span className="mx-1 text-slate">·</span>{failedLog?.recruitment_process} · {failedLog?.outcome_date ? formatDate(failedLog.outcome_date, language) : "-"}<p className="mt-1 text-xs text-slate">This prepares a draft in the shared HR Outlook mailbox for review before sending.</p></div>
+      <div className="rounded-md border border-[#F4B4AE] bg-[#FFF8F7] p-3 text-sm text-navy"><strong>{candidate?.name}</strong><span className="mx-1 text-slate">·</span>{failedLog?.recruitment_process} · {failedLog?.outcome_date ? formatDate(failedLog.outcome_date, language) : "-"}<p className="mt-1 text-xs text-slate">This email will be sent immediately from the shared HR mailbox. Check the recipient, subject, and body before sending.</p></div>
       <div className="grid gap-3 md:grid-cols-2"><Field label="Letter language"><SelectInput value={letterLanguage} onChange={(event) => { setLetterLanguage(event.target.value as RejectionLetterLanguage); setTemplateId(""); setSubject(""); setBody(""); }}><option value="th">Thai</option><option value="en">English</option></SelectInput></Field><Field label="Template"><SelectInput value={templateId} onChange={(event) => chooseTemplate(event.target.value)}><option value="">Select template</option>{available.map((template) => <option key={template.template_id} value={template.template_id}>{template.name} · v{template.version}</option>)}</SelectInput></Field></div>
       {available.length === 0 ? <p className="rounded-md bg-lightgray p-3 text-sm text-slate">No active {letterLanguage === "th" ? "Thai" : "English"} template is available. Ask a System Admin to add one.</p> : null}
       <Field label="Recipient email"><TextInput type="email" value={recipient} onChange={(event) => setRecipient(event.target.value)} /></Field>
@@ -45,7 +45,7 @@ export function RejectionLetterComposer({ open, candidate, failedLog, language, 
       <Field label="Email body"><TextArea rows={8} value={body} onChange={(event) => setBody(event.target.value)} /></Field>
       <div className="rounded-md border border-[#D7DEE8] bg-white p-3"><p className="mb-2 text-xs font-semibold text-slate">Preview</p><p className="font-semibold text-navy">{subject || "Subject"}</p><p className="mt-2 whitespace-pre-wrap text-sm text-slate">{body || "Letter body"}</p></div>
       {error ? <p role="alert" className="text-sm font-semibold text-scarlet">{error}</p> : null}
-      <div className="flex flex-wrap justify-end gap-2"><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="button" disabled={busy || !selected} onClick={submit}>{busy ? "Preparing email..." : "Send rejection letter"}</Button></div>
+      <div className="flex flex-wrap justify-end gap-2"><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="button" disabled={busy || !selected} onClick={submit}>{busy ? "Sending email..." : "Send rejection letter"}</Button></div>
     </div>
   </Modal>;
 }

@@ -270,7 +270,7 @@ export type ChangeLog = {
 };
 
 export type RejectionLetterLanguage = "th" | "en";
-export type RejectionLetterDraftStatus = "creating" | "draft_created" | "failed";
+export type RejectionLetterDraftStatus = "creating" | "draft_created" | "sending" | "sent" | "failed";
 
 export type RejectionLetterTemplate = {
   template_id: string;

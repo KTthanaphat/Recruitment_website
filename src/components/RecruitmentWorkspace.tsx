@@ -1033,14 +1033,14 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   }, []);
   const openRejectionLetter = useCallback((candidate: EnrichedCandidate, retryDraftId?: string) => { setRejectionLetterCandidateId(candidate.candidate_id); setRejectionLetterRetryDraftId(retryDraftId ?? null); }, []);
   const createRejectionLetterDraft = useCallback(async (payload: { candidate_id: string; failed_stage_instance_id: string; template_id: string; language: "th" | "en"; recipient_email: string; subject: string; body: string; retry_of_draft_id?: string }) => {
-    if (!supabase) throw new Error("Sign in before creating an Outlook draft.");
+    if (!supabase) throw new Error("Sign in before sending a rejection letter.");
     setBusy(true);
     try {
       const { data: session } = await supabase.auth.getSession();
       const response = await fetch("/api/rejection-letters/draft", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${session.session?.access_token ?? ""}` }, body: JSON.stringify(payload) });
       const result = await response.json() as { ok?: boolean; error?: string; shared_mailbox?: string };
-      if (!response.ok || !result.ok) throw new Error(result.error ?? "Could not create Outlook draft.");
-      setStatus(`Outlook draft created in ${result.shared_mailbox ?? "the shared HR mailbox"}. Review and send it manually in Outlook.`);
+      if (!response.ok || !result.ok) throw new Error(result.error ?? "Could not send rejection letter.");
+      setStatus(`Rejection letter sent from ${result.shared_mailbox ?? "the shared HR mailbox"}.`);
       setRejectionLetterCandidateId(null); setRejectionLetterRetryDraftId(null);
       await loadData();
     } finally { setBusy(false); }
@@ -3501,10 +3501,10 @@ function buildDetailBodyV2(
           { label: "Reference", value: candidate.ref_name ?? "-", copyValue: candidate.ref_name, icon: <Bookmark size={18} /> }
         ]} />
         </section>
-        {failedLog ? <DetailDisclosure title="Rejection letter drafts" summary={`${data.rejection_letter_drafts.filter((draft) => draft.candidate_id === candidate.candidate_id).length} recorded`}>
+        {failedLog ? <DetailDisclosure title="Rejection letters" summary={`${data.rejection_letter_drafts.filter((draft) => draft.candidate_id === candidate.candidate_id).length} recorded`}>
           <div className="grid gap-2">
-            {data.rejection_letter_drafts.filter((draft) => draft.candidate_id === candidate.candidate_id).map((draft) => <div key={draft.draft_id} className="rounded-md border border-[#D7DEE8] bg-white p-3 text-sm"><strong className="text-navy">{draft.status === "draft_created" ? "Draft created" : draft.status === "failed" ? "Draft creation failed" : "Creating draft"}</strong><p className="mt-1 text-slate">{draft.recipient_email} · {formatDate(draft.created_at.slice(0, 10), language)}</p>{draft.shared_mailbox ? <p className="text-xs text-slate">Shared mailbox: {draft.shared_mailbox}</p> : null}{draft.failure_summary ? <p className="mt-1 text-xs text-scarlet">{draft.failure_summary}</p> : null}{draft.status === "failed" && canWrite ? <Button type="button" size="sm" variant="secondary" className="mt-2" onClick={() => onCreateRejectionLetter(candidate, draft.draft_id)}>Retry draft creation</Button> : null}</div>)}
-            {data.rejection_letter_drafts.filter((draft) => draft.candidate_id === candidate.candidate_id).length === 0 ? <p className="text-sm text-slate">No rejection-letter drafts have been created.</p> : null}
+            {data.rejection_letter_drafts.filter((draft) => draft.candidate_id === candidate.candidate_id).map((draft) => <div key={draft.draft_id} className="rounded-md border border-[#D7DEE8] bg-white p-3 text-sm"><strong className="text-navy">{draft.status === "sent" ? "Email sent" : draft.status === "draft_created" ? "Outlook draft created" : draft.status === "creating" ? "Creating Outlook draft" : draft.status === "failed" ? "Email delivery failed" : "Sending email"}</strong><p className="mt-1 text-slate">{draft.recipient_email} · {formatDate(draft.created_at.slice(0, 10), language)}</p>{draft.shared_mailbox ? <p className="text-xs text-slate">Shared mailbox: {draft.shared_mailbox}</p> : null}{draft.failure_summary ? <p className="mt-1 text-xs text-scarlet">{draft.failure_summary}</p> : null}{draft.status === "failed" && canWrite ? <Button type="button" size="sm" variant="secondary" className="mt-2" onClick={() => onCreateRejectionLetter(candidate, draft.draft_id)}>Retry email</Button> : null}</div>)}
+            {data.rejection_letter_drafts.filter((draft) => draft.candidate_id === candidate.candidate_id).length === 0 ? <p className="text-sm text-slate">No rejection letters have been sent.</p> : null}
           </div>
         </DetailDisclosure> : null}
         <DetailDisclosure title={<SectionHeading icon={<UsersRound size={18} />} title={translate(language, "contactReferences")} />} summary={translate(language, "referenceProgress", { checked: checkedReferenceCount, available: availableReferenceCount })} defaultOpen>

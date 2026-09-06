@@ -75,7 +75,7 @@ POWER_AUTOMATE_REJECTION_LETTER_SHARED_MAILBOX
 ```
 
 `SUPABASE_SERVICE_ROLE_KEY` must remain server-only. It is used by `/api/admin/users` for admin user creation.
-The three Power Automate values are server-only. The configured flow must create an Outlook draft in the shared HR mailbox and must not contain an email-send action; see `docs/REJECTION_LETTER_POWER_AUTOMATE_CONTRACT.md`.
+The three Power Automate values are server-only. The configured flow must send the approved email from the shared HR mailbox; see `docs/REJECTION_LETTER_POWER_AUTOMATE_CONTRACT.md`.
 
 ## Vercel Setup
 
