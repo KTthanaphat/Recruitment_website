@@ -65,6 +65,17 @@ async function selectAll<T>(client: SupabaseLike, table: string, orderColumn = "
   return (data ?? []) as T[];
 }
 
+async function selectOptionalAll<T>(client: SupabaseLike, table: string, orderColumn = "created_at"): Promise<T[]> {
+  try {
+    return await selectAll<T>(client, table, orderColumn);
+  } catch (error) {
+    // Keep core recruitment data available while a newly deployed optional feature
+    // waits for its matching database migration.
+    if (error instanceof Error && error.message.includes("Could not find the table")) return [];
+    throw error;
+  }
+}
+
 async function selectLimited<T>(client: SupabaseLike, table: string, orderColumn = "created_at", limit = 50): Promise<T[]> {
   const { data, error } = await client.from(table).select("*").limit(limit).order(orderColumn, { ascending: false });
   if (error) throw new Error(error.message);
@@ -104,8 +115,8 @@ export async function loadDashboardData(client: SupabaseLike): Promise<Dashboard
     selectAll<SourcingWeeklyUpdate>(client, "sourcing_weekly_updates", "updated_at"),
     selectAll<VacancyWeeklySnapshot>(client, "vacancy_weekly_snapshots", "updated_at"),
     selectLimited<ChangeLog>(client, "change_logs", "changed_at", 100),
-    selectAll<RejectionLetterTemplate>(client, "rejection_letter_templates", "updated_at"),
-    selectAll<RejectionLetterDraft>(client, "rejection_letter_drafts", "created_at")
+    selectOptionalAll<RejectionLetterTemplate>(client, "rejection_letter_templates", "updated_at"),
+    selectOptionalAll<RejectionLetterDraft>(client, "rejection_letter_drafts", "created_at")
   ]);
 
   if (userResult.error) throw new Error(userResult.error.message);
