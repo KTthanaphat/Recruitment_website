@@ -69,9 +69,13 @@ NEXT_PUBLIC_SUPABASE_URL
 NEXT_PUBLIC_SUPABASE_ANON_KEY
 SUPABASE_SERVICE_ROLE_KEY
 NEXT_PUBLIC_APP_URL
+POWER_AUTOMATE_REJECTION_LETTER_WEBHOOK_URL
+POWER_AUTOMATE_REJECTION_LETTER_WEBHOOK_SECRET
+POWER_AUTOMATE_REJECTION_LETTER_SHARED_MAILBOX
 ```
 
 `SUPABASE_SERVICE_ROLE_KEY` must remain server-only. It is used by `/api/admin/users` for admin user creation.
+The three Power Automate values are server-only. The configured flow must create an Outlook draft in the shared HR mailbox and must not contain an email-send action; see `docs/REJECTION_LETTER_POWER_AUTOMATE_CONTRACT.md`.
 
 ## Vercel Setup
 

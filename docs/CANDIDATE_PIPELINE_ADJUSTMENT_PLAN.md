@@ -1,6 +1,6 @@
 # Candidate Pipeline Paired-Status Implementation
 
-Last updated: 2026-08-15
+Last updated: 2026-09-05
 
 Status: implemented; production migration execution remains an operational deployment step.
 
@@ -28,6 +28,8 @@ Each canonical `recruitment_logs` row represents one:
 ```text
 candidate_id + recruitment_process + round
 ```
+
+Line Interview and Test are repeatable canonical stages. The shared completion RPC only permits the current round to Pass into its immediate next round; ordinary Pass exits to the next pipeline stage. This document keeps migration/audit notes only; see `WEBSITE_STRUCTURE.md` for the concise user-facing contract.
 
 It contains:
 

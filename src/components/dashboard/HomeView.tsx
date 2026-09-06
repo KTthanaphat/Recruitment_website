@@ -37,6 +37,8 @@ export function HomeView({
   candidates,
   offers,
   recruitmentLogs,
+  sourcingGroups,
+  sourcingHref,
   staleSourcingGroups,
   changeLogs,
   dataQualityIssues,
@@ -52,6 +54,8 @@ export function HomeView({
   candidates: EnrichedCandidate[];
   offers: EnrichedOffer[];
   recruitmentLogs: RecruitmentLog[];
+  sourcingGroups: EnrichedSourcingGroup[];
+  sourcingHref: string;
   staleSourcingGroups: EnrichedSourcingGroup[];
   changeLogs: ChangeLog[];
   dataQualityIssues: DataQualityIssue[];
@@ -103,7 +107,7 @@ export function HomeView({
   const tabs: HomeTab[] = [
     { key: "open_headcount", label: translate(language, "openHeadcount"), count: needsAction.length },
     { key: "candidate_pipeline", label: translate(language, "candidatePipeline"), count: ongoingCandidates.length },
-    { key: "sourcing_updates", label: translate(language, "SourcingUpdates"), count: staleSourcingGroups.length },
+    { key: "sourcing_updates", label: translate(language, "SourcingUpdates"), count: sourcingGroups.length },
     { key: "data_quality", label: translate(language, "dataQuality"), count: dataQualityIssues.length },
     ...(canViewRecentActivity ? [{ key: "start_confirmation" as const, label: "New Hire Confirmation", count: startConfirmations.length }] : [])
   ];
@@ -191,7 +195,8 @@ export function HomeView({
         ongoingCandidates={ongoingCandidates}
         onOpenCandidate={onOpenCandidate}
         onOpenRequisition={onOpenRequisition}
-        staleSourcingGroups={staleSourcingGroups}
+        sourcingGroups={sourcingGroups}
+        sourcingHref={sourcingHref}
         startConfirmations={startConfirmations}
         onConfirmStart={onConfirmStart}
         tabs={tabs}
@@ -208,7 +213,8 @@ function HomeRecordTabs({
   ongoingCandidates,
   onOpenCandidate,
   onOpenRequisition,
-  staleSourcingGroups,
+  sourcingGroups,
+  sourcingHref,
   startConfirmations,
   onConfirmStart,
   tabs
@@ -220,7 +226,8 @@ function HomeRecordTabs({
   ongoingCandidates: EnrichedCandidate[];
   onOpenCandidate: (candidateId: string) => void;
   onOpenRequisition: (docId: string) => void;
-  staleSourcingGroups: EnrichedSourcingGroup[];
+  sourcingGroups: EnrichedSourcingGroup[];
+  sourcingHref: string;
   startConfirmations: EnrichedOffer[];
   onConfirmStart: (offer: EnrichedOffer) => void;
   tabs: HomeTab[];
@@ -301,7 +308,7 @@ function HomeRecordTabs({
           ongoingCandidates.length === 0 ? <TabEmptyState message={translate(language, "noActiveCandidates")} /> : ongoingCandidates.map((candidate) => <CandidateActionCard key={candidate.candidate_id} candidate={candidate} language={language} onOpenCandidate={onOpenCandidate} />)
         ) : null}
         {selectedTab.key === "sourcing_updates" ? (
-          staleSourcingGroups.length === 0 ? <TabEmptyState message={translate(language, "noStaleSourcingUpdates")} /> : staleSourcingGroups.map((group) => <SourcingUpdateCard key={group.group_id} group={group} language={language} />)
+          sourcingGroups.length === 0 ? <TabEmptyState message={translate(language, "noOpenSourcingAttention")} /> : sourcingGroups.map((group) => <SourcingUpdateCard key={group.group_id} group={group} language={language} href={sourcingHref} />)
         ) : null}
         {selectedTab.key === "data_quality" ? (
           dataQualityIssues.length === 0 ? <TabEmptyState message={translate(language, "noDataQualityIssues")} /> : dataQualityIssues.map((issue) => <DataQualityIssueCard key={issue.id} issue={issue} language={language} />)
@@ -371,16 +378,16 @@ function CandidateActionCard({
         </Tag>
       </div>
       <p className="text-xs font-medium text-slate">{candidate.site ?? "-"} · {candidate.group_position ?? "-"}</p>
-      <div className="hidden md:block"><StageRail compact language={language} currentStage={candidate.latest_process} currentResult={candidate.latest_result} /></div>
+      <div className="hidden md:block"><StageRail compact showStageIcons language={language} currentStage={candidate.latest_process} currentResult={candidate.latest_result} /></div>
     </button>
   );
 }
 
-function SourcingUpdateCard({ group, language }: { group: EnrichedSourcingGroup; language: Language }) {
+function SourcingUpdateCard({ group, language, href }: { group: EnrichedSourcingGroup; language: Language; href: string }) {
   return (
     <Link
       className="ats-card grid touch-manipulation gap-1 p-3 text-left"
-      href="/sourcing"
+      href={href}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <strong className="text-navy">{group.group_id} - {group.group_position}</strong>

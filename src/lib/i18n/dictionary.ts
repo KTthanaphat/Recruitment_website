@@ -16,6 +16,7 @@ const en: Dictionary = {
   homeRecords: "Recruitment Records",
   homeRecordTabs: "Recruitment record categories",
   dashboard: "Dashboard",
+  configuration: "Configuration",
   requisitions: "Requisitions",
   candidates: "Candidates",
   pipeline: "Pipeline",
@@ -486,6 +487,7 @@ const th: Dictionary = {
   homeRecords: "รายการสรรหา",
   homeRecordTabs: "หมวดหมู่รายการสรรหา",
   dashboard: "แดชบอร์ด",
+  configuration: "การตั้งค่า",
   requisitions: "คำขออัตรา",
   candidates: "ผู้สมัคร",
   pipeline: "Pipeline",
@@ -919,6 +921,9 @@ Object.assign(en, { referenceCheckSummary: "Checked {date} / {minutes} min — {
 Object.assign(th, { referenceCheckSummary: "ตรวจสอบเมื่อ {date} / {minutes} นาที — {summary}" });
 Object.assign(en, { export: "Export", stageCountMode: "Stage count mode", pipelineStatus: "Pipeline Status", pipelineActivity: "Pipeline Activity", departmentThai: "Department (Thai)", sectionThai: "Section (Thai)", exportColumnHelp: "Choose columns, drag headings to set their order, then export the current table view.", exportFieldDescription: "Export field: {field}", restoreDefault: "Restore default", ongoing: "Ongoing", cancel: "Cancelled" });
 Object.assign(th, { export: "ส่งออก", stageCountMode: "รูปแบบจำนวนขั้นตอน", pipelineStatus: "สถานะ Pipeline", pipelineActivity: "กิจกรรม Pipeline", departmentThai: "ฝ่าย (ภาษาไทย)", sectionThai: "แผนก (ภาษาไทย)", exportColumnHelp: "เลือกคอลัมน์ ลากหัวตารางเพื่อจัดลำดับ แล้วส่งออกมุมมองตารางปัจจุบัน", exportFieldDescription: "ฟิลด์ส่งออก: {field}", restoreDefault: "คืนค่าเริ่มต้น", ongoing: "กำลังดำเนินการ", cancel: "ยกเลิก" });
+
+Object.assign(en, { pipelineAccum: "Pipeline Accum", pipelineAccumHelp: "Unique candidates who entered each stage from the requisition approval date through the selected period end.", addAnotherLineInterviewRound: "Add another Line Interview round", repeatableStageHint: "Save the current {stage} round as Pass, then create the next {stage} round as Pending.", currentRepeatableStage: "Current {stage}", nextRepeatableStage: "Next {stage}", currentRepeatableRoundPassedRemark: "Current {stage} round passed; maintaining candidate in {stage}.", nextRepeatableRoundPendingRemark: "Next {stage} round pending.", stageCountModeMeta: "Stage count mode: {mode}", waterfallGrandTotal: "Grand Total", waterfallNewShort: "New", waterfallRepShort: "Rep" });
+Object.assign(th, { pipelineAccum: "สะสม Pipeline", pipelineAccumHelp: "ผู้สมัครไม่ซ้ำที่เข้าสู่แต่ละขั้นตอนตั้งแต่วันที่อนุมัติคำขอถึงวันสิ้นสุดช่วงที่เลือก", addAnotherLineInterviewRound: "เพิ่มรอบสัมภาษณ์ไลน์อีกหนึ่งรอบ", repeatableStageHint: "บันทึกรอบ {stage} ปัจจุบันเป็นผ่าน แล้วสร้างรอบ {stage} ถัดไปเป็นรอดำเนินการ", currentRepeatableStage: "{stage} ปัจจุบัน", nextRepeatableStage: "{stage} ถัดไป", currentRepeatableRoundPassedRemark: "ผ่านรอบ {stage} ปัจจุบันแล้ว; คงผู้สมัครไว้ในขั้น {stage}", nextRepeatableRoundPendingRemark: "รอบ {stage} ถัดไปรอดำเนินการ", stageCountModeMeta: "รูปแบบจำนวนขั้นตอน: {mode}", waterfallGrandTotal: "รวมทั้งหมด", waterfallNewShort: "ใหม่", waterfallRepShort: "ทด." });
 
 Object.assign(th, {
   linkGroup: "เชื่อมโยงกลุ่ม",

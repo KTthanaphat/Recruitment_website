@@ -5,7 +5,7 @@ import type {
   Candidate,
   CandidateReference,
   CandidateReferenceCheck,
-  ChangeLog,
+  ChangeLog, RejectionLetterDraft, RejectionLetterTemplate,
   DashboardData,
   DashboardReportData,
   DocumentGroup,
@@ -39,7 +39,9 @@ export const emptyDashboardData: DashboardData = {
   offers: [],
   sourcing_weekly_updates: [],
   vacancy_weekly_snapshots: [],
-  change_logs: []
+  change_logs: [],
+  rejection_letter_templates: [],
+  rejection_letter_drafts: []
 };
 
 type SupabaseLike = {
@@ -84,7 +86,9 @@ export async function loadDashboardData(client: SupabaseLike): Promise<Dashboard
     offers,
     sourcingWeeklyUpdates,
     vacancyWeeklySnapshots,
-    changeLogs
+    changeLogs,
+    rejectionLetterTemplates,
+    rejectionLetterDrafts
   ] = await Promise.all([
     client.auth.getUser(),
     selectAll<Profile>(client, "profiles", "updated_at"),
@@ -99,7 +103,9 @@ export async function loadDashboardData(client: SupabaseLike): Promise<Dashboard
     selectAll<Offer>(client, "offers", "updated_at"),
     selectAll<SourcingWeeklyUpdate>(client, "sourcing_weekly_updates", "updated_at"),
     selectAll<VacancyWeeklySnapshot>(client, "vacancy_weekly_snapshots", "updated_at"),
-    selectLimited<ChangeLog>(client, "change_logs", "changed_at", 100)
+    selectLimited<ChangeLog>(client, "change_logs", "changed_at", 100),
+    selectAll<RejectionLetterTemplate>(client, "rejection_letter_templates", "updated_at"),
+    selectAll<RejectionLetterDraft>(client, "rejection_letter_drafts", "created_at")
   ]);
 
   if (userResult.error) throw new Error(userResult.error.message);
@@ -124,7 +130,9 @@ export async function loadDashboardData(client: SupabaseLike): Promise<Dashboard
     offers,
     sourcing_weekly_updates: sourcingWeeklyUpdates,
     vacancy_weekly_snapshots: vacancyWeeklySnapshots,
-    change_logs: changeLogs
+    change_logs: changeLogs,
+    rejection_letter_templates: rejectionLetterTemplates,
+    rejection_letter_drafts: rejectionLetterDrafts
   };
 }
 
@@ -257,6 +265,22 @@ export function enrichSourcingGroups(data: DashboardData, weekStart: string): En
     })
     .filter((group): group is EnrichedSourcingGroup => Boolean(group))
     .sort((a, b) => a.group_position.localeCompare(b.group_position) || a.group_id.localeCompare(b.group_id));
+}
+
+export function sourcingGroupsInScope(
+  groups: EnrichedSourcingGroup[],
+  profile: Profile | null,
+  site = "",
+  owner = ""
+) {
+  return groups.filter((group) => {
+    const visibleToSiteRecruiter = profile?.role !== "site_recruiter"
+      || group.owners.includes(profile.nickname ?? "")
+      || group.sites.includes(profile.site ?? "");
+    return visibleToSiteRecruiter
+      && (!site || group.sites.includes(site))
+      && (!owner || group.owners.includes(owner));
+  });
 }
 
 export function enrichUnmatchedSourcingGroups(data: DashboardData): EnrichedUnmatchedSourcingGroup[] {

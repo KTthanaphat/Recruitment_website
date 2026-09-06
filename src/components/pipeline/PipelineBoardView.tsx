@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Filter, Pencil, Plus, Search } from "lucide-react";
+import { ArrowRight, Filter, Mail, Pencil, Plus, Search } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/Button";
@@ -25,6 +25,10 @@ type PipelineStageKey = ProcessStage | "No activity";
 type PipelineGroupBy = "none" | "site" | "owner";
 type BoardFilter = "all" | "aging" | "no_activity" | "offer_pending" | "over_sla";
 type PipelineView = "board" | "table";
+
+function isRepeatableStage(stage: PipelineStageKey | null | undefined): stage is "Line Interview" | "Test" {
+  return stage === "Line Interview" || stage === "Test";
+}
 
 export function PipelineBoardView({
   language,
@@ -51,6 +55,7 @@ export function PipelineBoardView({
   onUpdateOffer,
   onEditCandidate,
   onCorrectPipelineRecord
+  , onCreateRejectionLetter
 }: {
   language: Language;
   rows: EnrichedCandidate[];
@@ -77,6 +82,7 @@ export function PipelineBoardView({
   onUpdateOffer: (candidate: EnrichedCandidate) => void;
   onEditCandidate?: (candidateId: string) => void;
   onCorrectPipelineRecord?: (candidate: EnrichedCandidate, log: RecruitmentLog) => void;
+  onCreateRejectionLetter?: (candidate: EnrichedCandidate) => void;
 }) {
   const [dragged, setDragged] = useState<EnrichedCandidate | null>(null);
   const [blockedStage, setBlockedStage] = useState<PipelineStageKey | null>(null);
@@ -332,8 +338,8 @@ export function PipelineBoardView({
                   if (!canWrite || !dragged) return;
                   const targetIndex = processIndex(stage);
                   const currentIndex = processIndex(dragged.latest_process);
-                  const isMaintainTestDrop = stage === "Test" && dragged.latest_process === "Test";
-                  if (targetIndex > currentIndex || isMaintainTestDrop) {
+                  const isRepeatableStageDrop = isRepeatableStage(stage) && dragged.latest_process === stage;
+                  if (targetIndex > currentIndex || isRepeatableStageDrop) {
                     event.preventDefault();
                     setBlockedStage(null);
                   } else {
@@ -346,7 +352,7 @@ export function PipelineBoardView({
                   setBlockedStage(null);
                   if (!canWrite || !dragged) return;
                   if (stage === "No activity") return;
-                  if (stage === "Test" && dragged.latest_process === "Test") {
+                  if (isRepeatableStage(stage) && dragged.latest_process === stage) {
                     onMaintainTest(dragged);
                   } else if (processIndex(stage) > processIndex(dragged.latest_process)) {
                     onMove(dragged, stage);
@@ -436,6 +442,7 @@ export function PipelineBoardView({
                         tone="failed"
                         focused={focusedCandidateId === candidate.candidate_id}
                         onOpen={onOpen}
+                        onCreateRejectionLetter={canWrite ? onCreateRejectionLetter : undefined}
                       />
                     ))}
                   </div>
@@ -733,6 +740,7 @@ function PipelineCandidateCard({
   onMenuClose,
   onDragStart,
   onDragEnd
+  , onCreateRejectionLetter
 }: {
   candidate: EnrichedCandidate;
   language: Language;
@@ -764,6 +772,7 @@ function PipelineCandidateCard({
   onMenuClose?: () => void;
   onDragStart?: () => void;
   onDragEnd?: () => void;
+  onCreateRejectionLetter?: (candidate: EnrichedCandidate) => void;
 }) {
   const lastUpdate = candidateLastUpdate(candidate);
   const currentPending = [...recruitmentLogs].sort((a, b) => b.log_id - a.log_id).find((log) => log.result === null && !log.superseded_at);
@@ -840,6 +849,10 @@ function PipelineCandidateCard({
           <strong className="block truncate text-sm leading-tight text-navy">{formatCandidateName(candidate)}</strong>
           <p className="mt-1 truncate text-xs font-medium text-slate">{candidate.site ?? "-"} · {candidate.group_position ?? "-"}{compact ? "" : ` (${candidate.person_in_charge ?? "-"})`}</p>
         </button>
+        <div className="flex shrink-0 items-center gap-1">
+        {tone === "failed" && onCreateRejectionLetter ? (
+          <Button type="button" size="icon-sm" variant="ghost" className="text-scarlet hover:bg-[#FFF1F0] hover:text-scarlet" icon={<Mail size={17} aria-hidden="true" />} aria-label="Send rejection letter" title="Send rejection letter" onClick={(event) => { event.stopPropagation(); onCreateRejectionLetter(candidate); }} />
+        ) : null}
         {canWrite ? (
           <button
             ref={actionsButtonRef}
@@ -859,6 +872,7 @@ function PipelineCandidateCard({
             <ArrowRight size={16} aria-hidden="true" />
           </button>
         ) : null}
+        </div>
       </div>
       <p className="hidden md:block md:mt-3 md:text-[10px] md:font-medium md:text-cool">{translate(language, "updatedDate", { date: formatDate(lastUpdate, language) })}</p>
       {estimatedActionDate ? <p className={`${compact ? "mt-1" : "mt-2"} text-xs font-semibold ${estimateOverdue ? "text-scarlet" : "text-primary"}`}>{translate(language, "estimatedDateValue", { date: formatDate(estimatedActionDate, language) })}{estimateOverdue ? ` · ${translate(language, "overdue")}` : ""}</p> : null}
@@ -971,20 +985,20 @@ function PipelineCandidateCard({
               {translate(language, "manageReferenceChecks")}
             </button>
           ) : null}
-          {candidate.latest_process === "Test" ? (
+          {isRepeatableStage(candidate.latest_process) ? (
             <button
               type="button"
               role="menuitem"
               className="rounded px-2 py-1 text-left text-xs font-medium text-slate transition-colors hover:bg-lightgray hover:text-primary focus:bg-lightgray focus:text-primary"
               disabled={capability.blocked}
-              aria-label={`${translate(language, "addAnotherTestRound")} ${formatCandidateName(candidate)}`}
+              aria-label={`${translate(language, candidate.latest_process === "Line Interview" ? "addAnotherLineInterviewRound" : "addAnotherTestRound")} ${formatCandidateName(candidate)}`}
               onClick={(event) => {
                 event.stopPropagation();
                 onMenuClose?.();
                 onMaintainTest?.(candidate);
               }}
             >
-              {translate(language, "addAnotherTestRound")}
+              {translate(language, candidate.latest_process === "Line Interview" ? "addAnotherLineInterviewRound" : "addAnotherTestRound")}
             </button>
           ) : null}
           {updateStages.map((nextStage) => (

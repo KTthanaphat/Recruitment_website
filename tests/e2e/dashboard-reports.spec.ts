@@ -13,41 +13,68 @@ test("dashboard report uses calendar views, persists its month, and keeps expand
   await expect(page.getByRole("button", { name: "Metric view" })).toContainText("Performance in Month");
   await expect(page.getByRole("button", { name: "Report month" })).toContainText("Jul 2026");
   await expect(page.getByRole("heading", { name: "Recruitment Pipeline Health" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Export PNG" })).toHaveCount(3);
+  await expect(page.getByRole("button", { name: "Export PNG" })).toHaveCount(2);
   await expect(page.getByRole("button", { name: "Export PNG" }).first()).toBeEnabled();
   await expect(page.getByRole("button", { name: "Export PDF" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Export XLSX" })).toBeVisible();
 });
 
+test("active requisitions expose ordered Activity, Status, and Accum stage metrics", async ({ page }) => {
+  await installMockSupabase(page, { role: "admin_recruiter" });
+  await page.goto("/dashboard?reportView=pim&reportMonth=2026-07&details=open");
+  await expectWorkspaceReady(page);
+
+  const modeGroup = page.getByRole("group", { name: "Stage count mode" });
+  await expect(modeGroup.getByRole("button")).toHaveText(["Pipeline Activity", "Pipeline Status", "Pipeline Accum"]);
+  await expect(modeGroup.getByRole("button", { name: "Pipeline Status" })).toHaveAttribute("aria-pressed", "true");
+  await modeGroup.getByRole("button", { name: "Pipeline Accum" }).click();
+  await expect(page.getByText(/Unique candidates who entered each stage/)).toBeVisible();
+});
+
 test("dashboard PNG exports download visible non-blank reports", async ({ page }) => {
+  test.setTimeout(90_000);
   await installMockSupabase(page, { role: "admin_recruiter" });
   await page.goto("/dashboard?reportView=pim&reportMonth=2026-07&details=open&funnel=open");
   await expectWorkspaceReady(page);
 
-  const filenames = [
-    "vacancy-waterfall-2026-07-01-to-2026-07-31.png",
-    "active-requisitions-2026-07-01-to-2026-07-31.png",
-    /^pipeline-funnel-2026-01-01-to-\d{4}-\d{2}-\d{2}\.png$/
-  ];
-  const exportButtons = page.getByRole("button", { name: "Export PNG" });
-  await expect(exportButtons).toHaveCount(3);
+  const directExportButtons = page.getByRole("button", { name: "Export PNG" });
+  await expect(directExportButtons).toHaveCount(2);
+  const waterfallExportSurface = page.locator(".export-report-surface").nth(1);
+  await expect(waterfallExportSurface.locator("h3")).toContainText("Recruitment Performance in Selected Period");
+  await expect(waterfallExportSurface).toContainText("During the selected period, total vacancies");
+  await expect(waterfallExportSurface.locator(".waterfall-executive-table")).toHaveCSS("overflow-x", "visible");
 
-  for (const [index, filename] of filenames.entries()) {
-    await expect(exportButtons.nth(index)).toBeEnabled();
+  for (const [index, filename] of [
+    "vacancy-waterfall-2026-07-01-to-2026-07-31.png",
+    /^pipeline-funnel-2026-01-01-to-\d{4}-\d{2}-\d{2}\.png$/
+  ].entries()) {
+    await expect(directExportButtons.nth(index)).toBeEnabled();
     const downloadPromise = page.waitForEvent("download");
-    await exportButtons.nth(index).click();
+    await directExportButtons.nth(index).click();
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toMatch(filename);
-    expect(await isVisiblePng(await download.createReadStream())).toBe(true);
+    const png = await inspectPng(await download.createReadStream());
+    expect(png.visible).toBe(true);
+    if (index === 0) expect(png.height / png.width).toBeGreaterThan(0.62);
   }
+
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  const modal = page.getByRole("dialog");
+  const modalPngExport = modal.getByRole("button", { name: "Export PNG" });
+  await expect(modalPngExport).toBeEnabled();
+  const downloadPromise = page.waitForEvent("download");
+  await modalPngExport.click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe("active-requisitions-2026-07-01-to-2026-07-31.png");
+  expect((await inspectPng(await download.createReadStream())).visible).toBe(true);
 });
 
-async function isVisiblePng(stream: NodeJS.ReadableStream | null) {
-  if (!stream) return false;
+async function inspectPng(stream: NodeJS.ReadableStream | null) {
+  if (!stream) return { width: 0, height: 0, visible: false };
   const chunks: Buffer[] = [];
   for await (const chunk of stream) chunks.push(Buffer.from(chunk));
   const png = Buffer.concat(chunks);
-  if (png.length < 32 || png.subarray(1, 4).toString() !== "PNG") return false;
+  if (png.length < 32 || png.subarray(1, 4).toString() !== "PNG") return { width: 0, height: 0, visible: false };
 
   let offset = 8;
   let width = 0;
@@ -61,7 +88,7 @@ async function isVisiblePng(stream: NodeJS.ReadableStream | null) {
     if (type === "IDAT") idat.push(value);
     offset += length + 12;
   }
-  if (width < 2 || height < 2 || idat.length === 0) return false;
+  if (width < 2 || height < 2 || idat.length === 0) return { width, height, visible: false };
 
   const scanlines = inflateSync(Buffer.concat(idat));
   const stride = width * 4;
@@ -79,11 +106,11 @@ async function isVisiblePng(stream: NodeJS.ReadableStream | null) {
       row[x] = filter === 0 ? source[x] : filter === 1 ? source[x] + left : filter === 2 ? source[x] + up : filter === 3 ? source[x] + Math.floor((left + up) / 2) : source[x] + paeth(left, up, upLeft);
     }
     for (let x = 0; x < stride; x += Math.max(4, Math.floor(stride / 256))) {
-      if (row[x + 3] > 0 && (row[x] < 245 || row[x + 1] < 245 || row[x + 2] < 245)) return true;
+      if (row[x + 3] > 0 && (row[x] < 245 || row[x + 1] < 245 || row[x + 2] < 245)) return { width, height, visible: true };
     }
     row.copy(previousRow);
   }
-  return false;
+  return { width, height, visible: false };
 }
 
 function paeth(left: number, up: number, upLeft: number) {
@@ -241,4 +268,34 @@ test("home records use tabbed vertical panels while work queue keeps contained o
   await expect(workScroller).toBeVisible();
   await expect(workScroller).toHaveCSS("overflow-y", "auto");
   await expect(page.getByRole("button", { name: /Show all .* data quality issues/ })).toHaveCount(0);
+});
+
+
+test("executive table keeps site order, breakdown and mobile containment", async ({ page }) => {
+  await installMockSupabase(page, { role: "admin_recruiter" });
+  await page.goto("/dashboard?reportView=pim&reportMonth=2026-07");
+  await expectWorkspaceReady(page);
+  const region = page.locator(".waterfall-executive-table").first();
+  await expect(region.locator("thead th")).toHaveText(["Site", "Opening vac.", "Opened", "Filled", "Filled in SLA", "Net change", "Closing vac."]);
+  await expect(region.locator("tbody th")).toHaveText(["HQ", "KT1", "KT2", "Total"]);
+  await expect(region.locator("tbody th").first().locator("span[aria-hidden='true']")).toHaveCSS("display", "block");
+  const summary = page.locator("summary").filter({ hasText: "Opened and filled breakdown" }).first();
+  await summary.click();
+  await expect(summary.locator("..")).toHaveAttribute("open", "");
+  await expect(page.locator(".export-report-surface details").first()).toHaveAttribute("open", "");
+  await page.screenshot({ path: "test-results/executive-desktop.png", fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(region).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: "test-results/executive-mobile.png", fullPage: true });
+});
+
+
+test("executive table supports Thai and zero-activity periods", async ({ page }) => {
+  await installMockSupabase(page, { role: "admin_recruiter", language: "th" });
+  await page.goto("/dashboard?reportView=custom&start=2000-01-01&end=2000-01-31");
+  const region = page.locator(".waterfall-executive-table").first();
+  await expect(region.locator("thead th").nth(4)).toHaveText("บรรจุใน SLA");
+  await expect(region.locator("tbody th")).toHaveText(["HQ", "KT1", "KT2", "รวม"]);
+  await expect(region.locator("tbody tr").first().locator("td")).toHaveText(["0", "0", "0", "—", "0", "0"]);
 });

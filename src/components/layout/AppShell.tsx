@@ -32,6 +32,7 @@ import type { Language, Profile, ViewId } from "@/types/recruitment";
 const icons: Record<ViewId, ReactNode> = {
   home: <Home size={18} />,
   dashboard: <LayoutDashboard size={18} />,
+  configuration: <Settings size={18} />,
   workspace: <LampDesk size={18} />,
   requisitions: <ClipboardList size={18} />,
   candidates: <UsersRound size={18} />,
@@ -42,12 +43,13 @@ const icons: Record<ViewId, ReactNode> = {
   audit: <FileClock size={18} />
 };
 
-const primaryViews: ViewId[] = ["home", "workspace", "dashboard", "audit"];
+const primaryViews: ViewId[] = ["home", "workspace", "dashboard", "configuration", "audit"];
 const recordsViews: ViewId[] = ["requisitions", "sourcing", "candidates", "pipeline", "offers"];
 
 const paths: Record<ViewId, string> = {
   home: "/home",
   dashboard: "/dashboard",
+  configuration: "/configuration",
   workspace: "/workspace",
   requisitions: "/requisitions",
   candidates: "/candidates",
@@ -60,11 +62,12 @@ const paths: Record<ViewId, string> = {
 
 function PipelineStagesIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true" focusable="false">
-      <path d="M4 5h10M4 9h10M4 13h10" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-      <circle cx="4" cy="5" r="2" fill="currentColor" />
-      <circle cx="14" cy="9" r="2" fill="currentColor" />
-      <circle cx="4" cy="13" r="2" fill="currentColor" />
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.35" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+      <path d="M3.5 17.5 8.5 11l5 4.2L20.5 6.5" />
+      <circle cx="3.5" cy="17.5" r="2" fill="white" />
+      <circle cx="8.5" cy="11" r="2" fill="white" />
+      <circle cx="13.5" cy="15.2" r="2" fill="white" />
+      <circle cx="20.5" cy="6.5" r="2" fill="white" />
     </svg>
   );
 }
@@ -318,7 +321,7 @@ export function AppShell({
       </nav>
       <MobileBottomSheet open={moreOpen} title={translate(language, "more")} closeLabel={translate(language, "close")} onClose={() => setMoreOpen(false)}>
         <div className="grid gap-2">
-          {(["requisitions", "sourcing", "offers", "dashboard", "audit"] as ViewId[]).map((view) => <Link key={view} onClick={() => setMoreOpen(false)} href={buildContextualHref(paths[view], contextualNavigation)} className="flex min-h-11 items-center gap-3 rounded-xl border border-[#E4E9F2] px-3 text-sm font-semibold text-navy transition hover:bg-[#F8FAFD] focus:outline-none focus:ring-2 focus:ring-primary/30"><span className="text-primary" aria-hidden="true">{icons[view]}</span>{viewLabel(language, view)}</Link>)}
+          {(["requisitions", "sourcing", "offers", "dashboard", "configuration", "audit"] as ViewId[]).map((view) => <Link key={view} onClick={() => setMoreOpen(false)} href={buildContextualHref(paths[view], contextualNavigation)} className="flex min-h-11 items-center gap-3 rounded-xl border border-[#E4E9F2] px-3 text-sm font-semibold text-navy transition hover:bg-[#F8FAFD] focus:outline-none focus:ring-2 focus:ring-primary/30"><span className="text-primary" aria-hidden="true">{icons[view]}</span>{viewLabel(language, view)}</Link>)}
           {profile?.role === "system_admin" ? <Link onClick={() => setMoreOpen(false)} href={buildContextualHref(paths.admin, contextualNavigation)} className="flex min-h-11 items-center gap-3 rounded-xl border border-[#E4E9F2] px-3 text-sm font-semibold text-navy transition hover:bg-[#F8FAFD] focus:outline-none focus:ring-2 focus:ring-primary/30"><span className="text-primary" aria-hidden="true">{icons.admin}</span>{viewLabel(language, "admin")}</Link> : null}
         </div>
       </MobileBottomSheet>

@@ -288,6 +288,10 @@ Add Match:
 
 ## Candidate Rules
 
+### Human-reviewed rejection letters
+
+Failed candidates can create a reviewed Thai/English rejection-letter draft. The app sends no email: its server route asks Power Automate to create a draft in the shared HR Outlook mailbox. System Admin owns templates and `$` variables; every attempt is retained. Contract and environment setup: `docs/REJECTION_LETTER_POWER_AUTOMATE_CONTRACT.md`.
+
 Candidate link model:
 
 - Candidate stores `doc_group_id`.

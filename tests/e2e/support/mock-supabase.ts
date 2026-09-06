@@ -230,6 +230,11 @@ function createRecruitmentDataset(activeRole: MockUserRole): DashboardData {
       sourcingUpdate("GRP-ANL", "2026-07-06", 5)
     ],
     vacancy_weekly_snapshots: [],
+    rejection_letter_templates: [
+      { template_id: "template-th", name: "Thai rejection", language: "th", subject_template: "Result for {candidate_name}", body_template: "Dear {candidate_name}", active: true, version: 1, created_by: "qa-system", updated_by: "qa-system", created_at: "2026-07-01T00:00:00.000Z", updated_at: "2026-07-01T00:00:00.000Z" },
+      { template_id: "template-en", name: "English rejection", language: "en", subject_template: "Result for {candidate_name}", body_template: "Dear {candidate_name}", active: true, version: 1, created_by: "qa-system", updated_by: "qa-system", created_at: "2026-07-01T00:00:00.000Z", updated_at: "2026-07-01T00:00:00.000Z" }
+    ],
+    rejection_letter_drafts: [],
     change_logs: [
       {
         log_id: 1,
@@ -429,7 +434,9 @@ function tableRows(data: DashboardData, table: string) {
     offers: data.offers,
     sourcing_weekly_updates: data.sourcing_weekly_updates,
     vacancy_weekly_snapshots: data.vacancy_weekly_snapshots,
-    change_logs: data.change_logs
+    change_logs: data.change_logs,
+    rejection_letter_templates: data.rejection_letter_templates,
+    rejection_letter_drafts: data.rejection_letter_drafts
   };
   return tables[table] ?? [];
 }

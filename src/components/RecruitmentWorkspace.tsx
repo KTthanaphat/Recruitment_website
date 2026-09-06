@@ -6,11 +6,13 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type Reac
 import { AdminView } from "@/components/admin/AdminView";
 import { AuditView } from "@/components/audit/AuditView";
 import { CandidatesView } from "@/components/candidates/CandidatesView";
+import { ConfigurationView } from "@/components/configuration/ConfigurationView";
 import { HomeView } from "@/components/dashboard/HomeView";
 import { VacancyWaterfallView } from "@/components/dashboard/VacancyWaterfallView";
 import { AppShell } from "@/components/layout/AppShell";
 import { OffersView } from "@/components/offers/OffersView";
 import { PipelineBoardView } from "@/components/pipeline/PipelineBoardView";
+import { RejectionLetterComposer } from "@/components/rejection-letters/RejectionLetterComposer";
 import { RequisitionsView } from "@/components/requisitions/RequisitionsView";
 import { EmbeddedSourcingEditor, SourcingView } from "@/components/sourcing/SourcingView";
 import { WorkspaceOfferSection } from "@/components/workspace/WorkspaceOfferSection";
@@ -58,6 +60,7 @@ import {
   latestLogsForCandidate,
   loadDashboardData,
   sourcingChannelsForGroup,
+  sourcingGroupsInScope,
   staleOpenSourcingGroups,
   uniqueValues
 } from "@/lib/data";
@@ -281,6 +284,8 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const [guideContext, setGuideContext] = useState<GuideContext>({});
   const [detail, setDetail] = useState<{ type: "requisition" | "candidate"; id: string } | null>(null);
   const [journeyActionCandidateId, setJourneyActionCandidateId] = useState<string | null>(null);
+  const [rejectionLetterCandidateId, setRejectionLetterCandidateId] = useState<string | null>(null);
+  const [rejectionLetterRetryDraftId, setRejectionLetterRetryDraftId] = useState<string | null>(null);
   const [workspaceTarget, setWorkspaceTarget] = useState<{ type: "requisition" | "group" | null; id: string | null }>({ type: null, id: null });
   const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -413,6 +418,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const canWrite = canWriteRole(role);
   const canManageSetup = canManageSetupRole(role);
   const canManageUsers = canManageUsersRole(role);
+  const canManageRejectionTemplates = role === "system_admin" || role === "admin_recruiter";
   const canDeleteRecords = role === "system_admin";
 
   const enrichedRequisitions = useMemo(() => enrichRequisitions(data), [data]);
@@ -420,6 +426,10 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const enrichedOffers = useMemo(() => enrichOffers(data), [data]);
   const offeredCandidateIds = useMemo(() => new Set(data.offers.map((offer) => offer.candidate_id)), [data.offers]);
   const enrichedSourcingGroups = useMemo(() => enrichSourcingGroups(data, sourcingWeek), [data, sourcingWeek]);
+  const homeSourcingGroups = useMemo(
+    () => sourcingGroupsInScope(enrichedSourcingGroups, data.profile, filters.site, filters.owner),
+    [data.profile, enrichedSourcingGroups, filters.owner, filters.site]
+  );
   const staleSourcingGroups = useMemo(() => staleOpenSourcingGroups(data), [data]);
   const dataQualityIssues = useMemo(() => deriveDataQualityIssues(data), [data]);
   const welcomeSummary = useMemo(
@@ -651,8 +661,9 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     }
     const active = activeProcessStage(logs);
     const pending = active ? logs.find((row) => row.stage_instance_id === active.stageInstanceId) : null;
-    if (candidate.latest_process !== "Test" || !active || !pending) return;
-    setProcessDefaults({ candidate_id: candidate.candidate_id, recruitment_process: "Test", round: active.round, pending_log_id: pending.log_id, stage_instance_id: active.stageInstanceId, expected_updated_at: active.updatedAt, pending_log_date: pending.log_date, pending_estimated_action_date: pending.estimated_action_date, pending_interviewer: pending.interviewer, pending_remark: pending.remark, outcome: "pass", target_stage: "Test", current_round: active.round });
+    if (!(["Test", "Line Interview"] as ProcessStage[]).includes(candidate.latest_process as ProcessStage) || !active || !pending) return;
+    const stage = active.stage;
+    setProcessDefaults({ candidate_id: candidate.candidate_id, recruitment_process: stage, round: active.round, pending_log_id: pending.log_id, stage_instance_id: active.stageInstanceId, expected_updated_at: active.updatedAt, pending_log_date: pending.log_date, pending_estimated_action_date: pending.estimated_action_date, pending_interviewer: pending.interviewer, pending_remark: pending.remark, outcome: "pass", target_stage: stage, current_round: active.round });
     setActiveModal("stage_outcome");
   }
 
@@ -1017,9 +1028,26 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     setModalDefaults({ mode: "change", selectedId: String(offer.offer_id), candidate_id: offer.candidate_id, doc_id: offer.doc_id });
     setActiveModal("offer");
   }, []);
+  const openCandidateDetail = useCallback((candidateId: string) => {
+    setDetail({ type: "candidate", id: candidateId });
+  }, []);
+  const openRejectionLetter = useCallback((candidate: EnrichedCandidate, retryDraftId?: string) => { setRejectionLetterCandidateId(candidate.candidate_id); setRejectionLetterRetryDraftId(retryDraftId ?? null); }, []);
+  const createRejectionLetterDraft = useCallback(async (payload: { candidate_id: string; failed_stage_instance_id: string; template_id: string; language: "th" | "en"; recipient_email: string; subject: string; body: string; retry_of_draft_id?: string }) => {
+    if (!supabase) throw new Error("Sign in before creating an Outlook draft.");
+    setBusy(true);
+    try {
+      const { data: session } = await supabase.auth.getSession();
+      const response = await fetch("/api/rejection-letters/draft", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${session.session?.access_token ?? ""}` }, body: JSON.stringify(payload) });
+      const result = await response.json() as { ok?: boolean; error?: string; shared_mailbox?: string };
+      if (!response.ok || !result.ok) throw new Error(result.error ?? "Could not create Outlook draft.");
+      setStatus(`Outlook draft created in ${result.shared_mailbox ?? "the shared HR mailbox"}. Review and send it manually in Outlook.`);
+      setRejectionLetterCandidateId(null); setRejectionLetterRetryDraftId(null);
+      await loadData();
+    } finally { setBusy(false); }
+  }, [loadData]);
   const detailBody = useMemo(
-    () => buildDetailBodyV2(detail, data, language, canWrite, canDeleteRecords, openProcessFromDetail, openPendingEdit, openDetailOffer, (offer) => { setProcessDefaults({ offer_id: offer.offer_id, offer_expected_updated_at: offer.updated_at, offer_start_confirmation: offer.start_confirmation }); setActiveModal("start_confirmation"); }, navigationContext, openDetailRequisitionChange, openDetailCandidateChange, openCandidateReference, openCandidateReferenceStatus, openCandidateReferenceCheck, prepareDestructiveRpcAction),
-    [canDeleteRecords, canWrite, detail, data, language, navigationContext, openCandidateReference, openCandidateReferenceCheck, openCandidateReferenceStatus, openDetailCandidateChange, openDetailRequisitionChange, openDetailOffer, openPendingEdit, openProcessFromDetail, prepareDestructiveRpcAction]
+    () => buildDetailBodyV2(detail, data, language, canWrite, canDeleteRecords, openProcessFromDetail, openPendingEdit, openDetailOffer, (offer) => { setProcessDefaults({ offer_id: offer.offer_id, offer_expected_updated_at: offer.updated_at, offer_start_confirmation: offer.start_confirmation }); setActiveModal("start_confirmation"); }, navigationContext, openDetailRequisitionChange, openDetailCandidateChange, openCandidateReference, openCandidateReferenceStatus, openCandidateReferenceCheck, prepareDestructiveRpcAction, openRejectionLetter),
+    [canDeleteRecords, canWrite, detail, data, language, navigationContext, openCandidateReference, openCandidateReferenceCheck, openCandidateReferenceStatus, openDetailCandidateChange, openDetailRequisitionChange, openDetailOffer, openPendingEdit, openProcessFromDetail, prepareDestructiveRpcAction, openRejectionLetter]
   );
 
   if (!hasSupabaseConfig) {
@@ -1096,7 +1124,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       ) : null}
 
       {initialView === "home" ? (
-        <HomeView language={language} profile={data.profile} requisitions={filteredRequisitions} candidates={filteredCandidates} offers={filteredOffers} recruitmentLogs={data.recruitment_logs} staleSourcingGroups={staleSourcingGroups} changeLogs={filteredChangeLogs} dataQualityIssues={dataQualityIssues} canViewRecentActivity={canWrite} onConfirmStart={(offer) => { setProcessDefaults({ offer_id: offer.offer_id, offer_expected_updated_at: offer.updated_at, offer_start_confirmation: offer.start_confirmation }); setActiveModal("start_confirmation"); }} onEditPending={openPendingEdit} onOpenRequisition={(id) => setDetail({ type: "requisition", id })} onOpenCandidate={(id) => setDetail({ type: "candidate", id })} />
+        <HomeView language={language} profile={data.profile} requisitions={filteredRequisitions} candidates={filteredCandidates} offers={filteredOffers} recruitmentLogs={data.recruitment_logs} sourcingGroups={homeSourcingGroups} sourcingHref={buildContextualHref("/sourcing", { language, site: filters.site, owner: filters.owner, sourcingWeek })} staleSourcingGroups={staleSourcingGroups} changeLogs={filteredChangeLogs} dataQualityIssues={dataQualityIssues} canViewRecentActivity={canWrite} onConfirmStart={(offer) => { setProcessDefaults({ offer_id: offer.offer_id, offer_expected_updated_at: offer.updated_at, offer_start_confirmation: offer.start_confirmation }); setActiveModal("start_confirmation"); }} onEditPending={openPendingEdit} onOpenRequisition={(id) => setDetail({ type: "requisition", id })} onOpenCandidate={openCandidateDetail} />
       ) : null}
 
       {initialView === "dashboard" ? (
@@ -1126,7 +1154,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
               profile={data.profile}
               requisitions={workspaceScope.requisitions}
               onAction={dispatchWorkspaceAction}
-              onOpenCandidate={(id) => setDetail({ type: "candidate", id })}
+              onOpenCandidate={openCandidateDetail}
               onOpenRequisition={(id) => setDetail({ type: "requisition", id })}
             />
           )}
@@ -1143,16 +1171,17 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
               rows={workspaceScope.candidates}
               offeredCandidateIds={offeredCandidateIds}
               onNewCandidate={eligibleCandidateGroups(data, data.profile, workspaceScope.groupIds).length > 0 ? () => dispatchWorkspaceAction({ kind: "candidate.create", docGroupIds: eligibleCandidateGroups(data, data.profile, workspaceScope.groupIds).flatMap((group) => data.document_groups.filter((match) => match.group_id === group.group_id).slice(0, 1).map((match) => match.doc_group_id)) }) : undefined}
-              onOpen={(id) => setDetail({ type: "candidate", id })}
+              onOpen={openCandidateDetail}
               onMove={openProcessForMove}
               onFailCurrentStage={(candidate) => openStageOutcome(candidate, "fail")}
               onMaintainTest={openMaintainTest}
               onStartProcess={openInitialProcessUpdate}
               onEditPending={openPendingEdit}
               onPassStage={(candidate) => openStageOutcome(candidate, "pass")}
-              onManageReferenceChecks={(candidate) => setDetail({ type: "candidate", id: candidate.candidate_id })}
+              onManageReferenceChecks={(candidate) => openCandidateDetail(candidate.candidate_id)}
               onCreateOffer={(candidate) => dispatchWorkspaceAction({ kind: "offer.upsert", candidateId: candidate.candidate_id })}
               onUpdateOffer={openOfferUpdate}
+              onCreateRejectionLetter={openRejectionLetter}
             />
           )}
           profile={data.profile}
@@ -1180,7 +1209,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
           )}
           target={workspaceTarget}
           weekStart={sourcingWeek}
-          onOpenCandidate={(id) => setDetail({ type: "candidate", id })}
+          onOpenCandidate={openCandidateDetail}
           onOpenRequisition={(id) => setDetail({ type: "requisition", id })}
         />
       ) : null}
@@ -1190,14 +1219,14 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       ) : null}
 
       {initialView === "candidates" ? (
-        <CandidatesView language={language} rows={filteredCandidates} profile={data.profile} canWrite={canWrite} onNew={() => setActiveModal("candidate")} onOpen={(id) => setDetail({ type: "candidate", id })} />
+        <CandidatesView language={language} rows={filteredCandidates} profile={data.profile} canWrite={canWrite} onNew={() => setActiveModal("candidate")} onOpen={openCandidateDetail} />
       ) : null}
 
       {initialView === "pipeline" ? (
-        <PipelineBoardView language={language} rows={filteredCandidates} recruitmentLogs={data.recruitment_logs} recruitmentLogHistory={data.recruitment_log_history} candidateReferences={data.candidate_references} candidateReferenceChecks={data.candidate_reference_checks} profile={data.profile} dataQualityIssues={dataQualityIssues} canWrite={canWrite} offeredCandidateIds={offeredCandidateIds} onNewCandidate={() => setActiveModal("candidate")} onOpen={(id) => setDetail({ type: "candidate", id })} onMove={openProcessForMove} onFailCurrentStage={(candidate) => openStageOutcome(candidate, "fail")} onMaintainTest={openMaintainTest} onStartProcess={openInitialProcessUpdate} onEditPending={openPendingEdit} onPassStage={(candidate) => openStageOutcome(candidate, "pass")} onManageReferenceChecks={(candidate) => setDetail({ type: "candidate", id: candidate.candidate_id })} onCreateOffer={(candidate) => dispatchWorkspaceAction({ kind: "offer.upsert", candidateId: candidate.candidate_id })} onUpdateOffer={openOfferUpdate} onEditCandidate={openDetailCandidateChange} onCorrectPipelineRecord={openPipelineRecordCorrection} />
+        <PipelineBoardView language={language} rows={filteredCandidates} recruitmentLogs={data.recruitment_logs} recruitmentLogHistory={data.recruitment_log_history} candidateReferences={data.candidate_references} candidateReferenceChecks={data.candidate_reference_checks} profile={data.profile} dataQualityIssues={dataQualityIssues} canWrite={canWrite} offeredCandidateIds={offeredCandidateIds} onNewCandidate={() => setActiveModal("candidate")} onOpen={openCandidateDetail} onMove={openProcessForMove} onFailCurrentStage={(candidate) => openStageOutcome(candidate, "fail")} onMaintainTest={openMaintainTest} onStartProcess={openInitialProcessUpdate} onEditPending={openPendingEdit} onPassStage={(candidate) => openStageOutcome(candidate, "pass")} onManageReferenceChecks={(candidate) => openCandidateDetail(candidate.candidate_id)} onCreateOffer={(candidate) => dispatchWorkspaceAction({ kind: "offer.upsert", candidateId: candidate.candidate_id })} onUpdateOffer={openOfferUpdate} onEditCandidate={openDetailCandidateChange} onCorrectPipelineRecord={openPipelineRecordCorrection} onCreateRejectionLetter={openRejectionLetter} />
       ) : null}
 
-      {initialView === "offers" ? <OffersView language={language} rows={filteredOffers} allOffers={data.offers} requisitions={filteredRequisitions} profile={data.profile} canWrite={canWrite} onNew={() => setActiveModal("offer")} onOpenCandidate={(id) => setDetail({ type: "candidate", id })} /> : null}
+      {initialView === "offers" ? <OffersView language={language} rows={filteredOffers} allOffers={data.offers} requisitions={filteredRequisitions} profile={data.profile} canWrite={canWrite} onNew={() => setActiveModal("offer")} onOpenCandidate={openCandidateDetail} /> : null}
 
       {initialView === "sourcing" ? (
         <SourcingView
@@ -1224,6 +1253,8 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
           onAddGroupRequisition={(groupId, docId) => prepareRpcAction("app_create_group_match", { group_id: groupId, doc_id: docId }, `Match sourcing group ${groupId} to requisition ${docId}`)}
         />
       ) : null}
+
+      {initialView === "configuration" ? <ConfigurationView language={language} data={data} canManageRejectionTemplates={canManageRejectionTemplates} onTemplatesChanged={loadData} /> : null}
 
       {initialView === "admin" ? <AdminView language={language} data={data} canManageUsers={canManageUsers} onInvite={() => setActiveModal("user")} /> : null}
 
@@ -1316,6 +1347,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       >
         {detailBody.body}
       </Drawer>
+      <RejectionLetterComposer open={Boolean(rejectionLetterCandidateId)} candidate={enrichCandidates(data).find((candidate) => candidate.candidate_id === rejectionLetterCandidateId) ?? null} failedLog={data.recruitment_logs.find((log) => log.candidate_id === rejectionLetterCandidateId && log.result === 0 && !log.superseded_at) ?? null} language={language} templates={data.rejection_letter_templates} drafts={data.rejection_letter_drafts} retryOf={data.rejection_letter_drafts.find((draft) => draft.draft_id === rejectionLetterRetryDraftId) ?? null} recruiterName={data.profile?.nickname ?? data.profile?.full_name ?? data.profile?.email ?? "Recruitment"} busy={busy} onClose={() => { setRejectionLetterCandidateId(null); setRejectionLetterRetryDraftId(null); }} onCreate={createRejectionLetterDraft} />
     </AppShell>
   );
 }
@@ -2102,6 +2134,14 @@ function splitReplacementNames(value: string | null | undefined) {
   return names.length > 0 ? names : [""];
 }
 
+function isRepeatableStage(stage: ProcessStage | null | undefined): stage is "Line Interview" | "Test" {
+  return stage === "Line Interview" || stage === "Test";
+}
+
+function nextPipelineStage(stage: ProcessStage) {
+  return ACTIVE_PIPELINE_STAGES[ACTIVE_PIPELINE_STAGES.indexOf(stage) + 1];
+}
+
 function replacementNamesForHeadcount(names: string[], headCount: number) {
   const requiredCount = Math.max(1, headCount);
   if (names.length >= requiredCount) return names;
@@ -2426,7 +2466,7 @@ function StageOutcomeFields({ defaults, language }: { defaults: ProcessDefaults;
       <Field label={translate(language, "remark")} className="md:col-span-2"><TextArea name="outcome_remark" rows={3} placeholder={translate(language, "pipelineOutcomeRemarkPlaceholder", { stage: processLabel(defaults.recruitment_process as ProcessStage, language) })} /></Field>
       {hasNextPending ? <>
         <div className="border-t border-[#D7DEE8] pt-3 text-sm font-semibold text-navy md:col-span-2">{translate(language, "nextPendingStage")}: {processLabel(defaults.target_stage as ProcessStage, language)}</div>
-        <input type="hidden" name="next_round" value={defaults.recruitment_process === "Test" && defaults.target_stage === "Test" ? (defaults.round ?? 1) + 1 : 1} />
+        <input type="hidden" name="next_round" value={isRepeatableStage(defaults.recruitment_process as ProcessStage) && defaults.recruitment_process === defaults.target_stage ? (defaults.round ?? 1) + 1 : 1} />
         <p className="text-sm font-medium text-slate md:col-span-2">{translate(language, "nextPendingDateDerived", { date: outcomeDate || translate(language, "notSet") })}</p>
         <Field label={translate(language, "estimatedActionDate")}><DayDateSelector ariaLabel={translate(language, "estimatedActionDate")} clearLabel={translate(language, "clear")} language={language} name="next_estimated_action_date" nextMonthLabel={translate(language, "nextMonth")} previousMonthLabel={translate(language, "previousMonth")} /></Field>
         <Field label={translate(language, "interviewer")}><TextInput name="next_interviewer" list="interviewer-options" defaultValue="" /></Field>
@@ -2438,7 +2478,8 @@ function StageOutcomeFields({ defaults, language }: { defaults: ProcessDefaults;
 
 function PipelinePassFields({ data, defaults, language }: { data: DashboardData; defaults: ProcessDefaults; language: Language }) {
   const stages = defaults.passed_stages ?? [];
-  const isTestExit = stages.length === 1 && stages[0] === "Test" && defaults.target_stage === "Reference Check";
+  const repeatableStage = stages.length === 1 && isRepeatableStage(stages[0] as ProcessStage) ? stages[0] as ProcessStage : null;
+  const isRepeatableStageExit = Boolean(repeatableStage && defaults.target_stage === nextPipelineStage(repeatableStage));
   const currentRound = defaults.current_round ?? 1;
 
   return (
@@ -2471,7 +2512,7 @@ function PipelinePassFields({ data, defaults, language }: { data: DashboardData;
           <input type="hidden" name={`pending_date_${index}`} value={index === 0 ? (defaults.pending_log_date ?? "") : today()} />
           <p className="text-sm font-medium text-slate">{index === 0 ? `${translate(language, "pendingDetails")}: ${formatDate(defaults.pending_log_date, language)}` : translate(language, "nextPendingDateDerived", { date: translate(language, "notSet") })}</p>
           <input type="hidden" name={`pending_estimated_action_date_${index}`} value={index === 0 ? (defaults.pending_estimated_action_date ?? "") : ""} />
-          <Field label={translate(language, "round")}><TextInput name={`round_${index}`} type="number" min={1} value={isTestExit && stage === "Test" ? currentRound : undefined} defaultValue={isTestExit && stage === "Test" ? undefined : 1} readOnly={isTestExit && stage === "Test"} required /></Field>
+          <Field label={translate(language, "round")}><TextInput name={`round_${index}`} type="number" min={1} value={isRepeatableStageExit && stage === stages[0] ? currentRound : undefined} defaultValue={isRepeatableStageExit && stage === stages[0] ? undefined : 1} readOnly={isRepeatableStageExit && stage === stages[0]} required /></Field>
           <Field label={translate(language, "interviewer")}><TextInput name={`pending_interviewer_${index}`} list="interviewer-options" defaultValue={index === 0 ? (defaults.pending_interviewer ?? "") : ""} /></Field>
           <Field label={translate(language, "remark")}><TextArea name={`pending_remark_${index}`} rows={2} placeholder={translate(language, "pipelinePendingRemarkPlaceholder", { stage: processLabel(stage, language) })} defaultValue={index === 0 ? (defaults.pending_remark ?? "") : ""} /></Field>
           <Field label="Outcome date"><TextInput name={`outcome_date_${index}`} type="date" defaultValue={today()} required /></Field>
@@ -2487,34 +2528,35 @@ function PipelinePassFields({ data, defaults, language }: { data: DashboardData;
 function TestMaintenanceFields({ data, defaults, language }: { data: DashboardData; defaults: ProcessDefaults; language: Language }) {
   const currentRound = defaults.current_round ?? defaults.round ?? 1;
   const nextRound = currentRound + 1;
+  const stage = defaults.recruitment_process as ProcessStage;
 
   return (
     <div className="grid gap-4">
       <input type="hidden" name="candidate_id" value={defaults.candidate_id ?? ""} />
       <div className="rounded-md border border-[#D7DEE8] bg-lightgray p-3 text-sm font-medium text-slate">
-        {translate(language, "testMaintenanceHint")}
+        {translate(language, "repeatableStageHint", { stage: processLabel(stage, language) })}
       </div>
       <div className="grid gap-4 rounded-md border border-[#D7DEE8] bg-white p-3 md:grid-cols-2">
         <div className="flex flex-wrap items-center gap-2 md:col-span-2">
-          <Tag tone="teal">{translate(language, "currentTest")}</Tag>
+          <Tag tone="teal">{translate(language, "currentRepeatableStage", { stage: processLabel(stage, language) })}</Tag>
           <Tag tone="muted">{translate(language, "round")} {currentRound}</Tag>
           <Tag tone="success">{resultText(1, language)}</Tag>
         </div>
         <Field label={translate(language, "date")}><TextInput name="current_log_date" type="date" defaultValue={today()} required /></Field>
         <Field label={translate(language, "round")}><TextInput name="current_round" type="number" min={1} value={currentRound} readOnly required /></Field>
         <Field label={translate(language, "interviewer")}><TextInput name="current_interviewer" list="interviewer-options" /></Field>
-        <Field label={translate(language, "remark")}><TextArea name="current_remark" rows={2} defaultValue={translate(language, "currentTestRoundPassedRemark")} /></Field>
+        <Field label={translate(language, "remark")}><TextArea name="current_remark" rows={2} defaultValue={translate(language, "currentRepeatableRoundPassedRemark", { stage: processLabel(stage, language) })} /></Field>
       </div>
       <div className="grid gap-4 rounded-md border border-[#D7DEE8] bg-lightgray/70 p-3 md:grid-cols-2">
         <div className="flex flex-wrap items-center gap-2 md:col-span-2">
-          <Tag tone="teal">{translate(language, "nextTest")}</Tag>
+          <Tag tone="teal">{translate(language, "nextRepeatableStage", { stage: processLabel(stage, language) })}</Tag>
           <Tag tone="muted">{translate(language, "round")} {nextRound}</Tag>
           <Tag tone="warning">{resultText(null, language)}</Tag>
         </div>
         <Field label={translate(language, "date")}><TextInput name="next_log_date" type="date" defaultValue={today()} required /></Field>
         <Field label={translate(language, "round")}><TextInput name="next_round" type="number" min={1} value={nextRound} readOnly required /></Field>
         <Field label={translate(language, "interviewer")}><TextInput name="next_interviewer" list="interviewer-options" /></Field>
-        <Field label={translate(language, "remark")}><TextArea name="next_remark" rows={2} defaultValue={translate(language, "nextTestRoundPendingRemark")} /></Field>
+        <Field label={translate(language, "remark")}><TextArea name="next_remark" rows={2} defaultValue={translate(language, "nextRepeatableRoundPendingRemark", { stage: processLabel(stage, language) })} /></Field>
       </div>
       <DataLists data={data} />
     </div>
@@ -3274,7 +3316,8 @@ function buildDetailBodyV2(
   onEditReference: (candidateId: string, referenceId?: string) => void,
   onSetReferenceStatus: (candidateId: string, referenceId: string) => void,
   onSaveReferenceCheck: (candidateId: string, referenceId: string) => void,
-  onDeleteRecord: (endpoint: string, payload: Record<string, unknown>, summary: string) => void
+  onDeleteRecord: (endpoint: string, payload: Record<string, unknown>, summary: string) => void,
+  onCreateRejectionLetter: (candidate: EnrichedCandidate, retryDraftId?: string) => void
 ): DetailBodyResult {
   if (!detail) return { title: "Detail", body: null };
   const href = (path: string) => buildContextualHref(path, navigationContext);
@@ -3308,6 +3351,7 @@ function buildDetailBodyV2(
         </>
       ),
       headerActions: (
+        <div className="flex items-center gap-2">
         <RecordActionGroup
           label={formatRequisitionOptionLabel(requisition)}
           primary={{ id: "workspace", label: translate(language, "workspaceOpen"), href: href(`/workspace?type=requisition&id=${encodeURIComponent(requisition.doc_id)}&section=overview`), tone: "primary", iconOnly: true }}
@@ -3324,6 +3368,7 @@ function buildDetailBodyV2(
             { id: "offers", href: href(`/offers?offerSearch=${encodeURIComponent(requisition.doc_id)}`), label: translate(language, "workspaceRelatedOffers") }
           ]}
         />
+        </div>
       ),
       body: (
         <div className="grid min-w-0 gap-4">
@@ -3394,12 +3439,14 @@ function buildDetailBodyV2(
   const issues = deriveDataQualityIssues(data).filter((issue) =>
     issue.entityId === candidate.candidate_id || offers.some((offer) => String(offer.offer_id) === issue.entityId)
   );
+  const failedLog = logs.find((log) => log.result === 0 && !log.superseded_at);
 
   return {
     title: `${candidate.candidate_id} / ${formatCandidateName(candidate)}`,
     headerContent: <CandidateDetailHeader candidate={candidate} language={language} />,
       headerActions: (
         <div className="flex items-center gap-1">
+        {canWrite && failedLog ? <Button type="button" variant="ghost" size="icon-sm" className="text-scarlet hover:bg-[#FFF1F0] hover:text-scarlet" icon={<Mail size={17} aria-hidden="true" />} aria-label="Send rejection letter" title="Send rejection letter" onClick={() => onCreateRejectionLetter(candidate)} /> : null}
         <RecordActionGroup
           label={formatCandidateName(candidate)}
           flat
@@ -3454,6 +3501,12 @@ function buildDetailBodyV2(
           { label: "Reference", value: candidate.ref_name ?? "-", copyValue: candidate.ref_name, icon: <Bookmark size={18} /> }
         ]} />
         </section>
+        {failedLog ? <DetailDisclosure title="Rejection letter drafts" summary={`${data.rejection_letter_drafts.filter((draft) => draft.candidate_id === candidate.candidate_id).length} recorded`}>
+          <div className="grid gap-2">
+            {data.rejection_letter_drafts.filter((draft) => draft.candidate_id === candidate.candidate_id).map((draft) => <div key={draft.draft_id} className="rounded-md border border-[#D7DEE8] bg-white p-3 text-sm"><strong className="text-navy">{draft.status === "draft_created" ? "Draft created" : draft.status === "failed" ? "Draft creation failed" : "Creating draft"}</strong><p className="mt-1 text-slate">{draft.recipient_email} · {formatDate(draft.created_at.slice(0, 10), language)}</p>{draft.shared_mailbox ? <p className="text-xs text-slate">Shared mailbox: {draft.shared_mailbox}</p> : null}{draft.failure_summary ? <p className="mt-1 text-xs text-scarlet">{draft.failure_summary}</p> : null}{draft.status === "failed" && canWrite ? <Button type="button" size="sm" variant="secondary" className="mt-2" onClick={() => onCreateRejectionLetter(candidate, draft.draft_id)}>Retry draft creation</Button> : null}</div>)}
+            {data.rejection_letter_drafts.filter((draft) => draft.candidate_id === candidate.candidate_id).length === 0 ? <p className="text-sm text-slate">No rejection-letter drafts have been created.</p> : null}
+          </div>
+        </DetailDisclosure> : null}
         <DetailDisclosure title={<SectionHeading icon={<UsersRound size={18} />} title={translate(language, "contactReferences")} />} summary={translate(language, "referenceProgress", { checked: checkedReferenceCount, available: availableReferenceCount })} defaultOpen>
           <div className="grid gap-3">
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#C8D8FF] bg-[#F8FBFF] px-3 py-2">
@@ -3769,7 +3822,7 @@ function CandidateJourneyActions({
         {canResolveCurrent ? <Button type="button" role="menuitem" variant="ghost" className={buttonClass} disabled={capability.blocked || referencePassBlocked} title={referencePassBlocked ? translate(language, "referencePassBlockedShort", { count: unresolvedReferences }) : undefined} onClick={() => onPass(candidate)}>{translate(language, "passStage")}</Button> : null}
         {canResolveCurrent ? <Button type="button" role="menuitem" variant="ghost" className={`${buttonClass} text-scarlet hover:bg-[#FFF1F0] hover:text-scarlet`} disabled={capability.blocked} onClick={() => onFail(candidate)}>{translate(language, "failStage")}</Button> : null}
         {candidate.latest_process === "Reference Check" && candidate.latest_result === null ? <Button type="button" role="menuitem" variant="ghost" className={buttonClass} disabled={capability.blocked} onClick={() => onReferences(candidate)}>{translate(language, "manageReferenceChecks")}</Button> : null}
-        {candidate.latest_process === "Test" ? <Button type="button" role="menuitem" variant="ghost" className={buttonClass} disabled={capability.blocked} onClick={() => onTest(candidate)}>{translate(language, "addAnotherTestRound")}</Button> : null}
+        {isRepeatableStage(candidate.latest_process as ProcessStage) ? <Button type="button" role="menuitem" variant="ghost" className={buttonClass} disabled={capability.blocked} onClick={() => onTest(candidate)}>{translate(language, candidate.latest_process === "Line Interview" ? "addAnotherLineInterviewRound" : "addAnotherTestRound")}</Button> : null}
         {updateStages.map((stage) => {
           const disabledReason = capability.blocked ? capability : pipelineMoveDisabledReason(candidate, stage, logs, profile);
           return <Button key={stage} type="button" role="menuitem" variant="ghost" className={buttonClass} disabled={disabledReason.blocked} title={disabledReason.detail} onClick={() => onMove(candidate, stage)}>{processLabel(stage, language)}</Button>;

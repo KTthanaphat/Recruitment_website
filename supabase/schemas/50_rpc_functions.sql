@@ -239,7 +239,7 @@ begin
     if v_first is null then raise exception 'PIPELINE_FIRST_CONTACT_REQUIRED: Add First Contact Date before starting Phone Screen.'; end if;
     new.log_date := v_first;
   else
-    select l.outcome_date into v_previous from public.recruitment_logs l where l.candidate_id = new.candidate_id and l.superseded_at is null and l.result = 1 and (app_private.pipeline_stage_index(l.recruitment_process) < app_private.pipeline_stage_index(new.recruitment_process) or (l.recruitment_process = 'Test' and new.recruitment_process = 'Test' and l.round < new.round)) order by app_private.pipeline_stage_index(l.recruitment_process) desc, l.round desc, l.log_id desc limit 1;
+    select l.outcome_date into v_previous from public.recruitment_logs l where l.candidate_id = new.candidate_id and l.superseded_at is null and l.result = 1 and (app_private.pipeline_stage_index(l.recruitment_process) < app_private.pipeline_stage_index(new.recruitment_process) or (l.recruitment_process in ('Line Interview', 'Test') and l.recruitment_process = new.recruitment_process and l.round < new.round)) order by app_private.pipeline_stage_index(l.recruitment_process) desc, l.round desc, l.log_id desc limit 1;
     if v_previous is null then raise exception 'PIPELINE_DATE_ORDER: Pending date must derive from the previous passed Outcome.'; end if;
     new.log_date := v_previous;
   end if;
@@ -254,8 +254,8 @@ create or replace function app_private.propagate_corrected_outcome_date() return
 declare v_next public.recruitment_logs%rowtype;
 begin
   if new.superseded_at is not null or new.record_origin <> 'correction' or new.result <> 1 then return new; end if;
-  if exists(select 1 from public.recruitment_logs l where l.candidate_id = new.candidate_id and l.superseded_at is null and l.result is not null and (app_private.pipeline_stage_index(l.recruitment_process) > app_private.pipeline_stage_index(new.recruitment_process) or (l.recruitment_process = 'Test' and new.recruitment_process = 'Test' and l.round > new.round))) and not app_private.is_system_admin() then raise exception 'PIPELINE_DOWNSTREAM_HISTORY: Outcome date cannot change after a later completed stage exists.'; end if;
-  select * into v_next from public.recruitment_logs l where l.candidate_id = new.candidate_id and l.superseded_at is null and (app_private.pipeline_stage_index(l.recruitment_process) > app_private.pipeline_stage_index(new.recruitment_process) or (l.recruitment_process = 'Test' and new.recruitment_process = 'Test' and l.round > new.round)) order by app_private.pipeline_stage_index(l.recruitment_process), l.round, l.log_id limit 1 for update;
+  if exists(select 1 from public.recruitment_logs l where l.candidate_id = new.candidate_id and l.superseded_at is null and l.result is not null and (app_private.pipeline_stage_index(l.recruitment_process) > app_private.pipeline_stage_index(new.recruitment_process) or (l.recruitment_process in ('Line Interview', 'Test') and l.recruitment_process = new.recruitment_process and l.round > new.round))) and not app_private.is_system_admin() then raise exception 'PIPELINE_DOWNSTREAM_HISTORY: Outcome date cannot change after a later completed stage exists.'; end if;
+  select * into v_next from public.recruitment_logs l where l.candidate_id = new.candidate_id and l.superseded_at is null and (app_private.pipeline_stage_index(l.recruitment_process) > app_private.pipeline_stage_index(new.recruitment_process) or (l.recruitment_process in ('Line Interview', 'Test') and l.recruitment_process = new.recruitment_process and l.round > new.round)) order by app_private.pipeline_stage_index(l.recruitment_process), l.round, l.log_id limit 1 for update;
   if new.recruitment_process <> 'Offer' and not found then raise exception 'PIPELINE_NEXT_PENDING_REQUIRED: A next unresolved Pending stage is required for this Outcome correction.'; end if;
   if found then
     if v_next.result is null then
@@ -1413,8 +1413,8 @@ begin
     if v_next_stage is not null then raise exception 'PIPELINE_INVALID_TRANSITION: Fail cannot create a next Pending stage.'; end if;
   elsif v_row.recruitment_process = 'Offer' then
     if v_next_stage is not null then raise exception 'PIPELINE_INVALID_TRANSITION: Offer Pass uses handoff and cannot create a next Pending stage.'; end if;
-  elsif v_row.recruitment_process = 'Test' and v_next_stage = 'Test' then
-    if v_next_round <> v_row.round + 1 then raise exception 'PIPELINE_INVALID_TRANSITION: The next Test round must be current round plus one.'; end if;
+  elsif v_row.recruitment_process in ('Line Interview', 'Test') and v_next_stage = v_row.recruitment_process then
+    if v_next_round <> v_row.round + 1 then raise exception 'PIPELINE_INVALID_TRANSITION: The next repeatable-stage round must be current round plus one.'; end if;
   else
     v_expected_next_stage := (array['Phone Screen', 'HR Interview', 'Line Interview', 'Test', 'Reference Check', 'Offer']::text[])[app_private.pipeline_stage_index(v_row.recruitment_process) + 1];
     if v_next_stage is distinct from v_expected_next_stage or v_next_round <> 1 then

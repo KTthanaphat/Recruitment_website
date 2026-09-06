@@ -833,7 +833,7 @@ Implementation mapping:
 - App shell keeps the existing GFPT navigation order: Home, Workspace, Records, Dashboard, Audit Log.
 - The sidebar uses the blue-led ATS rail treatment, with active route surfaces in white and assigned-site accent applied only to selected icons, focus, primary actions, tabs, and filter states.
 - Home remains the recruiter operations landing page: Today's Work is dominant, one metric strip follows, and Recruitment Records is the single tabbed work surface.
-- Dashboard remains the Vacancy Waterfall reporting surface. The ATS system applies to the report header, control layout, export buttons, and secondary reveal panels, but chart colors, connectors, print CSS, and calculations stay unchanged.
+- Dashboard remains the Vacancy Waterfall reporting surface. The ATS system applies to the report header, control layout, export buttons, and secondary reveal panels. Waterfall uses centered white labels only where segments are readable and grouped site braces at Week Start/Total; retain chart colors, connectors, print CSS, and calculations.
 - Workspace is the hiring-case command surface. The selected group/requisition context stays sticky, with compact section tabs and one dominant embedded work area.
 - Requisitions, Candidates, and Offers use shared sticky desktop table viewports and neutral mobile cards.
 - Pipeline keeps the horizontal process board. Stage columns and cards are neutral-first; red is reserved for aging or failed risk states.

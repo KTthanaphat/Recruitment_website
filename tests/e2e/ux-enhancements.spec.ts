@@ -75,6 +75,30 @@ test("home groups recruitment records into ordered role-aware tabs", async ({ pa
   await expect(page.getByRole("tablist", { name: "Recruitment record categories" }).getByRole("tab", { name: "New Hire Confirmation" })).toHaveCount(0);
 });
 
+test("home sourcing records use the sourcing work-board scope for the selected week", async ({ page }) => {
+  await installMockSupabase(page, { role: "site_recruiter" });
+  await page.goto("/home?sourcingWeek=2026-07-06");
+  await expectWorkspaceReady(page);
+
+  const welcomeDialog = page.getByRole("dialog", { name: "Welcome back" });
+  if (await welcomeDialog.isVisible()) await welcomeDialog.getByRole("button", { name: "Close" }).last().click();
+
+  const tablist = page.getByRole("tablist", { name: "Recruitment record categories" });
+  await tablist.getByRole("tab", { name: "Sourcing Updates" }).click();
+  const homeRecords = page.getByRole("tabpanel");
+  await expect(homeRecords.getByText("GRP-TECH - Technician", { exact: true })).toBeVisible();
+  await expect(homeRecords.getByText("GRP-KT1-PEER - Line Technician", { exact: true })).toBeVisible();
+  await expect(homeRecords.getByText("GRP-HQ-BOB - Recruitment Coordinator", { exact: true })).toBeVisible();
+  await expect(homeRecords.getByText("GRP-ENG - Engineer", { exact: true })).toHaveCount(0);
+
+  await page.goto("/sourcing?sourcingWeek=2026-07-06");
+  await expectWorkspaceReady(page);
+  await expect(page.locator("article").filter({ hasText: "GRP-TECH" }).first()).toBeVisible();
+  await expect(page.locator("article").filter({ hasText: "GRP-KT1-PEER" }).first()).toBeVisible();
+  await expect(page.locator("article").filter({ hasText: "GRP-HQ-BOB" }).first()).toBeVisible();
+  await expect(page.locator("article").filter({ hasText: "GRP-ENG" })).toHaveCount(0);
+});
+
 test("home calendar shows filtered unresolved estimates and opens candidate detail", async ({ page }) => {
   const mock = await installMockSupabase(page, { role: "admin_recruiter" });
   const scheduledPhoneScreen = mock.data.recruitment_logs.find((log) => log.candidate_id === "C-PHONE");
