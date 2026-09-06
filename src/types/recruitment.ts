@@ -269,6 +269,45 @@ export type ChangeLog = {
   new_data: Record<string, unknown> | null;
 };
 
+export type RejectionLetterLanguage = "th" | "en";
+export type RejectionLetterDraftStatus = "creating" | "draft_created" | "failed";
+
+export type RejectionLetterTemplate = {
+  template_id: string;
+  name: string;
+  language: RejectionLetterLanguage;
+  subject_template: string;
+  body_template: string;
+  active: boolean;
+  version: number;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type RejectionLetterDraft = {
+  draft_id: string;
+  candidate_id: string;
+  failed_stage_instance_id: string;
+  template_id: string | null;
+  template_version: number | null;
+  language: RejectionLetterLanguage;
+  recipient_email: string;
+  subject: string;
+  body: string;
+  status: RejectionLetterDraftStatus;
+  shared_mailbox: string | null;
+  outlook_draft_id: string | null;
+  flow_run_id: string | null;
+  response_metadata: Record<string, unknown> | null;
+  failure_summary: string | null;
+  retry_of_draft_id: string | null;
+  created_by: string | null;
+  created_at: string;
+  finalized_at: string | null;
+};
+
 export type DashboardData = {
   profile: Profile | null;
   profiles: Profile[];
@@ -286,6 +325,8 @@ export type DashboardData = {
   sourcing_weekly_updates: SourcingWeeklyUpdate[];
   vacancy_weekly_snapshots: VacancyWeeklySnapshot[];
   change_logs: ChangeLog[];
+  rejection_letter_templates: RejectionLetterTemplate[];
+  rejection_letter_drafts: RejectionLetterDraft[];
 };
 
 export type EnrichedRequisition = Requisition & {
@@ -373,6 +414,7 @@ export type EnrichedUnmatchedSourcingGroup = {
 export type ViewId =
   | "home"
   | "dashboard"
+  | "configuration"
   | "workspace"
   | "requisitions"
   | "candidates"

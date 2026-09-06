@@ -19,6 +19,8 @@ create unique index if not exists uq_recruitment_logs_current_pending
 on public.recruitment_logs(candidate_id)
 where superseded_at is null and result is null;
 create index if not exists idx_offers_candidate_id on public.offers(candidate_id);
+create index if not exists idx_rejection_letter_drafts_candidate_created on public.rejection_letter_drafts(candidate_id, created_at desc);
+create index if not exists idx_rejection_letter_templates_active_language on public.rejection_letter_templates(language, updated_at desc) where active;
 create index if not exists idx_offers_doc_accepted on public.offers(doc_id, accepted_date) where accepted_date is not null;
 create index if not exists idx_sourcing_weekly_updates_week on public.sourcing_weekly_updates(week_start);
 create index if not exists idx_vacancy_weekly_snapshots_week_site on public.vacancy_weekly_snapshots(week_start, site);

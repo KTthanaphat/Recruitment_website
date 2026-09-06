@@ -260,3 +260,39 @@ create table if not exists public.change_logs (
   old_data jsonb,
   new_data jsonb
 );
+
+create table if not exists public.rejection_letter_templates (
+  template_id uuid primary key default gen_random_uuid(),
+  name text not null check (nullif(btrim(name), '') is not null),
+  language text not null check (language in ('th', 'en')),
+  subject_template text not null check (nullif(btrim(subject_template), '') is not null),
+  body_template text not null check (nullif(btrim(body_template), '') is not null),
+  active boolean not null default true,
+  version integer not null default 1 check (version > 0),
+  created_by uuid references auth.users(id) on delete set null,
+  updated_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.rejection_letter_drafts (
+  draft_id uuid primary key default gen_random_uuid(),
+  candidate_id text not null references public.candidates(candidate_id) on delete cascade,
+  failed_stage_instance_id uuid not null references public.recruitment_logs(stage_instance_id),
+  template_id uuid references public.rejection_letter_templates(template_id) on delete set null,
+  template_version integer,
+  language text not null check (language in ('th', 'en')),
+  recipient_email text not null check (recipient_email ~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'),
+  subject text not null check (nullif(btrim(subject), '') is not null),
+  body text not null check (nullif(btrim(body), '') is not null),
+  status text not null check (status in ('creating', 'draft_created', 'failed')),
+  shared_mailbox text,
+  outlook_draft_id text,
+  flow_run_id text,
+  response_metadata jsonb,
+  failure_summary text,
+  retry_of_draft_id uuid references public.rejection_letter_drafts(draft_id),
+  created_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  finalized_at timestamptz
+);

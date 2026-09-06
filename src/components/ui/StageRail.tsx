@@ -20,9 +20,11 @@ type StageRailProps = {
   ariaLabel?: string;
   showSummary?: boolean;
   variant?: "default" | "candidate-workspace";
+  /** Keeps Home's compact rail while using the Candidate Detail stage icons. */
+  showStageIcons?: boolean;
 };
 
-export function StageRail({ logs, currentStage, currentResult, compact = false, label, language = "en", ariaLabel, showSummary = compact, variant = "default" }: StageRailProps) {
+export function StageRail({ logs, currentStage, currentResult, compact = false, label, language = "en", ariaLabel, showSummary = compact, variant = "default", showStageIcons = false }: StageRailProps) {
   const currentPendingStage = logs?.find((log) => log.result === null)?.recruitment_process;
   const activeStage = currentStage && currentStage !== "No activity" ? currentStage : undefined;
   const activeIndex = activeStage ? PIPELINE_JOURNEY_STAGES.indexOf(activeStage) : -1;
@@ -49,12 +51,12 @@ export function StageRail({ logs, currentStage, currentResult, compact = false, 
       {label ? <h4 className={compact ? "text-xs font-semibold text-navy" : "mb-4 font-semibold text-navy"}>{label}</h4> : null}
       <ol
         aria-label={ariaLabel ?? label ?? translate(language, "candidatePipelineJourney")}
-        className={compact ? "relative z-0 grid h-4 w-36 max-w-full items-center" : `relative z-0 grid min-w-[44rem] gap-4 md:grid-cols-7 md:gap-2 md:justify-items-center ${variant === "candidate-workspace" ? "md:min-w-0" : ""}`}
+        className={compact ? `relative z-0 grid ${showStageIcons ? "h-8 w-44" : "h-4 w-36"} max-w-full items-center` : `relative z-0 grid min-w-[44rem] gap-4 md:grid-cols-7 md:gap-2 md:justify-items-center ${variant === "candidate-workspace" ? "md:min-w-0" : ""}`}
         style={compact ? { gridTemplateColumns: `repeat(${stageItems.length}, minmax(0, 1fr))` } : undefined}
       >
         {compact ? (
           <span
-            className="absolute top-1/2 z-0 grid h-1 -translate-y-1/2 overflow-hidden rounded-full"
+            className={`absolute top-1/2 z-0 grid ${showStageIcons ? "h-0.5" : "h-1"} -translate-y-1/2 overflow-hidden rounded-full`}
             style={{
               left: `${50 / stageItems.length}%`,
               right: `${50 / stageItems.length}%`,
@@ -67,7 +69,7 @@ export function StageRail({ logs, currentStage, currentResult, compact = false, 
                 key={`${item.stage}-connector`}
                 data-stage-connector={`${item.stage}->${stageItems[index + 1]?.stage}`}
                 data-stage-connector-state={stageConnectorState(item.state, stageItems[index + 1]?.state)}
-                className={`h-1 ${stageConnectorClass(item.state, stageItems[index + 1]?.state)}`}
+                className={`${showStageIcons ? "h-0.5" : "h-1"} ${stageConnectorClass(item.state, stageItems[index + 1]?.state)}`}
               />
             ))}
           </span>
@@ -81,7 +83,9 @@ export function StageRail({ logs, currentStage, currentResult, compact = false, 
                 className="relative z-[1] grid place-items-center"
                 title={`${pipelineDisplayLabel(stage, language)}: ${stageStateLabel(language, state)}`}
               >
-                <span className={`block shrink-0 rounded-full ${isCurrent ? "size-3.5" : "size-3"} ${stageDotClass(state, isCurrent, variant === "candidate-workspace")} ring-2 ring-white`} aria-hidden="true" />
+                <span data-stage-icon={showStageIcons ? stage : undefined} className={`grid shrink-0 place-items-center rounded-full ${showStageIcons ? (isCurrent ? "size-8" : "size-7") : (isCurrent ? "size-3.5" : "size-3")} ${stageDotClass(state, isCurrent, showStageIcons || variant === "candidate-workspace")} ring-2 ring-white`} aria-hidden="true">
+                  {showStageIcons ? <StageIcon stage={stage} state={state} current={isCurrent} workspace /> : null}
+                </span>
                 <span className="sr-only">{pipelineDisplayLabel(stage, language)}: {stageStateLabel(language, state)}</span>
               </li>
             );

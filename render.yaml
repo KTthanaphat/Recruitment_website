@@ -14,3 +14,9 @@ services:
         sync: false
       - key: NEXT_PUBLIC_APP_URL
         sync: false
+      - key: POWER_AUTOMATE_REJECTION_LETTER_WEBHOOK_URL
+        sync: false
+      - key: POWER_AUTOMATE_REJECTION_LETTER_WEBHOOK_SECRET
+        sync: false
+      - key: POWER_AUTOMATE_REJECTION_LETTER_SHARED_MAILBOX
+        sync: false

@@ -698,3 +698,10 @@ for each row execute function app_private.audit_row_change();
 drop trigger if exists audit_vacancy_weekly_snapshots on public.vacancy_weekly_snapshots;
 create trigger audit_vacancy_weekly_snapshots after insert or update or delete on public.vacancy_weekly_snapshots
 for each row execute function app_private.audit_row_change();
+
+drop trigger if exists set_rejection_letter_templates_updated_at on public.rejection_letter_templates;
+create trigger set_rejection_letter_templates_updated_at before update on public.rejection_letter_templates for each row execute function app_private.set_updated_at();
+drop trigger if exists audit_rejection_letter_templates on public.rejection_letter_templates;
+create trigger audit_rejection_letter_templates after insert or update or delete on public.rejection_letter_templates for each row execute function app_private.audit_row_change();
+drop trigger if exists audit_rejection_letter_drafts on public.rejection_letter_drafts;
+create trigger audit_rejection_letter_drafts after insert or update or delete on public.rejection_letter_drafts for each row execute function app_private.audit_row_change();

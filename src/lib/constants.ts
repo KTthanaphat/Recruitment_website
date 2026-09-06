@@ -4,6 +4,7 @@ import type { Language, ProcessStage, Profile, RequisitionStatus, Role, ViewId }
 export const VIEWS: ViewId[] = [
   "home",
   "dashboard",
+  "configuration",
   "workspace",
   "requisitions",
   "sourcing",

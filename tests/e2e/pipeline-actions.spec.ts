@@ -227,6 +227,22 @@ test("candidate detail separates current pending details from outcome history an
   await expect(page.getByRole("button", { name: "Candidate actions for Pat Phone" })).toHaveCount(0);
 });
 
+test("Line Interview has the same next-round action as Test", async ({ page }) => {
+  const mock = await installMockSupabase(page, { role: "admin_recruiter" });
+  const current = mock.data.recruitment_logs.find((row) => row.candidate_id === "C-PHONE" && row.recruitment_process === "Phone Screen");
+  if (!current) throw new Error("Pipeline fixture is missing the current stage.");
+  current.recruitment_process = "Line Interview";
+  await page.goto("/pipeline");
+  await expectWorkspaceReady(page);
+
+  const menu = await openPatMenu(page);
+  await menu.getByRole("menuitem", { name: /Add another Line Interview round/ }).click();
+  await page.getByRole("button", { name: "Review changes" }).click();
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect.poll(() => mock.rpcCalls.at(-1)?.endpoint).toBe("app_complete_pipeline_stage_v2");
+  expect(mock.rpcCalls.at(-1)?.payload.next_pending).toMatchObject({ stage: "Line Interview", round: 2 });
+});
+
 test("candidate detail shows a completed stage's outcome remark, including legacy remark values", async ({ page }) => {
   const mock = await installMockSupabase(page, { role: "viewer" });
   const phoneScreen = mock.data.recruitment_logs.find((log) => log.log_id === 1);

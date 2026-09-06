@@ -17,6 +17,7 @@ import {
   SOURCING_CHANNELS,
   type PipelineDisplayStage
 } from "@/lib/constants";
+import { filledSlaAtAcceptance, waterfallExecutiveRows } from "@/lib/vacancy-executive";
 import { formatLocalDateInput } from "@/lib/dates";
 import { formatDate, formatNumber } from "@/lib/format";
 import { organizationLabel, type DepartmentSectionRow } from "@/lib/department-section-data";
@@ -53,6 +54,8 @@ type WaterfallRow = {
   site: string;
   request_type: RequisitionRequestType;
   vacancy_count: number;
+  filledInSla?: number;
+  filledSlaUnknown?: number;
 };
 
 type RequisitionDetailRow = {
@@ -74,7 +77,7 @@ type RequisitionDetailRow = {
   period_status: "ongoing" | "filled" | "cancel";
   period_detail: string | null;
 };
-type StageCountMode = "status" | "activity";
+type StageCountMode = "status" | "activity" | "accum";
 type ExportColumnKey = "site" | "department" | "department_th" | "section" | "section_th" | "position" | "level" | "vacancy" | "request_type" | "requisition_date" | "person_in_charge" | "status" | "detail" | "applicants" | ProcessStage | "actual_age" | "sla" | "filled_date";
 type StageCandidateMatch = { candidateId: string; name: string; stage: ProcessStage; pendingDate: string; resultDate: string | null; remark: string | null; result: 0 | 1 | null };
 type StageCandidateReportDetail = StageCandidateMatch & { personInCharge: string };
@@ -95,6 +98,7 @@ export function VacancyWaterfallView({
   const [customStartDate, setCustomStartDate] = useState("");
   const [customEndDate, setCustomEndDate] = useState("");
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [executiveBreakdownOpen, setExecutiveBreakdownOpen] = useState(false);
   const [funnelStartDate, setFunnelStartDate] = useState(`${today().slice(0, 4)}-01-01`);
   const [funnelEndDate, setFunnelEndDate] = useState(today());
   const [funnelLevelBands, setFunnelLevelBands] = useState<FunnelLevelBand[]>([]);
@@ -190,8 +194,6 @@ export function VacancyWaterfallView({
       const dataUrl = await toPng(surface, {
         backgroundColor: "#ffffff",
         cacheBust: true,
-        canvasHeight: height * 2,
-        canvasWidth: width * 2,
         height,
         pixelRatio: 2,
         style: { left: "0", opacity: "1", position: "static", top: "0", transform: "none", visibility: "visible" },
@@ -243,7 +245,8 @@ export function VacancyWaterfallView({
         }
       }
       const metadata = workbook.addWorksheet(translate(language, "exportMetadataSheet"));
-      metadata.addRows([[translate(language, "generatedAt"), new Date().toISOString()], [translate(language, "generatedBy"), data.profile?.email ?? data.profile?.nickname ?? translate(language, "unknown")], [translate(language, "dateRange"), `${formatDate(startDate, language)} - ${formatDate(endDate, language)}`], [translate(language, "rows"), requisitionRows.length]]);
+      const stageModeLabel = translate(language, stageCountMode === "status" ? "pipelineStatus" : stageCountMode === "activity" ? "pipelineActivity" : "pipelineAccum");
+      metadata.addRows([[translate(language, "generatedAt"), new Date().toISOString()], [translate(language, "generatedBy"), data.profile?.email ?? data.profile?.nickname ?? translate(language, "unknown")], [translate(language, "dateRange"), `${formatDate(startDate, language)} - ${formatDate(endDate, language)}`], [translate(language, "stageCountMode"), stageModeLabel], [translate(language, "rows"), requisitionRows.length]]);
       metadata.eachRow((row) => row.eachCell((cell) => { cell.font = { name: "Sarabun" }; cell.alignment = { vertical: "middle" }; }));
       const bytes = await workbook.xlsx.writeBuffer();
       const objectUrl = URL.createObjectURL(new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
@@ -305,10 +308,11 @@ export function VacancyWaterfallView({
         {waterfallRows.length === 0 ? (
           <div className="px-4 sm:px-6 lg:px-8">
             <EmptyState variant="quiet" message={translate(language, "noWaterfallData")} />
+            {validReportRange ? <WaterfallExecutiveSummaryTable language={language} rows={[]} breakdownOpen={executiveBreakdownOpen} onBreakdownChange={setExecutiveBreakdownOpen} /> : null}
           </div>
         ) : (
           <div className="bg-white">
-            <VacancyWaterfallChart language={language} rows={waterfallRows} />
+            <VacancyWaterfallChart breakdownOpen={executiveBreakdownOpen} onBreakdownChange={setExecutiveBreakdownOpen} language={language} rows={waterfallRows} startDate={startDate} endDate={endDate} />
           </div>
         )}
         {exportError ? <p className="mx-4 mb-1 text-sm font-medium text-danger sm:mx-6 lg:mx-8" role="alert">{translate(language, "exportPngFailed")}</p> : null}
@@ -334,8 +338,9 @@ export function VacancyWaterfallView({
         {detailsOpen ? (
           <div className="min-w-0 max-w-full overflow-hidden border-t border-[#E4E9F2] bg-white p-4 sm:p-6 lg:p-8">
             <div className="mb-3 inline-flex rounded-xl border border-[#C9D5E6] bg-[#F8FAFD] p-1" role="group" aria-label={translate(language, "stageCountMode")}>
-              {(["status", "activity"] as StageCountMode[]).map((mode) => <button key={mode} type="button" className={`rounded-lg px-3 py-2 text-sm font-semibold ${stageCountMode === mode ? "bg-primary text-white shadow-sm" : "text-slate hover:bg-white"}`} aria-pressed={stageCountMode === mode} onClick={() => setStageCountMode(mode)}>{translate(language, mode === "status" ? "pipelineStatus" : "pipelineActivity")}</button>)}
+              {(["activity", "status", "accum"] as StageCountMode[]).map((mode) => <button key={mode} type="button" className={`rounded-lg px-3 py-2 text-sm font-semibold ${stageCountMode === mode ? "bg-primary text-white shadow-sm" : "text-slate hover:bg-white"}`} aria-pressed={stageCountMode === mode} onClick={() => setStageCountMode(mode)}>{translate(language, mode === "status" ? "pipelineStatus" : mode === "activity" ? "pipelineActivity" : "pipelineAccum")}</button>)}
             </div>
+            {stageCountMode === "accum" ? <p className="mb-3 text-sm font-medium text-slate">{translate(language, "pipelineAccumHelp")}</p> : null}
             <RequisitionDetailTable rows={requisitionRows} language={language} onStageClick={(row, stage) => setStageDrilldown({ row, stage, matches: stageCandidatesForRequisition(data, row.doc_id, stage, stageCountMode, startDate, endDate) })} />
           </div>
         ) : null}
@@ -382,7 +387,7 @@ export function VacancyWaterfallView({
       </section>
 
       <div ref={requisitionExportRef} className="export-report-surface" aria-hidden="true">
-        <ReportHeader exportMode language={language} title={translate(language, "activeRequisitionsSelectedRange")} startDate={startDate} endDate={endDate} />
+        <ReportHeader exportMode language={language} title={translate(language, "activeRequisitionsSelectedRange")} startDate={startDate} endDate={endDate} meta={translate(language, "stageCountModeMeta", { mode: translate(language, stageCountMode === "status" ? "pipelineStatus" : stageCountMode === "activity" ? "pipelineActivity" : "pipelineAccum") })} />
         <RequisitionDetailTable rows={requisitionRows} language={language} printMode />
       </div>
       <ActiveRequisitionExportModal open={exportOpen} language={language} rows={requisitionRows} organizationRows={organizationRows} columns={exportColumns} onClose={() => setExportOpen(false)} onColumnsChange={setExportColumns} onExportXlsx={() => exportRequisitionDetailXlsx(exportColumns)} onExportPng={() => exportPng(requisitionExportRef.current, `active-requisitions-${startDate}-to-${endDate}.png`)} />
@@ -390,8 +395,7 @@ export function VacancyWaterfallView({
       <ReportCandidateDetail language={language} candidate={reportCandidate} onClose={() => setReportCandidate(null)} />
 
       <div ref={chartExportRef} className="export-report-surface" aria-hidden="true">
-        <ReportHeader exportMode language={language} title={translate(language, "vacancyWaterfall")} startDate={startDate} endDate={endDate} />
-        <VacancyWaterfallChart language={language} rows={waterfallRows} />
+        <VacancyWaterfallChart isExport breakdownOpen={executiveBreakdownOpen} language={language} rows={waterfallRows} startDate={startDate} endDate={endDate} />
       </div>
 
       <div ref={funnelExportRef} className="export-report-surface" aria-hidden="true">
@@ -496,24 +500,28 @@ function DashboardMultiFilterPicker({ id, label, language, options, values, onVa
   </div>;
 }
 
-function ReportHeader({ exportMode = false, language, title, startDate, endDate }: { exportMode?: boolean; language: Language; title: string; startDate: string; endDate: string }) {
+function ReportHeader({ exportMode = false, language, title, startDate, endDate, meta }: { exportMode?: boolean; language: Language; title: string; startDate: string; endDate: string; meta?: string }) {
   return (
     <div className={`${exportMode ? "block" : "hidden print-report-header"} px-4 pb-3 sm:px-6 lg:px-8`}>
       <h1 className="text-2xl font-semibold text-navy">{title}</h1>
       <p className="text-sm text-slate">{translate(language, "dateRange")}: {formatDate(startDate, language)} - {formatDate(endDate, language)}</p>
+      {meta ? <p className="text-sm text-slate">{meta}</p> : null}
     </div>
   );
 }
 
-function VacancyWaterfallChart({ language, rows }: { language: Language; rows: WaterfallRow[] }) {
+function VacancyWaterfallChart({ language, rows, startDate, endDate, isExport = false, breakdownOpen = false, onBreakdownChange }: { language: Language; rows: WaterfallRow[]; startDate?: string; endDate?: string; isExport?: boolean; breakdownOpen?: boolean; onBreakdownChange?: (open: boolean) => void }) {
   const chart = buildWaterfall(rows, language);
-  const plotWidth = 720;
+  const plotWidth = 900;
+  const leftAnnotationLane = 8;
+  const leftPlotPadding = 144;
+  const rightPlotPadding = 144;
   const plotHeight = 480;
-  const width = 1120;
-  const topPad = 58;
-  const bottomPad = 58;
+  const topPad = 64;
+  const bottomPad = 44;
   const height = topPad + plotHeight + bottomPad;
-  const leftPad = 70;
+  const leftPad = leftAnnotationLane + leftPlotPadding;
+  const width = leftPad + plotWidth + rightPlotPadding;
   const plotRight = leftPad + plotWidth;
   const yMax = chart.yMax;
   const yScale = (value: number) => topPad + ((yMax - Math.max(value, 0)) / Math.max(yMax, 1)) * plotHeight;
@@ -521,15 +529,24 @@ function VacancyWaterfallChart({ language, rows }: { language: Language; rows: W
   const barWidth = Math.min(96, Math.max(52, step * 0.5));
   const zeroY = yScale(0);
   const totalBar = chart.bars.find((bar) => bar.categoryType === "total");
-  const totalBarRight = totalBar ? categoryX(totalBar.categoryIndex, step, leftPad) + barWidth / 2 : plotRight;
+  const categoryPosition = (index: number) => leftPad + step * (index + 0.5);
+  const weekStartBar = chart.bars.find((bar) => bar.categoryType === "weekStart");
+  const totalBarRight = totalBar ? categoryPosition(totalBar.categoryIndex) + barWidth / 2 : plotRight;
+  const weekStartBarLeft = weekStartBar ? categoryPosition(weekStartBar.categoryIndex) - barWidth / 2 : leftPad;
 
   return (
     <div className="chart-report-body w-full pb-2">
-      <div className="w-full px-4 sm:px-6 lg:px-8">
-        <h3 className="screen-chart-title text-2xl font-semibold leading-tight tracking-normal text-navy sm:text-[26px]">
-          {translate(language, "weeklyRecruitmentPerformance")}
-        </h3>
-        <div className="chart-legend mt-2 flex flex-wrap items-center gap-x-5 gap-y-1">
+      <div className="w-full px-2 sm:px-3 lg:px-4">
+        {!isExport ? <h3 className="screen-chart-title px-1 text-2xl font-semibold leading-tight tracking-normal text-navy sm:text-[26px]">{(language === "th" ? "ผลการสรรหาในช่วงเวลาที่เลือก" : "Recruitment Performance in Selected Period")}</h3> : null}
+        <div className={`${isExport ? "mt-0" : "mt-2"} grid min-w-0 gap-4`}>
+          <div>
+            {isExport ? <><h3 className="screen-chart-title px-1 text-2xl font-semibold leading-tight tracking-normal text-navy sm:text-[26px]">{(language === "th" ? "ผลการสรรหาในช่วงเวลาที่เลือก" : "Recruitment Performance in Selected Period")}</h3><p className="mt-1 px-1 text-sm font-light text-slate">{formatDate(startDate!, language)} - {formatDate(endDate!, language)}</p></> : null}
+            {!isExport && startDate && endDate ? <p className="mt-1 px-1 text-sm text-slate">{formatDate(startDate, language)} – {formatDate(endDate, language)}</p> : null}
+            <WaterfallExecutiveSummary language={language} rows={rows} />
+          </div>
+          <WaterfallExecutiveSummaryTable language={language} rows={rows} breakdownOpen={breakdownOpen} onBreakdownChange={onBreakdownChange} />
+        </div>
+        <div className="chart-legend mt-4 flex flex-wrap items-center gap-x-5 gap-y-1 border-t border-[#E4E9F2] px-1 pt-3">
           {chart.legend.map((item) => (
             <div key={item.label} className="flex items-center gap-2 text-sm font-medium text-slate">
               <span
@@ -546,37 +563,18 @@ function VacancyWaterfallChart({ language, rows }: { language: Language; rows: W
           ))}
         </div>
       </div>
-      <svg viewBox={`0 0 ${width} ${height}`} className="vacancy-waterfall-svg block aspect-[3/2] h-auto w-full max-w-full">
-        {totalBar ? (
-          <RightSegmentBrackets
-            x={totalBarRight + 24}
-            segments={totalBar.segments.map((segment) => ({
-              key: segment.key,
-              label: segment.label,
-              yTop: yScale(segment.top),
-              yBottom: yScale(segment.bottom)
-            }))}
-          />
-        ) : null}
+      <svg viewBox={`0 0 ${width} ${height}`} className="vacancy-waterfall-svg block aspect-[53/28] h-auto w-full max-w-full">
+        {weekStartBar ? <LeftSegmentBrackets x={weekStartBarLeft - 18} segments={siteSummarySegments(weekStartBar.segments, yScale, language, ":")} /> : null}
+        {totalBar ? <RightSegmentBrackets x={totalBarRight + 18} segments={siteSummarySegments(totalBar.segments, yScale, language, ":")} /> : null}
         <line x1={leftPad} x2={plotRight} y1={zeroY} y2={zeroY} stroke="#526173" strokeWidth={1} />
-        <line x1={leftPad} x2={leftPad} y1={topPad} y2={zeroY} stroke="#526173" strokeWidth={2} />
-        {chart.yTicks.filter((tick) => tick > 0).map((tick) => {
-          const y = yScale(tick);
-          return (
-            <g key={tick}>
-              <line x1={leftPad - 8} x2={leftPad} y1={y} y2={y} stroke="#526173" strokeWidth={1.5} />
-              <text x={leftPad - 18} y={y + 8} textAnchor="end" className="fill-slate text-[22px] font-light">{tick}</text>
-            </g>
-          );
-        })}
         {chart.connectors.map((connector) => {
-          const x1 = categoryX(connector.from, step, leftPad) + barWidth / 2;
-          const x2 = categoryX(connector.to, step, leftPad) - barWidth / 2;
+          const x1 = categoryPosition(connector.from) + barWidth / 2;
+          const x2 = categoryPosition(connector.to) - barWidth / 2;
           const y = yScale(connector.value);
           return <line key={`${connector.from}-${connector.to}`} x1={x1} x2={x2} y1={y} y2={y} stroke="#96A3B4" strokeWidth={1.5} />;
         })}
         {chart.bars.map((bar) => {
-          const x = categoryX(bar.categoryIndex, step, leftPad) - barWidth / 2;
+          const x = categoryPosition(bar.categoryIndex) - barWidth / 2;
           return (
             <g key={bar.key}>
               {bar.segments.map((segment) => {
@@ -584,7 +582,7 @@ function VacancyWaterfallChart({ language, rows }: { language: Language; rows: W
                 const yB = yScale(segment.top);
                 const y = Math.min(yA, yB);
                 const rectHeight = Math.max(Math.abs(yB - yA), 1);
-                return <rect key={segment.key} x={x} y={y} width={barWidth} height={rectHeight} fill={segment.color} rx={0} />;
+                return <g key={segment.key}><rect x={x} y={y} width={barWidth} height={rectHeight} fill={segment.color} rx={0}><title>{`${segment.site}: ${formatNumber(Math.abs(segment.value), language)}`}</title></rect>{rectHeight >= 22 ? <text x={x + barWidth / 2} y={y + rectHeight / 2} textAnchor="middle" dominantBaseline="middle" fill={oppositeSnapshotColor(segment.site, segment.requestType)} className="text-[15px] font-light">{formatNumber(Math.abs(segment.value), language)}</text> : null}</g>;
               })}
               <text x={x + barWidth / 2} y={yScale(bar.labelAnchor) - 14} textAnchor="middle" className="fill-navy text-[24px] font-light">
                 {bar.label}
@@ -593,7 +591,7 @@ function VacancyWaterfallChart({ language, rows }: { language: Language; rows: W
           );
         })}
         {chart.categories.map((category, index) => (
-          <text key={category} x={categoryX(index, step, leftPad)} y={height - 22} textAnchor="middle" className="fill-slate text-[13px] font-semibold">
+          <text key={category} x={categoryPosition(index)} y={height - 22} textAnchor="middle" className="fill-slate text-[13px] font-semibold">
             {formatCategoryLabel(language, category)}
           </text>
         ))}
@@ -678,6 +676,98 @@ function RightSegmentBrackets({
 
 function defaultExportColumns(): ExportColumnKey[] {
   return ["site", "department", "section", "position", "level", "vacancy", "request_type", "requisition_date", "person_in_charge", "status", "detail", "applicants", ...detailStages, "actual_age", "sla", "filled_date"];
+}
+
+function LeftSegmentBrackets({ x, segments }: { x: number; segments: { key: string; label: string; yTop: number; yBottom: number }[] }) {
+  return <g>{segments.filter((segment) => segment.label?.trim()).map((segment) => {
+    const rawTop = Math.min(segment.yTop, segment.yBottom);
+    const rawBottom = Math.max(segment.yTop, segment.yBottom);
+    const mid = (rawTop + rawBottom) / 2;
+    const height = Math.max(rawBottom - rawTop - 8, 18);
+    const top = mid - height / 2;
+    const bottom = mid + height / 2;
+    const width = 12;
+    const radius = Math.min(5, height / 3);
+    const tipWidth = 6;
+    const tipHeight = Math.min(7, height * 0.18);
+    const d = [`M ${x} ${top}`, `H ${x - width + radius}`, `Q ${x - width} ${top} ${x - width} ${top + radius}`, `V ${mid - tipHeight}`, `L ${x - width - tipWidth} ${mid}`, `L ${x - width} ${mid + tipHeight}`, `V ${bottom - radius}`, `Q ${x - width} ${bottom} ${x - width + radius} ${bottom}`, `H ${x}`].join(" ");
+    return <g key={segment.key}><path d={d} fill="none" stroke="#526173" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" /><text x={x - width - tipWidth - 12} y={mid} textAnchor="end" dominantBaseline="middle" className="fill-slate-600 text-[22px] font-light">{segment.label}</text></g>;
+  })}</g>;
+}
+
+function WaterfallExecutiveSummary({ language, rows }: { language: Language; rows: WaterfallRow[] }) {
+  const start = rows.filter((row) => row.waterfall_category === "Week Start").reduce((sum, row) => sum + row.vacancy_count, 0);
+  const end = rows.filter((row) => row.waterfall_category === "Total").reduce((sum, row) => sum + row.vacancy_count, 0);
+  const openings = rows.filter((row) => row.waterfall_category === "Open").reduce((sum, row) => sum + Math.abs(row.vacancy_count), 0);
+  const filled = rows.filter((row) => row.waterfall_category === "Filled").reduce((sum, row) => sum + Math.abs(row.vacancy_count), 0);
+  const bySite = new Map<string, { total: number; types: Map<RequisitionRequestType, number> }>();
+  for (const row of rows.filter((row) => row.waterfall_category === "Total")) {
+    const entry = bySite.get(row.site) ?? { total: 0, types: new Map<RequisitionRequestType, number>() };
+    entry.total += row.vacancy_count;
+    entry.types.set(row.request_type, (entry.types.get(row.request_type) ?? 0) + row.vacancy_count);
+    bySite.set(row.site, entry);
+  }
+  const backlog = Array.from(bySite, ([site, value]) => ({ site, ...value })).sort((a, b) => b.total - a.total)[0];
+  const composition = backlog ? Array.from(backlog.types, ([type, value]) => ({ type, value })).sort((a, b) => b.value - a.value)[0] : null;
+  const direction = end === start ? "unchanged" : end > start ? "increased" : "decreased";
+  const net = end - start;
+  const className = "mt-1 max-w-5xl px-1 text-sm font-normal leading-relaxed text-slate [&_strong]:font-normal";
+  if (language === "th") return <p className={className}>ในช่วงเวลาที่เลือก จำนวนอัตรารวม<strong> {direction === "unchanged" ? `คงเดิมที่ ${formatNumber(end, language)}` : `${direction === "increased" ? "เพิ่ม" : "ลด"}จาก ${formatNumber(start, language)} เป็น ${formatNumber(end, language)}`} ({net >= 0 ? "+" : ""}{formatNumber(net, language)})</strong> จากการเปิดใหม่ <strong>{formatNumber(openings, language)}</strong> อัตรา และบรรจุแล้ว <strong>{formatNumber(filled, language)}</strong> อัตรา{backlog ? <> โดยคงค้างสูงสุดที่ <strong>{backlog.site} {formatNumber(backlog.total, language)}</strong> อัตรา ส่วนใหญ่เป็น <strong>{composition?.type === "Replacement" ? translate(language, "replacementVacancy") : translate(language, "newVacancy")}</strong></> : null}.</p>;
+  return <p className={className}>During the selected period, total vacancies <strong>{direction === "unchanged" ? `remained at ${formatNumber(end, language)}` : `${direction} from ${formatNumber(start, language)} to ${formatNumber(end, language)}`} ({net >= 0 ? "+" : ""}{formatNumber(net, language)})</strong>, driven by <strong>{formatNumber(openings, language)} openings</strong> against <strong>{formatNumber(filled, language)} positions filled</strong>{backlog ? <>. The remaining backlog is concentrated at <strong>{backlog.site} with {formatNumber(backlog.total, language)} vacancies</strong>, primarily <strong>{composition?.type === "Replacement" ? "replacement" : "new"} vacancies</strong></> : null}.</p>;
+}
+
+function WaterfallExecutiveSummaryTable({ language, rows, breakdownOpen = false, onBreakdownChange }: { language: Language; rows: WaterfallRow[]; breakdownOpen?: boolean; onBreakdownChange?: (open: boolean) => void }) {
+  const summaryRows = waterfallExecutiveRows(rows);
+  const th = language === "th";
+  const labels = th
+    ? ["สถานที่", "อัตราว่างต้นงวด", "เปิดเพิ่ม", "บรรจุแล้ว", "บรรจุใน SLA", "เปลี่ยนแปลงสุทธิ", "อัตราว่างปลายงวด"]
+    : ["Site", "Opening vac.", "Opened", "Filled", "Filled in SLA", "Net change", "Closing vac."];
+  const signed = (value: number) => `${value > 0 ? "+" : ""}${formatNumber(value, language)}`;
+  const missing = th ? "ไม่สามารถคำนวณ SLA ได้ เนื่องจากข้อมูลวันที่หรือระดับของตำแหน่งที่บรรจุบางรายการไม่สมบูรณ์" : "SLA unavailable: some filled positions have missing or invalid dates or levels.";
+  const siteLabel = (row: ReturnType<typeof waterfallExecutiveRows>[number]) => row.grandTotal ? translate(language, "total") : row.site;
+  return <div className="min-w-0">
+    <div className="waterfall-executive-table max-w-full overflow-x-auto" tabIndex={0} role="region" aria-label={th ? "สรุปอัตราว่างตามสถานที่" : "Executive vacancy summary by site"}>
+      <table className="mx-auto w-max min-w-[42rem] border-collapse text-right text-sm tabular-nums">
+        <caption className="sr-only">{th ? "สรุปอัตราว่างตามสถานที่" : "Executive vacancy summary by site"}</caption>
+        <thead><tr className="border-b border-[#C9D5E6] text-slate">{labels.map((label, index) => <th key={label} scope="col" className={`px-3 py-2 text-center font-medium ${index === 0 ? "text-left" : ""} ${index === 6 ? "bg-[#F0F4FA]" : ""}`}>{label}</th>)}</tr></thead>
+        <tbody>{summaryRows.map(row => <tr key={row.site} className={row.grandTotal ? "border-t-2 border-[#C9D5E6] font-semibold text-navy" : "border-t border-[#E4E9F2] text-slate"}>
+          <th scope="row" className="px-3 py-2.5 text-left font-medium"><span className="inline-flex items-center gap-1.5"><span className="size-2 shrink-0" style={{ backgroundColor: row.grandTotal ? "#0B132B" : snapshotColor(row.site, "New") }} aria-hidden="true" />{siteLabel(row)}</span></th>
+          <td className="px-3 py-2.5 font-semibold text-navy">{formatNumber(row.opening, language)}</td>
+          <td className="px-3 py-2.5">{signed(row.opened)}</td>
+          <td className="px-3 py-2.5">{signed(-row.filled)}</td>
+          <td className="px-3 py-2.5" title={row.unknown ? missing : row.filled === 0 ? (th ? "ไม่มีการบรรจุในช่วงเวลานี้" : "No positions filled in this period") : `${row.inSla}/${row.filled}`}>
+            {row.slaPercent === null ? "—" : `${row.slaPercent}%`}
+          </td>
+          <td className="px-3 py-2.5 font-semibold text-navy">{signed(row.net)}</td>
+          <td className="bg-[#F0F4FA] px-3 py-2.5 font-semibold text-navy">{formatNumber(row.closing, language)}</td>
+        </tr>)}</tbody>
+      </table>
+    </div>
+    {summaryRows.some(row => row.unknown > 0) ? <p className="mt-2 text-xs text-slate">{missing}</p> : null}
+    <details open={breakdownOpen} onToggle={event => onBreakdownChange?.(event.currentTarget.open)} className="mt-2 text-sm text-slate">
+      <summary className="w-fit cursor-pointer rounded px-1 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">{th ? "รายละเอียดเปิดเพิ่มและบรรจุ: เพิ่มใหม่ / ทดแทน" : "Opened and filled breakdown: New / Replacement"}</summary>
+      <div className="max-w-full overflow-x-auto">
+        <table className="mx-auto w-max min-w-[32rem] border-collapse text-right text-sm tabular-nums">
+          <thead><tr className="border-b border-[#C9D5E6]">{[labels[0], th ? "เปิดเพิ่ม: เพิ่มใหม่" : "Opened: New", th ? "เปิดเพิ่ม: ทดแทน" : "Opened: Replacement", th ? "บรรจุ: เพิ่มใหม่" : "Filled: New", th ? "บรรจุ: ทดแทน" : "Filled: Replacement"].map((label, index) => <th key={label} scope="col" className={`px-3 py-2 text-center font-medium ${index === 0 ? "text-left" : ""}`}>{label}</th>)}</tr></thead>
+          <tbody>{summaryRows.map(row => <tr key={row.site} className={`border-t border-[#E4E9F2] ${row.grandTotal ? "font-semibold" : ""}`}><th scope="row" className="px-3 py-2 text-left font-medium"><span className="inline-flex items-center gap-1.5"><span className="size-2 shrink-0" style={{ backgroundColor: row.grandTotal ? "#0B132B" : snapshotColor(row.site, "New") }} aria-hidden="true" />{siteLabel(row)}</span></th>{[row.openNew, row.openReplacement, -row.filledNew, -row.filledReplacement].map((value, i) => <td key={i} className="px-3 py-2">{signed(value)}</td>)}</tr>)}</tbody>
+        </table>
+      </div>
+    </details>
+  </div>;
+}
+
+function siteSummarySegments(
+  segments: Array<{ key: string; site: string; value: number; top: number; bottom: number }>,
+  yScale: (value: number) => number,
+  language: Language,
+  separator = "—"
+) {
+  const grouped = new Map<string, { value: number; top: number; bottom: number }>();
+  for (const segment of segments) {
+    const existing = grouped.get(segment.site);
+    grouped.set(segment.site, existing ? { value: existing.value + segment.value, top: Math.max(existing.top, segment.top), bottom: Math.min(existing.bottom, segment.bottom) } : { value: segment.value, top: segment.top, bottom: segment.bottom });
+  }
+  return Array.from(grouped, ([site, summary]) => ({ key: site, label: `${site}${separator} ${formatNumber(summary.value, language)}`, yTop: yScale(summary.top), yBottom: yScale(summary.bottom) }));
 }
 
 function exportColumnLabel(key: ExportColumnKey, language: Language) {
@@ -920,6 +1010,9 @@ function buildWaterfall(rows: WaterfallRow[], language: Language) {
       segments.push({
         key: `${category}-${row.site}-${row.request_type}`,
         label: formatBreakdownLabel(row, language),
+        site: row.site,
+        requestType: row.request_type,
+        value: magnitude,
         bottom: segmentBottom,
         top: segmentTop,
         color: snapshotColor(row.site, row.request_type)
@@ -999,7 +1092,10 @@ function buildLiveWaterfallRows(
     if (!acceptedDate || acceptedDate < startDate || acceptedDate > endDate) continue;
     const requisition = requisitionsById.get(offer.doc_id);
     if (!requisition || requisitionSnapshotAt(data, requisition, endDate).status === "cancel") continue;
-    rows.push(waterfallRow("Filled", requisition.site, requisition.request_type ?? "New", -1));
+    const inSla = filledSlaAtAcceptance(requisition, acceptedDate, offers
+      .filter(candidate => candidate.doc_id === requisition.doc_id && candidate.start_confirmation === "did_not_start")
+      .map(candidate => candidate.start_confirmed_at));
+    rows.push({ ...waterfallRow("Filled", requisition.site, requisition.request_type ?? "New", -1), filledInSla: inSla === true ? 1 : 0, filledSlaUnknown: inSla === null ? 1 : 0 });
   }
 
   for (const offer of offers) {
@@ -1029,7 +1125,11 @@ function buildActiveRequisitionRows(data: DashboardData, requisitions: EnrichedR
       const requisitionDate = validDateOnly(requisition.pr_approved_date) ?? "";
       const groupIds = groupIdsForRequisition(data, requisition.doc_id);
       const relatedDocGroupIds = docGroupIdsForGroupIds(data, groupIds);
-      const stageCounts = stageCountMode === "status" ? pipelineStatusCountsForDocGroups(data, relatedDocGroupIds, endDate) : stageActivityCountsForDocGroups(data, relatedDocGroupIds, startDate, endDate);
+      const stageCounts = stageCountMode === "status"
+        ? pipelineStatusCountsForDocGroups(data, relatedDocGroupIds, endDate)
+        : stageCountMode === "activity"
+          ? stageActivityCountsForDocGroups(data, relatedDocGroupIds, startDate, endDate)
+          : stageAccumCountsForDocGroups(data, relatedDocGroupIds, requisitionDate, endDate);
       const snapshot = requisitionSnapshotAt(data, requisition, endDate);
       const filledDate = snapshot.filledDate;
 
@@ -1307,7 +1407,7 @@ function formatChartValue(value: number, language: Language, isFilled = false) {
 function waterfallAxisMax(rows: WaterfallRow[]) {
   const startTotal = rows.filter((row) => row.waterfall_category === "Week Start").reduce((sum, row) => sum + row.vacancy_count, 0);
   const openTotal = rows.filter((row) => row.waterfall_category === "Open").reduce((sum, row) => sum + Math.max(row.vacancy_count, 0), 0);
-  return Math.max(Math.ceil((startTotal + openTotal) * 1.1), 1);
+  return Math.max(startTotal + openTotal, 1);
 }
 
 function yAxisTicks(max: number) {
@@ -1335,8 +1435,8 @@ function connectorValue(
 }
 
 function formatCategoryLabel(language: Language, category: string) {
-  if (category === "Week Start") return translate(language, "weekStart");
-  if (category === "Total") return translate(language, "total");
+  if (category === "Week Start") return language === "th" ? "อัตราว่างต้นงวด" : "Opening vacancies";
+  if (category === "Total") return language === "th" ? "อัตราว่างปลายงวด" : "Closing vacancies";
   if (category.endsWith(" Open")) return `${category.replace(" Open", "")} ${translate(language, "open")}`;
   if (category.endsWith(" Filled")) return `${category.replace(" Filled", "")} ${translate(language, "filled")}`;
   return category;
@@ -1373,7 +1473,7 @@ function aggregateWaterfallRows(rows: WaterfallRow[]) {
   for (const row of rows) {
     const key = `${row.waterfall_category}|${row.site}|${row.request_type}`;
     const existing = totals.get(key);
-    totals.set(key, existing ? { ...existing, vacancy_count: existing.vacancy_count + row.vacancy_count } : row);
+    totals.set(key, existing ? { ...existing, vacancy_count: existing.vacancy_count + row.vacancy_count, filledInSla: (existing.filledInSla ?? 0) + (row.filledInSla ?? 0), filledSlaUnknown: (existing.filledSlaUnknown ?? 0) + (row.filledSlaUnknown ?? 0) } : row);
   }
   return Array.from(totals.values());
 }
@@ -1454,13 +1554,32 @@ function today() {
   return formatLocalDateInput();
 }
 
+function oppositeSnapshotColor(site: string, requestType: RequisitionRequestType) {
+  return snapshotColor(site, requestType === "New" ? "Replacement" : "New");
+}
+
+function stageAccumCountsForDocGroups(data: DashboardData, docGroupIds: Set<string>, requisitionDate: string, endDate: string) {
+  const stageCandidates = Object.fromEntries(detailStages.map((stage) => [stage, new Set<string>()])) as Record<ProcessStage, Set<string>>;
+  if (!requisitionDate || docGroupIds.size === 0) return emptyStageCounts();
+  const candidateIds = new Set(data.candidates.filter((candidate) => Boolean(candidate.doc_group_id && docGroupIds.has(candidate.doc_group_id))).map((candidate) => candidate.candidate_id));
+  for (const log of data.recruitment_logs) {
+    const enteredDate = dateOnly(log.log_date);
+    if (log.superseded_at || !enteredDate || enteredDate < requisitionDate || enteredDate > endDate || !candidateIds.has(log.candidate_id) || !detailStages.includes(log.recruitment_process)) continue;
+    stageCandidates[log.recruitment_process].add(log.candidate_id);
+  }
+  return Object.fromEntries(detailStages.map((stage) => [stage, stageCandidates[stage].size])) as Record<ProcessStage, number>;
+}
+
 function stageCandidatesForRequisition(data: DashboardData, docId: string, stage: ProcessStage, mode: StageCountMode, startDate: string, endDate: string): StageCandidateMatch[] {
   const docGroupIds = docGroupIdsForGroupIds(data, groupIdsForRequisition(data, docId));
+  const requisitionDate = validDateOnly(data.requisitions.find((requisition) => requisition.doc_id === docId)?.pr_approved_date);
   const candidates = data.candidates.filter((candidate) => Boolean(candidate.doc_group_id && docGroupIds.has(candidate.doc_group_id)));
   return candidates.flatMap((candidate) => {
-    const logs = data.recruitment_logs.filter((log) => log.candidate_id === candidate.candidate_id && log.recruitment_process === stage);
+    const logs = data.recruitment_logs.filter((log) => log.candidate_id === candidate.candidate_id && log.recruitment_process === stage && !log.superseded_at);
     const matching = mode === "activity"
       ? logs.find((log) => { const date = dateOnly(log.result === 1 ? (log.outcome_date ?? log.log_date) : log.log_date); return Boolean(date && date >= startDate && date <= endDate); })
+      : mode === "accum"
+        ? logs.filter((log) => { const date = dateOnly(log.log_date); return Boolean(requisitionDate && date && date >= requisitionDate && date <= endDate); }).sort((a, b) => a.log_date.localeCompare(b.log_date) || a.log_id - b.log_id)[0]
       : logs.filter((log) => log.log_date <= endDate && (!log.outcome_date || log.outcome_date > endDate || log.result === null)).sort((a, b) => b.log_date.localeCompare(a.log_date) || b.log_id - a.log_id)[0];
     if (!matching) return [];
     return [{ candidateId: candidate.candidate_id, name: candidate.name, stage, pendingDate: matching.log_date, resultDate: dateOnly(matching.outcome_date), remark: matching.outcome_remark ?? matching.remark, result: matching.result }];

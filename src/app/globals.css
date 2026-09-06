@@ -232,8 +232,8 @@ dialog::backdrop {
   z-index: -1;
   pointer-events: none;
   opacity: 0;
-  width: max-content;
-  min-width: 960px;
+  width: 1200px;
+  min-width: 1200px;
   padding: 24px;
   background: #ffffff;
   color: #0b132b;
@@ -241,5 +241,10 @@ dialog::backdrop {
 
 .export-report-surface .print-detail-scroll {
   max-height: none;
+  overflow: visible;
+}
+
+.export-report-surface .waterfall-executive-table {
+  max-width: none;
   overflow: visible;
 }

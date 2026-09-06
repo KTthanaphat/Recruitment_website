@@ -11,6 +11,8 @@ alter table public.offers enable row level security;
 alter table public.sourcing_weekly_updates enable row level security;
 alter table public.vacancy_weekly_snapshots enable row level security;
 alter table public.change_logs enable row level security;
+alter table public.rejection_letter_templates enable row level security;
+alter table public.rejection_letter_drafts enable row level security;
 
 drop policy if exists profiles_select_self_or_admin on public.profiles;
 drop policy if exists profiles_select_self_or_recruiter_admin on public.profiles;
@@ -93,3 +95,6 @@ drop policy if exists change_logs_read on public.change_logs;
 create policy change_logs_read on public.change_logs
 for select to authenticated
 using (app_private.is_global_recruitment_reader());
+
+create policy rejection_letter_templates_read on public.rejection_letter_templates for select to authenticated using (active or app_private.current_app_role() in ('system_admin', 'admin_recruiter'));
+create policy rejection_letter_drafts_read on public.rejection_letter_drafts for select to authenticated using (app_private.can_read_candidate(candidate_id));
