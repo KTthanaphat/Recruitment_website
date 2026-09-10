@@ -100,8 +100,8 @@ export function PipelineBoardView({
   const activeFilterCount = Number(Boolean(pipelineSearch.trim())) + Number(boardFilter !== "all");
   const activeRowsBase = rows.filter((row) => row.latest_result !== 0 && !(row.latest_process === "Offer" && row.latest_result === 1));
   const activeRows = filterBoardRows(filterPipelineRows(activeRowsBase, pipelineSearch), boardFilter);
-  const failedGroups = failedCandidatesByStage(filterPipelineRows(rows, pipelineSearch), recruitmentLogs);
-  const passedOfferRows = passedOfferCandidates(filterPipelineRows(rows, pipelineSearch));
+  const failedGroups = failedCandidatesByStage(filterPipelineRows(rows, pipelineSearch), recruitmentLogs, embedded ? null : recentCutoffDate());
+  const passedOfferRows = passedOfferCandidates(filterPipelineRows(rows, pipelineSearch), embedded ? null : recentCutoffDate());
   const agingRows = activeRows.filter(isCandidateAging);
   const noActivityRows = activeRows.filter((row) => row.latest_process === "No activity");
   const displayStages: PipelineStageKey[] = ["No activity", ...ACTIVE_PIPELINE_STAGES];
@@ -207,8 +207,8 @@ export function PipelineBoardView({
             items={[
               { label: translate(language, "activeCandidates"), value: activeRows.length, tone: "primary", helper: translate(language, "visibleOnBoard") },
               { label: translate(language, "aging"), value: agingRows.length, tone: agingRows.length > 0 ? "danger" : "success", helper: translate(language, "daysSinceTouch") },
-              { label: translate(language, "failed7d"), value: failedGroups.reduce((sum, group) => sum + group.rows.length, 0), tone: "danger", helper: translate(language, "recentFailedOutcomes") },
-              { label: translate(language, "offerPass7d"), value: passedOfferRows.length, tone: "success", helper: translate(language, "recentlyCompleted") },
+              { label: translate(language, embedded ? "failedAllTime" : "failed7d"), value: failedGroups.reduce((sum, group) => sum + group.rows.length, 0), tone: "danger", helper: translate(language, embedded ? "allFailedOutcomes" : "recentFailedOutcomes") },
+              { label: translate(language, embedded ? "offerPassAllTime" : "offerPass7d"), value: passedOfferRows.length, tone: "success", helper: translate(language, embedded ? "allCompletedOffers" : "recentlyCompleted") },
               { label: translate(language, "noActivity"), value: noActivityRows.length, tone: noActivityRows.length > 0 ? "warning" : "success", helper: translate(language, "needsFirstUpdate") }
             ]}
           />
@@ -421,9 +421,9 @@ export function PipelineBoardView({
 
       <div className="grid gap-4 xl:grid-cols-2">
         <Panel variant="secondary">
-          <SectionTitle title={translate(language, "failedCandidatesLast7Days")} />
+          <SectionTitle title={translate(language, embedded ? "failedCandidatesAllTime" : "failedCandidatesLast7Days")} />
           {failedGroups.every((group) => group.rows.length === 0) ? (
-            <EmptyState variant="quiet" message={translate(language, "noFailedCandidatesLast7Days")} />
+            <EmptyState variant="quiet" message={translate(language, embedded ? "noFailedCandidatesAllTime" : "noFailedCandidatesLast7Days")} />
           ) : (
             <div className="grid grid-flow-col gap-3 overflow-x-auto pb-2" style={{ gridAutoColumns: "minmax(240px, 1fr)" }}>
               {failedGroups.map((group) => (
@@ -453,9 +453,9 @@ export function PipelineBoardView({
         </Panel>
 
         <Panel variant="secondary">
-          <SectionTitle title={translate(language, "passedOfferLast7Days")} />
+          <SectionTitle title={translate(language, embedded ? "passedOfferAllTime" : "passedOfferLast7Days")} />
           {passedOfferRows.length === 0 ? (
-            <EmptyState variant="quiet" message={translate(language, "noOfferPassLast7Days")} />
+            <EmptyState variant="quiet" message={translate(language, embedded ? "noOfferPassAllTime" : "noOfferPassLast7Days")} />
           ) : (
             <div className="grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(240px,1fr))]">
               {passedOfferRows.map((candidate) => (
@@ -608,8 +608,7 @@ function pipelineStateTone(row: EnrichedCandidate) { const state = pipelineState
 function pendingInterviewer(row: EnrichedCandidate, logs: RecruitmentLog[]) { return logs.filter((log) => log.candidate_id === row.candidate_id && log.superseded_at === null && log.result === null).sort((a, b) => b.log_id - a.log_id)[0]?.interviewer ?? null; }
 function ageLabel(row: EnrichedCandidate) { const age = candidateTouchAgeDays(row); return age === null ? "-" : `${age}d`; }
 
-function failedCandidatesByStage(rows: EnrichedCandidate[], recruitmentLogs: RecruitmentLog[]) {
-  const cutoff = recentCutoffDate();
+function failedCandidatesByStage(rows: EnrichedCandidate[], recruitmentLogs: RecruitmentLog[], cutoff: string | null) {
   const groups = new Map<ProcessStage, EnrichedCandidate[]>(ACTIVE_PIPELINE_STAGES.map((stage) => [stage, []]));
 
   for (const row of rows) {
@@ -617,7 +616,7 @@ function failedCandidatesByStage(rows: EnrichedCandidate[], recruitmentLogs: Rec
     const failureDate = recruitmentLogs
       .filter((log) => log.candidate_id === row.candidate_id && log.superseded_at === null && log.result === 0)
       .sort((a, b) => b.log_id - a.log_id)[0]?.outcome_date;
-    if (!failureDate || failureDate < cutoff) continue;
+    if (cutoff && (!failureDate || failureDate < cutoff)) continue;
     groups.set(row.latest_process, [...(groups.get(row.latest_process) ?? []), row]);
   }
 
@@ -627,13 +626,12 @@ function failedCandidatesByStage(rows: EnrichedCandidate[], recruitmentLogs: Rec
   }));
 }
 
-function passedOfferCandidates(rows: EnrichedCandidate[]) {
-  const cutoff = recentCutoffDate();
+function passedOfferCandidates(rows: EnrichedCandidate[], cutoff: string | null) {
 
   return sortByLastUpdateDesc(rows
     .filter((row) => {
-      if (row.latest_process !== "Offer" || row.latest_result !== 1 || !row.latest_log_date) return false;
-      return row.latest_log_date >= cutoff;
+      if (row.latest_process !== "Offer" || row.latest_result !== 1) return false;
+      return !cutoff || Boolean(row.latest_log_date && row.latest_log_date >= cutoff);
     }));
 }
 
