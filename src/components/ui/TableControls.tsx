@@ -13,6 +13,7 @@ export type TableColumn<T> = {
   label: string;
   value: (row: T) => string | number | null | undefined;
   filterValue?: (row: T) => string | number | null | undefined;
+  searchValue?: (row: T) => string | number | null | undefined;
   filterMode?: "category";
   sortValue?: (row: T) => string | number | null | undefined;
 };
@@ -34,7 +35,7 @@ export function useTableControls<T>(rows: T[], columns: TableColumn<T>[], initia
     const searchText = search.trim().toLowerCase();
     const filtered = rows.filter((row) => {
       const matchesSearch = !searchText || columns.some((column) => {
-        const rawValue = column.filterValue?.(row) ?? column.value(row);
+        const rawValue = column.searchValue?.(row) ?? column.filterValue?.(row) ?? column.value(row);
         return String(rawValue ?? "").toLowerCase().includes(searchText);
       });
       if (!matchesSearch) return false;

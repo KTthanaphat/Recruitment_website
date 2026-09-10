@@ -44,7 +44,7 @@ export function CandidatesView({
   const tableInitialized = useRef(false);
   const columns: TableColumn<EnrichedCandidate>[] = [
     { key: "candidate_id", label: "ID", value: (row) => row.candidate_id },
-    { key: "name", label: translate(language, "name"), value: (row) => formatCandidateName(row) },
+    { key: "name", label: translate(language, "name"), value: (row) => formatCandidateName(row), searchValue: (row) => [formatCandidateName(row), row.phone_no, row.phone_no?.replace(/\D/g, ""), row.email].filter(Boolean).join(" ") },
     { key: "group", label: translate(language, "group"), value: (row) => row.group_position ?? "-", filterValue: (row) => [row.group_position, ...row.doc_ids].filter(Boolean).join(" ") },
     { key: "site", label: translate(language, "site"), value: (row) => row.site ?? "-", filterMode: "category" },
     { key: "owner", label: translate(language, "owner"), value: (row) => row.person_in_charge ?? "-", filterMode: "category" },
