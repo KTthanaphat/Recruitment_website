@@ -705,6 +705,10 @@ drop trigger if exists audit_rejection_letter_templates on public.rejection_lett
 create trigger audit_rejection_letter_templates after insert or update or delete on public.rejection_letter_templates for each row execute function app_private.audit_row_change();
 drop trigger if exists audit_rejection_letter_drafts on public.rejection_letter_drafts;
 create trigger audit_rejection_letter_drafts after insert or update or delete on public.rejection_letter_drafts for each row execute function app_private.audit_row_change();
+drop trigger if exists set_interview_invitation_templates_updated_at on public.interview_invitation_templates;
+create trigger set_interview_invitation_templates_updated_at before update on public.interview_invitation_templates for each row execute function app_private.set_updated_at();
+drop trigger if exists audit_interview_invitation_templates on public.interview_invitation_templates;
+create trigger audit_interview_invitation_templates after insert or update or delete on public.interview_invitation_templates for each row execute function app_private.audit_row_change();
 drop trigger if exists set_interview_meetings_updated_at on public.interview_meetings;
 create trigger set_interview_meetings_updated_at before update on public.interview_meetings for each row execute function app_private.set_updated_at();
 drop trigger if exists audit_interview_meetings on public.interview_meetings;

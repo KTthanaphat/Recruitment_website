@@ -13,6 +13,7 @@ alter table public.vacancy_weekly_snapshots enable row level security;
 alter table public.change_logs enable row level security;
 alter table public.rejection_letter_templates enable row level security;
 alter table public.rejection_letter_drafts enable row level security;
+alter table public.interview_invitation_templates enable row level security;
 alter table public.interview_meetings enable row level security;
 
 drop policy if exists profiles_select_self_or_admin on public.profiles;
@@ -99,4 +100,5 @@ using (app_private.is_global_recruitment_reader());
 
 create policy rejection_letter_templates_read on public.rejection_letter_templates for select to authenticated using (active or app_private.current_app_role() in ('system_admin', 'admin_recruiter'));
 create policy rejection_letter_drafts_read on public.rejection_letter_drafts for select to authenticated using (app_private.can_read_candidate(candidate_id));
+create policy interview_invitation_templates_read on public.interview_invitation_templates for select to authenticated using (active or app_private.current_app_role() in ('system_admin', 'admin_recruiter'));
 create policy interview_meetings_read on public.interview_meetings for select to authenticated using (app_private.can_read_candidate(candidate_id));

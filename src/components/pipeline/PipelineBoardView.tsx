@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, CalendarPlus, Filter, Mail, Pencil, Plus, Search } from "lucide-react";
+import { ArrowRight, Filter, Mail, Pencil, Plus, Search } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/Button";
@@ -57,7 +57,6 @@ export function PipelineBoardView({
   onEditCandidate,
   onCorrectPipelineRecord
   , onCreateRejectionLetter
-  , onScheduleTeamsInterview
 }: {
   language: Language;
   rows: EnrichedCandidate[];
@@ -86,7 +85,6 @@ export function PipelineBoardView({
   onEditCandidate?: (candidateId: string) => void;
   onCorrectPipelineRecord?: (candidate: EnrichedCandidate, log: RecruitmentLog) => void;
   onCreateRejectionLetter?: (candidate: EnrichedCandidate) => void;
-  onScheduleTeamsInterview?: (candidate: EnrichedCandidate) => void;
 }) {
   const [dragged, setDragged] = useState<EnrichedCandidate | null>(null);
   const [blockedStage, setBlockedStage] = useState<PipelineStageKey | null>(null);
@@ -313,7 +311,6 @@ export function PipelineBoardView({
             issueCount={dataQualityIssues.filter((issue) => issue.entityId === candidate.candidate_id).length}
             menuOpen={openMobileStageMenu === candidate.candidate_id}
             onOpen={onOpen}
-            onScheduleTeamsInterview={onScheduleTeamsInterview}
             onMove={onMove}
             onFailCurrentStage={onFailCurrentStage}
             onMaintainTest={onMaintainTest}
@@ -394,7 +391,6 @@ export function PipelineBoardView({
                         candidateReferenceChecks={candidateReferenceChecks}
                         issueCount={issueCount}
                         focused={focusedCandidateId === candidate.candidate_id}
-                        onScheduleTeamsInterview={onScheduleTeamsInterview}
                         menuOpen={openStageMenu === candidate.candidate_id}
                         onOpen={onOpen}
                         onMove={onMove}
@@ -747,7 +743,6 @@ function PipelineCandidateCard({
   onDragStart,
   onDragEnd
   , onCreateRejectionLetter
-  , onScheduleTeamsInterview
 }: {
   candidate: EnrichedCandidate;
   language: Language;
@@ -781,7 +776,6 @@ function PipelineCandidateCard({
   onDragStart?: () => void;
   onDragEnd?: () => void;
   onCreateRejectionLetter?: (candidate: EnrichedCandidate) => void;
-  onScheduleTeamsInterview?: (candidate: EnrichedCandidate) => void;
 }) {
   const lastUpdate = candidateLastUpdate(candidate);
   const currentPending = [...recruitmentLogs].sort((a, b) => b.log_id - a.log_id).find((log) => log.result === null && !log.superseded_at);
@@ -862,7 +856,6 @@ function PipelineCandidateCard({
         {tone === "failed" && onCreateRejectionLetter ? (
           <Button type="button" size="icon-sm" variant="ghost" disabled={rejectionLetterSent} className="text-scarlet hover:bg-[#FFF1F0] hover:text-scarlet disabled:text-cool" icon={<Mail size={17} aria-hidden="true" />} aria-label="Send rejection letter" title={rejectionLetterSent ? "Rejection letter already sent" : "Send rejection letter"} onClick={(event) => { event.stopPropagation(); if (!rejectionLetterSent) onCreateRejectionLetter(candidate); }} />
         ) : null}
-        {candidate.latest_result === null && (candidate.latest_process === "HR Interview" || candidate.latest_process === "Line Interview") && onScheduleTeamsInterview ? <Button type="button" size="icon-sm" variant="ghost" className="text-primary hover:bg-[#F1F6FC]" icon={<CalendarPlus size={17} aria-hidden="true" />} aria-label="Schedule Teams interview" title="Schedule Teams interview" onClick={(event) => { event.stopPropagation(); onScheduleTeamsInterview(candidate); }} /> : null}
         {canWrite ? (
           <button
             ref={actionsButtonRef}

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { validateInterviewInvitationTemplate } from "@/lib/interview-invitation";
 import { createServiceClient } from "@/lib/supabase/server";
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -15,6 +16,10 @@ export async function POST(request: NextRequest) {
     const payload = await request.json() as Record<string, unknown>;
     const operation = payload.operation === "reschedule" || payload.operation === "cancel" ? payload.operation : "create";
     const interviewerEmails = normalizedEmails(payload.interviewer_emails);
+    const templateId = typeof payload.invitation_template_id === "string" ? payload.invitation_template_id : null;
+    const invitationLanguage = payload.invitation_language === "th" || payload.invitation_language === "en" ? payload.invitation_language : null;
+    const invitationSubject = typeof payload.invitation_subject === "string" ? payload.invitation_subject.trim() : "";
+    const invitationBody = typeof payload.invitation_body === "string" ? payload.invitation_body.trim() : "";
     if (!token || typeof payload.candidate_id !== "string" || typeof payload.stage_instance_id !== "string") return NextResponse.json({ ok: false, error: "Invalid Teams meeting request." }, { status: 400 });
 
     const service = createServiceClient();
@@ -39,6 +44,10 @@ export async function POST(request: NextRequest) {
     const startsAt = typeof payload.starts_at === "string" ? Date.parse(payload.starts_at) : NaN;
     const endsAt = typeof payload.ends_at === "string" ? Date.parse(payload.ends_at) : NaN;
     if (operation !== "cancel" && (interviewerEmails.length === 0 || Number.isNaN(startsAt) || Number.isNaN(endsAt) || endsAt <= startsAt)) return NextResponse.json({ ok: false, error: "Enter a valid Bangkok schedule and at least one interviewer email." }, { status: 400 });
+    const invalidInvitation = [...validateInterviewInvitationTemplate(invitationSubject), ...validateInterviewInvitationTemplate(invitationBody)];
+    if (operation !== "cancel" && (!templateId || !invitationLanguage || !invitationSubject || !invitationBody || invalidInvitation.length)) return NextResponse.json({ ok: false, error: invalidInvitation.length ? `Unknown or incomplete invitation variable: ${[...new Set(invalidInvitation)].join(", ")}` : "Choose an invitation template and complete its subject and body." }, { status: 400 });
+    const { data: template } = operation === "cancel" ? { data: null } : await service.from("interview_invitation_templates").select("template_id,version,language,active").eq("template_id", templateId).single();
+    if (operation !== "cancel" && (!template || !template.active || template.language !== invitationLanguage)) return NextResponse.json({ ok: false, error: "Choose an active invitation template in the selected language." }, { status: 400 });
 
     const existingId = typeof payload.meeting_id === "string" ? payload.meeting_id : null;
     let meeting: { meeting_id: string; teams_event_id: string | null } | null = null;
@@ -46,7 +55,7 @@ export async function POST(request: NextRequest) {
       const { data: activeMeeting, error: activeError } = await service.from("interview_meetings").select("meeting_id").eq("stage_instance_id", stage.stage_instance_id).in("status", editableStatuses).maybeSingle();
       if (activeError) throw new Error(activeError.message);
       if (activeMeeting) return NextResponse.json({ ok: false, error: "This interview already has a meeting. Use reschedule instead." }, { status: 409 });
-      const { data, error } = await service.from("interview_meetings").insert({ candidate_id: candidate.candidate_id, stage_instance_id: stage.stage_instance_id, stage: stage.recruitment_process, starts_at: payload.starts_at, ends_at: payload.ends_at, interviewer_emails: interviewerEmails, note: typeof payload.note === "string" ? payload.note.trim() || null : null, status: "creating", created_by: auth.user.id }).select("meeting_id,teams_event_id").single();
+      const { data, error } = await service.from("interview_meetings").insert({ candidate_id: candidate.candidate_id, stage_instance_id: stage.stage_instance_id, stage: stage.recruitment_process, starts_at: payload.starts_at, ends_at: payload.ends_at, interviewer_emails: interviewerEmails, note: typeof payload.note === "string" ? payload.note.trim() || null : null, invitation_template_id: templateId, invitation_template_version: template?.version ?? null, invitation_language: invitationLanguage, invitation_subject: invitationSubject, invitation_body: invitationBody, status: "creating", created_by: auth.user.id }).select("meeting_id,teams_event_id").single();
       if (error || !data) throw new Error(error?.message ?? "Could not create the meeting record.");
       meeting = data;
     } else {
@@ -54,7 +63,7 @@ export async function POST(request: NextRequest) {
       const { data, error } = await service.from("interview_meetings").select("meeting_id,teams_event_id,status,stage_instance_id").eq("meeting_id", existingId).eq("candidate_id", candidate.candidate_id).single();
       if (error || !data || data.stage_instance_id !== stage.stage_instance_id || data.status === "cancelled") return NextResponse.json({ ok: false, error: "Meeting was not found." }, { status: 404 });
       meeting = data;
-      const update = operation === "cancel" ? { status: "cancelling", failure_summary: null } : { status: "rescheduling", starts_at: payload.starts_at, ends_at: payload.ends_at, interviewer_emails: interviewerEmails, note: typeof payload.note === "string" ? payload.note.trim() || null : null, failure_summary: null };
+      const update = operation === "cancel" ? { status: "cancelling", failure_summary: null } : { status: "rescheduling", starts_at: payload.starts_at, ends_at: payload.ends_at, interviewer_emails: interviewerEmails, note: typeof payload.note === "string" ? payload.note.trim() || null : null, invitation_template_id: templateId, invitation_template_version: template?.version ?? null, invitation_language: invitationLanguage, invitation_subject: invitationSubject, invitation_body: invitationBody, failure_summary: null };
       const { error: updateError } = await service.from("interview_meetings").update(update).eq("meeting_id", meeting.meeting_id);
       if (updateError) throw new Error(updateError.message);
     }
@@ -64,10 +73,10 @@ export async function POST(request: NextRequest) {
     const secret = process.env.POWER_AUTOMATE_TEAMS_MEETING_WEBHOOK_SECRET;
     const mailbox = process.env.POWER_AUTOMATE_TEAMS_MEETING_SHARED_MAILBOX;
     if (!url || !secret || !mailbox) throw new Error("Teams meeting automation is not configured.");
-    const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json", "x-teams-meeting-secret": secret }, body: JSON.stringify({ operation, meeting_id: meeting.meeting_id, teams_event_id: meeting.teams_event_id, shared_mailbox: mailbox, candidate_id: candidate.candidate_id, stage_instance_id: stage.stage_instance_id, candidate_email: candidate.email, interviewer_emails: interviewerEmails, starts_at: payload.starts_at, ends_at: payload.ends_at, stage: stage.recruitment_process, subject: `${stage.recruitment_process}: ${candidate.name}`, note: typeof payload.note === "string" ? payload.note.trim() : "" }), signal: AbortSignal.timeout(15000) });
+    const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json", "x-teams-meeting-secret": secret }, body: JSON.stringify({ operation, meeting_id: meeting.meeting_id, teams_event_id: meeting.teams_event_id, shared_mailbox: mailbox, candidate_id: candidate.candidate_id, stage_instance_id: stage.stage_instance_id, candidate_email: candidate.email, interviewer_emails: interviewerEmails, starts_at: payload.starts_at, ends_at: payload.ends_at, stage: stage.recruitment_process, invitation_template_id: templateId, invitation_template_version: template?.version ?? null, invitation_language: invitationLanguage, invitation_subject: invitationSubject, invitation_body: invitationBody, note: typeof payload.note === "string" ? payload.note.trim() : "" }), signal: AbortSignal.timeout(15000) });
     const flow = await response.json().catch(() => ({})) as { ok?: boolean; teams_event_id?: string; join_url?: string; flow_run_id?: string; error?: string };
     if (!response.ok || !flow.ok || (operation !== "cancel" && (!flow.teams_event_id || !flow.join_url))) throw new Error(flow.error ?? "Power Automate could not update the Teams meeting.");
-    const finalUpdate = operation === "cancel" ? { status: "cancelled", join_url: null, flow_run_id: flow.flow_run_id ?? null, failure_summary: null } : { status: "scheduled", organizer_mailbox: mailbox, teams_event_id: flow.teams_event_id, join_url: flow.join_url, flow_run_id: flow.flow_run_id ?? null, failure_summary: null };
+    const finalUpdate = operation === "cancel" ? { status: "cancelled", join_url: null, flow_run_id: flow.flow_run_id ?? null, failure_summary: null } : { status: "scheduled", organizer_mailbox: mailbox, teams_event_id: flow.teams_event_id, join_url: flow.join_url, invitation_body: invitationBody.replaceAll("{teams_join_link}", flow.join_url ?? ""), flow_run_id: flow.flow_run_id ?? null, failure_summary: null };
     const { error: finalError } = await service.from("interview_meetings").update(finalUpdate).eq("meeting_id", meeting.meeting_id);
     if (finalError) throw new Error(finalError.message);
     return NextResponse.json({ ok: true, meeting_id: meeting.meeting_id, join_url: flow.join_url ?? null });

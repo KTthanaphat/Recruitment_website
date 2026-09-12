@@ -22,6 +22,7 @@ create index if not exists idx_offers_candidate_id on public.offers(candidate_id
 create index if not exists idx_rejection_letter_drafts_candidate_created on public.rejection_letter_drafts(candidate_id, created_at desc);
 create unique index if not exists uq_rejection_letter_delivery_per_failed_stage on public.rejection_letter_drafts(candidate_id, failed_stage_instance_id) where status in ('sending', 'sent');
 create index if not exists idx_rejection_letter_templates_active_language on public.rejection_letter_templates(language, updated_at desc) where active;
+create index if not exists idx_interview_invitation_templates_active_language on public.interview_invitation_templates(language, updated_at desc) where active;
 create index if not exists idx_interview_meetings_candidate_stage on public.interview_meetings(candidate_id, stage_instance_id, starts_at desc);
 create unique index if not exists uq_interview_meetings_active_stage on public.interview_meetings(stage_instance_id) where status in ('creating','scheduled','rescheduling','cancelling');
 create index if not exists idx_offers_doc_accepted on public.offers(doc_id, accepted_date) where accepted_date is not null;

@@ -19,7 +19,11 @@ Every request is JSON and includes `operation`: `create`, `reschedule`, or `canc
   "starts_at": "2026-09-15T03:00:00.000Z",
   "ends_at": "2026-09-15T04:00:00.000Z",
   "stage": "HR Interview",
-  "subject": "HR Interview: Candidate name",
+  "invitation_template_id": "template-uuid",
+  "invitation_template_version": 2,
+  "invitation_language": "en",
+  "invitation_subject": "Interview invitation for Candidate name",
+  "invitation_body": "Hello Candidate name, join here: {teams_join_link}",
   "note": "Optional recruiter note"
 }
 ```
@@ -29,10 +33,11 @@ Every request is JSON and includes `operation`: `create`, `reschedule`, or `canc
 ## Flow actions
 
 1. Validate `x-teams-meeting-secret`; return HTTP 401 or 403 with `{ "ok": false, "error": "…" }` when it does not match.
-2. For **create**, use **Create event (V4)** with the shared HR mailbox/calendar. Set *Is online meeting* to Yes, provider to Teams, required attendees to the candidate plus all interviewer emails, and use `subject`, time range, and `note` from the request.
-3. For **reschedule**, use **Update event (V4)** with `teams_event_id`, keeping the event online and replacing its attendees, time range, subject, and note. Outlook sends the meeting update.
-4. For **cancel**, use **Delete event (V2)** or the shared-mailbox cancellation action with `teams_event_id`, so Outlook sends cancellation notices.
-5. End with an HTTP Response action. The success response needs the stable Outlook event ID, Teams join URL, and the Power Automate run ID when it is available.
+2. For **create**, use **Create event (V4)** with the shared HR mailbox/calendar. Set *Is online meeting* to Yes, provider to Teams, required attendees to the candidate plus all interviewer emails, and use `invitation_subject`, time range, and `note` from the request.
+3. For **create**, take the returned Teams join URL, replace `{teams_join_link}` in `invitation_body`, and use **Update event (V4)** to write the final invitation body before returning success. This sends the completed invitation update to attendees.
+4. For **reschedule**, use **Update event (V4)** with `teams_event_id`, keeping the event online and replacing attendees, time range, `invitation_subject`, and the supplied invitation body. Outlook sends the meeting update.
+5. For **cancel**, use **Delete event (V2)** or the shared-mailbox cancellation action with `teams_event_id`, so Outlook sends cancellation notices.
+6. End with an HTTP Response action. The success response needs the stable Outlook event ID, Teams join URL, and the Power Automate run ID when it is available.
 
 Create and reschedule response:
 

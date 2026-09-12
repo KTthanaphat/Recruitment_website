@@ -3114,11 +3114,24 @@ create trigger set_rejection_letter_templates_updated_at before update on public
 create trigger audit_rejection_letter_templates after insert or update or delete on public.rejection_letter_templates for each row execute function app_private.audit_row_change();
 create trigger audit_rejection_letter_drafts after insert or update or delete on public.rejection_letter_drafts for each row execute function app_private.audit_row_change();
 
+create table if not exists public.interview_invitation_templates (
+  template_id uuid primary key default gen_random_uuid(), name text not null check (nullif(btrim(name), '') is not null), language text not null check (language in ('th','en')),
+  subject_template text not null check (nullif(btrim(subject_template), '') is not null), body_template text not null check (nullif(btrim(body_template), '') is not null), active boolean not null default true, version integer not null default 1 check (version > 0),
+  created_by uuid references auth.users(id) on delete set null, updated_by uuid references auth.users(id) on delete set null, created_at timestamptz not null default now(), updated_at timestamptz not null default now()
+);
+create index if not exists idx_interview_invitation_templates_active_language on public.interview_invitation_templates(language, updated_at desc) where active;
+alter table public.interview_invitation_templates enable row level security;
+create policy interview_invitation_templates_read on public.interview_invitation_templates for select to authenticated using (active or app_private.current_app_role() in ('system_admin', 'admin_recruiter'));
+grant select on public.interview_invitation_templates to authenticated;
+create trigger set_interview_invitation_templates_updated_at before update on public.interview_invitation_templates for each row execute function app_private.set_updated_at();
+create trigger audit_interview_invitation_templates after insert or update or delete on public.interview_invitation_templates for each row execute function app_private.audit_row_change();
+
 -- Teams meetings are created by Power Automate from the shared HR mailbox.
 create table if not exists public.interview_meetings (
   meeting_id uuid primary key default gen_random_uuid(), candidate_id text not null references public.candidates(candidate_id) on delete cascade, stage_instance_id uuid not null references public.recruitment_logs(stage_instance_id) on delete cascade,
   stage text not null check (stage in ('HR Interview', 'Line Interview')), starts_at timestamptz not null, ends_at timestamptz not null check (ends_at > starts_at), interviewer_emails text[] not null check (cardinality(interviewer_emails) > 0), note text,
-  status text not null check (status in ('creating','scheduled','rescheduling','cancelling','cancelled','failed')), organizer_mailbox text, teams_event_id text, join_url text, flow_run_id text, failure_summary text,
+  status text not null check (status in ('creating','scheduled','rescheduling','cancelling','cancelled','failed')), organizer_mailbox text, teams_event_id text, join_url text, flow_run_id text,
+  invitation_template_id uuid references public.interview_invitation_templates(template_id) on delete set null, invitation_template_version integer, invitation_language text check (invitation_language in ('th','en')), invitation_subject text, invitation_body text, failure_summary text,
   created_by uuid references auth.users(id) on delete set null, created_at timestamptz not null default now(), updated_at timestamptz not null default now()
 );
 create index if not exists idx_interview_meetings_candidate_stage on public.interview_meetings(candidate_id, stage_instance_id, starts_at desc);

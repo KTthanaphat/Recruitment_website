@@ -309,10 +309,25 @@ export type RejectionLetterDraft = {
 };
 
 export type InterviewMeetingStatus = "creating" | "scheduled" | "rescheduling" | "cancelling" | "cancelled" | "failed";
+export type InterviewInvitationTemplate = {
+  template_id: string;
+  name: string;
+  language: RejectionLetterLanguage;
+  subject_template: string;
+  body_template: string;
+  active: boolean;
+  version: number;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
 export type InterviewMeeting = {
   meeting_id: string; candidate_id: string; stage_instance_id: string; stage: "HR Interview" | "Line Interview";
   starts_at: string; ends_at: string; interviewer_emails: string[]; note: string | null; status: InterviewMeetingStatus;
   organizer_mailbox: string | null; teams_event_id: string | null; join_url: string | null; flow_run_id: string | null;
+  invitation_template_id: string | null; invitation_template_version: number | null; invitation_language: RejectionLetterLanguage | null;
+  invitation_subject: string | null; invitation_body: string | null;
   failure_summary: string | null; created_by: string | null; created_at: string; updated_at: string;
 };
 
@@ -335,6 +350,7 @@ export type DashboardData = {
   change_logs: ChangeLog[];
   rejection_letter_templates: RejectionLetterTemplate[];
   rejection_letter_drafts: RejectionLetterDraft[];
+  interview_invitation_templates: InterviewInvitationTemplate[];
   interview_meetings: InterviewMeeting[];
 };
 

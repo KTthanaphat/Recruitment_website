@@ -5,7 +5,7 @@ import type {
   Candidate,
   CandidateReference,
   CandidateReferenceCheck,
-  ChangeLog, InterviewMeeting, RejectionLetterDraft, RejectionLetterTemplate,
+  ChangeLog, InterviewInvitationTemplate, InterviewMeeting, RejectionLetterDraft, RejectionLetterTemplate,
   DashboardData,
   DashboardReportData,
   DocumentGroup,
@@ -42,6 +42,7 @@ export const emptyDashboardData: DashboardData = {
   change_logs: [],
   rejection_letter_templates: [],
   rejection_letter_drafts: [],
+  interview_invitation_templates: [],
   interview_meetings: []
 };
 
@@ -101,6 +102,7 @@ export async function loadDashboardData(client: SupabaseLike): Promise<Dashboard
     changeLogs,
     rejectionLetterTemplates,
     rejectionLetterDrafts,
+    interviewInvitationTemplates,
     interviewMeetings
   ] = await Promise.all([
     client.auth.getUser(),
@@ -119,6 +121,7 @@ export async function loadDashboardData(client: SupabaseLike): Promise<Dashboard
     selectLimited<ChangeLog>(client, "change_logs", "changed_at", 100),
     selectOptionalAll<RejectionLetterTemplate>(client, "rejection_letter_templates", "updated_at"),
     selectOptionalAll<RejectionLetterDraft>(client, "rejection_letter_drafts", "created_at"),
+    selectOptionalAll<InterviewInvitationTemplate>(client, "interview_invitation_templates", "updated_at"),
     selectOptionalAll<InterviewMeeting>(client, "interview_meetings", "starts_at")
   ]);
 
@@ -147,6 +150,7 @@ export async function loadDashboardData(client: SupabaseLike): Promise<Dashboard
     change_logs: changeLogs,
     rejection_letter_templates: rejectionLetterTemplates,
     rejection_letter_drafts: rejectionLetterDrafts,
+    interview_invitation_templates: interviewInvitationTemplates,
     interview_meetings: interviewMeetings
   };
 }

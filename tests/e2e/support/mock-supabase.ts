@@ -235,6 +235,10 @@ function createRecruitmentDataset(activeRole: MockUserRole): DashboardData {
       { template_id: "template-en", name: "English rejection", language: "en", subject_template: "Result for {candidate_name}", body_template: "Dear {candidate_name}", active: true, version: 1, created_by: "qa-system", updated_by: "qa-system", created_at: "2026-07-01T00:00:00.000Z", updated_at: "2026-07-01T00:00:00.000Z" }
     ],
     rejection_letter_drafts: [],
+    interview_invitation_templates: [
+      { template_id: "interview-template-en", name: "English Teams interview", language: "en", subject_template: "Interview invitation for {candidate_name}", body_template: "Hello {candidate_name}, your {interview_stage} is {bangkok_start}. Join: {teams_join_link}", active: true, version: 1, created_by: "qa-system", updated_by: "qa-system", created_at: "2026-07-01T00:00:00.000Z", updated_at: "2026-07-01T00:00:00.000Z" },
+      { template_id: "interview-template-th", name: "Thai Teams interview", language: "th", subject_template: "นัดสัมภาษณ์ {candidate_name}", body_template: "สัมภาษณ์ {interview_stage} วันที่ {bangkok_start} ลิงก์: {teams_join_link}", active: true, version: 1, created_by: "qa-system", updated_by: "qa-system", created_at: "2026-07-01T00:00:00.000Z", updated_at: "2026-07-01T00:00:00.000Z" }
+    ],
     interview_meetings: [],
     change_logs: [
       {
@@ -438,6 +442,7 @@ function tableRows(data: DashboardData, table: string) {
     change_logs: data.change_logs,
     rejection_letter_templates: data.rejection_letter_templates,
     rejection_letter_drafts: data.rejection_letter_drafts,
+    interview_invitation_templates: data.interview_invitation_templates,
     interview_meetings: data.interview_meetings
   };
   return tables[table] ?? [];

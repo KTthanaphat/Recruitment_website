@@ -288,6 +288,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const [rejectionLetterCandidateId, setRejectionLetterCandidateId] = useState<string | null>(null);
   const [rejectionLetterRetryDraftId, setRejectionLetterRetryDraftId] = useState<string | null>(null);
   const [teamsInterviewCandidateId, setTeamsInterviewCandidateId] = useState<string | null>(null);
+  const [currentStageActionCandidateId, setCurrentStageActionCandidateId] = useState<string | null>(null);
   const [workspaceTarget, setWorkspaceTarget] = useState<{ type: "requisition" | "group" | null; id: string | null }>({ type: null, id: null });
   const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -1036,6 +1037,10 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   }, []);
   const openRejectionLetter = useCallback((candidate: EnrichedCandidate, retryDraftId?: string) => { setRejectionLetterCandidateId(candidate.candidate_id); setRejectionLetterRetryDraftId(retryDraftId ?? null); }, []);
   const openTeamsInterview = useCallback((candidate: EnrichedCandidate) => setTeamsInterviewCandidateId(candidate.candidate_id), []);
+  const openCurrentStageEdit = useCallback((candidate: EnrichedCandidate, stage: ProcessStage) => {
+    if (stage === "HR Interview" || stage === "Line Interview") setCurrentStageActionCandidateId(candidate.candidate_id);
+    else openPendingEdit(candidate);
+  }, [openPendingEdit]);
   const saveTeamsInterview = useCallback(async (payload: Record<string, unknown>) => {
     if (!supabase) throw new Error("Sign in before scheduling a Teams interview."); setBusy(true);
     try { const { data: session } = await supabase.auth.getSession(); const response = await fetch("/api/interview-meetings", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${session.session?.access_token ?? ""}` }, body: JSON.stringify(payload) }); const result = await response.json() as { ok?: boolean; error?: string }; if (!response.ok || !result.ok) throw new Error(result.error ?? "Could not update Teams interview."); setStatus(payload.operation === "cancel" ? "Teams interview cancelled." : "Teams interview scheduled and invitations sent."); setTeamsInterviewCandidateId(null); await loadData(); } finally { setBusy(false); }
@@ -1054,8 +1059,8 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     } finally { setBusy(false); }
   }, [loadData]);
   const detailBody = useMemo(
-    () => buildDetailBodyV2(detail, data, language, canWrite, canDeleteRecords, openProcessFromDetail, openPendingEdit, openDetailOffer, (offer) => { setProcessDefaults({ offer_id: offer.offer_id, offer_expected_updated_at: offer.updated_at, offer_start_confirmation: offer.start_confirmation }); setActiveModal("start_confirmation"); }, navigationContext, openDetailRequisitionChange, openDetailCandidateChange, openCandidateReference, openCandidateReferenceStatus, openCandidateReferenceCheck, prepareDestructiveRpcAction, openRejectionLetter, openTeamsInterview),
-    [canDeleteRecords, canWrite, detail, data, language, navigationContext, openCandidateReference, openCandidateReferenceCheck, openCandidateReferenceStatus, openDetailCandidateChange, openDetailRequisitionChange, openDetailOffer, openPendingEdit, openProcessFromDetail, prepareDestructiveRpcAction, openRejectionLetter, openTeamsInterview]
+    () => buildDetailBodyV2(detail, data, language, canWrite, canDeleteRecords, openProcessFromDetail, openCurrentStageEdit, openDetailOffer, (offer) => { setProcessDefaults({ offer_id: offer.offer_id, offer_expected_updated_at: offer.updated_at, offer_start_confirmation: offer.start_confirmation }); setActiveModal("start_confirmation"); }, navigationContext, openDetailRequisitionChange, openDetailCandidateChange, openCandidateReference, openCandidateReferenceStatus, openCandidateReferenceCheck, prepareDestructiveRpcAction, openRejectionLetter),
+    [canDeleteRecords, canWrite, detail, data, language, navigationContext, openCandidateReference, openCandidateReferenceCheck, openCandidateReferenceStatus, openDetailCandidateChange, openDetailRequisitionChange, openDetailOffer, openCurrentStageEdit, openProcessFromDetail, prepareDestructiveRpcAction, openRejectionLetter]
   );
 
   if (!hasSupabaseConfig) {
@@ -1191,7 +1196,6 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
               onCreateOffer={(candidate) => dispatchWorkspaceAction({ kind: "offer.upsert", candidateId: candidate.candidate_id })}
               onUpdateOffer={openOfferUpdate}
               onCreateRejectionLetter={openRejectionLetter}
-              onScheduleTeamsInterview={openTeamsInterview}
             />
           )}
           profile={data.profile}
@@ -1233,7 +1237,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       ) : null}
 
       {initialView === "pipeline" ? (
-        <PipelineBoardView language={language} rows={filteredCandidates} recruitmentLogs={data.recruitment_logs} recruitmentLogHistory={data.recruitment_log_history} candidateReferences={data.candidate_references} candidateReferenceChecks={data.candidate_reference_checks} profile={data.profile} dataQualityIssues={dataQualityIssues} canWrite={canWrite} offeredCandidateIds={offeredCandidateIds} rejectionLetterSentCandidateIds={rejectionLetterSentCandidateIds} onNewCandidate={() => setActiveModal("candidate")} onOpen={openCandidateDetail} onMove={openProcessForMove} onFailCurrentStage={(candidate) => openStageOutcome(candidate, "fail")} onMaintainTest={openMaintainTest} onStartProcess={openInitialProcessUpdate} onEditPending={openPendingEdit} onPassStage={(candidate) => openStageOutcome(candidate, "pass")} onManageReferenceChecks={(candidate) => openCandidateDetail(candidate.candidate_id)} onCreateOffer={(candidate) => dispatchWorkspaceAction({ kind: "offer.upsert", candidateId: candidate.candidate_id })} onUpdateOffer={openOfferUpdate} onEditCandidate={openDetailCandidateChange} onCorrectPipelineRecord={openPipelineRecordCorrection} onCreateRejectionLetter={openRejectionLetter} onScheduleTeamsInterview={openTeamsInterview} />
+        <PipelineBoardView language={language} rows={filteredCandidates} recruitmentLogs={data.recruitment_logs} recruitmentLogHistory={data.recruitment_log_history} candidateReferences={data.candidate_references} candidateReferenceChecks={data.candidate_reference_checks} profile={data.profile} dataQualityIssues={dataQualityIssues} canWrite={canWrite} offeredCandidateIds={offeredCandidateIds} rejectionLetterSentCandidateIds={rejectionLetterSentCandidateIds} onNewCandidate={() => setActiveModal("candidate")} onOpen={openCandidateDetail} onMove={openProcessForMove} onFailCurrentStage={(candidate) => openStageOutcome(candidate, "fail")} onMaintainTest={openMaintainTest} onStartProcess={openInitialProcessUpdate} onEditPending={openPendingEdit} onPassStage={(candidate) => openStageOutcome(candidate, "pass")} onManageReferenceChecks={(candidate) => openCandidateDetail(candidate.candidate_id)} onCreateOffer={(candidate) => dispatchWorkspaceAction({ kind: "offer.upsert", candidateId: candidate.candidate_id })} onUpdateOffer={openOfferUpdate} onEditCandidate={openDetailCandidateChange} onCorrectPipelineRecord={openPipelineRecordCorrection} onCreateRejectionLetter={openRejectionLetter} />
       ) : null}
 
       {initialView === "offers" ? <OffersView language={language} rows={filteredOffers} allOffers={data.offers} requisitions={filteredRequisitions} profile={data.profile} canWrite={canWrite} onNew={() => setActiveModal("offer")} onOpenCandidate={openCandidateDetail} /> : null}
@@ -1352,13 +1356,14 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
         headerContent={detailBody.headerContent}
         headerActions={detailBody.headerActions}
         variant={detail?.type === "candidate" ? "candidate-workspace" : "side"}
-        inactive={Boolean(activeModal || pendingAction || destructiveAction || offerPassHandoff || journeyActionCandidateId)}
+        inactive={Boolean(activeModal || pendingAction || destructiveAction || offerPassHandoff || journeyActionCandidateId || currentStageActionCandidateId || teamsInterviewCandidateId)}
         onClose={() => setDetail(null)}
       >
         {detailBody.body}
       </Drawer>
       <RejectionLetterComposer open={Boolean(rejectionLetterCandidateId)} candidate={enrichCandidates(data).find((candidate) => candidate.candidate_id === rejectionLetterCandidateId) ?? null} failedLog={data.recruitment_logs.find((log) => log.candidate_id === rejectionLetterCandidateId && log.result === 0 && !log.superseded_at) ?? null} language={language} templates={data.rejection_letter_templates} drafts={data.rejection_letter_drafts} retryOf={data.rejection_letter_drafts.find((draft) => draft.draft_id === rejectionLetterRetryDraftId) ?? null} recruiterName={data.profile?.nickname ?? data.profile?.full_name ?? data.profile?.email ?? "Recruitment"} busy={busy} onClose={() => { setRejectionLetterCandidateId(null); setRejectionLetterRetryDraftId(null); }} onCreate={createRejectionLetterDraft} />
-      <TeamsInterviewComposer candidate={enrichCandidates(data).find((candidate) => candidate.candidate_id === teamsInterviewCandidateId) ?? null} stage={data.recruitment_logs.find((log) => log.candidate_id === teamsInterviewCandidateId && log.result === null && !log.superseded_at && (log.recruitment_process === "HR Interview" || log.recruitment_process === "Line Interview")) ?? null} meeting={data.interview_meetings.find((meeting) => meeting.candidate_id === teamsInterviewCandidateId && meeting.status !== "cancelled") ?? null} busy={busy} onClose={() => setTeamsInterviewCandidateId(null)} onSave={saveTeamsInterview} />
+      <StageEditChoiceModal candidate={enrichCandidates(data).find((candidate) => candidate.candidate_id === currentStageActionCandidateId) ?? null} onClose={() => setCurrentStageActionCandidateId(null)} onEstimate={(candidate) => { setCurrentStageActionCandidateId(null); openPendingEdit(candidate); }} onTeams={(candidate) => { setCurrentStageActionCandidateId(null); openTeamsInterview(candidate); }} />
+      <TeamsInterviewComposer candidate={enrichCandidates(data).find((candidate) => candidate.candidate_id === teamsInterviewCandidateId) ?? null} stage={data.recruitment_logs.find((log) => log.candidate_id === teamsInterviewCandidateId && log.result === null && !log.superseded_at && (log.recruitment_process === "HR Interview" || log.recruitment_process === "Line Interview")) ?? null} meeting={data.interview_meetings.find((meeting) => meeting.candidate_id === teamsInterviewCandidateId && meeting.status !== "cancelled") ?? null} templates={data.interview_invitation_templates} profiles={data.profiles} language={language} recruiterName={data.profile?.nickname ?? data.profile?.full_name ?? data.profile?.email ?? "Recruitment"} busy={busy} onClose={() => setTeamsInterviewCandidateId(null)} onSave={saveTeamsInterview} />
     </AppShell>
   );
 }
@@ -3315,6 +3320,10 @@ function formatBangkokMeetingDateTime(value: string, language: Language) {
   return new Intl.DateTimeFormat(language === "th" ? "th-TH" : "en-GB", { timeZone: "Asia/Bangkok", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value));
 }
 
+function StageEditChoiceModal({ candidate, onClose, onEstimate, onTeams }: { candidate: EnrichedCandidate | null; onClose: () => void; onEstimate: (candidate: EnrichedCandidate) => void; onTeams: (candidate: EnrichedCandidate) => void }) {
+  return <Modal open={Boolean(candidate)} title="Edit current stage" onClose={onClose} width="max-w-lg"><div className="grid gap-3"><p className="text-sm text-slate">Choose the action for {candidate?.name}&rsquo;s pending interview stage.</p><button type="button" className="rounded-lg border border-[#D7DEE8] p-4 text-left transition hover:border-primary hover:bg-[#F8FBFF]" onClick={() => candidate && onEstimate(candidate)}><strong className="text-navy">Update estimated action date</strong><span className="mt-1 block text-sm text-slate">Keep the pending-stage estimate and details up to date.</span></button><button type="button" className="rounded-lg border border-[#C8D8FF] bg-[#F8FBFF] p-4 text-left transition hover:border-primary" onClick={() => candidate && onTeams(candidate)}><strong className="text-primary">Schedule or manage Teams interview</strong><span className="mt-1 block text-sm text-slate">Create, reschedule, retry, or cancel the calendar invitation.</span></button><div className="flex justify-end"><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button></div></div></Modal>;
+}
+
 function buildDetailBodyV2(
   detail: { type: "requisition" | "candidate"; id: string } | null,
   data: DashboardData,
@@ -3322,7 +3331,7 @@ function buildDetailBodyV2(
   canWrite: boolean,
   canDeleteRecords: boolean,
   onUpdateCandidate: (candidateId: string) => void,
-  onEditPending: (candidate: EnrichedCandidate) => void,
+  onEditPending: (candidate: EnrichedCandidate, stage: ProcessStage) => void,
   onEditOffer: (offer: Offer) => void,
   onConfirmOfferStart: (offer: Offer) => void,
   navigationContext: { language: Language; site: string; owner: string; sourcingWeek: string },
@@ -3332,8 +3341,7 @@ function buildDetailBodyV2(
   onSetReferenceStatus: (candidateId: string, referenceId: string) => void,
   onSaveReferenceCheck: (candidateId: string, referenceId: string) => void,
   onDeleteRecord: (endpoint: string, payload: Record<string, unknown>, summary: string) => void,
-  onCreateRejectionLetter: (candidate: EnrichedCandidate, retryDraftId?: string) => void,
-  onScheduleTeamsInterview: (candidate: EnrichedCandidate) => void
+  onCreateRejectionLetter: (candidate: EnrichedCandidate, retryDraftId?: string) => void
 ): DetailBodyResult {
   if (!detail) return { title: "Detail", body: null };
   const href = (path: string) => buildContextualHref(path, navigationContext);
@@ -3466,7 +3474,6 @@ function buildDetailBodyV2(
       headerActions: (
         <div className="flex items-center gap-1">
         {canWrite && failedLog ? <Button type="button" variant="ghost" size="icon-sm" disabled={rejectionLetterAlreadySent} className="text-scarlet hover:bg-[#FFF1F0] hover:text-scarlet disabled:text-cool" icon={<Mail size={17} aria-hidden="true" />} aria-label="Send rejection letter" title={rejectionLetterAlreadySent ? "Rejection letter already sent" : "Send rejection letter"} onClick={() => { if (!rejectionLetterAlreadySent) onCreateRejectionLetter(candidate); }} /> : null}
-        {canWrite && pendingInterview ? <Button type="button" variant="ghost" size="icon-sm" className="text-primary hover:bg-[#F1F6FC]" icon={<CalendarPlus size={17} aria-hidden="true" />} aria-label="Schedule Teams interview" title="Schedule Teams interview" onClick={() => onScheduleTeamsInterview(candidate)} /> : null}
         <RecordActionGroup
           label={formatCandidateName(candidate)}
           flat
@@ -3507,7 +3514,7 @@ function buildDetailBodyV2(
           <div className="mt-4"><CandidateJourney language={language} logs={logs} /></div>
         </section>
         {pendingInterview ? <section className="rounded-xl border border-[#D7DEE8] bg-white p-4 shadow-[0_10px_28px_rgba(11,19,43,0.035)] sm:p-5">
-          <div className="flex flex-wrap items-start justify-between gap-3"><div><SectionHeading icon={<CalendarPlus size={19} />} title="Teams interview" /><p className="mt-1 text-sm text-slate">{processLabel(pendingInterview.recruitment_process, language)} · {interviewMeeting ? interviewMeeting.status === "scheduled" ? "Scheduled" : interviewMeeting.status === "failed" ? "Scheduling failed — retry from the calendar action." : "Updating meeting…" : "No meeting scheduled"}</p></div>{canWrite ? <Button type="button" size="sm" variant="secondary" icon={<CalendarPlus size={16} />} onClick={() => onScheduleTeamsInterview(candidate)}>{interviewMeeting ? "Manage meeting" : "Schedule Teams interview"}</Button> : null}</div>
+          <div className="flex flex-wrap items-start justify-between gap-3"><div><SectionHeading icon={<CalendarPlus size={19} />} title="Teams interview" /><p className="mt-1 text-sm text-slate">{processLabel(pendingInterview.recruitment_process, language)} · {interviewMeeting ? interviewMeeting.status === "scheduled" ? "Scheduled" : interviewMeeting.status === "failed" ? "Scheduling failed — use Current Stage Edit to retry." : "Updating meeting…" : "No meeting scheduled"}</p></div></div>
           {interviewMeeting ? <div className="mt-3 grid gap-1 rounded-lg bg-[#F8FAFD] p-3 text-sm text-slate"><p><strong className="text-navy">Bangkok time:</strong> {formatBangkokMeetingDateTime(interviewMeeting.starts_at, language)}</p><p><strong className="text-navy">Organizer:</strong> {interviewMeeting.organizer_mailbox ?? "Shared HR mailbox"}</p><p><strong className="text-navy">Attendees:</strong> {interviewMeeting.interviewer_emails.join(", ")}</p>{interviewMeeting.join_url ? <a className="mt-1 w-fit font-semibold text-primary underline" href={interviewMeeting.join_url} target="_blank" rel="noreferrer">Join Teams meeting</a> : null}{interviewMeeting.failure_summary ? <p role="alert" className="mt-1 font-semibold text-scarlet">{interviewMeeting.failure_summary}</p> : null}</div> : null}
         </section> : null}
         <section className="rounded-xl border border-[#D7DEE8] bg-white p-4 shadow-[0_10px_28px_rgba(11,19,43,0.035)] sm:p-5">
@@ -3571,7 +3578,7 @@ function buildDetailBodyV2(
                   <div key={record.stageInstanceId} className="min-w-0 rounded-md border border-[#F3D3A2] border-l-4 border-l-[#FFB20F] bg-[#FFFCF6] px-2.5 py-2 shadow-none">
                     <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
                       <strong className="min-w-0 break-words text-sm text-navy">{processLabel(record.stage, language)} / {translate(language, "round")} {record.round}</strong>
-                      {canEditCurrentPending ? <Button type="button" size="icon-sm" variant="ghost" className="text-primary hover:bg-[#FFF4D8] hover:text-primary" icon={<Pencil size={16} aria-hidden="true" />} aria-label={translate(language, "edit")} title={translate(language, "edit")} onClick={() => onEditPending(candidate)} /> : null}
+                      {canEditCurrentPending ? <Button type="button" size="icon-sm" variant="ghost" className="text-primary hover:bg-[#FFF4D8] hover:text-primary" icon={<Pencil size={16} aria-hidden="true" />} aria-label={translate(language, "edit")} title={translate(language, "edit")} onClick={() => onEditPending(candidate, record.stage as ProcessStage)} /> : null}
                     </div>
                     <p className="mt-0.5 break-words text-xs font-medium text-slate">{translate(language, "pendingDetails")}: {formatDate(record.pending.openedDate, language)} / {record.pending.interviewer ?? translate(language, "noInterviewer")}</p>
                     {record.pending.estimatedActionDate ? <p className="mt-0.5 break-words text-xs font-semibold text-primary">{translate(language, "estimatedDateValue", { date: formatDate(record.pending.estimatedActionDate, language) })}</p> : null}

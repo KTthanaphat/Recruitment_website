@@ -297,6 +297,19 @@ create table if not exists public.rejection_letter_drafts (
   finalized_at timestamptz
 );
 
+create table if not exists public.interview_invitation_templates (
+  template_id uuid primary key default gen_random_uuid(),
+  name text not null check (nullif(btrim(name), '') is not null),
+  language text not null check (language in ('th', 'en')),
+  subject_template text not null check (nullif(btrim(subject_template), '') is not null),
+  body_template text not null check (nullif(btrim(body_template), '') is not null),
+  active boolean not null default true,
+  version integer not null default 1 check (version > 0),
+  created_by uuid references auth.users(id) on delete set null,
+  updated_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now()
+);
+
 create table if not exists public.interview_meetings (
   meeting_id uuid primary key default gen_random_uuid(),
   candidate_id text not null references public.candidates(candidate_id) on delete cascade,
@@ -305,6 +318,9 @@ create table if not exists public.interview_meetings (
   starts_at timestamptz not null, ends_at timestamptz not null check (ends_at > starts_at),
   interviewer_emails text[] not null check (cardinality(interviewer_emails) > 0), note text,
   status text not null check (status in ('creating','scheduled','rescheduling','cancelling','cancelled','failed')),
-  organizer_mailbox text, teams_event_id text, join_url text, flow_run_id text, failure_summary text,
+  organizer_mailbox text, teams_event_id text, join_url text, flow_run_id text,
+  invitation_template_id uuid references public.interview_invitation_templates(template_id) on delete set null,
+  invitation_template_version integer, invitation_language text check (invitation_language in ('th','en')),
+  invitation_subject text, invitation_body text, failure_summary text,
   created_by uuid references auth.users(id) on delete set null, created_at timestamptz not null default now(), updated_at timestamptz not null default now()
 );
