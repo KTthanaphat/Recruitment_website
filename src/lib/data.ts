@@ -5,7 +5,7 @@ import type {
   Candidate,
   CandidateReference,
   CandidateReferenceCheck,
-  ChangeLog, RejectionLetterDraft, RejectionLetterTemplate,
+  ChangeLog, InterviewMeeting, RejectionLetterDraft, RejectionLetterTemplate,
   DashboardData,
   DashboardReportData,
   DocumentGroup,
@@ -41,7 +41,8 @@ export const emptyDashboardData: DashboardData = {
   vacancy_weekly_snapshots: [],
   change_logs: [],
   rejection_letter_templates: [],
-  rejection_letter_drafts: []
+  rejection_letter_drafts: [],
+  interview_meetings: []
 };
 
 type SupabaseLike = {
@@ -99,7 +100,8 @@ export async function loadDashboardData(client: SupabaseLike): Promise<Dashboard
     vacancyWeeklySnapshots,
     changeLogs,
     rejectionLetterTemplates,
-    rejectionLetterDrafts
+    rejectionLetterDrafts,
+    interviewMeetings
   ] = await Promise.all([
     client.auth.getUser(),
     selectAll<Profile>(client, "profiles", "updated_at"),
@@ -116,7 +118,8 @@ export async function loadDashboardData(client: SupabaseLike): Promise<Dashboard
     selectAll<VacancyWeeklySnapshot>(client, "vacancy_weekly_snapshots", "updated_at"),
     selectLimited<ChangeLog>(client, "change_logs", "changed_at", 100),
     selectOptionalAll<RejectionLetterTemplate>(client, "rejection_letter_templates", "updated_at"),
-    selectOptionalAll<RejectionLetterDraft>(client, "rejection_letter_drafts", "created_at")
+    selectOptionalAll<RejectionLetterDraft>(client, "rejection_letter_drafts", "created_at"),
+    selectOptionalAll<InterviewMeeting>(client, "interview_meetings", "starts_at")
   ]);
 
   if (userResult.error) throw new Error(userResult.error.message);
@@ -143,7 +146,8 @@ export async function loadDashboardData(client: SupabaseLike): Promise<Dashboard
     vacancy_weekly_snapshots: vacancyWeeklySnapshots,
     change_logs: changeLogs,
     rejection_letter_templates: rejectionLetterTemplates,
-    rejection_letter_drafts: rejectionLetterDrafts
+    rejection_letter_drafts: rejectionLetterDrafts,
+    interview_meetings: interviewMeetings
   };
 }
 

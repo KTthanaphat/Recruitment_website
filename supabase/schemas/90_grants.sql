@@ -18,6 +18,7 @@ grant select on public.vacancy_weekly_snapshots to authenticated;
 grant select on public.change_logs to authenticated;
 grant select on public.rejection_letter_templates to authenticated;
 grant select on public.rejection_letter_drafts to authenticated;
+grant select on public.interview_meetings to authenticated;
 
 alter table public.candidate_references enable row level security;
 alter table public.candidate_reference_checks enable row level security;

@@ -20,3 +20,9 @@ services:
         sync: false
       - key: POWER_AUTOMATE_REJECTION_LETTER_SHARED_MAILBOX
         sync: false
+      - key: POWER_AUTOMATE_TEAMS_MEETING_WEBHOOK_URL
+        sync: false
+      - key: POWER_AUTOMATE_TEAMS_MEETING_WEBHOOK_SECRET
+        sync: false
+      - key: POWER_AUTOMATE_TEAMS_MEETING_SHARED_MAILBOX
+        sync: false

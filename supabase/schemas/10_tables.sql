@@ -296,3 +296,15 @@ create table if not exists public.rejection_letter_drafts (
   created_at timestamptz not null default now(),
   finalized_at timestamptz
 );
+
+create table if not exists public.interview_meetings (
+  meeting_id uuid primary key default gen_random_uuid(),
+  candidate_id text not null references public.candidates(candidate_id) on delete cascade,
+  stage_instance_id uuid not null references public.recruitment_logs(stage_instance_id) on delete cascade,
+  stage text not null check (stage in ('HR Interview', 'Line Interview')),
+  starts_at timestamptz not null, ends_at timestamptz not null check (ends_at > starts_at),
+  interviewer_emails text[] not null check (cardinality(interviewer_emails) > 0), note text,
+  status text not null check (status in ('creating','scheduled','rescheduling','cancelling','cancelled','failed')),
+  organizer_mailbox text, teams_event_id text, join_url text, flow_run_id text, failure_summary text,
+  created_by uuid references auth.users(id) on delete set null, created_at timestamptz not null default now(), updated_at timestamptz not null default now()
+);

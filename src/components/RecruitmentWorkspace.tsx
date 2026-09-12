@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Activity, AlertTriangle, Bookmark, BriefcaseBusiness, Building2, ContactRound, Copy, CopyCheck, EyeOff, Files, Info, LampDesk, Mail, Pencil, Phone, Plus, Send, UserRound, UsersRound, X } from "lucide-react";
+import { Activity, AlertTriangle, Bookmark, BriefcaseBusiness, Building2, CalendarPlus, ContactRound, Copy, CopyCheck, EyeOff, Files, Info, LampDesk, Mail, Pencil, Phone, Plus, Send, UserRound, UsersRound, X } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AdminView } from "@/components/admin/AdminView";
 import { AuditView } from "@/components/audit/AuditView";
@@ -13,6 +13,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { OffersView } from "@/components/offers/OffersView";
 import { PipelineBoardView } from "@/components/pipeline/PipelineBoardView";
 import { RejectionLetterComposer } from "@/components/rejection-letters/RejectionLetterComposer";
+import { TeamsInterviewComposer } from "@/components/interviews/TeamsInterviewComposer";
 import { RequisitionsView } from "@/components/requisitions/RequisitionsView";
 import { EmbeddedSourcingEditor, SourcingView } from "@/components/sourcing/SourcingView";
 import { WorkspaceOfferSection } from "@/components/workspace/WorkspaceOfferSection";
@@ -286,6 +287,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const [journeyActionCandidateId, setJourneyActionCandidateId] = useState<string | null>(null);
   const [rejectionLetterCandidateId, setRejectionLetterCandidateId] = useState<string | null>(null);
   const [rejectionLetterRetryDraftId, setRejectionLetterRetryDraftId] = useState<string | null>(null);
+  const [teamsInterviewCandidateId, setTeamsInterviewCandidateId] = useState<string | null>(null);
   const [workspaceTarget, setWorkspaceTarget] = useState<{ type: "requisition" | "group" | null; id: string | null }>({ type: null, id: null });
   const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -1033,6 +1035,11 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     setDetail({ type: "candidate", id: candidateId });
   }, []);
   const openRejectionLetter = useCallback((candidate: EnrichedCandidate, retryDraftId?: string) => { setRejectionLetterCandidateId(candidate.candidate_id); setRejectionLetterRetryDraftId(retryDraftId ?? null); }, []);
+  const openTeamsInterview = useCallback((candidate: EnrichedCandidate) => setTeamsInterviewCandidateId(candidate.candidate_id), []);
+  const saveTeamsInterview = useCallback(async (payload: Record<string, unknown>) => {
+    if (!supabase) throw new Error("Sign in before scheduling a Teams interview."); setBusy(true);
+    try { const { data: session } = await supabase.auth.getSession(); const response = await fetch("/api/interview-meetings", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${session.session?.access_token ?? ""}` }, body: JSON.stringify(payload) }); const result = await response.json() as { ok?: boolean; error?: string }; if (!response.ok || !result.ok) throw new Error(result.error ?? "Could not update Teams interview."); setStatus(payload.operation === "cancel" ? "Teams interview cancelled." : "Teams interview scheduled and invitations sent."); setTeamsInterviewCandidateId(null); await loadData(); } finally { setBusy(false); }
+  }, [loadData]);
   const createRejectionLetterDraft = useCallback(async (payload: { candidate_id: string; failed_stage_instance_id: string; template_id: string; language: "th" | "en"; recipient_email: string; subject: string; body: string; retry_of_draft_id?: string }) => {
     if (!supabase) throw new Error("Sign in before sending a rejection letter.");
     setBusy(true);
@@ -1047,8 +1054,8 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     } finally { setBusy(false); }
   }, [loadData]);
   const detailBody = useMemo(
-    () => buildDetailBodyV2(detail, data, language, canWrite, canDeleteRecords, openProcessFromDetail, openPendingEdit, openDetailOffer, (offer) => { setProcessDefaults({ offer_id: offer.offer_id, offer_expected_updated_at: offer.updated_at, offer_start_confirmation: offer.start_confirmation }); setActiveModal("start_confirmation"); }, navigationContext, openDetailRequisitionChange, openDetailCandidateChange, openCandidateReference, openCandidateReferenceStatus, openCandidateReferenceCheck, prepareDestructiveRpcAction, openRejectionLetter),
-    [canDeleteRecords, canWrite, detail, data, language, navigationContext, openCandidateReference, openCandidateReferenceCheck, openCandidateReferenceStatus, openDetailCandidateChange, openDetailRequisitionChange, openDetailOffer, openPendingEdit, openProcessFromDetail, prepareDestructiveRpcAction, openRejectionLetter]
+    () => buildDetailBodyV2(detail, data, language, canWrite, canDeleteRecords, openProcessFromDetail, openPendingEdit, openDetailOffer, (offer) => { setProcessDefaults({ offer_id: offer.offer_id, offer_expected_updated_at: offer.updated_at, offer_start_confirmation: offer.start_confirmation }); setActiveModal("start_confirmation"); }, navigationContext, openDetailRequisitionChange, openDetailCandidateChange, openCandidateReference, openCandidateReferenceStatus, openCandidateReferenceCheck, prepareDestructiveRpcAction, openRejectionLetter, openTeamsInterview),
+    [canDeleteRecords, canWrite, detail, data, language, navigationContext, openCandidateReference, openCandidateReferenceCheck, openCandidateReferenceStatus, openDetailCandidateChange, openDetailRequisitionChange, openDetailOffer, openPendingEdit, openProcessFromDetail, prepareDestructiveRpcAction, openRejectionLetter, openTeamsInterview]
   );
 
   if (!hasSupabaseConfig) {
@@ -1184,6 +1191,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
               onCreateOffer={(candidate) => dispatchWorkspaceAction({ kind: "offer.upsert", candidateId: candidate.candidate_id })}
               onUpdateOffer={openOfferUpdate}
               onCreateRejectionLetter={openRejectionLetter}
+              onScheduleTeamsInterview={openTeamsInterview}
             />
           )}
           profile={data.profile}
@@ -1225,7 +1233,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       ) : null}
 
       {initialView === "pipeline" ? (
-        <PipelineBoardView language={language} rows={filteredCandidates} recruitmentLogs={data.recruitment_logs} recruitmentLogHistory={data.recruitment_log_history} candidateReferences={data.candidate_references} candidateReferenceChecks={data.candidate_reference_checks} profile={data.profile} dataQualityIssues={dataQualityIssues} canWrite={canWrite} offeredCandidateIds={offeredCandidateIds} rejectionLetterSentCandidateIds={rejectionLetterSentCandidateIds} onNewCandidate={() => setActiveModal("candidate")} onOpen={openCandidateDetail} onMove={openProcessForMove} onFailCurrentStage={(candidate) => openStageOutcome(candidate, "fail")} onMaintainTest={openMaintainTest} onStartProcess={openInitialProcessUpdate} onEditPending={openPendingEdit} onPassStage={(candidate) => openStageOutcome(candidate, "pass")} onManageReferenceChecks={(candidate) => openCandidateDetail(candidate.candidate_id)} onCreateOffer={(candidate) => dispatchWorkspaceAction({ kind: "offer.upsert", candidateId: candidate.candidate_id })} onUpdateOffer={openOfferUpdate} onEditCandidate={openDetailCandidateChange} onCorrectPipelineRecord={openPipelineRecordCorrection} onCreateRejectionLetter={openRejectionLetter} />
+        <PipelineBoardView language={language} rows={filteredCandidates} recruitmentLogs={data.recruitment_logs} recruitmentLogHistory={data.recruitment_log_history} candidateReferences={data.candidate_references} candidateReferenceChecks={data.candidate_reference_checks} profile={data.profile} dataQualityIssues={dataQualityIssues} canWrite={canWrite} offeredCandidateIds={offeredCandidateIds} rejectionLetterSentCandidateIds={rejectionLetterSentCandidateIds} onNewCandidate={() => setActiveModal("candidate")} onOpen={openCandidateDetail} onMove={openProcessForMove} onFailCurrentStage={(candidate) => openStageOutcome(candidate, "fail")} onMaintainTest={openMaintainTest} onStartProcess={openInitialProcessUpdate} onEditPending={openPendingEdit} onPassStage={(candidate) => openStageOutcome(candidate, "pass")} onManageReferenceChecks={(candidate) => openCandidateDetail(candidate.candidate_id)} onCreateOffer={(candidate) => dispatchWorkspaceAction({ kind: "offer.upsert", candidateId: candidate.candidate_id })} onUpdateOffer={openOfferUpdate} onEditCandidate={openDetailCandidateChange} onCorrectPipelineRecord={openPipelineRecordCorrection} onCreateRejectionLetter={openRejectionLetter} onScheduleTeamsInterview={openTeamsInterview} />
       ) : null}
 
       {initialView === "offers" ? <OffersView language={language} rows={filteredOffers} allOffers={data.offers} requisitions={filteredRequisitions} profile={data.profile} canWrite={canWrite} onNew={() => setActiveModal("offer")} onOpenCandidate={openCandidateDetail} /> : null}
@@ -1350,6 +1358,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
         {detailBody.body}
       </Drawer>
       <RejectionLetterComposer open={Boolean(rejectionLetterCandidateId)} candidate={enrichCandidates(data).find((candidate) => candidate.candidate_id === rejectionLetterCandidateId) ?? null} failedLog={data.recruitment_logs.find((log) => log.candidate_id === rejectionLetterCandidateId && log.result === 0 && !log.superseded_at) ?? null} language={language} templates={data.rejection_letter_templates} drafts={data.rejection_letter_drafts} retryOf={data.rejection_letter_drafts.find((draft) => draft.draft_id === rejectionLetterRetryDraftId) ?? null} recruiterName={data.profile?.nickname ?? data.profile?.full_name ?? data.profile?.email ?? "Recruitment"} busy={busy} onClose={() => { setRejectionLetterCandidateId(null); setRejectionLetterRetryDraftId(null); }} onCreate={createRejectionLetterDraft} />
+      <TeamsInterviewComposer candidate={enrichCandidates(data).find((candidate) => candidate.candidate_id === teamsInterviewCandidateId) ?? null} stage={data.recruitment_logs.find((log) => log.candidate_id === teamsInterviewCandidateId && log.result === null && !log.superseded_at && (log.recruitment_process === "HR Interview" || log.recruitment_process === "Line Interview")) ?? null} meeting={data.interview_meetings.find((meeting) => meeting.candidate_id === teamsInterviewCandidateId && meeting.status !== "cancelled") ?? null} busy={busy} onClose={() => setTeamsInterviewCandidateId(null)} onSave={saveTeamsInterview} />
     </AppShell>
   );
 }
@@ -3302,6 +3311,10 @@ type DetailBodyResult = {
   body: ReactNode;
 };
 
+function formatBangkokMeetingDateTime(value: string, language: Language) {
+  return new Intl.DateTimeFormat(language === "th" ? "th-TH" : "en-GB", { timeZone: "Asia/Bangkok", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value));
+}
+
 function buildDetailBodyV2(
   detail: { type: "requisition" | "candidate"; id: string } | null,
   data: DashboardData,
@@ -3319,7 +3332,8 @@ function buildDetailBodyV2(
   onSetReferenceStatus: (candidateId: string, referenceId: string) => void,
   onSaveReferenceCheck: (candidateId: string, referenceId: string) => void,
   onDeleteRecord: (endpoint: string, payload: Record<string, unknown>, summary: string) => void,
-  onCreateRejectionLetter: (candidate: EnrichedCandidate, retryDraftId?: string) => void
+  onCreateRejectionLetter: (candidate: EnrichedCandidate, retryDraftId?: string) => void,
+  onScheduleTeamsInterview: (candidate: EnrichedCandidate) => void
 ): DetailBodyResult {
   if (!detail) return { title: "Detail", body: null };
   const href = (path: string) => buildContextualHref(path, navigationContext);
@@ -3442,6 +3456,8 @@ function buildDetailBodyV2(
     issue.entityId === candidate.candidate_id || offers.some((offer) => String(offer.offer_id) === issue.entityId)
   );
   const failedLog = logs.find((log) => log.result === 0 && !log.superseded_at);
+  const pendingInterview = logs.find((log) => log.result === null && !log.superseded_at && (log.recruitment_process === "HR Interview" || log.recruitment_process === "Line Interview"));
+  const interviewMeeting = pendingInterview ? data.interview_meetings.find((meeting) => meeting.stage_instance_id === pendingInterview.stage_instance_id && meeting.status !== "cancelled") : null;
   const rejectionLetterAlreadySent = Boolean(failedLog && data.rejection_letter_drafts.some((draft) => draft.candidate_id === candidate.candidate_id && draft.failed_stage_instance_id === failedLog.stage_instance_id && draft.status === "sent"));
 
   return {
@@ -3450,6 +3466,7 @@ function buildDetailBodyV2(
       headerActions: (
         <div className="flex items-center gap-1">
         {canWrite && failedLog ? <Button type="button" variant="ghost" size="icon-sm" disabled={rejectionLetterAlreadySent} className="text-scarlet hover:bg-[#FFF1F0] hover:text-scarlet disabled:text-cool" icon={<Mail size={17} aria-hidden="true" />} aria-label="Send rejection letter" title={rejectionLetterAlreadySent ? "Rejection letter already sent" : "Send rejection letter"} onClick={() => { if (!rejectionLetterAlreadySent) onCreateRejectionLetter(candidate); }} /> : null}
+        {canWrite && pendingInterview ? <Button type="button" variant="ghost" size="icon-sm" className="text-primary hover:bg-[#F1F6FC]" icon={<CalendarPlus size={17} aria-hidden="true" />} aria-label="Schedule Teams interview" title="Schedule Teams interview" onClick={() => onScheduleTeamsInterview(candidate)} /> : null}
         <RecordActionGroup
           label={formatCandidateName(candidate)}
           flat
@@ -3489,6 +3506,10 @@ function buildDetailBodyV2(
           {updateDisabledReason.blocked ? <div className="mt-3"><DisabledReasonHint language={language} reason={updateDisabledReason} /></div> : null}
           <div className="mt-4"><CandidateJourney language={language} logs={logs} /></div>
         </section>
+        {pendingInterview ? <section className="rounded-xl border border-[#D7DEE8] bg-white p-4 shadow-[0_10px_28px_rgba(11,19,43,0.035)] sm:p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3"><div><SectionHeading icon={<CalendarPlus size={19} />} title="Teams interview" /><p className="mt-1 text-sm text-slate">{processLabel(pendingInterview.recruitment_process, language)} · {interviewMeeting ? interviewMeeting.status === "scheduled" ? "Scheduled" : interviewMeeting.status === "failed" ? "Scheduling failed — retry from the calendar action." : "Updating meeting…" : "No meeting scheduled"}</p></div>{canWrite ? <Button type="button" size="sm" variant="secondary" icon={<CalendarPlus size={16} />} onClick={() => onScheduleTeamsInterview(candidate)}>{interviewMeeting ? "Manage meeting" : "Schedule Teams interview"}</Button> : null}</div>
+          {interviewMeeting ? <div className="mt-3 grid gap-1 rounded-lg bg-[#F8FAFD] p-3 text-sm text-slate"><p><strong className="text-navy">Bangkok time:</strong> {formatBangkokMeetingDateTime(interviewMeeting.starts_at, language)}</p><p><strong className="text-navy">Organizer:</strong> {interviewMeeting.organizer_mailbox ?? "Shared HR mailbox"}</p><p><strong className="text-navy">Attendees:</strong> {interviewMeeting.interviewer_emails.join(", ")}</p>{interviewMeeting.join_url ? <a className="mt-1 w-fit font-semibold text-primary underline" href={interviewMeeting.join_url} target="_blank" rel="noreferrer">Join Teams meeting</a> : null}{interviewMeeting.failure_summary ? <p role="alert" className="mt-1 font-semibold text-scarlet">{interviewMeeting.failure_summary}</p> : null}</div> : null}
+        </section> : null}
         <section className="rounded-xl border border-[#D7DEE8] bg-white p-4 shadow-[0_10px_28px_rgba(11,19,43,0.035)] sm:p-5">
           <SectionHeading className="mb-3" icon={<ContactRound size={19} />} title="Candidate profile" />
         <DetailGrid workspace language={language} rows={[
