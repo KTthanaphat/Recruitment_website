@@ -16,6 +16,8 @@ export async function POST(request: NextRequest) {
     const payload = await request.json() as Record<string, unknown>;
     const operation = payload.operation === "reschedule" || payload.operation === "cancel" ? payload.operation : "create";
     const interviewerEmails = normalizedEmails(payload.interviewer_emails);
+    const rawInterviewerEmails = Array.isArray(payload.interviewer_emails) ? payload.interviewer_emails.filter((email): email is string => typeof email === "string").map((email) => email.trim()).filter(Boolean) : [];
+    const candidateEmail = typeof payload.candidate_email === "string" ? payload.candidate_email.trim().toLowerCase() : "";
     const templateId = typeof payload.invitation_template_id === "string" ? payload.invitation_template_id : null;
     const invitationLanguage = payload.invitation_language === "th" || payload.invitation_language === "en" ? payload.invitation_language : null;
     const invitationSubject = typeof payload.invitation_subject === "string" ? payload.invitation_subject.trim() : "";
@@ -31,7 +33,7 @@ export async function POST(request: NextRequest) {
       service.from("recruitment_logs").select("candidate_id,stage_instance_id,recruitment_process,result,superseded_at").eq("stage_instance_id", payload.stage_instance_id).single()
     ]);
     if (!profile || profile.role === "viewer" || !candidate || !stage || stage.candidate_id !== candidate.candidate_id || stage.result !== null || stage.superseded_at || !["HR Interview", "Line Interview"].includes(stage.recruitment_process)) return NextResponse.json({ ok: false, error: "Only pending HR or Line interviews can be scheduled." }, { status: 403 });
-    if (!candidate.email || !emailPattern.test(candidate.email)) return NextResponse.json({ ok: false, error: "A valid candidate email is required before scheduling." }, { status: 400 });
+    if (operation !== "cancel" && !emailPattern.test(candidateEmail)) return NextResponse.json({ ok: false, error: "A valid candidate email is required before scheduling." }, { status: 400 });
 
     if (profile.role === "site_recruiter") {
       const { data: matches } = candidate.group_id ? await service.from("document_groups").select("doc_id").eq("group_id", candidate.group_id) : await service.from("document_groups").select("doc_id").eq("doc_group_id", candidate.doc_group_id);
@@ -43,7 +45,7 @@ export async function POST(request: NextRequest) {
 
     const startsAt = typeof payload.starts_at === "string" ? Date.parse(payload.starts_at) : NaN;
     const endsAt = typeof payload.ends_at === "string" ? Date.parse(payload.ends_at) : NaN;
-    if (operation !== "cancel" && (interviewerEmails.length === 0 || Number.isNaN(startsAt) || Number.isNaN(endsAt) || endsAt <= startsAt)) return NextResponse.json({ ok: false, error: "Enter a valid Bangkok schedule and at least one interviewer email." }, { status: 400 });
+    if (operation !== "cancel" && (rawInterviewerEmails.length === 0 || rawInterviewerEmails.length !== interviewerEmails.length || interviewerEmails.length === 0 || Number.isNaN(startsAt) || Number.isNaN(endsAt) || endsAt <= startsAt)) return NextResponse.json({ ok: false, error: "Enter a valid Bangkok schedule and a valid email for every interviewer." }, { status: 400 });
     const invalidInvitation = [...validateInterviewInvitationTemplate(invitationSubject), ...validateInterviewInvitationTemplate(invitationBody)];
     if (operation !== "cancel" && (!templateId || !invitationLanguage || !invitationSubject || !invitationBody || invalidInvitation.length)) return NextResponse.json({ ok: false, error: invalidInvitation.length ? `Unknown or incomplete invitation variable: ${[...new Set(invalidInvitation)].join(", ")}` : "Choose an invitation template and complete its subject and body." }, { status: 400 });
     const { data: template } = operation === "cancel" ? { data: null } : await service.from("interview_invitation_templates").select("template_id,version,language,active").eq("template_id", templateId).single();
@@ -73,12 +75,13 @@ export async function POST(request: NextRequest) {
     const secret = process.env.POWER_AUTOMATE_TEAMS_MEETING_WEBHOOK_SECRET;
     const mailbox = process.env.POWER_AUTOMATE_TEAMS_MEETING_SHARED_MAILBOX;
     if (!url || !secret || !mailbox) throw new Error("Teams meeting automation is not configured.");
-    const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json", "x-teams-meeting-secret": secret }, body: JSON.stringify({ operation, meeting_id: meeting.meeting_id, teams_event_id: meeting.teams_event_id, shared_mailbox: mailbox, candidate_id: candidate.candidate_id, stage_instance_id: stage.stage_instance_id, candidate_email: candidate.email, interviewer_emails: interviewerEmails, starts_at: payload.starts_at, ends_at: payload.ends_at, stage: stage.recruitment_process, invitation_template_id: templateId, invitation_template_version: template?.version ?? null, invitation_language: invitationLanguage, invitation_subject: invitationSubject, invitation_body: invitationBody, note: typeof payload.note === "string" ? payload.note.trim() : "" }), signal: AbortSignal.timeout(15000) });
+    const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json", "x-teams-meeting-secret": secret }, body: JSON.stringify({ operation, meeting_id: meeting.meeting_id, teams_event_id: meeting.teams_event_id, shared_mailbox: mailbox, candidate_id: candidate.candidate_id, stage_instance_id: stage.stage_instance_id, candidate_email: candidateEmail || candidate.email, interviewer_emails: interviewerEmails, starts_at: payload.starts_at, ends_at: payload.ends_at, stage: stage.recruitment_process, invitation_template_id: templateId, invitation_template_version: template?.version ?? null, invitation_language: invitationLanguage, invitation_subject: invitationSubject, invitation_body: invitationBody, note: typeof payload.note === "string" ? payload.note.trim() : "" }), signal: AbortSignal.timeout(15000) });
     const flow = await response.json().catch(() => ({})) as { ok?: boolean; teams_event_id?: string; join_url?: string; flow_run_id?: string; error?: string };
     if (!response.ok || !flow.ok || (operation !== "cancel" && (!flow.teams_event_id || !flow.join_url))) throw new Error(flow.error ?? "Power Automate could not update the Teams meeting.");
     const finalUpdate = operation === "cancel" ? { status: "cancelled", join_url: null, flow_run_id: flow.flow_run_id ?? null, failure_summary: null } : { status: "scheduled", organizer_mailbox: mailbox, teams_event_id: flow.teams_event_id, join_url: flow.join_url, invitation_body: invitationBody.replaceAll("{teams_join_link}", flow.join_url ?? ""), flow_run_id: flow.flow_run_id ?? null, failure_summary: null };
     const { error: finalError } = await service.from("interview_meetings").update(finalUpdate).eq("meeting_id", meeting.meeting_id);
     if (finalError) throw new Error(finalError.message);
+    if (operation !== "cancel" && candidate.email !== candidateEmail) { const { error: candidateError } = await service.from("candidates").update({ email: candidateEmail }).eq("candidate_id", candidate.candidate_id); if (candidateError) throw new Error(candidateError.message); }
     return NextResponse.json({ ok: true, meeting_id: meeting.meeting_id, join_url: flow.join_url ?? null });
   } catch (error) {
     const message = error instanceof Error ? error.message.slice(0, 500) : "Could not update Teams meeting.";

@@ -79,6 +79,8 @@ import type {
   CandidateReferenceCheck,
   EnrichedCandidate,
   EnrichedRequisition,
+  InterviewInvitationTemplate,
+  InterviewMeeting,
   Language,
   Offer,
   OfferPassHandoff,
@@ -287,7 +289,6 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const [journeyActionCandidateId, setJourneyActionCandidateId] = useState<string | null>(null);
   const [rejectionLetterCandidateId, setRejectionLetterCandidateId] = useState<string | null>(null);
   const [rejectionLetterRetryDraftId, setRejectionLetterRetryDraftId] = useState<string | null>(null);
-  const [teamsInterviewCandidateId, setTeamsInterviewCandidateId] = useState<string | null>(null);
   const [currentStageActionCandidateId, setCurrentStageActionCandidateId] = useState<string | null>(null);
   const [workspaceTarget, setWorkspaceTarget] = useState<{ type: "requisition" | "group" | null; id: string | null }>({ type: null, id: null });
   const [welcomeOpen, setWelcomeOpen] = useState(false);
@@ -1036,14 +1037,14 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     setDetail({ type: "candidate", id: candidateId });
   }, []);
   const openRejectionLetter = useCallback((candidate: EnrichedCandidate, retryDraftId?: string) => { setRejectionLetterCandidateId(candidate.candidate_id); setRejectionLetterRetryDraftId(retryDraftId ?? null); }, []);
-  const openTeamsInterview = useCallback((candidate: EnrichedCandidate) => setTeamsInterviewCandidateId(candidate.candidate_id), []);
-  const openCurrentStageEdit = useCallback((candidate: EnrichedCandidate, stage: ProcessStage) => {
-    if (stage === "HR Interview" || stage === "Line Interview") setCurrentStageActionCandidateId(candidate.candidate_id);
-    else openPendingEdit(candidate);
-  }, [openPendingEdit]);
+  const openCurrentStageEdit = useCallback((candidate: EnrichedCandidate, _stage: ProcessStage) => setCurrentStageActionCandidateId(candidate.candidate_id), []);
   const saveTeamsInterview = useCallback(async (payload: Record<string, unknown>) => {
     if (!supabase) throw new Error("Sign in before scheduling a Teams interview."); setBusy(true);
-    try { const { data: session } = await supabase.auth.getSession(); const response = await fetch("/api/interview-meetings", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${session.session?.access_token ?? ""}` }, body: JSON.stringify(payload) }); const result = await response.json() as { ok?: boolean; error?: string }; if (!response.ok || !result.ok) throw new Error(result.error ?? "Could not update Teams interview."); setStatus(payload.operation === "cancel" ? "Teams interview cancelled." : "Teams interview scheduled and invitations sent."); setTeamsInterviewCandidateId(null); await loadData(); } finally { setBusy(false); }
+    try { const { data: session } = await supabase.auth.getSession(); const response = await fetch("/api/interview-meetings", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${session.session?.access_token ?? ""}` }, body: JSON.stringify(payload) }); const result = await response.json() as { ok?: boolean; error?: string }; if (!response.ok || !result.ok) throw new Error(result.error ?? "Could not update Teams interview."); setStatus(payload.operation === "cancel" ? "Teams interview cancelled." : "Teams interview scheduled and invitations sent."); setCurrentStageActionCandidateId(null); await loadData(); } finally { setBusy(false); }
+  }, [loadData]);
+  const saveCurrentStageEstimate = useCallback(async (payload: Record<string, unknown>) => {
+    if (!supabase) throw new Error("Sign in before updating the pending stage."); setBusy(true);
+    try { const { data: rpcResult, error: rpcError } = await supabase.rpc("app_update_pipeline_pending_v2", { payload }); if (rpcError) throw new Error(rpcError.message); const result = (rpcResult ?? { ok: true }) as RpcResult; if (result.error) throw new Error(result.error); setStatus("Estimated action date updated."); setCurrentStageActionCandidateId(null); await loadData(); } finally { setBusy(false); }
   }, [loadData]);
   const createRejectionLetterDraft = useCallback(async (payload: { candidate_id: string; failed_stage_instance_id: string; template_id: string; language: "th" | "en"; recipient_email: string; subject: string; body: string; retry_of_draft_id?: string }) => {
     if (!supabase) throw new Error("Sign in before sending a rejection letter.");
@@ -1356,14 +1357,13 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
         headerContent={detailBody.headerContent}
         headerActions={detailBody.headerActions}
         variant={detail?.type === "candidate" ? "candidate-workspace" : "side"}
-        inactive={Boolean(activeModal || pendingAction || destructiveAction || offerPassHandoff || journeyActionCandidateId || currentStageActionCandidateId || teamsInterviewCandidateId)}
+        inactive={Boolean(activeModal || pendingAction || destructiveAction || offerPassHandoff || journeyActionCandidateId || currentStageActionCandidateId)}
         onClose={() => setDetail(null)}
       >
         {detailBody.body}
       </Drawer>
       <RejectionLetterComposer open={Boolean(rejectionLetterCandidateId)} candidate={enrichCandidates(data).find((candidate) => candidate.candidate_id === rejectionLetterCandidateId) ?? null} failedLog={data.recruitment_logs.find((log) => log.candidate_id === rejectionLetterCandidateId && log.result === 0 && !log.superseded_at) ?? null} language={language} templates={data.rejection_letter_templates} drafts={data.rejection_letter_drafts} retryOf={data.rejection_letter_drafts.find((draft) => draft.draft_id === rejectionLetterRetryDraftId) ?? null} recruiterName={data.profile?.nickname ?? data.profile?.full_name ?? data.profile?.email ?? "Recruitment"} busy={busy} onClose={() => { setRejectionLetterCandidateId(null); setRejectionLetterRetryDraftId(null); }} onCreate={createRejectionLetterDraft} />
-      <StageEditChoiceModal candidate={enrichCandidates(data).find((candidate) => candidate.candidate_id === currentStageActionCandidateId) ?? null} onClose={() => setCurrentStageActionCandidateId(null)} onEstimate={(candidate) => { setCurrentStageActionCandidateId(null); openPendingEdit(candidate); }} onTeams={(candidate) => { setCurrentStageActionCandidateId(null); openTeamsInterview(candidate); }} />
-      <TeamsInterviewComposer candidate={enrichCandidates(data).find((candidate) => candidate.candidate_id === teamsInterviewCandidateId) ?? null} stage={data.recruitment_logs.find((log) => log.candidate_id === teamsInterviewCandidateId && log.result === null && !log.superseded_at && (log.recruitment_process === "HR Interview" || log.recruitment_process === "Line Interview")) ?? null} meeting={data.interview_meetings.find((meeting) => meeting.candidate_id === teamsInterviewCandidateId && meeting.status !== "cancelled") ?? null} templates={data.interview_invitation_templates} profiles={data.profiles} language={language} recruiterName={data.profile?.nickname ?? data.profile?.full_name ?? data.profile?.email ?? "Recruitment"} busy={busy} onClose={() => setTeamsInterviewCandidateId(null)} onSave={saveTeamsInterview} />
+      <CurrentStageEditModal candidate={enrichCandidates(data).find((candidate) => candidate.candidate_id === currentStageActionCandidateId) ?? null} stage={data.recruitment_logs.find((log) => log.candidate_id === currentStageActionCandidateId && log.result === null && !log.superseded_at) ?? null} meeting={data.interview_meetings.find((meeting) => meeting.candidate_id === currentStageActionCandidateId && meeting.status !== "cancelled") ?? null} templates={data.interview_invitation_templates} profiles={data.profiles} language={language} recruiterName={data.profile?.nickname ?? data.profile?.full_name ?? data.profile?.email ?? "Recruitment"} busy={busy} onClose={() => setCurrentStageActionCandidateId(null)} onSaveEstimate={saveCurrentStageEstimate} onSaveTeams={saveTeamsInterview} />
     </AppShell>
   );
 }
@@ -3320,8 +3320,13 @@ function formatBangkokMeetingDateTime(value: string, language: Language) {
   return new Intl.DateTimeFormat(language === "th" ? "th-TH" : "en-GB", { timeZone: "Asia/Bangkok", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value));
 }
 
-function StageEditChoiceModal({ candidate, onClose, onEstimate, onTeams }: { candidate: EnrichedCandidate | null; onClose: () => void; onEstimate: (candidate: EnrichedCandidate) => void; onTeams: (candidate: EnrichedCandidate) => void }) {
-  return <Modal open={Boolean(candidate)} title="Edit current stage" onClose={onClose} width="max-w-lg"><div className="grid gap-3"><p className="text-sm text-slate">Choose the action for {candidate?.name}&rsquo;s pending interview stage.</p><button type="button" className="rounded-lg border border-[#D7DEE8] p-4 text-left transition hover:border-primary hover:bg-[#F8FBFF]" onClick={() => candidate && onEstimate(candidate)}><strong className="text-navy">Update estimated action date</strong><span className="mt-1 block text-sm text-slate">Keep the pending-stage estimate and details up to date.</span></button><button type="button" className="rounded-lg border border-[#C8D8FF] bg-[#F8FBFF] p-4 text-left transition hover:border-primary" onClick={() => candidate && onTeams(candidate)}><strong className="text-primary">Schedule or manage Teams interview</strong><span className="mt-1 block text-sm text-slate">Create, reschedule, retry, or cancel the calendar invitation.</span></button><div className="flex justify-end"><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button></div></div></Modal>;
+function CurrentStageEditModal({ candidate, stage, meeting, templates, profiles, language, recruiterName, busy, onClose, onSaveEstimate, onSaveTeams }: { candidate: EnrichedCandidate | null; stage: RecruitmentLog | null; meeting: InterviewMeeting | null; templates: InterviewInvitationTemplate[]; profiles: Profile[]; language: Language; recruiterName: string; busy: boolean; onClose: () => void; onSaveEstimate: (payload: Record<string, unknown>) => Promise<void>; onSaveTeams: (payload: Record<string, unknown>) => Promise<void> }) {
+  const teamsAvailable = stage?.recruitment_process === "HR Interview" || stage?.recruitment_process === "Line Interview";
+  const [mode, setMode] = useState<"estimate" | "teams">("estimate");
+  const [estimate, setEstimate] = useState(""), [interviewer, setInterviewer] = useState(""), [remark, setRemark] = useState(""), [error, setError] = useState<string | null>(null);
+  useEffect(() => { setMode("estimate"); setEstimate(stage?.estimated_action_date ?? ""); setInterviewer(stage?.interviewer ?? ""); setRemark(stage?.remark ?? ""); setError(null); }, [stage?.estimated_action_date, stage?.interviewer, stage?.remark, stage?.stage_instance_id]);
+  async function saveEstimate() { if (!candidate || !stage?.stage_instance_id || !stage.updated_at) return; try { setError(null); await onSaveEstimate({ candidate_id: candidate.candidate_id, stage_instance_id: stage.stage_instance_id, expected_updated_at: stage.updated_at, pending: { opened_date: stage.log_date, estimated_action_date: estimate || null, interviewer: interviewer.trim() || null, remark: remark.trim() || null } }); } catch (saveError) { setError(saveError instanceof Error ? saveError.message : "Could not update the estimated date."); } }
+  return <Modal open={Boolean(candidate && stage)} title="Edit current stage" onClose={onClose} width="max-w-4xl"><div className="grid gap-4"><div className="inline-flex w-full rounded-lg border border-[#D7DEE8] bg-[#F8FAFD] p-1 sm:w-auto"><button type="button" className={`min-h-10 flex-1 rounded-md px-3 text-sm font-semibold transition ${mode === "estimate" ? "bg-white text-navy shadow-sm" : "text-slate"}`} onClick={() => setMode("estimate")}>Estimated action date</button>{teamsAvailable ? <button type="button" className={`min-h-10 flex-1 rounded-md px-3 text-sm font-semibold transition ${mode === "teams" ? "bg-white text-primary shadow-sm" : "text-slate"}`} onClick={() => setMode("teams")}>Teams meeting</button> : null}</div>{mode === "estimate" ? <div className="grid gap-4"><p className="text-sm text-slate">Update the pending-stage estimate without scheduling a meeting.</p><div className="grid gap-4 md:grid-cols-2"><Field label={translate(language, "estimatedActionDate")}><TextInput type="date" value={estimate} onChange={(event) => setEstimate(event.target.value)} /></Field><Field label={translate(language, "interviewer")}><TextInput value={interviewer} onChange={(event) => setInterviewer(event.target.value)} /></Field></div><Field label={translate(language, "remark")}><TextArea rows={3} value={remark} onChange={(event) => setRemark(event.target.value)} /></Field>{error ? <p role="alert" className="text-sm font-semibold text-scarlet">{error}</p> : null}<div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="button" disabled={busy} onClick={saveEstimate}>{busy ? "Saving..." : "Save estimated date"}</Button></div></div> : <TeamsInterviewComposer embedded candidate={candidate} stage={stage} meeting={meeting?.stage_instance_id === stage?.stage_instance_id ? meeting : null} templates={templates} profiles={profiles} language={language} recruiterName={recruiterName} busy={busy} onClose={onClose} onSave={onSaveTeams} />}</div></Modal>;
 }
 
 function buildDetailBodyV2(
