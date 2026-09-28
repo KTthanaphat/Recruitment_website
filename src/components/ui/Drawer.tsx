@@ -65,7 +65,7 @@ export function Drawer({
         onKeyDown={(event) => trapDrawerTabKey(event, panelRef.current)}
         className={`h-full min-w-0 w-full overflow-x-hidden overflow-y-auto overscroll-contain bg-white shadow-2xl outline-none ${variant === "candidate-workspace" ? "sm:max-w-2xl sm:border-l sm:border-[#D7DEE8]" : "sm:max-w-2xl"}`}
       >
-        <div className={`sticky top-0 z-30 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] ${uniformHeaderActions ? "items-center" : ""} ${mobileActionRow ? "sm:grid-cols-[minmax(0,1fr)_auto_auto]" : ""} gap-3 border-b border-[#D7DEE8] bg-white px-4 py-4 sm:px-5`}>
+        <div className={`sticky top-0 z-30 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start ${mobileActionRow ? "sm:grid-cols-[minmax(0,1fr)_auto_auto]" : ""} gap-3 border-b border-[#D7DEE8] bg-white px-4 py-4 sm:px-5`}>
           <div className="min-w-0">
             {headerContent ? <><h3 id={titleId} className="sr-only">{title}</h3>{headerContent}</> : <>
               {backAction ? <div className="mb-2">{backAction}</div> : null}

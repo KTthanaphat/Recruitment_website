@@ -14,10 +14,11 @@ test("priority bookmark persists, filters records and survives navigation", asyn
   const geometry = await utilities.evaluateAll(nodes => nodes.map(node => {
     const box = node.getBoundingClientRect();
     const icon = node.querySelector("svg")!.getBoundingClientRect();
-    return { width: box.width, height: box.height, center: box.y + box.height / 2, iconWidth: icon.width, iconHeight: icon.height };
+    return { top: box.top, width: box.width, height: box.height, center: box.y + box.height / 2, iconWidth: icon.width, iconHeight: icon.height };
   }));
   expect(geometry.every(box => box.width === 36 && box.height === 36 && box.iconWidth === 18 && box.iconHeight === 18)).toBe(true);
   expect(Math.max(...geometry.map(box => box.center)) - Math.min(...geometry.map(box => box.center))).toBeLessThan(1);
+  expect(geometry.every(box => Math.abs(box.top - 16) < 1)).toBe(true);
   await expect(drawer.getByRole("button", { name: "Mark as priority", exact: true }).locator("svg")).toHaveAttribute("fill", "none");
   await drawer.getByRole("button", { name: "Mark as priority", exact: true }).click();
   await expect(drawer.getByRole("button", { name: "Remove priority", exact: true })).toHaveAttribute("aria-pressed", "true");
@@ -119,10 +120,10 @@ test("Thai phone controls fit and place the bookmark between PIC and language", 
   await expect(drawer.getByRole("button", { name: "ทำเครื่องหมายคำขอเร่งด่วน", exact: true })).toBeVisible();
   const utilitySizes = await drawer.locator("[data-detail-utility]").evaluateAll(nodes => nodes.map(node => {
     const box = node.getBoundingClientRect();
-    return { width: box.width, height: box.height };
+    return { top: box.top, width: box.width, height: box.height };
   }));
   expect(utilitySizes).toHaveLength(4);
-  expect(utilitySizes.every(box => box.width === 44 && box.height === 44)).toBe(true);
+  expect(utilitySizes.every(box => box.width === 44 && box.height === 44 && Math.abs(box.top - 16) < 1)).toBe(true);
   await drawer.getByRole("button", { name: "ทำเครื่องหมายคำขอเร่งด่วน", exact: true }).click();
   await page.mouse.move(0, 0);
   await expect(drawer.locator('[aria-pressed="true"] svg')).toHaveCSS("color", "rgb(10, 60, 220)");

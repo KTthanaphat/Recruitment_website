@@ -1396,7 +1396,6 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
         headerContent={detailBody.headerContent}
         headerActions={detailBody.headerActions}
         variant={detail ? "candidate-workspace" : "side"}
-        mobileActionRow={detail?.type === "requisition"}
         uniformHeaderActions={detail?.type === "requisition"}
         inactive={Boolean(activeModal || pendingAction || destructiveAction || offerPassHandoff || journeyActionCandidateId || currentStageActionCandidateId)}
         onClose={() => setDetail(null)}
