@@ -64,7 +64,7 @@ test("grouped sidebar gates admin and preserves global navigation context", asyn
 
 test("workspace section tabs persist in URL history and render one section", async ({ page }) => {
   await installMockSupabase(page, { role: "admin_recruiter" });
-  await page.goto("/workspace?type=requisition&id=REQ-HQ-1&section=overview&sourcingWeek=2026-07-06");
+  await page.goto("/workspace?type=group&id=GRP-ENG&section=overview&sourcingWeek=2026-07-06");
   await expectWorkspaceReady(page);
 
   const tabs = page.getByRole("tablist", { name: "Hiring workspace sections" });
@@ -79,7 +79,7 @@ test("workspace section tabs persist in URL history and render one section", asy
 
   await tabs.getByRole("tab", { name: "Sourcing" }).click();
   await expect(page).toHaveURL(/section=sourcing/);
-  await expect(page.getByRole("tabpanel")).toContainText("Sourcing coverage");
+  await expect(page.getByRole("tabpanel")).toContainText(/Weekly sourcing/i);
   await page.goBack();
   await expect(page).toHaveURL(/section=pipeline/);
   await expect(tabs.getByRole("tab", { name: "Pipeline" })).toHaveAttribute("aria-selected", "true");
@@ -88,32 +88,31 @@ test("workspace section tabs persist in URL history and render one section", asy
   await expect(tabs.getByRole("tab", { name: "Sourcing" })).toHaveAttribute("aria-selected", "true");
 });
 
-test("workspace picker searches requisitions and groups", async ({ page }) => {
+test("workspace picker searches groups by linked requisition ID", async ({ page }) => {
   await installMockSupabase(page, { role: "admin_recruiter" });
   await page.goto("/workspace");
   await expectWorkspaceReady(page);
 
   const search = page.getByLabel("Search workspaces");
   await search.fill("REQ-KT1-1");
-  await expect(page.getByRole("button", { name: /REQ-KT1-1/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /REQ-HQ-1/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /GRP-TECH/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /GRP-ENG/ })).toHaveCount(0);
   await search.fill("REQ-CLOSED-1");
   await expect(page.getByText("No matching workspaces.")).toBeVisible();
 
-  await page.getByRole("button", { name: "Groups" }).click();
   await search.fill("GRP-TECH");
   await expect(page.getByRole("button", { name: /GRP-TECH/ })).toBeVisible();
   await search.fill("GRP-CLOSED");
   await expect(page.getByText("No matching workspaces.")).toBeVisible();
 });
 
-test("workspace direct URL to closed work shows invalid target picker", async ({ page }) => {
+test("workspace direct URL to closed work opens requisition detail over groups", async ({ page }) => {
   await installMockSupabase(page, { role: "admin_recruiter" });
   await page.goto("/workspace?type=requisition&id=REQ-CLOSED-1");
   await expectWorkspaceReady(page);
 
-  await expect(page.getByText("The workspace in the URL was not found. Choose an available record.")).toBeVisible();
-  await expect(page.getByRole("button", { name: /REQ-CLOSED-1/ })).toHaveCount(0);
+  await expect(page.getByRole("dialog")).toContainText("REQ-CLOSED-1");
+  await expect(page.getByRole("heading", { name: "Select a hiring workspace" })).toBeVisible();
 });
 
 test("candidate document search filters linked records", async ({ page }) => {
@@ -379,7 +378,7 @@ test("key views have no page-level overflow at 390px", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await installMockSupabase(page, { role: "admin_recruiter" });
 
-  for (const path of ["/home", "/workspace?type=requisition&id=REQ-HQ-1", "/pipeline", "/candidates", "/sourcing?sourcingWeek=2026-07-06"]) {
+  for (const path of ["/home", "/workspace?type=group&id=GRP-ENG", "/pipeline", "/candidates", "/sourcing?sourcingWeek=2026-07-06"]) {
     await page.goto(path);
     await expectWorkspaceReady(page);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);

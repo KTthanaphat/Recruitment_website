@@ -1476,7 +1476,7 @@ begin
     join public.document_groups peer on peer.group_id = c.group_id
     join public.requisitions r on r.doc_id = peer.doc_id and r.status = 'ongoing'
     left join lateral (
-      select count(*)::integer accepted_count from public.offers o where o.doc_id = r.doc_id and o.accepted_date is not null
+      select count(*)::integer accepted_count from public.offers o where o.doc_id = r.doc_id and o.accepted_date is not null and o.start_confirmation is distinct from 'did_not_start'
     ) accepted on true
     where c.candidate_id = v_candidate_id
       and greatest(r.head_count - coalesce(accepted.accepted_count, 0), 0) > 0

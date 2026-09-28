@@ -1,10 +1,10 @@
 "use client";
 
-import { AlertTriangle, ExternalLink, Plus, UserRound } from "lucide-react";
+import { AlertTriangle, ExternalLink, Plus } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { RecordActionGroup, type RecordAction } from "@/components/ui/Operations";
-import { Panel, SectionTitle } from "@/components/ui/Panel";
+import { SectionTitle } from "@/components/ui/Panel";
 import { Tag } from "@/components/ui/Tag";
 import { formatDate, formatRequisitionOptionLabel, formatRequisitionTitle } from "@/lib/format";
 import { offerStatusLabel, translate } from "@/lib/i18n/dictionary";
@@ -57,7 +57,7 @@ export function WorkspaceOfferSection({
       : undefined;
 
   return (
-    <Panel>
+    <section className="min-w-0">
       <SectionTitle
         title="Offers"
         eyebrow="Headcount impact and start dates"
@@ -114,7 +114,8 @@ export function WorkspaceOfferSection({
       ) : null}
 
       {offers.length === 0 ? <EmptyState message={translate(language, "noOffersWorkspace")} /> : (
-        <div className="grid min-w-0 gap-2">
+        <div className="min-w-0 divide-y divide-[#E4E9F2] border-y border-[#E4E9F2]">
+          <div className="hidden gap-3 py-2 text-left text-xs font-semibold text-slate md:grid md:grid-cols-[minmax(0,2fr)_minmax(0,1.2fr)_minmax(0,1fr)_auto]"><span>{translate(language, "candidate")}</span><span>{translate(language, "requisition")}</span><span>{translate(language, "workspaceImpact")}</span><span>{translate(language, "actions")}</span></div>
           {offers.map((offer) => {
             const status = offerStatus(offer);
             const requisition = requisitions.find((row) => row.doc_id === offer.doc_id);
@@ -129,13 +130,11 @@ export function WorkspaceOfferSection({
               disabledReason: !canWrite ? { blocked: true, code: "readonly_role", label: "Read only", detail: writeDisabledReason } : undefined
             };
             const details: RecordAction[] = [
-              { id: `candidate-${offer.offer_id}`, label: "Open candidate", icon: <UserRound aria-hidden="true" size={15} />, onSelect: () => onOpenCandidate(offer.candidate_id) },
-              { id: `requisition-${offer.offer_id}`, label: "Open requisition", onSelect: () => onOpenRequisition(offer.doc_id) },
               { id: `offer-workspace-${offer.offer_id}`, label: "Open requisition workspace", href: `/workspace?type=requisition&id=${encodeURIComponent(offer.doc_id)}` }
             ];
 
             return (
-              <article key={offer.offer_id} className="grid min-w-0 gap-2 rounded-md border border-[#D7DEE8] bg-white p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
+              <article key={offer.offer_id} className="grid min-w-0 gap-3 py-4 md:grid-cols-[minmax(0,2fr)_minmax(0,1.2fr)_minmax(0,1fr)_auto] md:items-center">
                 <div className="grid min-w-0 gap-1">
                   <div className="flex min-w-0 flex-wrap items-start gap-x-2 gap-y-1">
                     <button type="button" className="min-w-0 break-words text-left font-bold text-navy focus:outline-none focus:ring-2 focus:ring-primary/25" onClick={() => onOpenCandidate(offer.candidate_id)}>
@@ -143,21 +142,17 @@ export function WorkspaceOfferSection({
                     </button>
                     <Tag tone={status.tone}>{offerStatusLabel(language, status.label)}</Tag>
                   </div>
-                  <p className="break-words text-sm font-semibold text-navy">{formatRequisitionTitle(offer)}</p>
-                  <p className="text-[10px] font-medium text-cool">{translate(language, "requisitionId")}: {offer.doc_id}</p>
-                  <div className="flex min-w-0 flex-wrap gap-x-3 gap-y-1 text-xs font-medium text-slate">
-                    <span>HC impact: {impact}</span>
-                    <span>Accepted: {formatDate(offer.accepted_date)}</span>
-                    <span>Start: {formatDate(offer.first_working_date)}</span>
-                  </div>
+                  <p className="text-[10px] font-medium text-cool">{offer.candidate_id}</p>
                 </div>
+                <div className="min-w-0"><span className="text-xs text-slate md:sr-only">{translate(language, "requisitionId")}: </span><button type="button" className="block max-w-full truncate text-left text-sm font-semibold text-navy hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" title={formatRequisitionTitle(offer)} onClick={() => onOpenRequisition(offer.doc_id)}>{formatRequisitionTitle(offer)}</button><p className="text-xs text-cool">{offer.doc_id}</p></div>
+                <div className="grid min-w-0 gap-1 text-xs text-slate"><span><span className="md:sr-only">{translate(language, "workspaceImpact")}: </span>{impact}</span><span>{translate(language, "accepted")}: {formatDate(offer.accepted_date, language)}</span><span>{translate(language, "firstWorkingDate")}: {formatDate(offer.first_working_date, language)}</span></div>
                 <RecordActionGroup label={offer.candidate_name ?? offer.candidate_id} primary={primary} items={details} />
               </article>
             );
           })}
         </div>
       )}
-    </Panel>
+    </section>
   );
 }
 

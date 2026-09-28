@@ -98,21 +98,21 @@ export function InlineDataQualityIssues({ canResolve, issues, language = "en", o
   );
 }
 
-export function DataQualityIssueCard({ compact = false, disabledReason, issue, language = "en", onResolve }: { compact?: boolean; disabledReason?: DisabledReason; issue: DataQualityIssue; language?: Language; onResolve?: (issue: DataQualityIssue) => void }) {
+export function DataQualityIssueCard({ compact = false, disabledReason, issue, language = "en", onResolve, row = false, overview = false }: { compact?: boolean; disabledReason?: DisabledReason; issue: DataQualityIssue; language?: Language; onResolve?: (issue: DataQualityIssue) => void; row?: boolean; overview?: boolean }) {
   const Icon = issue.severity === "blocking" ? ShieldAlert : issue.severity === "warning" ? AlertTriangle : Info;
   return (
-    <div className={`grid gap-2 rounded-md border p-3 ${issueClass(issue.severity)} ${compact ? "text-xs" : "text-sm"} sm:grid-cols-[auto_1fr_auto] sm:items-start`}>
-      <Icon size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
+    <div className={`${row ? "grid gap-2 py-3 first:pt-2 last:pb-2 md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-center" : `grid gap-2 rounded-md border p-3 ${issueClass(issue.severity)} sm:grid-cols-[auto_1fr_auto] sm:items-start`} ${compact ? "text-xs" : "text-sm"}`}>
+        {overview ? <span className={`flex h-8 w-8 items-center justify-center rounded-full ${issue.severity === "blocking" ? "bg-[#FFF0F1] text-scarlet" : issue.severity === "warning" ? "bg-[#FFF7E8] text-[#9A6700]" : "bg-[#EEF3F8] text-slate"}`}><Icon size={16} aria-hidden="true" /></span> : <Icon size={16} className="mt-0.5 shrink-0" aria-hidden="true" />}
       <div className="min-w-0">
-        <p className="font-semibold text-navy">{issue.title}</p>
-        <p className="mt-0.5 font-medium text-slate">{issue.detail}</p>
+          <p className={overview ? "text-[13px] font-medium text-navy" : "font-semibold text-navy"}>{issue.title}</p>
+          <p className={`mt-0.5 text-slate ${overview ? "text-xs font-normal" : "font-medium"}`}>{issue.detail}</p>
       </div>
       {onResolve && issue.actionLabel ? (
-        <button type="button" disabled={disabledReason?.blocked} title={disabledReason?.detail} className="inline-flex min-h-8 items-center rounded-md bg-white px-3 text-xs font-semibold text-navy ring-1 ring-inset ring-[#D7DEE8] hover:bg-[#F8FAFD] disabled:cursor-not-allowed disabled:bg-lightgray disabled:text-cool" onClick={() => onResolve(issue)}>
+        <button type="button" disabled={disabledReason?.blocked} title={disabledReason?.detail} className={`inline-flex ${row ? "min-h-11" : "min-h-8"} items-center rounded-md bg-white px-3 text-xs font-semibold text-navy ring-1 ring-inset ring-[#D7DEE8] hover:bg-[#F8FAFD] disabled:cursor-not-allowed disabled:bg-lightgray disabled:text-cool`} onClick={() => onResolve(issue)}>
           {issue.actionLabel}
         </button>
       ) : issue.href && issue.actionLabel ? (
-        <Link className="inline-flex min-h-8 items-center rounded-md bg-white px-3 text-xs font-semibold text-navy ring-1 ring-inset ring-[#D7DEE8] hover:bg-[#F8FAFD]" href={issue.href}>
+        <Link className={`inline-flex ${row ? "min-h-11" : "min-h-8"} items-center rounded-md bg-white px-3 text-xs font-semibold text-navy ring-1 ring-inset ring-[#D7DEE8] hover:bg-[#F8FAFD]`} href={issue.href}>
           {issue.actionLabel}
         </Link>
       ) : <Tag tone={issue.severity === "blocking" ? "danger" : issue.severity === "warning" ? "warning" : "muted"}>{severityLabel(language, issue.severity)}</Tag>}

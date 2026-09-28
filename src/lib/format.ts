@@ -47,6 +47,19 @@ export function formatDate(value: string | null | undefined, language: Language 
   return `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}/${date.getFullYear()}`;
 }
 
+export function formatRequisitionCompactParts(requisition: RequisitionTitleFields, maxLength = 30) {
+  const position = requisition.position?.trim() || "-";
+  const level = requisition.level?.trim().match(/^L?(0|[1-9]|1[0-4])$/i);
+  return { position: position.length > maxLength ? `${position.slice(0, maxLength).trimEnd()}…` : position, level: level ? `L${level[1]}` : null };
+}
+
+export function formatSourcingWeekRange(weekStart: string, language: Language = "en") {
+  const end = new Date(`${weekStart.slice(0, 10)}T00:00:00Z`);
+  if (Number.isNaN(end.getTime())) return "—";
+  end.setUTCDate(end.getUTCDate() + 6);
+  return `${formatDate(weekStart, language)}–${formatDate(end.toISOString().slice(0, 10), language)}`;
+}
+
 export function formatDateTime(value: string | null | undefined, language: Language = "en") {
   if (!value) return "-";
   const date = dateFromValue(value);

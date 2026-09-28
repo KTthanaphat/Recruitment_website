@@ -12,11 +12,11 @@ type BreadcrumbItem = {
   onSelect?: () => void;
 };
 
-export function WorkspaceBreadcrumbs({ group, language, requisition, workspace }: { group?: BreadcrumbItem; language: Language; requisition?: BreadcrumbItem; workspace: BreadcrumbItem }) {
+export function WorkspaceBreadcrumbs({ flush = false, group, language, requisition, workspace }: { flush?: boolean; group?: BreadcrumbItem; language: Language; requisition?: BreadcrumbItem; workspace: BreadcrumbItem }) {
   const items = [workspace, group, requisition].filter(Boolean) as BreadcrumbItem[];
 
   return (
-    <nav aria-label={translate(language, "workspaceBreadcrumbs")} className="mb-2 min-w-0">
+    <nav aria-label={translate(language, "workspaceBreadcrumbs")} className={`${flush ? "mb-0" : "mb-2"} min-w-0`}>
       <ol className="flex min-w-0 flex-wrap items-center gap-1 text-xs font-semibold text-slate">
         {items.map((item, index) => (
           <li key={`${item.label}-${index}`} className="flex min-w-0 items-center gap-1">

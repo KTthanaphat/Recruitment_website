@@ -7,7 +7,7 @@ test("requisition table search and advanced filters persist in URL", async ({ pa
   await expectWorkspaceReady(page);
 
   await page.getByPlaceholder("Search records").fill("Engineer");
-  await expect(page.getByRole("cell", { name: "REQ-HQ-1", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "View requisition detail for REQ-HQ-1", exact: true })).toBeVisible();
   await expect(page.getByText("REQ-KT1-1")).toHaveCount(0);
   await expect(page).toHaveURL(/reqSearch=Engineer/);
 

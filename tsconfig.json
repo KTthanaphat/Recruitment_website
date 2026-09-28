@@ -39,7 +39,13 @@
     ".next-pipeline-table-v3/types/**/*.ts",
     ".next-pipeline-table-v4/types/**/*.ts",
     ".next-local-pipeline-table/types/**/*.ts",
-    "next-local-cache/types/**/*.ts"
+    "next-local-cache/types/**/*.ts",
+    "next-local-performance-0928/types/**/*.ts",
+    "next-local-performance-0928b/types/**/*.ts",
+    "next-local-performance-0928c/types/**/*.ts",
+    "next-local-performance-0928d/types/**/*.ts",
+    "next-local-performance-final/types/**/*.ts",
+    "next-local-performance-preview-0928/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"

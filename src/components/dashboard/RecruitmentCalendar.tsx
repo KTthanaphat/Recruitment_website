@@ -1,7 +1,7 @@
 "use client";
 
 import { BriefcaseBusiness, CalendarClock, CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Drawer } from "@/components/ui/Drawer";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -13,7 +13,7 @@ import { translate } from "@/lib/i18n/dictionary";
 import { candidatePipelineCapability } from "@/lib/operations";
 import type { EnrichedCandidate, EnrichedOffer, Language, ProcessStage, Profile, RecruitmentLog } from "@/types/recruitment";
 
-type CalendarEvent = {
+export type CalendarEvent = {
   candidateId: string;
   candidateName: string;
   date: string;
@@ -41,7 +41,8 @@ export function RecruitmentCalendar({
   recruitmentLogs,
   className = "",
   onEditPending,
-  onOpenCandidate
+  onOpenCandidate,
+  onTodayEventsChange
 }: {
   candidates: EnrichedCandidate[];
   className?: string;
@@ -51,8 +52,9 @@ export function RecruitmentCalendar({
   recruitmentLogs: RecruitmentLog[];
   onEditPending?: (candidate: EnrichedCandidate) => void;
   onOpenCandidate: (candidateId: string) => void;
+  onTodayEventsChange?: (payload: { date: string; events: CalendarEvent[] }) => void;
 }) {
-  const today = bangkokToday();
+  const [today, setToday] = useState(() => bangkokToday());
   const [visibleMonth, setVisibleMonth] = useState(() => monthFromIso(today));
   const [selectedDate, setSelectedDate] = useState(today);
   const [eventListDate, setEventListDate] = useState<string | null>(null);
@@ -101,6 +103,17 @@ export function RecruitmentCalendar({
   }, [candidateById, offers, recruitmentLogs, today]);
   const monthKey = isoMonth(visibleMonth.year, visibleMonth.month);
   const monthEvents = events.filter((event) => event.date.startsWith(monthKey));
+  const todayEvents = useMemo(() => events.filter((event) => event.date === today), [events, today]);
+  useEffect(() => {
+    const updateToday = () => setToday(bangkokToday());
+    const interval = window.setInterval(updateToday, 60_000);
+    document.addEventListener("visibilitychange", updateToday);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", updateToday);
+    };
+  }, []);
+  useEffect(() => onTodayEventsChange?.({ date: today, events: todayEvents }), [onTodayEventsChange, today, todayEvents]);
   const eventsByDate = groupEventsByDate(monthEvents);
   const cells = monthCells(visibleMonth.year, visibleMonth.month);
   const selectedEvents = eventsByDate.get(selectedDate) ?? [];
@@ -181,7 +194,7 @@ export function RecruitmentCalendar({
             </div>;
           })}
         </div>
-        <div className="mt-3 border-t border-[#E4E9F2] pt-3" aria-label={translate(language, "selectedDayEvents", { date: formatDate(selectedDate, language) })}>
+        <div className="mt-3 border-t border-[#E4E9F2] pt-3" aria-label={translate(language, "selectedDayEvents", { date: formatDate(selectedDate, language) })} data-mobile-selected-agenda="true">
           <p className="mb-2 text-xs font-semibold text-slate">{translate(language, "selectedDayEvents", { date: formatDate(selectedDate, language) })}</p>
           <div className="grid gap-2">
             {selectedEvents.length > 0 ? selectedEvents.map((event) => <CalendarEventButton key={`${event.candidateId}-${event.eventType}-${event.stage}-${event.round}`} event={event} language={language} mobile onOpenCandidate={onOpenCandidate} />) : <p className="rounded-lg bg-[#F8FAFD] px-3 py-3 text-sm font-medium text-slate">{translate(language, "noEstimatedActionsForDate")}</p>}
@@ -250,11 +263,58 @@ function CalendarEventButton({ compact = false, event, language, mobile = false,
     : event.startWorkStatus === "confirmation_pending" || event.overdue
       ? "border-[#F4B4AE] bg-[#FFF8F7] text-scarlet hover:bg-[#FFF1F0]"
       : "border-[rgb(var(--app-primary-rgb)/0.22)] bg-[rgb(var(--app-primary-rgb)/0.08)] text-navy hover:bg-[#F1F7FF]";
-  return <button type="button" aria-label={label} title={label} className={`${mobile ? "min-h-11 p-3" : compact ? "min-h-7 px-1 py-0.5" : "min-h-9 p-1.5"} min-w-0 rounded-md border text-left focus:outline-none focus:ring-2 focus:ring-primary/30 ${colorClass}`} onClick={() => onOpenCandidate(event.candidateId)}>
+  return <button type="button" aria-label={label} title={label} className={`${mobile ? "min-h-11 p-3" : compact ? "flex min-h-7 items-center gap-1 px-1 py-0.5" : "min-h-9 p-1.5"} min-w-0 rounded-md border text-left focus:outline-none focus:ring-2 focus:ring-primary/30 ${colorClass}`} onClick={() => onOpenCandidate(event.candidateId)}>
+    {compact ? <><span className="shrink-0" aria-hidden="true">{isStartWork ? <BriefcaseBusiness size={11} /> : <CalendarClock size={11} />}</span><strong className="block min-w-0 truncate text-[11px] leading-4 font-semibold">{event.candidateName}</strong></> : <>
     <strong className={`block truncate font-semibold ${compact ? "text-[11px] leading-3" : "text-xs"}`}>{event.candidateName}</strong>
     <span className={`flex min-w-0 items-center gap-1 font-medium ${compact ? "text-[10px] leading-3" : "text-[11px]"}`}><span className="shrink-0" aria-hidden="true">{isStartWork ? <BriefcaseBusiness size={compact ? 11 : 13} /> : <CalendarClock size={compact ? 11 : 13} />}</span><span className="truncate">{detail}</span></span>
     {mobile ? <span className="mt-1 block truncate text-[11px] font-medium">{event.site ?? "-"} · {event.owner ?? "-"}</span> : null}
+    </>}
   </button>;
+}
+
+const todayEventColumns = "grid-cols-[minmax(0,1.25fr)_minmax(0,1.05fr)_minmax(0,.85fr)_minmax(0,1fr)_minmax(0,1.1fr)]";
+
+export function TodayEventsPanel({ date, events, language, onOpenCandidate }: { date: string; events: CalendarEvent[]; language: Language; onOpenCandidate: (candidateId: string) => void }) {
+  return <div className="hidden min-w-0 md:block" aria-label={translate(language, "todaysEvents")} data-todays-events="true"><Panel variant="workspace" className="p-3 sm:p-4">
+    <div className="mb-2 flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1">
+      <div className="flex min-w-0 items-baseline gap-2">
+        <h3 className="shrink-0 text-base font-semibold leading-6 text-navy xl:text-lg">{translate(language, "todaysEvents")}</h3>
+        <span className="min-w-0 truncate text-xs font-medium tabular-nums text-slate xl:text-[13px]" title={formatLongDate(date, language)}>{formatLongDate(date, language)}</span>
+      </div>
+      <span className="text-xs font-medium tabular-nums text-slate">{translate(language, "calendarEventsCount", { count: events.length, plural: events.length === 1 ? "" : "s" })}</span>
+    </div>
+    {events.length > 0 ? <>
+      <div className={`grid ${todayEventColumns} gap-2 border-b border-[#D7DEE8] px-2 py-2 text-left text-[10px] font-medium text-slate xl:text-[11px]`} data-today-event-header="true">
+        <span className="min-w-0 truncate">{translate(language, "candidate")}</span><span className="min-w-0 truncate">{translate(language, "eventContext")}</span><span className="min-w-0 truncate">{translate(language, "status")}</span><span className="min-w-0 truncate">{translate(language, "siteOwner")}</span><span className="min-w-0 truncate">{translate(language, "remark")}</span>
+      </div>
+      <div className="grid max-h-[min(22rem,40dvh)] divide-y divide-[#E4E9F2] overflow-y-auto overscroll-contain pr-1">
+        {events.map((event) => <TodayEventRow key={`${event.candidateId}-${event.eventType}-${event.stage}-${event.round}`} event={event} language={language} onOpenCandidate={onOpenCandidate} />)}
+      </div>
+    </> : <p className="rounded-lg bg-[#F8FAFD] px-3 py-2 text-sm font-medium text-slate">{translate(language, "noEstimatedActionsForDate")}</p>}
+  </Panel></div>;
+}
+
+function TodayEventRow({ event, language, onOpenCandidate }: { event: CalendarEvent; language: Language; onOpenCandidate: (candidateId: string) => void }) {
+  const status = event.eventType === "start_work"
+    ? event.startWorkStatus === "started" ? "startedWorkConfirmed" : "dueToday"
+    : "awaiting";
+  const tone = event.startWorkStatus === "started" ? "success" : event.overdue || event.startWorkStatus === "confirmation_pending" ? "danger" : "muted";
+  const context = event.eventType === "start_work" ? event.position ?? "-" : `${processLabel(event.stage, language)} · ${translate(language, "round")} ${event.round}`;
+  const remark = event.log?.remark?.trim() || "—";
+  return <div data-today-event-row="true" className={`grid min-w-0 ${todayEventColumns} items-center gap-2 px-2 py-2 text-left text-xs xl:text-[13px]`}>
+    <span className="flex min-w-0 flex-col"><button type="button" className="min-w-0 truncate rounded-sm text-left font-semibold text-navy underline-offset-2 hover:text-primary hover:underline focus:outline-none focus:ring-2 focus:ring-primary/30" aria-label={`${translate(language, "openCandidate")}: ${event.candidateName}`} title={event.candidateName} onClick={() => onOpenCandidate(event.candidateId)}>{event.candidateName}</button><span className="truncate text-[11px] font-medium text-cool">{event.candidateId}</span></span>
+    <span className="min-w-0 truncate font-medium text-slate" title={context}>{context}</span>
+    <span className="flex min-w-0 flex-wrap items-center gap-1"><Tag appearance="soft" tone={tone}>{translate(language, status)}</Tag>{event.overdue ? <Tag appearance="soft" tone="danger">{translate(language, "overdue")}</Tag> : null}</span>
+    <span className="min-w-0 truncate font-medium text-slate" title={`${event.site ?? "-"} · ${event.owner ?? translate(language, "unassigned")}`}>{event.site ?? "-"} · {event.owner ?? translate(language, "unassigned")}</span>
+    <span className="min-w-0 truncate font-normal text-slate hover:whitespace-normal hover:break-words focus:whitespace-normal focus:break-words focus:outline-none focus:ring-2 focus:ring-primary/30" tabIndex={remark === "—" ? undefined : 0} title={remark}>{remark}</span>
+  </div>;
+}
+
+function formatLongDate(value: string, language: Language) {
+  return new Intl.DateTimeFormat(language === "th" ? "th-TH-u-ca-gregory" : "en-US", {
+    dateStyle: "long",
+    timeZone: "UTC"
+  }).format(new Date(`${value}T12:00:00Z`));
 }
 
 function compareEvents(a: CalendarEvent, b: CalendarEvent) {

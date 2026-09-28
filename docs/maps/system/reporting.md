@@ -1,11 +1,33 @@
-# Dashboard reporting owners
+# SYS-REPORTING: Dashboard reports and exports
 
-Behavior: [Dashboard page](../../WEBSITE_STRUCTURE.md#dashboard-page). Presentation: [Recruitment Performance](../../design/recruitment-performance.md).
+[System entry](../SYSTEM_MAP.md) · [Task router](../../FEATURE_FILE_MAP.md)
 
-- [RecruitmentPerformanceOverview.tsx](../../../src/components/dashboard/RecruitmentPerformanceOverview.tsx): filters, URL state, global scope and complete PNG capture.
-- [PerformanceReport.tsx](../../../src/components/dashboard/PerformanceReport.tsx) and [styles](../../../src/components/dashboard/performance.module.css): KPI cards and reference-style charts.
-- [recruitment-performance.ts](../../../src/lib/recruitment-performance.ts): ranges, prior ranges, eligible headcount, accepted fills and SLA calculations.
-- [CommandMultiSelector.tsx](../../../src/components/ui/CommandMultiSelector.tsx): Site/Department selections and keyboard interaction.
-- [ReportHelp.tsx](../../../src/components/dashboard/ReportHelp.tsx): localized chart tooltips; KPI definitions use accessible descriptions without corner help controls.
-- [VacancyWaterfallView.tsx](../../../src/components/dashboard/VacancyWaterfallView.tsx): existing Waterfall, active requisitions and independent exports; collapsible sections retain state.
-- [recruitment-performance.spec.ts](../../../tests/e2e/recruitment-performance.spec.ts) and [fixture](../../../tests/e2e/support/performance-fixture.ts): calculation, filter, responsive layout and PNG coverage.
+Read this node for this feature only. It indexes ownership; product rules remain in [Dashboard behavior](../../WEBSITE_STRUCTURE.md#dashboard-page). Visual work uses [Recruitment Performance](../../design/recruitment-performance.md) and [Controls](../../design/controls.md).
+
+## Owners and search keys
+
+Recruitment Performance overview: [RecruitmentPerformanceOverview.tsx](../../../src/components/dashboard/RecruitmentPerformanceOverview.tsx) owns filters and PNG capture; [PerformanceReport.tsx](../../../src/components/dashboard/PerformanceReport.tsx) and [scoped styles](../../../src/components/dashboard/performance.module.css) own the reference presentation; [recruitment-performance.ts](../../../src/lib/recruitment-performance.ts) owns calculations. It uses the dashboard company report feed; its controls, KPI cohort and three charts are specified by [Dashboard behavior](../../WEBSITE_STRUCTURE.md#dashboard-page). Focused coverage: [recruitment-performance.spec.ts](../../../tests/e2e/recruitment-performance.spec.ts) with the [reference fixture](../../../tests/e2e/support/performance-fixture.ts).
+
+### F04: Dashboard report views, exports, and XLSX
+
+- Overview Site/Department controls: [CommandMultiSelector.tsx](../../../src/components/ui/CommandMultiSelector.tsx) owns multiple selections and keyboard interaction; overview controller owns URL serialization and global scope.
+- Chart help: [ReportHelp.tsx](../../../src/components/dashboard/ReportHelp.tsx) supplies viewport-contained hover/focus/tap tooltips for overview charts, Waterfall and [PipelineFunnel.tsx](../../../src/components/ui/PipelineFunnel.tsx). KPI definitions use accessible descriptions without a help control. Overview and Waterfall own independent expanded state; export surfaces remain complete when collapsed.
+
+- Owner/search: [src/components/dashboard/VacancyWaterfallView.tsx](../../../src/components/dashboard/VacancyWaterfallView.tsx), [src/components/ui/Field.tsx](../../../src/components/ui/Field.tsx).
+- Related symbols: shared DD/MM/YYYY picker; shared in-viewport 2× non-blank PNG capture; ExcelJS `TableStyleMedium2` workbook with hidden gridlines/wrapped body cells; canonical rules: [docs/WEBSITE_STRUCTURE.md](../../WEBSITE_STRUCTURE.md).
+- Entry: Calendar: `reportView` + `reportMonth`; Custom: `reportView=custom&start=<date>&end=<date>`.
+- Verification: [dashboard-reports.spec.ts](../../../tests/e2e/dashboard-reports.spec.ts) includes report views, stage metrics and PNG downloads. A dedicated XLSX workbook-format test is not established by this index; inspect/add focused export assertions when that format changes.
+
+## Dependency edges
+
+| Edge | Target | Follow when |
+| --- | --- | --- |
+| `uses` | [SYS-PLATFORM](platform.md) | Date/month controls and language |
+| `reads` | [SYS-RECORDS](records.md) | Requisition and Offer data |
+| `reads` | [SYS-PIPELINE](pipeline.md) | Stage counts and rounds |
+
+## Impact back-links
+
+Use caller search for additional runtime dependencies.
+
+If the task changes schema, environment or release state, cross to [Setup](../SETUP_MAP.md). For visual-only work remain in this system node and its design contract. Coverage names are search leads inherited from the feature index, not evidence that checks passed or that every named scenario has a dedicated file.

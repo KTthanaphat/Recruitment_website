@@ -1,5 +1,5 @@
 import { ArrowDown, ArrowDownUp, ArrowUp, CalendarPlus, Clock3, Pencil, Plus, Settings2, SlidersHorizontal, Unlink } from "lucide-react";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { DayDateSelector, Field, SelectInput, TextInput } from "@/components/ui/Field";
@@ -7,12 +7,14 @@ import { Modal } from "@/components/ui/Modal";
 import { Panel, SectionTitle } from "@/components/ui/Panel";
 import { SortableFilterHeader, TableToolbar, type TableColumn, useTableControls } from "@/components/ui/TableControls";
 import { Tag } from "@/components/ui/Tag";
+import { SourcingSummaryCharts } from "@/components/sourcing/SourcingSummaryCharts";
+import { EmbeddedSourcingPanel } from "@/components/sourcing/EmbeddedSourcingPanel";
 import { SOURCING_CHANNELS } from "@/lib/constants";
 import { enrichRequisitions, enrichSourcingGroups, enrichUnmatchedSourcingGroups, sourcingGroupsInScope } from "@/lib/data";
 import { sourcingCycleSaturday } from "@/lib/dates";
 import { formatDate } from "@/lib/format";
 import { translate } from "@/lib/i18n/dictionary";
-import { sourcingApplicants } from "@/lib/operations";
+import { previousWeekStart, sourcingApplicants } from "@/lib/operations";
 import type { DashboardData, EnrichedSourcingGroup, Language, Profile, SourcingLifecycleRow, SourcingWeeklyUpdate } from "@/types/recruitment";
 
 export type SourcingViewProps = {
@@ -47,26 +49,42 @@ export function SourcingView({
   const [surface, setSurface] = useState<Surface>("board");
   const [recordRow, setRecordRow] = useState<SourcingLifecycleRow | null>(null);
   const [detailGroup, setDetailGroup] = useState<EnrichedSourcingGroup | null>(null);
+  const [embeddedDirty, setEmbeddedDirty] = useState(false);
   const allGroups = useMemo(() => buildGroups(data, weekStart), [data, weekStart]);
   const scoped = useMemo(() => allGroups.filter((group) => inScope(group, groupIds, docIds, siteFilter, ownerFilter, profile)), [allGroups, groupIds, docIds, ownerFilter, profile, siteFilter]);
   const openGroups = scoped.filter((group) => group.open_headcount > 0);
   const boardRows = useMemo(() => openGroups.map((group) => lifecycleRow(group, weekStart, data)).filter((row): row is SourcingLifecycleRow => Boolean(row)).sort(compareBoardRows), [data, openGroups, weekStart]);
   const historyRows = useMemo(() => scoped.flatMap((group) => lifecycleRows(group, data)).sort((a, b) => b.week_start.localeCompare(a.week_start) || a.group.group_id.localeCompare(b.group.group_id)), [data, scoped]);
+  const selectedEmbeddedRow = historyRows.find((row) => row.week_start === weekStart) ?? null;
+  const previousRow = historyRows.find((row) => row.group.group_id === selectedEmbeddedRow?.group.group_id && row.week_start === previousWeekStart(weekStart));
+  const previousUpdate = previousRow?.update ?? null;
+  const previousApplicants = previousRow?.status === "saved" ? sourcingApplicants(previousUpdate) : null;
+  useEffect(() => { setEmbeddedDirty(false); }, [selectedEmbeddedRow?.update?.updated_at]);
+  function changeEmbeddedWeek(value: string) {
+    const next = sourcingCycleSaturday(value);
+    if (next === weekStart) return;
+    if (embeddedDirty && !window.confirm(translate(language, "workspaceDiscardSourcingDraft"))) return;
+    setEmbeddedDirty(false);
+    onWeekChange(next);
+  }
   const unmatchedGroups = useMemo(() => profile?.role === "system_admin" || profile?.role === "admin_recruiter" ? enrichUnmatchedSourcingGroups(data) : [], [data, profile?.role]);
 
-  if (embedded) return <><EmbeddedWorkEditors language={language} rows={boardRows} profile={profile} canWrite={canWrite} onSave={onSaveSourcing} onOpenGroup={setDetailGroup} /><GroupDetailModal language={language} group={detailGroup} data={data} selectedWeek={weekStart} profile={profile} onClose={() => setDetailGroup(null)} onUpdateGroupInfo={onUpdateGroupInfo} onSetGroupChannel={onSetGroupChannel} onUnmatchGroupRequisition={onUnmatchGroupRequisition} onDeleteGroup={onDeleteGroup} onAddGroupRequisition={onAddGroupRequisition} /></>;
+  if (embedded) return <>
+    <SourcingSummaryCharts data={data} language={language} rows={historyRows} selectedWeek={weekStart} selectedRow={selectedEmbeddedRow} />
+    <EmbeddedSourcingPanel language={language} rows={historyRows} selectedWeek={weekStart} selectedRow={selectedEmbeddedRow} previousUpdate={previousUpdate ?? null} previousApplicants={previousApplicants} profile={profile} canWrite={canWrite} onWeekChange={changeEmbeddedWeek} onDirty={() => setEmbeddedDirty(true)} onSave={onSaveSourcing} onOpenGroup={setDetailGroup} />
+    <GroupDetailModal language={language} group={detailGroup} data={data} selectedWeek={weekStart} profile={profile} onClose={() => setDetailGroup(null)} onUpdateGroupInfo={onUpdateGroupInfo} onSetGroupChannel={onSetGroupChannel} onUnmatchGroupRequisition={onUnmatchGroupRequisition} onDeleteGroup={onDeleteGroup} onAddGroupRequisition={onAddGroupRequisition} />
+  </>;
 
   return <div className="grid gap-4">
     <Panel>
-      <SectionTitle
-        title={translate(language, "sourcing")}
-        eyebrow={translate(language, surface === "board" ? "weeklyWorkBoard" : "lifecycleHistory")}
-        action={<div className="flex flex-wrap items-end gap-2">{canManageSetup ? <Button type="button" size="icon-sm" icon={<Plus size={17} />} aria-label={translate(language, "newGroup")} title={translate(language, "newGroup")} onClick={onCreateGroup} /> : null}<div className="inline-flex rounded-md border border-[#C9D5E6] p-0.5" aria-label={translate(language, "sourcingView")}><button type="button" aria-pressed={surface === "board"} className={`min-h-9 rounded px-3 text-sm font-semibold ${surface === "board" ? "bg-primary text-white" : "text-slate"}`} onClick={() => setSurface("board")}>{translate(language, "workBoard")}</button><button type="button" aria-pressed={surface === "history"} className={`min-h-9 rounded px-3 text-sm font-semibold ${surface === "history" ? "bg-primary text-white" : "text-slate"}`} onClick={() => setSurface("history")}>{translate(language, "lifecycleHistory")}</button></div><DayDateSelector ariaLabel={translate(language, "weekStarting")} language={language} name="sourcing_week" popoverAlign="right" value={weekStart} onChange={(event) => onWeekChange(sourcingCycleSaturday(event.target.value))} required /></div>}
-      />
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <p className="text-xs font-medium uppercase tracking-normal text-slate">{translate(language, surface === "board" ? "weeklyWorkBoard" : "lifecycleHistory")}</p>
+        <div className="flex min-w-0 flex-wrap items-end gap-2">{canManageSetup ? <Button type="button" size="sm" icon={<Plus size={17} />} onClick={onCreateGroup}>{translate(language, "newGroup")}</Button> : null}<div className="inline-flex rounded-md border border-[#C9D5E6] p-0.5" aria-label={translate(language, "sourcingView")}><button type="button" aria-pressed={surface === "board"} className={`min-h-9 rounded px-3 text-sm font-semibold ${surface === "board" ? "bg-primary text-white" : "text-slate"}`} onClick={() => setSurface("board")}>{translate(language, "workBoard")}</button><button type="button" aria-pressed={surface === "history"} className={`min-h-9 rounded px-3 text-sm font-semibold ${surface === "history" ? "bg-primary text-white" : "text-slate"}`} onClick={() => setSurface("history")}>{translate(language, "lifecycleHistory")}</button></div><DayDateSelector ariaLabel={translate(language, "weekStarting")} language={language} name="sourcing_week" popoverAlign="right" value={weekStart} onChange={(event) => onWeekChange(sourcingCycleSaturday(event.target.value))} required /></div>
+      </div>
       <p className="text-sm text-slate">{surface === "board" ? translate(language, "openGroupsNeedRecord", { date: formatDate(weekStart, language) }) : translate(language, "savedExpectedWeeklySlots")}</p>
       <p className="mt-1 text-xs text-slate">{translate(language, "sourcingCycleDescription")}</p>
     </Panel>
-    {surface === "board" && unmatchedGroups.length > 0 ? <Panel className="border-danger/35 bg-danger/5"><h3 className="text-base font-semibold text-danger">{translate(language, "unmatchedSourcingGroups")}</h3><p className="mt-1 text-sm text-danger">{translate(language, "unmatchedSourcingGroupsWarning")}</p><div className="mt-3 grid gap-2">{unmatchedGroups.map((group) => <div key={group.group_id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-danger/30 bg-white px-3 py-2"><span className="font-semibold text-danger">{group.group_id}</span><div className="flex flex-wrap gap-2"><Button type="button" size="sm" variant="secondary" onClick={() => setDetailGroup(unmatchedDetailGroup(group))}>{translate(language, "details")}</Button><Button type="button" size="sm" variant="danger" onClick={() => onLinkGroup?.(group.group_id)}>{translate(language, "matchRequisition")}</Button></div></div>)}</div></Panel> : null}
+    {surface === "board" && unmatchedGroups.length > 0 ? <Panel className="border-danger/35 bg-danger/5"><h3 className="text-base font-semibold text-danger">{translate(language, "unmatchedSourcingGroups")}</h3><p className="mt-1 text-sm text-danger">{translate(language, "unmatchedSourcingGroupsWarning")}</p><div className="mt-3 grid gap-2">{unmatchedGroups.map((group) => <div key={group.group_id} className="flex flex-col items-stretch gap-3 rounded-lg border border-danger/30 bg-white px-3 py-2 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0 flex-1"><strong className="block break-words font-semibold text-navy">{group.group_position}</strong><p className="mt-1 break-all text-xs font-semibold text-slate">{group.group_id}</p></div><div className="flex flex-wrap gap-2"><Button type="button" size="sm" variant="secondary" onClick={() => setDetailGroup(unmatchedDetailGroup(group))}>{translate(language, "details")}</Button><Button type="button" size="sm" onClick={() => onLinkGroup?.(group.group_id)}>{translate(language, "matchRequisition")}</Button></div></div>)}</div></Panel> : null}
     {surface === "board" ? <SourcingWorkBoard language={language} rows={boardRows} profile={profile} canWrite={canWrite} onOpenRecord={setRecordRow} onOpenGroup={setDetailGroup} /> : <HistoryTableControls rows={historyRows} profile={profile} canWrite={canWrite} language={language} onOpenRecord={setRecordRow} onOpenGroup={setDetailGroup} />}
     <WeeklyRecordModal language={language} row={recordRow} profile={profile} onClose={() => setRecordRow(null)} onSave={onSaveSourcing} />
     <GroupDetailModal language={language} group={detailGroup} data={data} selectedWeek={weekStart} profile={profile} onClose={() => setDetailGroup(null)} onUpdateGroupInfo={onUpdateGroupInfo} onSetGroupChannel={onSetGroupChannel} onUnmatchGroupRequisition={onUnmatchGroupRequisition} onDeleteGroup={onDeleteGroup} onAddGroupRequisition={onAddGroupRequisition} />
@@ -108,14 +126,6 @@ function WorkBoard({ rows, profile, canWrite, onOpenRecord, onOpenGroup }: { row
     {rows.map((row) => { const editable = canWrite && canManage(row.group, profile); const count = sourcingApplicants(row.update); return <article key={row.group.group_id} className="grid gap-3 rounded-xl border border-[#D7DEE8] bg-white p-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><button type="button" className="font-semibold text-primary hover:underline" onClick={() => onOpenGroup(row.group)}>{row.group.group_id}</button><Tag tone={row.status === "needs_recording" ? "warning" : "success"}>{row.status === "needs_recording" ? "Needs recording" : "Recorded"}</Tag><span className="text-xs text-cool tabular-nums">{row.group.open_headcount} open</span></div><p className="mt-1 font-medium text-navy">{row.group.group_position}</p><p className="mt-1 text-xs text-slate">{row.group.sites.join(", ") || "-"} · {row.group.owners.join(", ") || "Unassigned"} · {enabledLabels(row).join(", ") || "No channels"}</p>{count == null && row.update ? <p className="mt-2 text-xs font-medium text-orange">One or more channels are not recorded.</p> : null}</div><div className="flex gap-2"><Button type="button" size="sm" variant="secondary" icon={<Settings2 size={16} />} onClick={() => onOpenGroup(row.group)} aria-label={`Open ${row.group.group_id} details`}>Details</Button>{editable ? <Button type="button" size="sm" icon={row.update ? <Pencil size={16} /> : <CalendarPlus size={16} />} onClick={() => onOpenRecord(row)}>{row.status === "needs_recording" ? "Record applicants" : "Edit record"}</Button> : null}</div></article>; })}
     {rows.length === 0 ? <EmptyState variant="quiet" message="No open sourcing groups need attention for this week." /> : null}
   </div></Panel>;
-}
-
-function EmbeddedWorkEditors({ language, rows, profile, canWrite, onSave, onOpenGroup }: { language: Language; rows: SourcingLifecycleRow[]; profile: Profile | null; canWrite: boolean; onSave: (payload: Record<string, unknown>, summary: string) => void; onOpenGroup: (group: EnrichedSourcingGroup) => void }) {
-  return <Panel><SectionTitle title={translate(language, "weeklySourcing")} eyebrow={translate(language, "selectedWeek")} /><div className="grid gap-3">{rows.map((row) => {
-    const editable = canWrite && canManage(row.group, profile); const channels = enabledChannels(row);
-    function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const form = new FormData(event.currentTarget); const invalid = channels.some((channel) => { const raw = String(form.get(channel.count) ?? "").trim(); return raw && (!Number.isInteger(Number(raw)) || Number(raw) < 0); }); if (invalid) { window.alert(translate(language, "applicantCountsWholeNumbers")); return; } const payload: Record<string, unknown> = { group_id: row.group.group_id, week_start: row.week_start, ...Object.fromEntries(SOURCING_CHANNELS.map((channel) => [channel.enabled, Boolean(channelForRow(row, channel.enabled))])), ...Object.fromEntries(SOURCING_CHANNELS.map((channel) => [channel.count, channelForRow(row, channel.enabled) ? String(form.get(channel.count) ?? "").trim() : null])) }; if (row.update) payload.expected_updated_at = row.update.updated_at; onSave(payload, `${row.update ? "correct" : "create"} sourcing update - ${row.group.group_id} ${row.week_start}`); }
-    return <form key={row.group.group_id} className="rounded-xl border border-[#D7DEE8] bg-white p-4" onSubmit={submit}><div className="flex flex-wrap items-start justify-between gap-2"><div><strong className="text-navy">{row.group.group_position}</strong><p className="mt-1 text-xs font-semibold text-primary">{row.group.group_id}</p><p className="mt-1 text-xs text-slate">{row.week_start} · {translate(language, "openVacancies", { count: row.group.open_headcount })} · {row.group.owners.join(", ") || translate(language, "unassigned")}</p></div><div className="flex gap-2"><Tag tone={row.status === "needs_recording" ? "warning" : "success"}>{translate(language, row.status === "needs_recording" ? "needsRecording" : "recorded")}</Tag><Button type="button" size="sm" variant="secondary" onClick={() => onOpenGroup(row.group)}>{translate(language, "details")}</Button></div></div><div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{channels.map((channel) => <div key={channel.enabled}><Field label={channel.label}><TextInput name={channel.count} type="number" min="0" step="1" inputMode="numeric" defaultValue={row.update?.[channel.count] ?? ""} placeholder={translate(language, "notRecorded")} disabled={!editable} /></Field><p className="mt-1 text-xs text-cool">{translate(language, "blankNotRecorded")}</p></div>)}</div>{editable ? <div className="mt-4 flex justify-end border-t border-[#E4E9F2] pt-3"><Button type="submit">{translate(language, "saveRecord")}</Button></div> : null}</form>;
-  })}{rows.length === 0 ? <EmptyState variant="quiet" message={translate(language, "noOpenSourcingWorkspace")} /> : null}</div></Panel>;
 }
 
 type HistorySort = "group" | "position" | "week" | "status" | "applicants" | "saved";

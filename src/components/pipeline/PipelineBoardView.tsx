@@ -197,14 +197,14 @@ export function PipelineBoardView({
 
   return (
     <div className="grid gap-5">
-      <Panel variant={embedded ? "workspace" : "primary"} className={embedded ? "shadow-none" : ""}>
+      <Panel variant={embedded ? "workspace" : "primary"} className={embedded ? "!rounded-none !border-0 !p-0 !shadow-none" : ""}>
         <SectionTitle
           title={translate(language, "candidatePipeline")}
-          action={<div className="flex items-center gap-2"><PipelineViewSwitch language={language} value="board" onChange={setPipelineView} />{canWrite && onNewCandidate ? <Button type="button" size="icon-sm" icon={<Plus size={17} />} aria-label={translate(language, "newCandidate")} title={translate(language, "newCandidate")} onClick={onNewCandidate} /> : null}</div>}
+          action={<div className="flex min-w-0 flex-wrap items-center justify-end gap-2"><PipelineViewSwitch language={language} value="board" onChange={setPipelineView} />{canWrite && onNewCandidate ? <Button type="button" size="sm" icon={<Plus size={17} />} onClick={onNewCandidate}>{translate(language, "newCandidate")}</Button> : null}</div>}
         />
         <div className="mb-3 grid gap-3">
           <OperationalSummaryStrip
-            className={embedded ? "hidden md:grid" : undefined}
+            className={embedded ? "hidden" : undefined}
             density="compact"
             items={[
               { label: translate(language, "activeCandidates"), value: activeRows.length, tone: "primary", helper: translate(language, "visibleOnBoard") },
@@ -521,7 +521,7 @@ function PipelineTableView({ language, rows, recruitmentLogs, recruitmentLogHist
   useEffect(() => { updateWorkspaceUrlState({ ...writeTableUrlValues("pipe", { filters: table.filters, page: paginated.page, pageSize, search: table.search, sortDirection: table.sortDirection, sortKey: table.sortKey }), pipeAudit: showAudit ? "1" : null }); }, [pageSize, paginated.page, showAudit, table.filters, table.search, table.sortDirection, table.sortKey]);
   const clear = () => { columns.forEach((column) => table.setFilter(column.key, "")); table.setSearch(""); setShowAudit(false); };
   return <Panel variant="primary">
-    <SectionTitle title={translate(language, "candidatePipeline")} action={<div className="flex items-center gap-2"><PipelineViewSwitch language={language} value="table" onChange={onViewChange} />{canWrite && onNewCandidate ? <Button type="button" size="icon-sm" icon={<Plus size={17} />} aria-label={translate(language, "newCandidate")} title={translate(language, "newCandidate")} onClick={onNewCandidate} /> : null}</div>} />
+    <SectionTitle title={translate(language, "candidatePipeline")} action={<div className="flex min-w-0 flex-wrap items-center justify-end gap-2"><PipelineViewSwitch language={language} value="table" onChange={onViewChange} />{canWrite && onNewCandidate ? <Button type="button" size="sm" icon={<Plus size={17} />} onClick={onNewCandidate}>{translate(language, "newCandidate")}</Button> : null}</div>} />
     <TableToolbar advancedFiltersOpen={advancedFiltersOpen} language={language} onAdvancedFiltersToggle={() => setAdvancedFiltersOpen((open) => !open)} onSearch={table.setSearch} resultCount={table.controlledRows.length} searchValue={table.search} totalCount={recordRows.length} />
     {advancedFiltersOpen ? <div className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-[#E4E9F2] bg-[#F8FAFD] p-3"><label className="flex items-center gap-2 text-sm font-semibold text-navy"><input type="checkbox" checked={showAudit} onChange={(event) => setShowAudit(event.target.checked)} />{translate(language, "showAuditHistory")}</label><Button type="button" variant="secondary" size="sm" onClick={clear}>{translate(language, "clear")}</Button></div> : null}
     <div className="grid gap-2 md:hidden">{paginated.rows.map(({ candidate, log, audit }) => <article key={log.log_id} className="ats-card p-3"><button type="button" onClick={() => onOpen(candidate.candidate_id)} className="text-left"><strong className="block text-navy">{formatCandidateName(candidate)}</strong><span className="text-xs text-slate">{processLabel(log.recruitment_process, language)} · {translate(language, "round")} {log.round}</span></button><p className="mt-2 text-xs text-slate">{translate(language, "pendingDetails")}: {formatDate(log.log_date, language)} · {log.interviewer ?? "-"}</p>{log.estimated_action_date ? <p className="text-xs font-medium text-slate">{translate(language, "estimatedDateValue", { date: formatDate(log.estimated_action_date, language) })}</p> : null}{log.result !== null ? <p className="text-xs text-slate">{translate(language, "outcome")}: {resultText(log.result, language)} · {formatDate(log.outcome_date, language)}</p> : null}<RecordTableActions candidate={candidate} log={log} audit={audit} language={language} canCorrect={adminCanCorrect} onOpen={onOpen} onCorrect={onCorrectPipelineRecord} /></article>)}</div>
@@ -577,7 +577,7 @@ function LegacyPipelineTableView({
 
   const clearFilters = () => { columns.forEach((column) => table.setFilter(column.key, "")); table.setSearch(""); setStateFilter(""); setFromDate(""); setToDate(""); };
   return <Panel variant="primary">
-    <SectionTitle title={translate(language, "candidatePipeline")} action={<div className="flex items-center gap-2"><PipelineViewSwitch language={language} value="table" onChange={onViewChange} />{canWrite && onNewCandidate ? <Button type="button" size="icon-sm" icon={<Plus size={17} />} aria-label={translate(language, "newCandidate")} title={translate(language, "newCandidate")} onClick={onNewCandidate} /> : null}</div>} />
+    <SectionTitle title={translate(language, "candidatePipeline")} action={<div className="flex min-w-0 flex-wrap items-center justify-end gap-2"><PipelineViewSwitch language={language} value="table" onChange={onViewChange} />{canWrite && onNewCandidate ? <Button type="button" size="sm" icon={<Plus size={17} />} onClick={onNewCandidate}>{translate(language, "newCandidate")}</Button> : null}</div>} />
     <TableToolbar advancedFiltersOpen={advancedFiltersOpen} language={language} onAdvancedFiltersToggle={() => setAdvancedFiltersOpen((open) => !open)} onSearch={table.setSearch} resultCount={table.controlledRows.length} searchValue={table.search} totalCount={rows.length} />
     {advancedFiltersOpen ? <div className="mb-3 grid gap-2 rounded-xl border border-[#E4E9F2] bg-[#F8FAFD] p-3 md:grid-cols-4">
       <label className="grid min-w-0 gap-1 text-xs font-semibold text-slate"><span>{translate(language, "pipelineState")}</span><select value={stateFilter} onChange={(event) => setStateFilter(event.target.value)} className="min-h-9 min-w-0 truncate rounded-lg border border-[#C9D5E6] bg-white px-2 text-sm text-navy"><option value="">{translate(language, "candidateTriageAll")}</option>{pipelineTableStates.map((state) => <option key={state} value={state}>{translate(language, `pipelineState${state}`)}</option>)}</select></label>

@@ -4,6 +4,8 @@ Cloud prototype for end-to-end recruitment tracking.
 
 Current canonical documentation:
 
+- [Task-to-document map](docs/FEATURE_FILE_MAP.md): choose system or setup without reading every document.
+- [Current design system](docs/design.md): Home, candidate detail and shared controls.
 - [Website structure](docs/WEBSITE_STRUCTURE.md)
 - [Candidate Pipeline audit and adjustment plan](docs/CANDIDATE_PIPELINE_ADJUSTMENT_PLAN.md)
 - [Deployment and develop-branch push workflow](docs/DEPLOYMENT.md)

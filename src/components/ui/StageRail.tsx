@@ -22,9 +22,11 @@ type StageRailProps = {
   variant?: "default" | "candidate-workspace";
   /** Keeps Home's compact rail while using the Candidate Detail stage icons. */
   showStageIcons?: boolean;
+  bareStageIcons?: boolean;
+  showConnectors?: boolean;
 };
 
-export function StageRail({ logs, currentStage, currentResult, compact = false, label, language = "en", ariaLabel, showSummary = compact, variant = "default", showStageIcons = false }: StageRailProps) {
+export function StageRail({ logs, currentStage, currentResult, compact = false, label, language = "en", ariaLabel, showSummary = compact, variant = "default", showStageIcons = false, bareStageIcons = false, showConnectors = true }: StageRailProps) {
   const currentPendingStage = logs?.find((log) => log.result === null)?.recruitment_process;
   const activeStage = currentStage && currentStage !== "No activity" ? currentStage : undefined;
   const activeIndex = activeStage ? PIPELINE_JOURNEY_STAGES.indexOf(activeStage) : -1;
@@ -54,7 +56,7 @@ export function StageRail({ logs, currentStage, currentResult, compact = false, 
         className={compact ? `relative z-0 grid ${showStageIcons ? "h-8 w-44" : "h-4 w-36"} max-w-full items-center` : `relative z-0 grid min-w-[44rem] gap-4 md:grid-cols-7 md:gap-2 md:justify-items-center ${variant === "candidate-workspace" ? "md:min-w-0" : ""}`}
         style={compact ? { gridTemplateColumns: `repeat(${stageItems.length}, minmax(0, 1fr))` } : undefined}
       >
-        {compact ? (
+        {compact && showConnectors ? (
           <span
             className={`absolute top-1/2 z-0 grid ${showStageIcons ? "h-0.5" : "h-1"} -translate-y-1/2 overflow-hidden rounded-full`}
             style={{
@@ -83,7 +85,7 @@ export function StageRail({ logs, currentStage, currentResult, compact = false, 
                 className="relative z-[1] grid place-items-center"
                 title={`${pipelineDisplayLabel(stage, language)}: ${stageStateLabel(language, state)}`}
               >
-                <span data-stage-icon={showStageIcons ? stage : undefined} className={`grid shrink-0 place-items-center rounded-full ${showStageIcons ? (isCurrent ? "size-8" : "size-7") : (isCurrent ? "size-3.5" : "size-3")} ${stageDotClass(state, isCurrent, showStageIcons || variant === "candidate-workspace")} ring-2 ring-white`} aria-hidden="true">
+                <span data-stage-icon={showStageIcons ? stage : undefined} className={bareStageIcons ? `grid size-7 shrink-0 place-items-center ${state === "passed" ? "text-[#146EFA]" : state === "pending" ? "text-[#B77900]" : "text-slate"}` : `grid shrink-0 place-items-center rounded-full ${showStageIcons ? (isCurrent ? "size-8" : "size-7") : (isCurrent ? "size-3.5" : "size-3")} ${stageDotClass(state, isCurrent, showStageIcons || variant === "candidate-workspace")} ring-2 ring-white`} aria-hidden="true">
                   {showStageIcons ? <StageIcon stage={stage} state={state} current={isCurrent} workspace /> : null}
                 </span>
                 <span className="sr-only">{pipelineDisplayLabel(stage, language)}: {stageStateLabel(language, state)}</span>

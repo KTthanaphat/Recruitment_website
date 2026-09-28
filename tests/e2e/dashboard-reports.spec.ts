@@ -39,7 +39,7 @@ test("dashboard PNG exports download visible non-blank reports", async ({ page }
 
   const directExportButtons = page.getByRole("button", { name: "Export PNG" });
   await expect(directExportButtons).toHaveCount(2);
-  const waterfallExportSurface = page.locator(".export-report-surface").nth(1);
+  const waterfallExportSurface = page.locator(".export-report-surface").filter({ has: page.locator(".vacancy-waterfall-svg") });
   await expect(waterfallExportSurface.locator("h3")).toContainText("Recruitment Performance in Selected Period");
   await expect(waterfallExportSurface).toContainText("During the selected period, total vacancies");
   await expect(waterfallExportSurface.locator(".waterfall-executive-table")).toHaveCSS("overflow-x", "visible");
@@ -234,9 +234,9 @@ test("waterfall counts fills only from requisitions active in the selected perio
   await page.goto("/dashboard?reportView=mtd&reportMonth=2026-08&details=open");
   await expectWorkspaceReady(page);
 
-  await expect(page.getByText("August HQ role", { exact: true })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "August HQ role", exact: true })).toBeVisible();
   await expect(page.getByText("Expired HQ role", { exact: true })).toHaveCount(0);
-  await expect(page.locator(".vacancy-waterfall-svg")).not.toContainText("-1");
+  await expect(page.locator(".vacancy-waterfall-svg").first()).not.toContainText("-1");
 });
 
 test("dashboard active-period labels localize and fit at 390px", async ({ page }) => {

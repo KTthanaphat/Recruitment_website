@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowDown, ArrowDownUp, ArrowUp, Search, SlidersHorizontal } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { formatNumber } from "@/lib/format";
 import { translate } from "@/lib/i18n/dictionary";
 import type { Language } from "@/types/recruitment";
@@ -109,6 +109,7 @@ export function TableToolbar({
   onSearch,
   resultCount,
   searchValue,
+  trailingActions,
   totalCount
 }: {
   advancedFiltersOpen: boolean;
@@ -117,10 +118,11 @@ export function TableToolbar({
   onSearch: (value: string) => void;
   resultCount: number;
   searchValue: string;
+  trailingActions?: ReactNode;
   totalCount: number;
 }) {
   return (
-    <div className="mb-3 flex flex-col gap-2 rounded-2xl border border-[#E4E9F2] bg-[#F8FAFD] p-3 sm:flex-row sm:items-center sm:justify-between">
+    <div data-table-toolbar className="mb-3 flex flex-col gap-2 rounded-2xl border border-[#E4E9F2] bg-[#F8FAFD] p-3 sm:flex-row sm:items-center sm:justify-between">
       <label className="relative min-w-0 flex-1">
         <span className="sr-only">{translate(language, "searchTable")}</span>
         <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate" size={15} aria-hidden="true" />
@@ -145,6 +147,7 @@ export function TableToolbar({
           <SlidersHorizontal size={15} aria-hidden="true" />
           {translate(language, "advancedFilters")}
         </button>
+        {trailingActions}
       </div>
     </div>
   );

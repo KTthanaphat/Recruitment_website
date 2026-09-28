@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PAGE_SIZE_OPTIONS, Pagination, paginateRows } from "@/components/ui/Pagination";
-import { Panel, SectionTitle } from "@/components/ui/Panel";
+import { Panel } from "@/components/ui/Panel";
 import { SortableFilterHeader, TableToolbar, TruncatedTableText, type TableColumn, useTableControls } from "@/components/ui/TableControls";
 import { Tag } from "@/components/ui/Tag";
 import { RecordQuickActions, type RecordQuickAction } from "@/components/ui/Operations";
@@ -79,12 +79,8 @@ export function OffersView({
 
   return (
     <Panel>
-      <SectionTitle
-        title={translate(language, "offers")}
-        action={canWrite ? <Button type="button" size="icon-sm" icon={<Plus size={17} />} aria-label={translate(language, "newOffer")} title={translate(language, "newOffer")} onClick={onNew} /> : null}
-      />
       {rows.length === 0 ? (
-        <EmptyState message={translate(language, "noData")} />
+        <>{canWrite ? <div className="mb-4 flex justify-end"><Button type="button" size="sm" icon={<Plus size={17} />} onClick={onNew}>{translate(language, "newOffer")}</Button></div> : null}<EmptyState message={translate(language, "noData")} /></>
       ) : (
         <>
         <TableToolbar
@@ -94,6 +90,7 @@ export function OffersView({
           onSearch={table.setSearch}
           resultCount={table.controlledRows.length}
           searchValue={table.search}
+          trailingActions={canWrite ? <Button type="button" size="sm" icon={<Plus size={17} />} onClick={onNew}>{translate(language, "newOffer")}</Button> : null}
           totalCount={rows.length}
         />
         <div className="grid gap-3 md:hidden">
@@ -115,7 +112,7 @@ export function OffersView({
             </article>
           ))}
         </div>
-        <div className="table-scroll hidden md:block">
+        <div className="table-scroll hidden md:block" tabIndex={0}>
           <table className="w-full border-collapse text-left text-sm">
             <thead className="bg-lightgray text-xs uppercase text-slate">
               <tr>

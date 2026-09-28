@@ -1,4 +1,4 @@
-# Rejection Letter Outlook-Draft Contract
+# Rejection Letter Delivery Contract
 
 This integration sends the approved rejection letter from the configured shared HR mailbox. The flow must use an Outlook send-email action and must not leave the message as a draft.
 
@@ -10,7 +10,9 @@ Required server-only variables: `POWER_AUTOMATE_REJECTION_LETTER_WEBHOOK_URL`, `
 
 ## Template variables
 
-`$candidate_name`, `$candidate_email`, `$failed_stage`, `$failed_outcome_date`, `$position_group`, `$site`, `$recruiter_name`, `$current_date`; use `$$` for a literal dollar sign. Templates and rendered drafts are plain text; the server escapes text before sending `html_body`.
+Current variables use braces: `{candidate_name}`, `{candidate_email}`, `{failed_stage}`, `{failed_outcome_date}`, `{position_group}`, `{site}`, `{recruiter_name}`, `{current_date}`. Legacy `$variable` syntax is normalized for saved-template compatibility. [rejection-letter.ts](../src/lib/rejection-letter.ts) owns normalization, validation and HTML escaping; do not infer a `$$` escape convention. Templates and rendered content are plain text; the server escapes text before sending `html_body`.
+
+The route and database retain historical `draft` names, but current delivery states include `sending` and `sent`. The outgoing `failed_stage` field currently contains the failed stage-instance ID. [The server route](../src/app/api/rejection-letters/draft/route.ts) owns duplicate-send rejection and payload construction.
 
 ## Operational checks
 

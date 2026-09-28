@@ -459,23 +459,33 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     [dashboardReportData, filters]
   );
   const filteredChangeLogs = useMemo(() => filterChangeLogsByText(data, filters), [data, filters]);
-  const selectedWorkspaceDocId = workspaceUrlState.params.get("doc");
-
   useEffect(() => {
     if (initialView !== "workspace" || workspaceLoadState !== "ready" || workspaceTarget.type !== "requisition" || !workspaceTarget.id) return;
-    const match = data.document_groups.find((row) => row.doc_id === workspaceTarget.id && row.group_id);
-    if (!match?.group_id) return;
     const docId = workspaceTarget.id;
-    setWorkspaceTarget({ type: "group", id: match.group_id });
-    updateWorkspaceUrlState({ type: "group", id: match.group_id, doc: docId, detailType: null, detailId: null, focusType: null, focusId: null });
-  }, [data.document_groups, initialView, workspaceLoadState, workspaceTarget]);
+    const visibleOpen = new Set(enrichRequisitions(data).filter((row) => row.status === "ongoing" && row.open_headcount > 0 && (!filters.site || row.site === filters.site) && (!filters.owner || row.person_in_charge === filters.owner) && (data.profile?.role !== "site_recruiter" || row.site === data.profile.site || row.person_in_charge === data.profile.nickname)).map((row) => row.doc_id));
+    const eligible = [...new Set(data.document_groups.filter((row) => row.doc_id === docId && row.group_id).map((row) => row.group_id!))]
+      .filter((groupId) => data.document_groups.some((row) => row.group_id === groupId && visibleOpen.has(row.doc_id)))
+      .sort();
+    if (eligible.length === 1) {
+      setWorkspaceTarget({ type: "group", id: eligible[0] });
+      updateWorkspaceUrlState({ type: "group", id: eligible[0], doc: null, detailType: null, detailId: null });
+    } else {
+      setWorkspaceTarget({ type: null, id: null });
+      updateWorkspaceUrlState({ type: null, id: null, doc: null, detailType: eligible.length === 0 ? "requisition" : null, detailId: eligible.length === 0 ? docId : null, groupChoices: eligible.length > 1 ? eligible.join(",") : null });
+      if (eligible.length === 0) setDetail({ type: "requisition", id: docId });
+    }
+  }, [data, filters.owner, filters.site, initialView, workspaceLoadState, workspaceTarget]);
+
+  useEffect(() => {
+    if (initialView === "workspace" && workspaceUrlState.params.has("doc")) updateWorkspaceUrlState({ doc: null });
+  }, [initialView, workspaceUrlState.params]);
 
   useEffect(() => {
     if (initialView !== "workspace" || workspaceLoadState !== "ready" || activeModal) return;
     const candidateId = workspaceUrlState.params.get("offerCandidate");
     if (!candidateId) return;
     const candidate = enrichedCandidates.find((row) => row.candidate_id === candidateId);
-    const docId = workspaceUrlState.params.get("doc")
+    const docId = workspaceUrlState.params.get("offerDoc")
       ?? data.document_groups.find((row) => row.group_id === candidate?.group_id)?.doc_id;
     setModalDefaults({
       mode: "new",
@@ -486,7 +496,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       offer_doc_ids: docId ? [docId] : undefined
     });
     setActiveModal("offer");
-    updateWorkspaceUrlState({ offerCandidate: null, offerDate: null });
+    updateWorkspaceUrlState({ offerCandidate: null, offerDate: null, offerDoc: null });
   }, [activeModal, data.document_groups, enrichedCandidates, initialView, workspaceLoadState, workspaceUrlState.params]);
   const workspaceScope = useMemo(() => {
     const docIds = new Set<string>();
@@ -497,8 +507,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     } else if (workspaceTarget.type === "group" && workspaceTarget.id) {
       groupIds.add(workspaceTarget.id);
       const linked = data.document_groups.filter((row) => row.group_id === workspaceTarget.id).map((row) => row.doc_id);
-      if (selectedWorkspaceDocId && linked.includes(selectedWorkspaceDocId)) docIds.add(selectedWorkspaceDocId);
-      else linked.forEach((docId) => docIds.add(docId));
+      linked.forEach((docId) => docIds.add(docId));
     }
     const visibleDocIds = new Set([...docIds].filter((docId) => {
       const requisition = enrichedRequisitions.find((row) => row.doc_id === docId);
@@ -508,9 +517,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       (row.group_id && groupIds.has(row.group_id))
       || (visibleDocIds.has(row.doc_id) && groupIds.size === 0)
     ) && visibleDocIds.has(row.doc_id));
-    const scopedDocumentGroups = selectedWorkspaceDocId
-      ? documentGroups.filter((row) => row.doc_id === selectedWorkspaceDocId)
-      : documentGroups;
+    const scopedDocumentGroups = documentGroups;
     const candidateDocGroupIds = new Set(documentGroups.map((row) => row.doc_group_id));
     const scopedCandidates = enrichedCandidates.filter((row) => (row.group_id ? groupIds.has(row.group_id) : Boolean(row.doc_group_id && candidateDocGroupIds.has(row.doc_group_id))));
     const scopedRequisitions = enrichedRequisitions.filter((row) => visibleDocIds.has(row.doc_id));
@@ -523,7 +530,9 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       offers: scopedOffers,
       requisitions: scopedRequisitions
     };
-  }, [data.document_groups, enrichedCandidates, enrichedOffers, enrichedRequisitions, filters.owner, filters.site, selectedWorkspaceDocId, workspaceTarget]);
+  }, [data.document_groups, enrichedCandidates, enrichedOffers, enrichedRequisitions, filters.owner, filters.site, workspaceTarget]);
+  const historicalWorkspace = workspaceTarget.type === "group" && workspaceScope.requisitions.length > 0
+    && !workspaceScope.requisitions.some((row) => row.status === "ongoing" && row.open_headcount > 0);
 
   const siteOptions = SITE_OPTIONS;
   const ownerOptions = recruiterNicknameOptions(data.profiles);
@@ -810,7 +819,6 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     if (request.kind === "offer.upsert") {
       const candidate = enrichedCandidates.find((row) => row.candidate_id === request.candidateId);
       const candidateDocId = request.docId
-        ?? selectedWorkspaceDocId
         ?? data.document_groups.find((row) => row.group_id === candidate?.group_id)?.doc_id;
       const proposedAcceptedDate = request.proposedAcceptedDate
         ?? latestSuccessfulOfferPassDate(request.candidateId ?? "", data.recruitment_logs)
@@ -989,9 +997,8 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
 
   function openWorkspaceGroupAfterSetup(groupId: string, docId: string | null) {
     if (initialView === "workspace") setWorkspaceTarget({ type: "group", id: groupId });
-    const docQuery = docId ? `&doc=${encodeURIComponent(docId)}` : "";
     const section = docId ? "sourcing" : "overview";
-    const path = `/workspace?type=group&id=${encodeURIComponent(groupId)}${docQuery}&section=${section}`;
+    const path = `/workspace?type=group&id=${encodeURIComponent(groupId)}&section=${section}`;
     router.push(buildContextualHref(path, { language, site: filters.site, owner: filters.owner, sourcingWeek }));
   }
 
@@ -1009,12 +1016,12 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     setOfferPassHandoff(null);
     if (initialView === "workspace") {
       if (groupId) setWorkspaceTarget({ type: "group", id: groupId });
-      pushWorkspaceUrlState({ type: groupId ? "group" : "requisition", id: groupId ?? handoff.docId, doc: groupId ? handoff.docId : null, section: "offer", focusType: null, focusId: null });
+      pushWorkspaceUrlState({ type: groupId ? "group" : "requisition", id: groupId ?? handoff.docId, doc: null, section: "offer", focusType: null, focusId: null });
       setModalDefaults({ mode: "new", ...defaults });
       setActiveModal("offer");
       return;
     }
-    const path = `/workspace?type=${groupId ? "group" : "requisition"}&id=${encodeURIComponent(groupId ?? handoff.docId)}${groupId ? `&doc=${encodeURIComponent(handoff.docId)}` : ""}&section=offer&offerCandidate=${encodeURIComponent(handoff.candidateId)}&offerDate=${encodeURIComponent(handoff.passedDate)}`;
+    const path = `/workspace?type=${groupId ? "group" : "requisition"}&id=${encodeURIComponent(groupId ?? handoff.docId)}&section=offer&offerCandidate=${encodeURIComponent(handoff.candidateId)}&offerDoc=${encodeURIComponent(handoff.docId)}&offerDate=${encodeURIComponent(handoff.passedDate)}`;
     router.push(buildContextualHref(path, { language, site: filters.site, owner: filters.owner, sourcingWeek }));
   }
 
@@ -1157,7 +1164,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       {initialView === "workspace" ? (
         <HiringWorkspaceView
           canManageSetup={canManageSetup}
-          canWrite={canWrite}
+          canWrite={canWrite && !historicalWorkspace}
           data={data}
           language={language}
           siteFilter={filters.site}
@@ -1167,7 +1174,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
             <WorkspaceOfferSection
               allOffers={data.offers}
               candidates={workspaceScope.candidates}
-              canWrite={canWrite}
+              canWrite={canWrite && !historicalWorkspace}
               offers={workspaceScope.offers}
               profile={data.profile}
               requisitions={workspaceScope.requisitions}
@@ -1179,7 +1186,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
           pipelineSlot={(
             <PipelineBoardView
               embedded
-              canWrite={canWrite}
+              canWrite={canWrite && !historicalWorkspace}
               dataQualityIssues={dataQualityIssues}
               language={language}
               profile={data.profile}
@@ -1189,7 +1196,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
               rows={workspaceScope.candidates}
               offeredCandidateIds={offeredCandidateIds}
               rejectionLetterSentCandidateIds={rejectionLetterSentCandidateIds}
-              onNewCandidate={eligibleCandidateGroups(data, data.profile, workspaceScope.groupIds).length > 0 ? () => dispatchWorkspaceAction({ kind: "candidate.create", docGroupIds: eligibleCandidateGroups(data, data.profile, workspaceScope.groupIds).flatMap((group) => data.document_groups.filter((match) => match.group_id === group.group_id).slice(0, 1).map((match) => match.doc_group_id)) }) : undefined}
+              onNewCandidate={!historicalWorkspace && eligibleCandidateGroups(data, data.profile, workspaceScope.groupIds).length > 0 ? () => dispatchWorkspaceAction({ kind: "candidate.create", docGroupIds: eligibleCandidateGroups(data, data.profile, workspaceScope.groupIds).flatMap((group) => data.document_groups.filter((match) => match.group_id === group.group_id).slice(0, 1).map((match) => match.doc_group_id)) }) : undefined}
               onOpen={openCandidateDetail}
               onMove={openProcessForMove}
               onFailCurrentStage={(candidate) => openStageOutcome(candidate, "fail")}
@@ -1204,11 +1211,10 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
             />
           )}
           profile={data.profile}
-          selectedGroupDocId={selectedWorkspaceDocId}
           sourcingSlot={(
             <EmbeddedSourcingEditor
-              canManageSetup={canManageSetup}
-              canWrite={canWrite}
+              canManageSetup={canManageSetup && !historicalWorkspace}
+              canWrite={canWrite && !historicalWorkspace}
               data={data}
               docIds={workspaceScope.requisitions.map((row) => row.doc_id)}
               groupIds={workspaceScope.groupIds}
@@ -1218,11 +1224,11 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
               ownerFilter={filters.owner}
               weekStart={sourcingWeek}
               onSaveSourcing={(payload, summary) => prepareRpcAction("app_upsert_sourcing_weekly_update", payload, summary)}
-              onUpdateGroupInfo={(payload, summary) => prepareRpcAction("app_update_sourcing_group_info_v1", payload, summary)}
-              onSetGroupChannel={(payload, summary) => prepareRpcAction("app_set_sourcing_group_channel_v1", payload, summary)}
-              onUnmatchGroupRequisition={(payload, summary) => prepareDestructiveRpcAction("app_unmatch_group_requisition", payload, summary)}
-              onDeleteGroup={(payload, summary) => prepareDestructiveRpcAction("app_delete_recruitment_record", payload, summary)}
-              onAddGroupRequisition={(groupId, docId) => prepareRpcAction("app_create_group_match", { group_id: groupId, doc_id: docId }, `Match sourcing group ${groupId} to requisition ${docId}`)}
+              onUpdateGroupInfo={historicalWorkspace ? undefined : (payload, summary) => prepareRpcAction("app_update_sourcing_group_info_v1", payload, summary)}
+              onSetGroupChannel={historicalWorkspace ? undefined : (payload, summary) => prepareRpcAction("app_set_sourcing_group_channel_v1", payload, summary)}
+              onUnmatchGroupRequisition={historicalWorkspace ? undefined : (payload, summary) => prepareDestructiveRpcAction("app_unmatch_group_requisition", payload, summary)}
+              onDeleteGroup={historicalWorkspace ? undefined : (payload, summary) => prepareDestructiveRpcAction("app_delete_recruitment_record", payload, summary)}
+              onAddGroupRequisition={historicalWorkspace ? undefined : (groupId, docId) => prepareRpcAction("app_create_group_match", { group_id: groupId, doc_id: docId }, `Match sourcing group ${groupId} to requisition ${docId}`)}
               onWeekChange={setSourcingWeek}
             />
           )}
@@ -3395,7 +3401,7 @@ function buildDetailBodyV2(
         <RecordActionGroup
           label={formatRequisitionOptionLabel(requisition)}
           flat
-          primary={{ id: "workspace", label: translate(language, "workspaceOpen"), href: href(`/workspace?type=requisition&id=${encodeURIComponent(requisition.doc_id)}&section=overview`), icon: <LampDesk size={17} aria-hidden="true" />, iconOnly: true, flat: true }}
+          primary={{ id: "workspace", label: translate(language, "workspaceOpen"), href: href(positionGroupIds.size === 1 ? `/workspace?type=group&id=${encodeURIComponent([...positionGroupIds][0])}&section=overview` : positionGroupIds.size > 1 ? `/workspace?groupChoices=${encodeURIComponent([...positionGroupIds].sort().join(","))}&section=overview` : "/workspace"), icon: <LampDesk size={17} aria-hidden="true" />, iconOnly: true, flat: true }}
           inlineAction={canWrite ? <Button type="button" variant="ghost" size="icon-sm" className="text-primary hover:bg-[#F1F6FC] hover:text-primary" icon={<Pencil size={17} aria-hidden="true" />} aria-label={translate(language, "changeRecord")} title={translate(language, "changeRecord")} onClick={() => onChangeRequisition(requisition.doc_id)} /> : null}
           items={[
             ...(canWrite ? [{ id: "change-record", label: translate(language, "changeRecord"), onSelect: () => onChangeRequisition(requisition.doc_id) }] : []),
@@ -3689,13 +3695,6 @@ function buildDetailBodyV2(
   };
 }
 
-function readinessTextClass(tone: string) {
-  if (tone === "danger") return "text-scarlet";
-  if (tone === "warning") return "text-orange";
-  if (tone === "success") return "text-primary";
-  return "text-slate";
-}
-
 function buildDetailBody(detail: { type: "requisition" | "candidate"; id: string } | null, data: DashboardData, language: Language, canWrite: boolean, onUpdateCandidate: (candidateId: string) => void) {
   if (!detail) return { title: "Detail", body: null };
 
@@ -3830,7 +3829,7 @@ function buildDetailBody(detail: { type: "requisition" | "candidate"; id: string
               <div key={log.log_id} className="rounded-md border border-[#D7DEE8] bg-white p-3 shadow-[0_6px_16px_rgba(11,19,43,0.025)]">
                 <div className="flex items-center justify-between gap-2">
                   <strong className="text-navy">{processLabel(log.recruitment_process, language)}</strong>
-                  <Tag tone={statusTone(resultText(log.result).toLowerCase())}>{resultText(log.result, language)}</Tag>
+                  <Tag appearance="soft" tone={statusTone(resultText(log.result).toLowerCase())}>{resultText(log.result, language)}</Tag>
                 </div>
                 <p className="mt-1 text-sm font-bold text-slate">{formatDate(log.log_date, language)} - {translate(language, "round")} {log.round} - {log.interviewer ?? translate(language, "noInterviewer")}</p>
                 {log.remark ? <p className="mt-1 text-sm text-slate">{log.remark}</p> : null}
@@ -3941,19 +3940,12 @@ function CandidateDetailHeader({ candidate, language }: { candidate: EnrichedCan
       <div className="min-w-0">
         <p className="break-words text-xl font-semibold leading-tight text-navy">{formatCandidateName(candidate)} / {candidate.candidate_id}</p>
         <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2">
-          <span className={`inline-flex min-h-6 items-center rounded-md px-2.5 text-xs font-semibold ${detailSoftTagClass(stageTone)}`}>{processLabel(candidate.latest_process, language)}</span>
-          <span className={`inline-flex min-h-6 items-center rounded-md px-2.5 text-xs font-semibold ${detailSoftTagClass(resultTone)}`}>{resultText(candidate.latest_result, language)}</span>
+          <Tag appearance="soft" tone={stageTone}>{processLabel(candidate.latest_process, language)}</Tag>
+          <Tag appearance="soft" tone={resultTone}>{resultText(candidate.latest_result, language)}</Tag>
         </div>
       </div>
     </div>
   );
-}
-
-function detailSoftTagClass(tone: "primary" | "success" | "warning" | "danger") {
-  if (tone === "danger") return "bg-[#FFF0F1] text-[#C52B40]";
-  if (tone === "warning") return "bg-[#FFF4D8] text-[#A96300]";
-  if (tone === "success") return "bg-[#E9F9EF] text-[#167A3D]";
-  return "bg-[#E8F0FF] text-primary";
 }
 
 type PipelineFunnelCount = {

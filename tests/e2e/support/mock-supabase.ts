@@ -1,6 +1,7 @@
 import { expect, type Page, type Route } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
+import { SOURCING_CHANNELS } from "../../../src/lib/constants";
 import type { DashboardData, Language, Role } from "../../../src/types/recruitment";
 
 type MockUserRole = Role;
@@ -257,6 +258,19 @@ function createRecruitmentDataset(activeRole: MockUserRole): DashboardData {
 }
 
 function applyRpcMutation(data: DashboardData, endpoint: string, payload: Record<string, unknown>) {
+  if (endpoint === "app_upsert_sourcing_weekly_update") {
+    const groupId = String(payload.group_id ?? "");
+    const weekStart = String(payload.week_start ?? "");
+    const existing = data.sourcing_weekly_updates.find((row) => row.group_id === groupId && row.week_start === weekStart);
+    const update = existing ?? sourcingUpdate(groupId, weekStart, 0);
+    for (const channel of SOURCING_CHANNELS) {
+      update[channel.enabled] = Boolean(payload[channel.enabled]);
+      const raw = payload[channel.count];
+      update[channel.count] = raw == null || raw === "" ? null : Number(raw);
+    }
+    update.updated_at = "2026-07-24T05:00:00.000Z";
+    if (!existing) data.sourcing_weekly_updates.push(update);
+  }
   if (endpoint === "app_create_and_match_sourcing_group_v2") {
     const groupId = generatedIdForEndpoint(endpoint);
     const groupPosition = String(payload.group_position ?? "New group");

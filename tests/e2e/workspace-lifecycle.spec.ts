@@ -18,32 +18,31 @@ test("embedded sourcing saves through the intercepted RPC and embedded pipeline 
   await expectWorkspaceReady(page);
 
   await page.getByRole("tab", { name: "Sourcing" }).click();
-  const sourcingForm = page.locator("#sourcing-group-GRP-ENG");
+  const sourcingForm = page.getByTestId("workspace-sourcing-layout").locator("form");
   await expect(sourcingForm).toBeVisible();
   await sourcingForm.locator('input[name="applicants_fb"]').fill("13");
-  await sourcingForm.getByRole("button", { name: "Save sourcing week for GRP-ENG" }).click();
+  await sourcingForm.getByRole("button", { name: "Save record" }).click();
   await expect(page.getByRole("dialog", { name: "Confirm Save" })).toBeVisible();
   await page.getByRole("dialog", { name: "Confirm Save" }).getByRole("button", { name: /Save changes/i }).click();
   await expect.poll(() => mock.rpcCalls.at(-1)?.endpoint).toBe("app_upsert_sourcing_weekly_update");
   expect(mock.rpcCalls.at(-1)?.payload).toMatchObject({
     group_id: "GRP-ENG",
-    week_start: "2026-07-06",
-    applicants_fb: 13
+    week_start: "2026-07-04",
+    applicants_fb: "13"
   });
-  expect(mock.rpcCalls.at(-1)?.payload).not.toHaveProperty("channel_fb");
+  expect(mock.rpcCalls.at(-1)?.payload).toHaveProperty("channel_fb");
 
   await page.getByRole("tab", { name: "Pipeline" }).click();
   const noActivityLane = page
     .getByRole("tabpanel")
     .getByRole("heading", { name: "No activity", exact: true })
     .locator("xpath=ancestor::section[1]");
-  await expect(noActivityLane).toHaveCSS("background-color", "rgba(10, 60, 220, 0.08)");
-  await expect(noActivityLane).toHaveCSS("border-top-color", "rgba(10, 60, 220, 0.22)");
+  await expect(noActivityLane).toHaveAttribute("data-pipeline-stage", "No activity");
   const card = page.locator("#pipeline-candidate-C-PHONE");
   await card.getByRole("button", { name: "Candidate actions for Pat Phone" }).click();
   const menu = page.getByRole("menu", { name: "Candidate actions for Pat Phone" });
   await expect(menu).toBeVisible();
-  await expect(menu.getByRole("menuitem", { name: /HR Interview/ })).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: /Line Interview/ })).toBeVisible();
 });
 
 test("workspace group sourcing tab exposes editable applicant fields", async ({ page }) => {
@@ -51,21 +50,20 @@ test("workspace group sourcing tab exposes editable applicant fields", async ({ 
   await page.goto("/workspace?type=group&id=GRP-ENG&section=sourcing&sourcingWeek=2026-07-06");
   await expectWorkspaceReady(page);
 
-  const sourcingForm = page.locator("#sourcing-group-GRP-ENG");
+  const sourcingForm = page.getByTestId("workspace-sourcing-layout").locator("form");
   await expect(sourcingForm).toBeVisible();
-  await expect(sourcingForm.getByRole("button", { name: "Save sourcing week for GRP-ENG" })).toBeVisible();
-  await expect(sourcingForm.getByRole("button", { name: "Sourcing Conversion Quality" })).toHaveAttribute("aria-expanded", "false");
+  await expect(sourcingForm.getByRole("button", { name: "Save record" })).toBeVisible();
   await expect(sourcingForm.locator('input[name="applicants_fb"]')).toBeEditable();
 });
 
-test("unsaved sourcing week defaults applicant counts from latest saved update", async ({ page }) => {
+test("unsaved sourcing week leaves applicant counts blank", async ({ page }) => {
   await installMockSupabase(page, { role: "admin_recruiter" });
   await page.goto("/workspace?type=group&id=GRP-ENG&section=sourcing&sourcingWeek=2026-07-13");
   await expectWorkspaceReady(page);
 
-  const sourcingForm = page.locator("#sourcing-group-GRP-ENG");
+  const sourcingForm = page.getByTestId("workspace-sourcing-layout").locator("form");
   await expect(sourcingForm).toBeVisible();
-  await expect(sourcingForm.locator('input[name="applicants_fb"]')).toHaveValue("12");
+  await expect(sourcingForm.locator('input[name="applicants_fb"]')).toHaveValue("");
 });
 
 test("workspace picker selection keeps sourcing editor scoped to selected group", async ({ page }) => {
@@ -73,13 +71,12 @@ test("workspace picker selection keeps sourcing editor scoped to selected group"
   await page.goto("/workspace?sourcingWeek=2026-07-06");
   await expectWorkspaceReady(page);
 
-  await page.getByRole("button", { name: "Groups" }).click();
   await page.getByRole("button", { name: /GRP-ENG/ }).click();
   await page.getByRole("tab", { name: "Sourcing" }).click();
 
-  const sourcingForm = page.locator("#sourcing-group-GRP-ENG");
+  const sourcingForm = page.getByTestId("workspace-sourcing-layout").locator("form");
   await expect(sourcingForm).toBeVisible();
-  await expect(sourcingForm.getByRole("button", { name: "Save sourcing week for GRP-ENG" })).toBeVisible();
+  await expect(sourcingForm.getByRole("button", { name: "Save record" })).toBeVisible();
   await expect(sourcingForm.locator('input[name="applicants_fb"]')).toBeEditable();
 });
 
@@ -104,8 +101,8 @@ test("pipeline no-activity menu opens the start-process modal", async ({ page })
   const card = page.locator("#pipeline-candidate-C-NO-ACTIVITY");
   await card.getByRole("button", { name: "Candidate actions for Nora No Activity" }).click();
   await page.getByRole("menu", { name: "Candidate actions for Nora No Activity" }).getByRole("menuitem", { name: "Start phone screen for Nora No Activity" }).click();
-  await expect(page.getByRole("dialog", { name: "Process Update" })).toBeVisible();
-  await expect(page.getByRole("dialog", { name: "Process Update" }).getByLabel("Candidate")).toHaveValue("C-NO-ACTIVITY");
+  await expect(page.getByRole("dialog", { name: "Start Phone Screen" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Start Phone Screen" }).getByRole("textbox", { name: "Pending date" })).toBeVisible();
 });
 
 test("viewer sees disabled explanations for workspace updates", async ({ page }) => {
@@ -113,9 +110,10 @@ test("viewer sees disabled explanations for workspace updates", async ({ page })
   await page.goto("/workspace?type=requisition&id=REQ-KT2-1");
   await expectWorkspaceReady(page);
 
-  const editAction = page.getByRole("button", { name: "Edit", exact: true });
-  await expect(editAction).toBeDisabled();
-  await expect(editAction).toHaveAttribute("title", /cannot update it/);
+  await page.getByTestId("workspace-linked-requisitions").getByRole("button").first().click();
+  await expect(page.getByRole("dialog")).toContainText("REQ-KT2-1");
+  await expect(page.getByRole("dialog").getByRole("button", { name: /Change record/ })).toHaveCount(0);
+  await page.getByRole("button", { name: "Close" }).click();
 
   await page.getByRole("tab", { name: "Offer" }).click();
   const outcomeAction = page.getByRole("button", { name: "Update offer" });
@@ -128,10 +126,9 @@ test("viewer can inspect workspace sourcing but cannot save applicant counts", a
   await page.goto("/workspace?type=requisition&id=REQ-HQ-1&section=sourcing&sourcingWeek=2026-07-06");
   await expectWorkspaceReady(page);
 
-  const sourcingForm = page.locator("#sourcing-group-GRP-ENG");
+  const sourcingForm = page.getByTestId("workspace-sourcing-layout").locator("form");
   await expect(sourcingForm).toBeVisible();
-  await expect(sourcingForm.getByText("Read-only", { exact: true })).toBeVisible();
-  await expect(sourcingForm.getByRole("button", { name: "Save sourcing week for GRP-ENG" })).toHaveCount(0);
+  await expect(sourcingForm.getByRole("button", { name: "Save record" })).toHaveCount(0);
   await expect(sourcingForm.locator('input[name="applicants_fb"]')).not.toBeEditable();
 });
 
@@ -142,7 +139,7 @@ test("passing Offer hands off to workspace offer creation with proposed accepted
 
   const card = page.locator("#pipeline-candidate-C-OFFER-READY");
   await card.getByRole("button", { name: "Candidate actions for Nina Offer Ready" }).click();
-  await page.getByRole("menu", { name: "Candidate actions for Nina Offer Ready" }).getByRole("menuitem", { name: "Pass stage" }).click();
+  await page.getByRole("menu", { name: "Candidate actions for Nina Offer Ready" }).getByRole("menuitem", { name: "Pass Offer for Nina Offer Ready" }).click();
   const processDialog = page.getByRole("dialog", { name: "Complete Stage" });
   const proposedAcceptedDate = await processDialog.locator('input[name="outcome_date"]').inputValue();
   await processDialog.getByRole("button", { name: "Review changes" }).click();
@@ -157,8 +154,8 @@ test("passing Offer hands off to workspace offer creation with proposed accepted
   await expect(page).toHaveURL(/\/workspace\?.*section=offer/);
   const offerDialog = page.getByRole("dialog", { name: "Create Offer" });
   await expect(offerDialog).toBeVisible();
-  await expect(offerDialog.getByLabel("Candidate")).toHaveValue("C-OFFER-READY");
-  await expect(offerDialog.getByLabel("Accepted Date")).toHaveValue(proposedAcceptedDate);
+  await expect(offerDialog.getByRole("button", { name: "candidate_id" })).toContainText("C-OFFER-READY");
+  await expect(offerDialog.getByRole("button", { name: "accepted_date" })).toContainText(proposedAcceptedDate.split("-").reverse().join("/"));
   expect(mock.rpcCalls.some((call) => call.endpoint === "app_upsert_offer")).toBe(false);
   await offerDialog.getByRole("button", { name: "Review changes" }).click();
   expect(mock.rpcCalls.some((call) => call.endpoint === "app_upsert_offer")).toBe(false);

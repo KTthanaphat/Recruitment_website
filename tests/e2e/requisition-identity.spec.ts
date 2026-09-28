@@ -12,7 +12,7 @@ test("requisition identity is consistent across records, Home, offers, and Pipel
   await page.goto("/home");
   await expectWorkspaceReady(page);
   await expect(page.getByText("Engineer (L4)", { exact: true }).first()).toBeVisible();
-  await expect(page.getByText("Requisition ID: REQ-HQ-1", { exact: true }).first()).toBeVisible();
+  await expect(page.locator("[data-home-requisition-row]").filter({ hasText: "REQ-HQ-1" }).first()).toBeVisible();
 
   await page.goto("/offers");
   await expectWorkspaceReady(page);

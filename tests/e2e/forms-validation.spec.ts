@@ -17,7 +17,7 @@ test("candidate creation form enforces required fields before review", async ({ 
   await page.goto("/candidates");
   await expectWorkspaceReady(page);
 
-  await page.getByRole("button", { name: "New" }).click();
+  await page.getByRole("button", { name: "New Candidate", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Create Candidate" });
   await expect(dialog).toBeVisible();
   await page.getByRole("button", { name: "Review changes" }).click();
@@ -38,7 +38,7 @@ test("candidate identity fields guide Thai input and reject an invalid mobile nu
   await installMockSupabase(page, { role: "admin_recruiter", language: "th" });
   await page.goto("/candidates");
   await expectWorkspaceReady(page);
-  await page.getByRole("button", { name: /ใหม่|New/ }).click();
+  await page.getByRole("button", { name: /เพิ่มผู้สมัคร|New Candidate/ }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByLabel("ชื่อ")).toHaveAttribute("placeholder", "โปรดใส่ชื่อจริง นามสกุล (เช่น จริงใจ กล้าหาญ)");
   await expect(dialog.getByLabel("เบอร์โทร")).toHaveAttribute("placeholder", "โปรดหมายเลขโทรศัพท์ 10 หลัก (เช่น 0941231234)");
@@ -61,7 +61,7 @@ test("candidate email is optional, shown in detail, and validated when supplied"
   await expect(page.getByRole("dialog", { name: /C-PHONE/ })).toContainText("Email");
   await expect(page.getByRole("dialog", { name: /C-PHONE/ })).toContainText("pat.phone@example.com");
 
-  await page.getByRole("button", { name: "New" }).click();
+  await page.getByRole("button", { name: "New Candidate", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Create Candidate" });
   await expect(dialog.getByLabel("Email")).not.toHaveAttribute("required", "");
   await dialog.getByRole("textbox", { name: "Name", exact: true }).fill("Email Validation");
@@ -78,7 +78,7 @@ test("candidate reference name is required only for Referral channel", async ({ 
   await page.goto("/candidates");
   await expectWorkspaceReady(page);
 
-  await page.getByRole("button", { name: "New" }).click();
+  await page.getByRole("button", { name: "New Candidate", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Create Candidate" });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByLabel("Reference Name")).toHaveCount(0);

@@ -250,16 +250,25 @@ export function pipelineBoard(candidates: EnrichedCandidate[]) {
 }
 
 export function enrichSourcingGroups(data: DashboardData, weekStart: string): EnrichedSourcingGroup[] {
+  return enrichLinkedGroups(data, weekStart, false);
+}
+
+/** Workspace history includes linked groups after their last vacancy closes. */
+export function enrichWorkspaceLinkedGroups(data: DashboardData, weekStart: string): EnrichedSourcingGroup[] {
+  return enrichLinkedGroups(data, weekStart, true);
+}
+
+function enrichLinkedGroups(data: DashboardData, weekStart: string, includeTerminal: boolean): EnrichedSourcingGroup[] {
   const requisitions = enrichRequisitions(data);
   const candidates = enrichCandidates(data);
   const groupsById = documentGroupsByPositionGroup(data.document_groups);
 
   return Array.from(groupsById.entries())
     .map(([groupId, matches]): EnrichedSourcingGroup | null => {
-      const matchedRequisitions = matches
+      const linkedRequisitions = matches
         .map((match) => requisitions.find((row) => row.doc_id === match.doc_id))
-        .filter((row): row is EnrichedRequisition => Boolean(row))
-        .filter((row) => row.status === "ongoing" && row.open_headcount > 0);
+        .filter((row): row is EnrichedRequisition => Boolean(row));
+      const matchedRequisitions = includeTerminal ? linkedRequisitions : linkedRequisitions.filter((row) => row.status === "ongoing" && row.open_headcount > 0);
 
       if (matchedRequisitions.length === 0) return null;
 
@@ -276,7 +285,7 @@ export function enrichSourcingGroups(data: DashboardData, weekStart: string): En
         sites: uniqueValues(matchedRequisitions.map((row) => row.site)),
         owners: uniqueValues(matchedRequisitions.map((row) => row.person_in_charge)),
         doc_ids: uniqueValues(matchedRequisitions.map((row) => row.doc_id)),
-        open_headcount: matchedRequisitions.reduce((sum, row) => sum + row.open_headcount, 0),
+        open_headcount: matchedRequisitions.reduce((sum, row) => sum + (row.status === "ongoing" ? row.open_headcount : 0), 0),
         candidate_count: groupCandidateCount,
         ...channelFlags,
         latest_update: latestUpdate

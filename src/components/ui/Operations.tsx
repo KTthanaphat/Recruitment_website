@@ -167,7 +167,7 @@ function RecordActionControl({
   const className = menuItem
     ? "grid min-h-10 w-full grid-cols-[auto_1fr] items-center gap-x-2 rounded px-3 py-2 text-left text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-primary/25 disabled:cursor-not-allowed disabled:text-cool"
     : iconOnly
-      ? "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-primary/25"
+      ? "inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-primary/25 md:h-9 md:w-9"
     : "inline-flex min-h-9 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-primary/25";
   const content = (
     <>
@@ -279,7 +279,7 @@ export function RecordActionList({
 
   const horizontal = layout === "horizontal";
   const verticalScroll = layout === "vertical_scroll";
-  const listClass = horizontal ? "flex snap-x gap-3 overflow-x-auto overscroll-x-contain pb-2" : verticalScroll ? "grid min-h-0 gap-2 overflow-y-auto overscroll-contain pr-1" : "grid gap-2";
+  const listClass = horizontal ? "flex snap-x gap-3 overflow-x-auto overscroll-x-contain pb-2" : verticalScroll ? "grid min-h-0 max-h-[min(45dvh,22rem)] gap-2 overflow-y-auto overscroll-contain pr-1 lg:max-h-none" : "grid gap-2";
   const itemClass = horizontal ? "w-[min(22rem,82vw)] shrink-0 snap-start" : "";
 
   return (
@@ -293,7 +293,7 @@ export function RecordActionList({
         const content = verticalScroll ? (
           <>
             <strong className="block truncate text-sm text-navy">{item.title}</strong>
-            <div><Tag tone={item.tone}>{item.actionLabel}</Tag></div>
+            <div><Tag appearance="soft" tone={item.tone}>{item.actionLabel}</Tag></div>
           </>
         ) : (
           <>
@@ -301,7 +301,7 @@ export function RecordActionList({
               <strong className="block truncate text-sm text-navy">{item.title}</strong>
               <p className="mt-0.5 text-xs font-medium text-slate">{item.meta}</p>
             </div>
-            <Tag tone={item.tone}>{item.actionLabel}</Tag>
+            <Tag appearance="soft" tone={item.tone}>{item.actionLabel}</Tag>
           </>
         );
 

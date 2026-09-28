@@ -90,6 +90,7 @@ export type CandidatePipelineCapability = DisabledReason & {
 };
 
 export type DataQualitySeverity = "blocking" | "warning" | "info";
+export type WorkspaceQualityIssueCode = "duplicateCandidate" | "candidateNoActivity" | "candidateClosedRequest" | "headcountFilled" | "headcountNoCandidates" | "requisitionSourcingStale" | "offerMissingStart" | "startConfirmationDue" | "offerFillsRequest" | "groupSourcingStale" | "pipelineOrder";
 
 export type DataQualityIssue = {
   id: string;
@@ -100,6 +101,8 @@ export type DataQualityIssue = {
   detail: string;
   actionLabel?: string;
   href?: string;
+  workspaceCode?: WorkspaceQualityIssueCode;
+  workspaceParams?: Record<string, string | number>;
 };
 
 export type StageHealth = {
@@ -185,10 +188,11 @@ export function deriveHiringJourney(context: HiringJourneyContext): HiringJourne
   const missingStart = accepted.some((offer) => !offer.first_working_date);
   const filled = Boolean(requisition && (requisition.status === "filled" || requisition.open_headcount <= 0));
   const cancelled = requisition?.status === "cancel";
+  const hasLinkedRequest = Boolean(requisition || groups.some((group) => group.doc_ids.length > 0));
 
   return [
-    journeyStep("requisition", "Requisition", requisition ? (cancelled ? "blocked" : "completed") : "current", requisition ? (cancelled ? "Requisition is cancelled." : "Hiring request is ready.") : "Create the hiring request.", "overview"),
-    journeyStep("setup", "Group setup", !requisition || cancelled ? "blocked" : groups.length > 0 ? "completed" : "current", groups.length > 0 ? `${groups.length} sourcing group${groups.length === 1 ? "" : "s"} linked.` : "Create or match a sourcing group.", "overview"),
+    journeyStep("requisition", "Requisition", hasLinkedRequest ? (cancelled ? "blocked" : "completed") : "current", hasLinkedRequest ? (cancelled ? "Requisition is cancelled." : "Hiring request is ready.") : "Create the hiring request.", "overview"),
+    journeyStep("setup", "Group setup", !hasLinkedRequest || cancelled ? "blocked" : groups.length > 0 ? "completed" : "current", groups.length > 0 ? `${groups.length} sourcing group${groups.length === 1 ? "" : "s"} linked.` : "Create or match a sourcing group.", "overview"),
     journeyStep("sourcing", "Sourcing", groups.length === 0 || cancelled ? "blocked" : currentSourcing ? "completed" : "attention", currentSourcing ? "Current week is saved." : "Weekly sourcing update is missing.", "sourcing"),
     journeyStep("candidates", "Candidates", groups.length === 0 || cancelled ? "blocked" : candidates.length > 0 ? "completed" : "current", candidates.length > 0 ? `${candidates.length} candidate${candidates.length === 1 ? "" : "s"} linked.` : "Add the first candidate.", "pipeline"),
     journeyStep("pipeline", "Pipeline", candidates.length === 0 || cancelled ? "blocked" : filled ? "completed" : active.some(isCandidateAging) || active.some((candidate) => candidate.latest_process === "No activity") ? "attention" : "current", filled ? "Required offers are accepted." : active.length > 0 ? `${active.length} active candidate${active.length === 1 ? "" : "s"}.` : "No active candidates remain.", "pipeline"),
@@ -613,14 +617,15 @@ export function candidateQualityIssues(candidate: EnrichedCandidate, data: Dashb
     ? data.candidates.filter((row) => row.candidate_id !== candidate.candidate_id && row.candidate_folder_url === candidate.candidate_folder_url)
     : [];
   if (duplicateByPhone.length > 0 || duplicateByName.length > 0 || duplicateByFolder.length > 0) {
-    issues.push(issue("warning", "candidate", candidate.candidate_id, "Possible duplicate candidate", "Another record has the same phone, name, or folder URL.", "Review candidate", `/candidates?detailType=candidate&detailId=${encodeURIComponent(candidate.candidate_id)}`));
+    const fields = [duplicateByPhone.length > 0 ? "phone" : null, duplicateByName.length > 0 ? "name" : null, duplicateByFolder.length > 0 ? "folder" : null].filter(Boolean).join(",");
+    issues.push(issue("warning", "candidate", candidate.candidate_id, "Possible duplicate candidate", "Another record has the same phone, name, or folder URL.", "Review candidate", `/candidates?detailType=candidate&detailId=${encodeURIComponent(candidate.candidate_id)}`, "duplicateCandidate", { fields }));
   }
   if (candidate.latest_process === "No activity" && (ageDays(candidate.created_at) ?? 0) > 2) {
-    issues.push(issue("info", "candidate", candidate.candidate_id, "Candidate has no activity", "Candidate has been created but has no process update.", "Start process", `/pipeline?detailType=candidate&detailId=${encodeURIComponent(candidate.candidate_id)}`));
+    issues.push(issue("info", "candidate", candidate.candidate_id, "Candidate has no activity", "Candidate has been created but has no process update.", "Start process", `/pipeline?detailType=candidate&detailId=${encodeURIComponent(candidate.candidate_id)}`, "candidateNoActivity", { days: ageDays(candidate.created_at) ?? 0 }));
   }
   const linkedClosed = data.requisitions.find((row) => candidate.doc_ids.includes(row.doc_id) && row.status !== "ongoing");
   if (linkedClosed && candidate.latest_result !== 0 && !candidate.accepted_date) {
-    issues.push(issue("warning", "candidate", candidate.candidate_id, "Candidate linked to closed requisition", `${linkedClosed.doc_id} is ${linkedClosed.status}.`, "Review match", `/workspace?type=requisition&id=${encodeURIComponent(linkedClosed.doc_id)}`));
+    issues.push(issue("warning", "candidate", candidate.candidate_id, "Candidate linked to closed requisition", `${linkedClosed.doc_id} is ${linkedClosed.status}.`, "Review match", `/workspace?type=requisition&id=${encodeURIComponent(linkedClosed.doc_id)}`, "candidateClosedRequest", { docId: linkedClosed.doc_id }));
   }
   return issues;
 }
@@ -628,15 +633,15 @@ export function candidateQualityIssues(candidate: EnrichedCandidate, data: Dashb
 export function requisitionQualityIssues(requisition: EnrichedRequisition, data: DashboardData): DataQualityIssue[] {
   const issues: DataQualityIssue[] = [];
   if (requisition.status === "ongoing" && requisition.open_headcount <= 0) {
-    issues.push(issue("warning", "requisition", requisition.doc_id, "Accepted offers meet headcount", "Requisition is still ongoing even though accepted offers meet requested headcount.", "Review status", `/workspace?type=requisition&id=${encodeURIComponent(requisition.doc_id)}`));
+    issues.push(issue("warning", "requisition", requisition.doc_id, "Accepted offers meet headcount", "Requisition is still ongoing even though accepted offers meet requested headcount.", "Review status", `/workspace?type=requisition&id=${encodeURIComponent(requisition.doc_id)}`, "headcountFilled"));
   }
   if (requisition.status === "ongoing" && requisition.open_headcount > 0 && requisition.candidate_count === 0) {
-    issues.push(issue("warning", "requisition", requisition.doc_id, "Open headcount without candidates", "No candidates are linked to this open requisition.", "Add candidate", `/workspace?type=requisition&id=${encodeURIComponent(requisition.doc_id)}`));
+    issues.push(issue("warning", "requisition", requisition.doc_id, "Open headcount without candidates", "No candidates are linked to this open requisition.", "Add candidate", `/workspace?type=requisition&id=${encodeURIComponent(requisition.doc_id)}`, "headcountNoCandidates", { open: requisition.open_headcount }));
   }
   const groupIds = data.document_groups.filter((match) => match.doc_id === requisition.doc_id).map((match) => match.group_id).filter(Boolean) as string[];
   const stale = groupIds.length > 0 && !data.sourcing_weekly_updates.some((update) => groupIds.includes(update.group_id) && (ageDays(update.updated_at) ?? 99) <= 14);
   if (requisition.status === "ongoing" && requisition.open_headcount > 0 && stale) {
-    issues.push(issue("info", "requisition", requisition.doc_id, "Sourcing update is stale", "Open requisition has no sourcing update saved in the last 14 days.", "Update sourcing", `/workspace?type=requisition&id=${encodeURIComponent(requisition.doc_id)}`));
+    issues.push(issue("info", "requisition", requisition.doc_id, "Sourcing update is stale", "Open requisition has no sourcing update saved in the last 14 days.", "Update sourcing", `/workspace?type=requisition&id=${encodeURIComponent(requisition.doc_id)}`, "requisitionSourcingStale"));
   }
   return issues;
 }
@@ -644,16 +649,16 @@ export function requisitionQualityIssues(requisition: EnrichedRequisition, data:
 export function offerQualityIssues(offer: EnrichedOffer, data: DashboardData): DataQualityIssue[] {
   const issues: DataQualityIssue[] = [];
   if (offer.accepted_date && !offer.first_working_date) {
-    issues.push(issue("warning", "offer", String(offer.offer_id), "Accepted offer missing first working date", "Accepted offers need a first working date for follow-up and reporting.", "Review offer", `/offers?offerSearch=${encodeURIComponent(offer.candidate_id)}`));
+    issues.push(issue("warning", "offer", String(offer.offer_id), "Accepted offer missing first working date", "Accepted offers need a first working date for follow-up and reporting.", "Review offer", `/offers?offerSearch=${encodeURIComponent(offer.candidate_id)}`, "offerMissingStart", { candidateId: offer.candidate_id }));
   }
   if (offer.accepted_date && offer.first_working_date && offer.start_confirmation === null && (ageDays(offer.first_working_date) ?? -1) >= 0) {
-    issues.push(issue("warning", "offer", String(offer.offer_id), "New hire confirmation due", "Confirm whether the candidate started work on the first working date.", "Confirm start", `/home`));
+    issues.push(issue("warning", "offer", String(offer.offer_id), "New hire confirmation due", "Confirm whether the candidate started work on the first working date.", "Confirm start", `/home`, "startConfirmationDue", { candidateId: offer.candidate_id }));
   }
   const requisition = data.requisitions.find((row) => row.doc_id === offer.doc_id);
   if (countsTowardHeadcount(offer) && requisition?.status === "ongoing") {
     const accepted = data.offers.filter((row) => row.doc_id === offer.doc_id && countsTowardHeadcount(row)).length;
     if (accepted >= requisition.head_count) {
-      issues.push(issue("info", "offer", String(offer.offer_id), "Offer may fill requisition", "Accepted offers meet requested headcount while requisition remains ongoing.", "Review requisition", `/workspace?type=requisition&id=${encodeURIComponent(offer.doc_id)}`));
+      issues.push(issue("info", "offer", String(offer.offer_id), "Offer may fill requisition", "Accepted offers meet requested headcount while requisition remains ongoing.", "Review requisition", `/workspace?type=requisition&id=${encodeURIComponent(offer.doc_id)}`, "offerFillsRequest", { docId: offer.doc_id }));
     }
   }
   return issues;
@@ -662,7 +667,7 @@ export function offerQualityIssues(offer: EnrichedOffer, data: DashboardData): D
 export function sourcingQualityIssues(group: EnrichedSourcingGroup, _data: DashboardData): DataQualityIssue[] {
   if (group.open_headcount <= 0) return [];
   if (!group.latest_update || (ageDays(group.latest_update.updated_at) ?? 99) > 14) {
-    return [issue("info", "sourcing", group.group_id, "Sourcing group needs update", "Open headcount exists but sourcing has not been updated in 14 days.", "Update sourcing", `/workspace?type=group&id=${encodeURIComponent(group.group_id)}`)];
+    return [issue("info", "sourcing", group.group_id, "Sourcing group needs update", "Open headcount exists but sourcing has not been updated in 14 days.", "Update sourcing", `/workspace?type=group&id=${encodeURIComponent(group.group_id)}`, "groupSourcingStale")];
   }
   return [];
 }
@@ -674,7 +679,7 @@ export function pipelineQualityIssues(candidate: EnrichedCandidate, logs: Recrui
   for (const log of sorted) {
     const index = PROCESS_UPDATE_STAGES.indexOf(log.recruitment_process);
     if (index !== -1 && previousIndex > index && log.recruitment_process !== "Test") {
-      issues.push(issue("warning", "pipeline", candidate.candidate_id, "Process history is out of order", "A later log appears to move backward in the pipeline.", "Review history", `/candidates?detailType=candidate&detailId=${encodeURIComponent(candidate.candidate_id)}`));
+      issues.push(issue("warning", "pipeline", candidate.candidate_id, "Process history is out of order", "A later log appears to move backward in the pipeline.", "Review history", `/candidates?detailType=candidate&detailId=${encodeURIComponent(candidate.candidate_id)}`, "pipelineOrder", { previous: PROCESS_UPDATE_STAGES[previousIndex] ?? "—", later: log.recruitment_process }));
       break;
     }
     if (index !== -1) previousIndex = Math.max(previousIndex, index);
@@ -726,8 +731,8 @@ function disabled(code: DisabledReasonCode, label: string, detail: string, recov
   return { blocked: true, code, detail, label, recovery };
 }
 
-function issue(severity: DataQualitySeverity, entity: DataQualityIssue["entity"], entityId: string, title: string, detail: string, actionLabel?: string, href?: string): DataQualityIssue {
-  return { id: `${entity}:${entityId}:${title}`, severity, entity, entityId, title, detail, actionLabel, href };
+function issue(severity: DataQualitySeverity, entity: DataQualityIssue["entity"], entityId: string, title: string, detail: string, actionLabel?: string, href?: string, workspaceCode?: WorkspaceQualityIssueCode, workspaceParams?: Record<string, string | number>): DataQualityIssue {
+  return { id: `${entity}:${entityId}:${title}`, severity, entity, entityId, title, detail, actionLabel, href, workspaceCode, workspaceParams };
 }
 
 function severityWeight(severity: DataQualitySeverity) {

@@ -1,6 +1,6 @@
 # Requisition Detail design
 
-Reference: [Candidate Detail](../design.md) supplies the drawer shell, identity hierarchy, soft tags, flat actions, section surfaces and workspace profile grid. Owner: `buildDetailBodyV2` and `RequisitionDetailHeader` in [RecruitmentWorkspace](../../src/components/RecruitmentWorkspace.tsx).
+Reference: [Candidate Detail](candidate-detail.md) supplies the drawer shell, identity hierarchy, soft tags, flat actions, section surfaces and workspace profile grid. Owner: `buildDetailBodyV2` and `RequisitionDetailHeader` in [RecruitmentWorkspace](../../src/components/RecruitmentWorkspace.tsx).
 
 Lead with the formatted position and requisition ID beside a quiet circular briefcase icon. Place status and fill-readiness soft tags below the title. Keep workspace, authorized edit, and More utilities flat; preserve each existing permission and contextual link.
 

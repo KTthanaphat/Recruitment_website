@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PAGE_SIZE_OPTIONS, Pagination, paginateRows } from "@/components/ui/Pagination";
-import { Panel, SectionTitle } from "@/components/ui/Panel";
+import { Panel } from "@/components/ui/Panel";
 import { SortableFilterHeader, TableToolbar, TruncatedTableText, type TableColumn, useTableControls } from "@/components/ui/TableControls";
 import { Tag } from "@/components/ui/Tag";
 import { RecordQuickActions, type RecordQuickAction } from "@/components/ui/Operations";
@@ -80,18 +80,8 @@ export function CandidatesView({
 
   return (
     <Panel>
-      <SectionTitle
-        title={translate(language, "candidates")}
-        action={
-          canWrite ? (
-            <>
-              <Button type="button" size="icon-sm" icon={<Plus size={17} />} aria-label={translate(language, "newCandidate")} title={translate(language, "newCandidate")} onClick={onNew} />
-            </>
-          ) : null
-        }
-      />
       {rows.length === 0 ? (
-        <EmptyState message={translate(language, "noData")} />
+        <>{canWrite ? <div className="mb-4 flex justify-end"><Button type="button" size="sm" icon={<Plus size={17} />} onClick={onNew}>{translate(language, "newCandidate")}</Button></div> : null}<EmptyState message={translate(language, "noData")} /></>
       ) : (
         <>
         <TableToolbar
@@ -101,6 +91,7 @@ export function CandidatesView({
           onSearch={table.setSearch}
           resultCount={table.controlledRows.length}
           searchValue={table.search}
+          trailingActions={canWrite ? <Button type="button" size="sm" icon={<Plus size={17} />} onClick={onNew}>{translate(language, "newCandidate")}</Button> : null}
           totalCount={triagedRows.length}
         />
         <div className="mb-3 flex flex-wrap gap-2">
@@ -108,7 +99,7 @@ export function CandidatesView({
             <button
               key={option.value}
               type="button"
-              className={`min-h-8 rounded-lg px-3 text-xs font-semibold ring-1 ring-inset transition-colors ${triageFilter === option.value ? "bg-primary text-white ring-primary" : "bg-white text-navy ring-[#C9D5E6] hover:bg-[#F8FAFD]"}`}
+              className={`min-h-11 min-w-11 rounded-lg px-3 text-xs font-semibold ring-1 ring-inset transition-colors md:min-h-8 md:min-w-0 ${triageFilter === option.value ? "bg-primary text-white ring-primary" : "bg-white text-navy ring-[#C9D5E6] hover:bg-[#F8FAFD]"}`}
               aria-pressed={triageFilter === option.value}
               onClick={() => setTriageFilter(option.value)}
             >
@@ -123,19 +114,22 @@ export function CandidatesView({
                 <strong className="font-bold text-navy">
                   {formatCandidateName(row)}
                 </strong>
-                <Tag tone={statusTone(resultText(row.latest_result).toLowerCase()) as never}>{resultText(row.latest_result, language)}</Tag>
+                <Tag appearance="soft" tone={statusTone(resultText(row.latest_result).toLowerCase()) as never}>{resultText(row.latest_result, language)}</Tag>
               </div>
               <p className="text-sm font-medium text-slate">{processLabel(row.latest_process, language)} · {row.site ?? "-"}</p>
-              <p className="hidden text-sm font-semibold text-navy md:block">{row.candidate_id}</p>
-              <p className="hidden text-sm font-medium text-slate md:block">{row.group_position ?? "-"} - {row.person_in_charge ?? "-"}</p>
-              <p className="hidden text-sm font-medium text-slate md:block">{translate(language, "lastTouchValue", { value: ageLabel(row) })}</p>
+              <dl className="mt-2 grid gap-1.5 text-xs">
+                <div className="flex min-w-0 gap-2"><dt className="shrink-0 font-medium text-slate">{translate(language, "candidateId")}</dt><dd className="min-w-0 break-words font-semibold text-navy">{row.candidate_id}</dd></div>
+                <div className="flex min-w-0 gap-2"><dt className="shrink-0 font-medium text-slate">{translate(language, "group")}</dt><dd className="min-w-0 break-words font-semibold text-navy">{row.group_position ?? "-"}</dd></div>
+                <div className="flex min-w-0 gap-2"><dt className="shrink-0 font-medium text-slate">{translate(language, "owner")}</dt><dd className="min-w-0 break-words font-semibold text-navy">{row.person_in_charge ?? "-"}</dd></div>
+                <div className="flex min-w-0 gap-2"><dt className="shrink-0 font-medium text-slate">{translate(language, "lastTouch")}</dt><dd className="min-w-0 break-words font-semibold text-navy">{ageLabel(row)}</dd></div>
+              </dl>
               <div className="mt-3">
                 <RecordQuickActions label={translate(language, "recordActionsFor", { label: formatCandidateName(row) })} actions={candidateActions(row, language, onOpen)} />
               </div>
             </article>
           ))}
         </div>
-        <div className="table-scroll hidden md:block">
+        <div className="table-scroll hidden md:block" tabIndex={0}>
           <table className="w-full border-collapse text-left text-sm">
             <thead className="bg-lightgray text-xs uppercase text-slate">
               <tr>
@@ -184,8 +178,8 @@ export function CandidatesView({
                   <td className="px-3 py-3 text-slate"><TruncatedTableText value={row.group_position} /></td>
                   <td className="px-3 py-3 text-slate"><TruncatedTableText value={row.site} /></td>
                   <td className="px-3 py-3 text-slate"><TruncatedTableText value={row.person_in_charge} /></td>
-                  <td className="px-3 py-3"><Tag tone={row.latest_process === "No activity" ? "muted" : "teal"}>{processLabel(row.latest_process, language)}</Tag></td>
-                  <td className="px-3 py-3"><Tag tone={statusTone(resultText(row.latest_result).toLowerCase()) as never}>{resultText(row.latest_result, language)}</Tag></td>
+                  <td className="px-3 py-3"><Tag appearance="soft" tone={row.latest_process === "No activity" ? "muted" : "teal"}>{processLabel(row.latest_process, language)}</Tag></td>
+                  <td className="px-3 py-3"><Tag appearance="soft" tone={statusTone(resultText(row.latest_result).toLowerCase()) as never}>{resultText(row.latest_result, language)}</Tag></td>
                   <td className="px-3 py-3 text-slate">{ageLabel(row)}</td>
                   <td className="px-3 py-3">
                     <div className="flex items-center justify-end gap-2">
