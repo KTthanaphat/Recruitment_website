@@ -16,7 +16,7 @@ When editing: focus an appropriate popup target on open; support calendar keyboa
 
 ## Dropdown box
 
-The global header places an icon-only priority star immediately after PIC and before Language. An outlined star shows all requisitions; a filled amber star limits requisition-related pages to priority requisitions. Use a localized title/accessible name, `aria-pressed`, visible keyboard focus and a 44px phone target. Site/PIC still narrow the selected priority scope. Persist `priority=only|all` in shared links and navigation; default is all. The flag is shared record data, while the filter is each user's view preference.
+The global header places an icon-only priority bookmark immediately after PIC and before Language. An outlined bookmark shows all requisitions; a filled system blue (#0A3CDC) bookmark limits requisition-related pages to priority requisitions. Use a localized title/accessible name, `aria-pressed`, visible keyboard focus and a 44px phone target. Site/PIC still narrow the selected priority scope. Persist `priority=only|all` in shared links and navigation; default is all. The flag is shared record data, while the filter is each user's view preference.
 
 Owners: [CommandSelector.tsx](../../src/components/ui/CommandSelector.tsx), `CreateSelectInput` / native `SelectInput` in [Field.tsx](../../src/components/ui/Field.tsx).
 

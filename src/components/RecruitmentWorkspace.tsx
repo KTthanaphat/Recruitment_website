@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import type { Requisition } from "@/types/recruitment";
-import { Activity, AlertTriangle, Bookmark, BriefcaseBusiness, Building2, CalendarDays, CalendarPlus, CheckCircle2, ContactRound, Copy, CopyCheck, Factory, EyeOff, Files, Hash, Info, LampDesk, Layers3, Mail, Network, Pencil, Phone, Plus, RefreshCw, Send, Star, UserRound, UsersRound, X } from "lucide-react";
+import { Activity, AlertTriangle, Bookmark, BriefcaseBusiness, Building2, CalendarDays, CalendarPlus, CheckCircle2, ContactRound, Copy, CopyCheck, Factory, EyeOff, Files, Hash, Info, LampDesk, Layers3, Mail, Network, Pencil, Phone, Plus, RefreshCw, Send, UserRound, UsersRound, X } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AdminView } from "@/components/admin/AdminView";
 import { AuditView } from "@/components/audit/AuditView";
@@ -1152,8 +1152,8 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
         <>
           <CommandSelector ariaLabel={translate(language, "site")} density="compact" emptyLabel={translate(language, "allSites")} options={[{ value: "", label: translate(language, "allSites") }, ...siteOptions.map((value) => ({ value, label: value }))]} value={filters.site} onValueChange={(value) => setFilters((old) => ({ ...old, site: value }))} className="w-full min-w-[8.5rem] sm:w-36" />
           <CommandSelector ariaLabel={translate(language, "personInCharge")} density="compact" emptyLabel={translate(language, "allOwners")} options={[{ value: "", label: translate(language, "allOwners") }, ...ownerOptions.map((value) => ({ value, label: value }))]} value={filters.owner} onValueChange={(value) => setFilters((old) => ({ ...old, owner: value }))} className="w-full min-w-[11rem] sm:w-48" />
-          <Button type="button" size="icon-sm" variant="secondary" className={filters.priorityOnly ? "min-h-11 min-w-11 !bg-[#FFF4D8] !text-[#A65C00] !ring-[#E5B96B] sm:min-h-9 sm:min-w-9" : "min-h-11 min-w-11 sm:min-h-9 sm:min-w-9"}
-            icon={<Star size={18} fill={filters.priorityOnly ? "currentColor" : "none"} aria-hidden="true" />}
+          <Button type="button" size="icon-sm" variant="secondary" className={filters.priorityOnly ? "min-h-11 min-w-11 !bg-[#E8F0FF] !text-[#0A3CDC] !ring-[#9FBFFF] sm:min-h-9 sm:min-w-9" : "min-h-11 min-w-11 !text-[#0A3CDC] sm:min-h-9 sm:min-w-9"}
+            icon={<Bookmark size={18} fill={filters.priorityOnly ? "currentColor" : "none"} aria-hidden="true" />}
             aria-label={translate(language, "priorityRequisitionFilter")} aria-pressed={filters.priorityOnly}
             title={translate(language, filters.priorityOnly ? "priorityRequisitions" : "allRequisitions")}
             onClick={() => setFilters(current => ({ ...current, priorityOnly: !current.priorityOnly }))} />

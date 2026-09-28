@@ -4,7 +4,7 @@ Reference: [Candidate Detail](candidate-detail.md) supplies the drawer shell, id
 
 Lead with the formatted position and requisition ID beside a quiet circular briefcase icon. Place status and fill-readiness soft tags below the title. Keep workspace, authorized edit, and More utilities flat; preserve each existing permission and contextual link.
 
-The top-right inline utility is a priority star: outlined when unset, filled amber when marked. It toggles a shared requisition flag immediately, with a pending disabled state and an inline error on failure. Only users who can manage the requisition can change it; viewers and unrelated site recruiters see a disabled state. Edit remains in More. Priority saves use the current updated timestamp to reject stale changes and retain the existing audit trail.
+The top-right inline utility is a priority bookmark: outlined when unset, filled system blue (#0A3CDC) when marked. It toggles a shared requisition flag immediately, with a pending disabled state and an inline error on failure. Only users who can manage the requisition can change it; viewers and unrelated site recruiters see a disabled state. Edit remains in More. Priority saves use the current updated timestamp to reject stale changes and retain the existing audit trail.
 
 On phones, place requisition utility actions on a separate row below the identity, with Close beside the title. This lets long positions wrap across the available width. The shared Drawer exposes this as an opt-in mobile action row; Candidate Detail retains its existing header layout.
 

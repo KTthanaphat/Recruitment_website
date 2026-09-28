@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { canManageRequisitionPriority, priorityRequisitionScope } from "../../src/lib/requisition-priority";
 import { expectWorkspaceReady, installMockSupabase } from "./support/mock-supabase";
 
-test("priority star persists, filters records and survives navigation", async ({ page }, testInfo) => {
+test("priority bookmark persists, filters records and survives navigation", async ({ page }, testInfo) => {
   const mock = await installMockSupabase(page);
   const requisition = mock.data.requisitions.find(row => row.doc_id === "REQ-HQ-1")!;
   const originalTimestamp = requisition.updated_at;
@@ -26,6 +26,15 @@ test("priority star persists, filters records and survives navigation", async ({
   await expect(page).toHaveURL(/priority=only/);
   await expect(page.locator("tbody tr")).toHaveCount(1);
   await expect(page.locator("tbody")).toContainText("REQ-HQ-1");
+  const docId = page.locator("tbody").getByRole("button", { name: "View requisition detail for REQ-HQ-1", exact: true });
+  const bookmarkIcon = docId.locator("svg");
+  await expect(bookmarkIcon).toHaveCSS("color", "rgb(10, 60, 220)");
+  expect(await docId.evaluate(node => {
+    const value = Array.from(node.childNodes).find(child => child.nodeType === Node.TEXT_NODE && child.textContent?.includes("REQ-HQ-1"));
+    const icon = node.querySelector("svg");
+    return Boolean(value && icon && (value.compareDocumentPosition(icon) & Node.DOCUMENT_POSITION_FOLLOWING));
+  })).toBe(true);
+  await expect(filter.locator("svg")).toHaveCSS("color", "rgb(10, 60, 220)");
   await page.reload();
   await expect(filter).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator("tbody tr")).toHaveCount(1);
@@ -46,7 +55,7 @@ test("priority star persists, filters records and survives navigation", async ({
   await expect(page.locator("tbody tr")).toHaveCount(mock.data.requisitions.length);
 });
 
-test("failed priority save retains the original star and shows a useful error", async ({ page }) => {
+test("failed priority save retains the original bookmark and shows a useful error", async ({ page }) => {
   await installMockSupabase(page);
   await page.route("**/rest/v1/rpc/app_set_requisition_priority_v1", route => route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ message: "PRIORITY_STALE_WRITE" }) }));
   await page.goto("/requisitions?detailType=requisition&detailId=REQ-HQ-1");
@@ -88,7 +97,7 @@ test("priority scope reconciles requisitions, group pools and related records", 
   expect(data.requisitions.length).toBeGreaterThan(1);
 });
 
-test("Thai phone controls fit and place the star between PIC and language", async ({ page }, testInfo) => {
+test("Thai phone controls fit and place the bookmark between PIC and language", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await installMockSupabase(page, { language: "th" });
   await page.goto("/requisitions?lang=th&detailType=requisition&detailId=REQ-HQ-1");
@@ -97,12 +106,12 @@ test("Thai phone controls fit and place the star between PIC and language", asyn
   await page.screenshot({ path: testInfo.outputPath("priority-phone.png"), fullPage: true });
   await drawer.getByRole("button", { name: "Close", exact: true }).click();
   const header = page.locator("[data-app-header-actions]");
-  const star = header.getByRole("button", { name: "ตัวกรองคำขอเร่งด่วน", exact: true });
-  await expect(star).toBeVisible();
-  expect((await star.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  const bookmark = header.getByRole("button", { name: "ตัวกรองคำขอเร่งด่วน", exact: true });
+  await expect(bookmark).toBeVisible();
+  expect((await bookmark.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   expect(await header.locator("button").evaluateAll(nodes => {
-    const starIndex = nodes.findIndex(node => node.getAttribute("aria-label") === "ตัวกรองคำขอเร่งด่วน");
-    return nodes[starIndex + 1]?.textContent?.trim();
+    const bookmarkIndex = nodes.findIndex(node => node.getAttribute("aria-label") === "ตัวกรองคำขอเร่งด่วน");
+    return nodes[bookmarkIndex + 1]?.textContent?.trim();
   })).toBe("EN");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
