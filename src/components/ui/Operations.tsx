@@ -214,7 +214,7 @@ function RecordActionControl({
   );
 }
 
-export function OperationalSummaryStrip({ items, density = "default", className = "", layout = "grid" }: { items: OperationalSummaryItem[]; density?: "default" | "compact"; className?: string; layout?: "grid" | "stacked" | "stacked_lines" }) {
+export function OperationalSummaryStrip({ items, density = "default", className = "", layout = "grid", valueTone = "semantic" }: { items: OperationalSummaryItem[]; density?: "default" | "compact"; className?: string; layout?: "grid" | "stacked" | "stacked_lines"; valueTone?: "semantic" | "navy" }) {
   const stacked = layout === "stacked";
   const stackedLines = layout === "stacked_lines";
   const vertical = stacked || stackedLines;
@@ -226,7 +226,7 @@ export function OperationalSummaryStrip({ items, density = "default", className 
             <p className="text-xs font-medium text-slate">{item.label}</p>
             {item.helper ? <p className={`${vertical ? "mt-0.5 font-light" : "mt-1 font-medium"} text-xs text-cool`}>{item.helper}</p> : null}
           </div>
-          <p className={`${vertical ? "text-right" : "mt-1"} font-semibold tabular-nums ${density === "compact" ? "text-lg" : "text-xl"} ${summaryValueClass(item.tone)}`}>{item.value}</p>
+          <p className={`${vertical ? "text-right" : "mt-1"} font-semibold tabular-nums ${density === "compact" ? "text-lg" : "text-xl"} ${valueTone === "navy" ? "text-navy" : summaryValueClass(item.tone)}`}>{item.value}</p>
         </div>
       ))}
     </div>

@@ -843,3 +843,7 @@ Do not treat the demo information architecture in section 4 as a replacement for
 ## 23. Phone-first recruiter operations
 
 Audience: recruiters moving work between interviews, sourcing, and manager follow-up. The primary phone flow is review today’s task, open the record, update Pipeline, save, and return to the next task. Keep cards compact and status-led; make the current record and its next action more prominent than filters or history. Use 44px minimum primary targets, readable Thai labels, safe-area padding, focus-managed bottom sheets, and dynamic viewport-safe dialogs. At 360px and 390px there must be no page-level horizontal scrolling: only Pipeline boards and explicit detailed-data tables may scroll internally. Tablet adapts at 768px; desktop navigation, tables, and grid density resume from `md`.
+
+## Recruitment Performance and Requisition Detail
+
+Use the [Recruitment Performance contract](design/recruitment-performance.md) for the dashboard overview and [Requisition Detail contract](design/requisition-detail.md) for its record drawer.

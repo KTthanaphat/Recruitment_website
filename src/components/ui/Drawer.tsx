@@ -14,6 +14,7 @@ export function Drawer({
   headerActions,
   headerMeta,
   headerContent,
+  mobileActionRow = false,
   backAction,
   variant = "side",
   inactive = false,
@@ -27,6 +28,7 @@ export function Drawer({
   headerActions?: ReactNode;
   headerMeta?: ReactNode;
   headerContent?: ReactNode;
+  mobileActionRow?: boolean;
   backAction?: ReactNode;
   variant?: "side" | "candidate-workspace";
   inactive?: boolean;
@@ -60,7 +62,7 @@ export function Drawer({
         onKeyDown={(event) => trapDrawerTabKey(event, panelRef.current)}
         className={`h-full min-w-0 w-full overflow-x-hidden overflow-y-auto overscroll-contain bg-white shadow-2xl outline-none ${variant === "candidate-workspace" ? "sm:max-w-2xl sm:border-l sm:border-[#D7DEE8]" : "sm:max-w-2xl"}`}
       >
-        <div className="sticky top-0 z-30 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-3 border-b border-[#D7DEE8] bg-white px-4 py-4 sm:px-5">
+        <div className={`sticky top-0 z-30 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] ${mobileActionRow ? "sm:grid-cols-[minmax(0,1fr)_auto_auto]" : ""} gap-3 border-b border-[#D7DEE8] bg-white px-4 py-4 sm:px-5`}>
           <div className="min-w-0">
             {headerContent ? <><h3 id={titleId} className="sr-only">{title}</h3>{headerContent}</> : <>
               {backAction ? <div className="mb-2">{backAction}</div> : null}
@@ -69,8 +71,9 @@ export function Drawer({
               {headerMeta ? <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2">{headerMeta}</div> : null}
             </>}
           </div>
-          <div className="flex items-start justify-end gap-2">
-            {headerActions}
+          {mobileActionRow && headerActions ? <div className="col-span-2 row-start-2 flex items-start justify-end sm:col-span-1 sm:col-start-2 sm:row-start-1">{headerActions}</div> : null}
+          <div className={`flex items-start justify-end gap-2 ${mobileActionRow ? "col-start-2 row-start-1 sm:col-start-3" : ""}`}>
+            {!mobileActionRow ? headerActions : null}
             <Button
               type="button"
               variant="ghost"

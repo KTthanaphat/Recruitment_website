@@ -1,7 +1,8 @@
 "use client";
 
 import { ArrowLeftRight, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, Download, ImageDown, Info, SlidersHorizontal } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { ReportHelp } from "./ReportHelp";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -98,6 +99,8 @@ export function VacancyWaterfallView({
   const [customStartDate, setCustomStartDate] = useState("");
   const [customEndDate, setCustomEndDate] = useState("");
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [waterfallOpen, setWaterfallOpen] = useState(true);
+  const waterfallContentId = useId();
   const [executiveBreakdownOpen, setExecutiveBreakdownOpen] = useState(false);
   const [funnelStartDate, setFunnelStartDate] = useState(`${today().slice(0, 4)}-01-01`);
   const [funnelEndDate, setFunnelEndDate] = useState(today());
@@ -270,20 +273,17 @@ export function VacancyWaterfallView({
 
   return (
     <div className="grid min-w-0 max-w-full gap-4 overflow-x-hidden">
-      <section className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-[#C9D5E6] bg-white py-5 font-normal shadow-[0_14px_34px_rgba(11,19,43,0.06)]">
-        <div className="mb-5 border-b border-[#E4E9F2] px-4 pb-5 sm:px-6 lg:px-8">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <h2 className="text-2xl font-semibold tracking-normal text-navy sm:text-[28px]">{translate(language, "vacancyWaterfall")}</h2>
-              <p className="mt-1 text-sm font-medium text-slate">{translate(language, "reportingWindow")}</p>
-            </div>
-            <div className="inline-flex w-fit items-center gap-2 rounded-xl border border-[#C9D5E6] bg-[#F8FAFD] px-3 py-2 text-sm font-semibold text-navy shadow-sm" aria-live="polite">
-              <CalendarDays size={16} className="text-primary" aria-hidden="true" />
-              <span className="text-slate">{translate(language, "selectedPeriod")}</span>
-              <span className="tabular-nums">{formatDate(startDate, language)} - {formatDate(endDate, language)}</span>
-            </div>
+      <section className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-[#E4E9F2] bg-[#F8FAFD] shadow-none">
+        <div className="flex flex-col gap-3 px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
+          <h2 className="min-w-0 flex-1" aria-label={translate(language, "vacancyWaterfall")}><button type="button" className="flex min-h-11 w-full items-center justify-between gap-3 text-left focus:outline-none focus:ring-2 focus:ring-primary" aria-label={translate(language, "vacancyWaterfall")} aria-expanded={waterfallOpen} aria-controls={waterfallContentId} onClick={() => setWaterfallOpen(value => !value)}><span><strong className="block text-lg font-semibold text-navy">{translate(language, "vacancyWaterfall")}</strong><span className="text-sm font-medium text-slate">{formatDate(startDate, language)} – {formatDate(endDate, language)}</span></span><ChevronDown size={20} className={waterfallOpen ? "rotate-180" : ""} aria-hidden="true" /></button></h2>
+          <div className="flex flex-wrap items-center gap-2 print:hidden">
+          <ReportHelp label={language === "th" ? "คำอธิบายกราฟอัตราว่าง" : "Vacancy Waterfall help"} text={language === "th" ? "แสดงการเปลี่ยนแปลงอัตราว่างจากต้นช่วงถึงปลายช่วง แท่งสีแยกสถานที่และประเภทคำขอ การบรรจุลดอัตราว่าง ตัวกรองรายงานนี้แยกจากผลการสรรหาด้านบน" : "Tracks open vacancies from the start to the end of the selected range. Stacks separate sites and request types; fills reduce open vacancies. These report filters are independent of Recruitment Performance above."} />
+          <Button type="button" size="sm" variant="secondary" icon={<ImageDown size={16} />} disabled={exportPreparing || !validReportRange} onClick={() => exportPng(chartExportRef.current, `vacancy-waterfall-${startDate}-to-${endDate}.png`)}>{translate(language, "exportPng")}</Button>
           </div>
-          <div className="mt-4 rounded-2xl border border-[#D7E2F1] bg-[linear-gradient(135deg,#F8FAFD_0%,#F1F6FC_100%)] p-3 shadow-[0_8px_20px_rgba(11,19,43,0.04)]">
+        </div>
+        <div id={waterfallContentId} hidden={!waterfallOpen} className="border-t border-[#E4E9F2] bg-white py-4">
+        <div className="mb-5 border-b border-[#E4E9F2] px-4 pb-5 sm:px-6 lg:px-8">
+          <div className="rounded-2xl border border-[#D7E2F1] bg-[linear-gradient(135deg,#F8FAFD_0%,#F1F6FC_100%)] p-3 shadow-[0_8px_20px_rgba(11,19,43,0.04)]">
             <div className={`grid gap-3 lg:items-end ${reportView === "custom" ? "lg:grid-cols-[14rem_10rem_10rem_auto]" : "lg:grid-cols-[14rem_10rem_auto]"}`}>
             <div className="grid gap-1.5 text-sm font-medium text-navy">
               <span className="text-xs font-semibold text-slate">{translate(language, "metricView")}</span>
@@ -293,9 +293,6 @@ export function VacancyWaterfallView({
               <DashboardDateFilter label={translate(language, "startDate")} value={customStartDate} onChange={setCustomStartDate} language={language} />
               <DashboardDateFilter label={translate(language, "endDate")} value={customEndDate} onChange={setCustomEndDate} language={language} />
             </> : <Field label={translate(language, "reportMonth")} className="text-xs font-semibold text-slate"><CommandMonthSelector ariaLabel={translate(language, "reportMonth")} monthLabel={(month) => monthPickerMonthLabel(month, language)} previousYearLabel={translate(language, "previousYear")} nextYearLabel={translate(language, "nextYear")} value={reportMonth} onValueChange={setReportMonth} /></Field>}
-            <div className="flex flex-wrap items-end gap-2 print:hidden lg:justify-end">
-              <Button type="button" size="sm" variant="secondary" icon={<ImageDown size={16} />} disabled={exportPreparing || !validReportRange} onClick={() => exportPng(chartExportRef.current, `vacancy-waterfall-${startDate}-to-${endDate}.png`)}>{translate(language, "exportPng")}</Button>
-            </div>
             </div>
             {reportView === "custom" && !validReportRange ? <p className="mt-3 rounded-xl border border-danger/20 bg-danger/5 px-3 py-2 text-sm font-medium text-danger" role="alert">{translate(language, "invalidCustomDateRange")}</p> : null}
           </div>
@@ -308,14 +305,15 @@ export function VacancyWaterfallView({
         {waterfallRows.length === 0 ? (
           <div className="px-4 sm:px-6 lg:px-8">
             <EmptyState variant="quiet" message={translate(language, "noWaterfallData")} />
-            {validReportRange ? <WaterfallExecutiveSummaryTable language={language} rows={[]} breakdownOpen={executiveBreakdownOpen} onBreakdownChange={setExecutiveBreakdownOpen} /> : null}
           </div>
-        ) : (
+        ) : null}
+        {validReportRange ? (
           <div className="bg-white">
-            <VacancyWaterfallChart breakdownOpen={executiveBreakdownOpen} onBreakdownChange={setExecutiveBreakdownOpen} language={language} rows={waterfallRows} startDate={startDate} endDate={endDate} />
+            <VacancyWaterfallChart sites={requisitions.map(row => row.site)} breakdownOpen={executiveBreakdownOpen} onBreakdownChange={setExecutiveBreakdownOpen} language={language} rows={waterfallRows} startDate={startDate} endDate={endDate} />
           </div>
-        )}
+        ) : null}
         {exportError ? <p className="mx-4 mb-1 text-sm font-medium text-danger sm:mx-6 lg:mx-8" role="alert">{translate(language, "exportPngFailed")}</p> : null}
+        </div>
       </section>
 
       <section className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-[#E4E9F2] bg-[#F8FAFD] shadow-none">
@@ -395,7 +393,7 @@ export function VacancyWaterfallView({
       <ReportCandidateDetail language={language} candidate={reportCandidate} onClose={() => setReportCandidate(null)} />
 
       <div ref={chartExportRef} className="export-report-surface" aria-hidden="true">
-        <VacancyWaterfallChart isExport breakdownOpen={executiveBreakdownOpen} language={language} rows={waterfallRows} startDate={startDate} endDate={endDate} />
+        <VacancyWaterfallChart sites={requisitions.map(row => row.site)} isExport breakdownOpen={executiveBreakdownOpen} language={language} rows={waterfallRows} startDate={startDate} endDate={endDate} />
       </div>
 
       <div ref={funnelExportRef} className="export-report-surface" aria-hidden="true">
@@ -510,8 +508,8 @@ function ReportHeader({ exportMode = false, language, title, startDate, endDate,
   );
 }
 
-function VacancyWaterfallChart({ language, rows, startDate, endDate, isExport = false, breakdownOpen = false, onBreakdownChange }: { language: Language; rows: WaterfallRow[]; startDate?: string; endDate?: string; isExport?: boolean; breakdownOpen?: boolean; onBreakdownChange?: (open: boolean) => void }) {
-  const chart = buildWaterfall(rows, language);
+function VacancyWaterfallChart({ language, rows, sites = [], startDate, endDate, isExport = false, breakdownOpen = false, onBreakdownChange }: { language: Language; rows: WaterfallRow[]; sites?: string[]; startDate?: string; endDate?: string; isExport?: boolean; breakdownOpen?: boolean; onBreakdownChange?: (open: boolean) => void }) {
+  const chart = buildWaterfall(rows, language, sites);
   const plotWidth = 900;
   const leftAnnotationLane = 8;
   const leftPlotPadding = 144;
@@ -582,7 +580,8 @@ function VacancyWaterfallChart({ language, rows, startDate, endDate, isExport = 
                 const yB = yScale(segment.top);
                 const y = Math.min(yA, yB);
                 const rectHeight = Math.max(Math.abs(yB - yA), 1);
-                return <g key={segment.key}><rect x={x} y={y} width={barWidth} height={rectHeight} fill={segment.color} rx={0}><title>{`${segment.site}: ${formatNumber(Math.abs(segment.value), language)}`}</title></rect>{rectHeight >= 22 ? <text x={x + barWidth / 2} y={y + rectHeight / 2} textAnchor="middle" dominantBaseline="middle" fill={oppositeSnapshotColor(segment.site, segment.requestType)} className="text-[15px] font-light">{formatNumber(Math.abs(segment.value), language)}</text> : null}</g>;
+                const description = `${formatCategoryLabel(language, chart.categories[bar.categoryIndex])} · ${segment.site} · ${requestTypeLabel(language, segment.requestType)}: ${formatNumber(Math.abs(segment.value), language)}`;
+                return <g key={segment.key} tabIndex={isExport ? undefined : 0} aria-label={description}><title>{description}</title><rect x={x} y={y} width={barWidth} height={rectHeight} fill={segment.color} rx={0} />{rectHeight >= 22 ? <text x={x + barWidth / 2} y={y + rectHeight / 2} textAnchor="middle" dominantBaseline="middle" fill={oppositeSnapshotColor(segment.site, segment.requestType)} className="text-[15px] font-light">{formatNumber(Math.abs(segment.value), language)}</text> : null}</g>;
               })}
               <text x={x + barWidth / 2} y={yScale(bar.labelAnchor) - 14} textAnchor="middle" className="fill-navy text-[24px] font-light">
                 {bar.label}
@@ -973,13 +972,9 @@ function isDetailStageHeader(header: string) {
   return detailStages.some((stage) => header === stage || header === processStageLabel("en", stage) || header === processStageLabel("th", stage));
 }
 
-function buildWaterfall(rows: WaterfallRow[], language: Language) {
-  const sites = Array.from(new Set(rows.map((row) => row.site))).sort((a, b) => a.localeCompare(b));
-  const categories: string[] = [];
-  if (rows.some((row) => row.waterfall_category === "Week Start")) categories.push("Week Start");
-  for (const site of sites) if (rows.some((row) => row.waterfall_category === "Open" && row.site === site)) categories.push(`${site} Open`);
-  for (const site of sites) if (rows.some((row) => row.waterfall_category === "Filled" && row.site === site)) categories.push(`${site} Filled`);
-  if (rows.some((row) => row.waterfall_category === "Total")) categories.push("Total");
+function buildWaterfall(rows: WaterfallRow[], language: Language, scopedSites: string[] = []) {
+  const sites = Array.from(new Set([...scopedSites, ...rows.map((row) => row.site)])).sort((a, b) => a.localeCompare(b));
+  const categories = ["Week Start", ...sites.map(site => `${site} Open`), ...sites.map(site => `${site} Filled`), "Total"];
 
   const categoryRows = categories.map((category) => rowsForCategory(rows, category));
   const totals = categoryRows.map((items) => items.reduce((sum, row) => sum + row.vacancy_count, 0));

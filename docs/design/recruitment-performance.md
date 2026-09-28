@@ -1,0 +1,26 @@
+# Recruitment Performance visual contract
+
+The reference-style overview lives above the existing reports at `/dashboard`. Behavior and formulas remain in [Dashboard behavior](../WEBSITE_STRUCTURE.md#dashboard-page). Owners are indexed in [Reporting](../maps/system/reporting.md). Reuse Prompt, the website shell and keyboard-operable shared selectors.
+
+## Composition and controls
+
+- Match the Requisitions Active and Pipeline Health report bars: rounded bordered pale surface, 18px semibold title and 14px date/filter context at left, a chevron at the end of the title button, and separate export actions at right (below on phones). Recruitment Performance and Vacancy Waterfall start expanded; their keyboard-operable title buttons expose expanded state and controlled content. Collapsing preserves selections and export surfaces; export actions stay available. Put overview selectors inside the expanded content. Show PIM with its full localized meaning available on the control.
+- Site and Department use the shared multi-selector with check marks, keyboard navigation and Escape dismissal. Empty selections mean All. Choices combine with OR within each filter and AND between filters; departments follow selected sites within the global scope. Keep long selections truncated with the full selection available in the control title and report context.
+- At 960px **available container width**, use a 60% left / 40% right grid with 12px gutters. Five equal compact 106px KPI cards sit above the left matrix; vacancy composition and SLA sit on the right with aligned column bottoms. Keep metric title and comparison helper adjacent, with little space beneath values and changes. Use restrained borders/shadows, small radii and a pale canvas.
+- Below 960px, KPIs and matrix span the width, with the two smaller charts below. Below 640px, use two KPI columns, average time spanning both, followed by stacked charts. Wide matrices and site charts scroll within focusable panels; the page never scrolls sideways.
+
+## Values and series
+
+- Headline values use fixed report blue. Comparison helpers name the selected period (for example, **vs prior YTD**). KPI cards have no top-right help control; metric definitions remain accessible descriptions, and deltas expose exact previous dates in their title and accessible label. KPI deltas show signed amounts and arrows, with direction words in accessible labels only. Higher vacancies or time-to-fill are adverse; higher fills or rates are favorable. Percentage changes use percentage points.
+- Vacancies and Filled have site-composition strips. Rate cards have achieved/remaining strips. Average time has none.
+- HQ uses teal, KT1 blue, KT2 purple, and Total report blue. User-site accents do not recolor report series. Other sites use a neutral series color.
+- Matrix columns follow scoped HQ, KT1, KT2, then additional sites alphabetically and Total, including zero-count sites. Keep all five standard rows descending Executive, SML, MML, FML, NML; Unknown is appended when present. Leave zero-count value cells blank. Give column/row headers a light blue background; HQ has a building icon, KT1/KT2 factory icons, and Total a column-chart icon. Filled/Open stacks share one count scale across every column, including Total. Show readable segment counts, approved totals and footer filled/approved plus percentage; exact counts remain accessible.
+- Vacancy composition keeps every standard band ascending NML through Executive, including zeros, then Unknown if needed. One SVG aligns blue New/amber Replacement stacks, count grid/axis, cumulative blue line/markers and the 0–100% right axis. Nonempty totals end at 100%.
+- SLA keeps all scoped site axes and the five aligned descending levels even without fills, with clear site separators and a shared count scale. Its maximum is `max(2, ceil(highest filled count × 1.1 / 2) × 2)`, with ticks at zero, half and maximum. Green on-time, red late and gray unknown segments have accessible exact counts and measurable percentages. Always place the percentage after the complete stack, reserving space before the next site separator. Unknown results are excluded from the percentage; empty fills retain the chart frame and a quiet message. Waterfall likewise retains Opening, each scoped site's Open/Filled, and Closing categories when empty; Pipeline retains its full stage list.
+- Every overview chart, Waterfall and Pipeline Funnel has localized explanatory tooltips available on hover, focus and tap; Escape dismisses them. Tooltips stay inside the viewport. Data bars expose counts and percentages where applicable. Hide help controls from exported PNGs.
+
+## PNG and verification
+
+Capture a dedicated desktop report surface with title, dates, applied filters, all five KPIs and all three complete charts. Expand internal scrolling and use the existing 2× non-blank PNG validation. The export remains independent of the current phone viewport.
+
+[Focused browser coverage](../../tests/e2e/recruitment-performance.spec.ts) uses a deterministic 40-vacancy/16-fill fixture and checks ordering, shared scales, colors, totals, URL restoration, global scope, Thai, keyboard controls, 1280/1440/768/390px layouts and PNG dimensions. Keep calculation, historical no-show and period-boundary coverage intact.

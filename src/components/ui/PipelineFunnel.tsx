@@ -1,6 +1,7 @@
 import { formatNumber } from "@/lib/format";
 import { translate } from "@/lib/i18n/dictionary";
 import type { Language } from "@/types/recruitment";
+import { ReportHelp } from "@/components/dashboard/ReportHelp";
 
 export type PipelineFunnelRow = {
   key: string;
@@ -35,7 +36,7 @@ export function PipelineFunnel({
     <section className="pipeline-funnel min-w-0 rounded-lg border border-[#D7DEE8] bg-white p-4 shadow-[0_4px_14px_rgba(11,19,43,0.025)]">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h4 className="font-semibold text-navy">{resolvedTitle}</h4>
+          <div className="flex items-center gap-2"><h4 className="font-semibold text-navy">{resolvedTitle}</h4><ReportHelp label={`${resolvedTitle} ${language === "th" ? "คำอธิบาย" : "help"}`} text={language === "th" ? "จำนวนแสดงผู้สมัครแต่ละขั้นตอน Conversion คือสัดส่วนเทียบขั้นก่อนหน้า Yield คือสัดส่วนเทียบผู้สมัครทั้งหมด ความกว้างแท่งเทียบกับผู้สมัครทั้งหมด" : "Counts show candidates at each stage. Conversion compares with the preceding stage; yield compares with all applicants. Bar widths are relative to the total applicant count."} /></div>
           {subtitle ? <p className="mt-1 text-xs font-medium text-slate">{subtitle}</p> : null}
           {meta ? <p className="mt-1 text-xs font-medium text-slate">{meta}</p> : null}
         </div>
@@ -62,7 +63,7 @@ export function PipelineFunnel({
                   <span className={`block truncate font-semibold leading-9 ${active || isApplicantRow ? "text-navy" : "text-slate"}`}>{row.label}</span>
                 </div>
                 <div className="border-t border-l border-[#D7DEE8] bg-white px-3 py-2">
-                  <div className="relative min-h-9 overflow-hidden rounded-r-md bg-[#EEF2F7]" aria-label={`${row.label}: ${formatNumber(row.count, language)}`}>
+                  <div className="relative min-h-9 overflow-hidden rounded-r-md bg-[#EEF2F7]" tabIndex={0} title={`${row.label}: ${formatNumber(row.count, language)}; ${translate(language, "conversionShort")}: ${formatPercent(row.conversionRate)}; ${translate(language, "yieldShort")}: ${formatPercent(row.yieldRate)}`} aria-label={`${row.label}: ${formatNumber(row.count, language)}`}>
                     <div
                       className={`absolute inset-y-0 left-0 rounded-r-md ${active ? "bg-primary" : "bg-[#D7DEE8]"}`}
                       style={{ width: barWidth }}

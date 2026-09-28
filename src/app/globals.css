@@ -175,8 +175,11 @@ dialog::backdrop {
 }
 
 .table-scroll {
+  contain: inline-size layout;
   max-height: min(64dvh, 46rem);
+  min-width: 0;
   max-width: 100%;
+  width: 100%;
   overflow: auto;
   overscroll-behavior: contain;
   border: 1px solid var(--ats-border);
@@ -243,6 +246,8 @@ dialog::backdrop {
   max-height: none;
   overflow: visible;
 }
+
+.export-report-surface [data-report-help] { display: none; }
 
 .export-report-surface .waterfall-executive-table {
   max-width: none;

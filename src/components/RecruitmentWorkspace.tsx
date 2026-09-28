@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Activity, AlertTriangle, Bookmark, BriefcaseBusiness, Building2, CalendarPlus, ContactRound, Copy, CopyCheck, EyeOff, Files, Info, LampDesk, Mail, Pencil, Phone, Plus, Send, UserRound, UsersRound, X } from "lucide-react";
+import { Activity, AlertTriangle, Bookmark, BriefcaseBusiness, Building2, CalendarDays, CalendarPlus, CheckCircle2, ContactRound, Copy, CopyCheck, Factory, EyeOff, Files, Hash, Info, LampDesk, Layers3, Mail, Network, Pencil, Phone, Plus, RefreshCw, Send, UserRound, UsersRound, X } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AdminView } from "@/components/admin/AdminView";
 import { AuditView } from "@/components/audit/AuditView";
@@ -9,6 +9,7 @@ import { CandidatesView } from "@/components/candidates/CandidatesView";
 import { ConfigurationView } from "@/components/configuration/ConfigurationView";
 import { HomeView } from "@/components/dashboard/HomeView";
 import { VacancyWaterfallView } from "@/components/dashboard/VacancyWaterfallView";
+import { RecruitmentPerformanceOverview } from "@/components/dashboard/RecruitmentPerformanceOverview";
 import { AppShell } from "@/components/layout/AppShell";
 import { OffersView } from "@/components/offers/OffersView";
 import { PipelineBoardView } from "@/components/pipeline/PipelineBoardView";
@@ -65,10 +66,10 @@ import {
   staleOpenSourcingGroups,
   uniqueValues
 } from "@/lib/data";
-import { boolFromForm, emptyToNull, formatCandidateName, formatDate, formatNumber, formatRequisitionOptionLabel, formatRequisitionTitle, formatThaiMobilePhone, resultText, statusTone } from "@/lib/format";
+import { boolFromForm, emptyToNull, formatCandidateName, formatDate, formatDateTime, formatNumber, formatRequisitionOptionLabel, formatRequisitionTitle, formatThaiMobilePhone, resultText, statusTone } from "@/lib/format";
 import { fillReadinessLabel, requisitionStatusLabel, requestTypeLabel, roleLabel, translate } from "@/lib/i18n/dictionary";
-import { activeProcessStage, candidatePipelineCapability, candidateProcessDisabledReason, deriveDataQualityIssues, latestSuccessfulOfferPassDate, pipelineMoveDisabledReason, pipelineStageRecords, requisitionFillReadiness } from "@/lib/operations";
-import { getRequisitionSlaState } from "@/lib/sla";
+import { activeProcessStage, candidatePipelineCapability, candidateProcessDisabledReason, deriveDataQualityIssues, latestSuccessfulOfferPassDate, pipelineMoveDisabledReason, pipelineStageRecords, requisitionFillReadiness, type FillReadiness } from "@/lib/operations";
+import { getRequisitionAgeDays, getRequisitionSlaState } from "@/lib/sla";
 import { clearStoredSupabaseSession, hasSupabaseConfig, supabase, withAuthTimeout } from "@/lib/supabase/client";
 import { asNumber, requireFields } from "@/lib/validation/forms";
 import { buildContextualHref, pushWorkspaceUrlState, readWorkspaceUrlState as readWorkspaceUrlParams, updateWorkspaceUrlState, useWorkspaceUrlState } from "@/lib/workspace-url-state";
@@ -1142,12 +1143,15 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       ) : null}
 
       {initialView === "dashboard" ? (
-        <VacancyWaterfallView
-          language={language}
-          data={dashboardReportData}
-          requisitions={dashboardRequisitions}
-          offers={dashboardOffers}
-        />
+        <div className="grid min-w-0 gap-6">
+          <RecruitmentPerformanceOverview language={language} data={dashboardReportData} requisitions={dashboardRequisitions} offers={dashboardOffers} globalSite={filters.site} globalOwner={filters.owner} />
+          <VacancyWaterfallView
+            language={language}
+            data={dashboardReportData}
+            requisitions={dashboardRequisitions}
+            offers={dashboardOffers}
+          />
+        </div>
       ) : null}
 
       {initialView === "workspace" ? (
@@ -1356,7 +1360,8 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
         headerMeta={detailBody.headerMeta}
         headerContent={detailBody.headerContent}
         headerActions={detailBody.headerActions}
-        variant={detail?.type === "candidate" ? "candidate-workspace" : "side"}
+        variant={detail ? "candidate-workspace" : "side"}
+        mobileActionRow={detail?.type === "requisition"}
         inactive={Boolean(activeModal || pendingAction || destructiveAction || offerPassHandoff || journeyActionCandidateId || currentStageActionCandidateId)}
         onClose={() => setDetail(null)}
       >
@@ -3364,7 +3369,18 @@ function buildDetailBodyV2(
     const applicantTotal = applicantCountForPositionGroups(data, positionGroupIds);
     const funnelRows = buildPipelineFunnelRows(applicantTotal, historicalPipelineCountsForCandidates(data, candidates.map((row) => row.candidate_id)), language);
     const readiness = requisitionFillReadiness(requisition, enrichCandidates(data));
+    const readinessReason = language === "th" ? ({
+      "Filled": "ข้อเสนอที่ตอบรับครบตามอัตราที่ขอแล้ว",
+      "Cancelled": "คำขอนี้ไม่อยู่ในสถานะดำเนินการแล้ว",
+      "No coverage": "ยังไม่มีผู้สมัครที่เชื่อมโยงกับคำขอนี้",
+      "Late-stage coverage": "มีผู้สมัครที่กำลังตรวจสอบข้อมูลอ้างอิงหรืออยู่ในขั้นตอนข้อเสนอ",
+      "Aging coverage": "มีผู้สมัครที่กำลังดำเนินการอย่างน้อยหนึ่งรายค้างเกิน 7 วัน",
+      "Active coverage": "ผู้สมัครกำลังดำเนินการตามขั้นตอน",
+      "Needs candidate": "ผู้สมัครที่เชื่อมโยงไม่อยู่ระหว่างดำเนินการ ไม่ผ่าน หรือเสร็จสิ้นแล้ว"
+    }[readiness.label] ?? readiness.reason) : readiness.reason;
     const sla = getRequisitionSlaState(requisition, { openOnly: true });
+    const fillPercent = requisition.head_count > 0 ? Math.min(100, requisition.accepted_count / requisition.head_count * 100) : 0;
+    const history = data.requisition_logs.filter(row => row.doc_id === requisition.doc_id).sort((a, b) => b.log_date.localeCompare(a.log_date) || b.log_id - a.log_id);
     const issues = deriveDataQualityIssues(data).filter((issue) =>
       issue.entityId === requisition.doc_id
       || candidates.some((candidate) => candidate.candidate_id === issue.entityId)
@@ -3373,17 +3389,14 @@ function buildDetailBodyV2(
 
     return {
       title: formatRequisitionTitle(requisition),
-      headerMeta: (
-        <>
-          <Tag tone={statusTone(requisition.status)}>{requisitionStatusLabel(language, requisition.status)}</Tag>
-          <span className={`text-sm font-semibold ${readinessTextClass(readiness.tone)}`}>{fillReadinessLabel(language, readiness.label)}</span>
-        </>
-      ),
+      headerContent: <RequisitionDetailHeader requisition={requisition} language={language} readiness={readiness} />,
       headerActions: (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
         <RecordActionGroup
           label={formatRequisitionOptionLabel(requisition)}
-          primary={{ id: "workspace", label: translate(language, "workspaceOpen"), href: href(`/workspace?type=requisition&id=${encodeURIComponent(requisition.doc_id)}&section=overview`), tone: "primary", iconOnly: true }}
+          flat
+          primary={{ id: "workspace", label: translate(language, "workspaceOpen"), href: href(`/workspace?type=requisition&id=${encodeURIComponent(requisition.doc_id)}&section=overview`), icon: <LampDesk size={17} aria-hidden="true" />, iconOnly: true, flat: true }}
+          inlineAction={canWrite ? <Button type="button" variant="ghost" size="icon-sm" className="text-primary hover:bg-[#F1F6FC] hover:text-primary" icon={<Pencil size={17} aria-hidden="true" />} aria-label={translate(language, "changeRecord")} title={translate(language, "changeRecord")} onClick={() => onChangeRequisition(requisition.doc_id)} /> : null}
           items={[
             ...(canWrite ? [{ id: "change-record", label: translate(language, "changeRecord"), onSelect: () => onChangeRequisition(requisition.doc_id) }] : []),
             ...(canDeleteRecords ? [{
@@ -3400,39 +3413,57 @@ function buildDetailBodyV2(
         </div>
       ),
       body: (
-        <div className="grid min-w-0 gap-4">
-          <OperationalSummaryStrip items={[
+        <div className="grid min-w-0 gap-4" data-requisition-detail>
+          <section className="rounded-xl border border-[#D7DEE8] bg-white p-4 sm:p-5">
+          <SectionHeading className="mb-3" icon={<BriefcaseBusiness size={19} />} title={translate(language, "requisitionOverview")} />
+          <OperationalSummaryStrip density="compact" valueTone="navy" items={[
             { label: translate(language, "openHeadcountShort"), value: requisition.open_headcount, tone: requisition.open_headcount > 0 ? "warning" : "success", helper: translate(language, "remainingDemand") },
-            { label: translate(language, "fillReadiness"), value: fillReadinessLabel(language, readiness.label), tone: readiness.tone, helper: readiness.reason },
-            { label: translate(language, "slaLabel"), value: sla?.label ?? "-", tone: sla?.isOverdue ? "danger" : "muted", helper: translate(language, "ageLabel") }
+            { label: translate(language, "accepted"), value: `${requisition.accepted_count}/${requisition.head_count}`, tone: "muted", helper: translate(language, "headcount") },
+            { label: translate(language, "actualAge"), value: getRequisitionAgeDays(requisition.pr_approved_date) === null ? "—" : `${getRequisitionAgeDays(requisition.pr_approved_date)} ${language === "th" ? "วัน" : "days"}`, tone: "muted", helper: translate(language, "prApprovedDate") },
+            { label: translate(language, "currentSla"), value: sla?.label ?? "—", tone: sla?.isOverdue ? "danger" : "muted", helper: translate(language, "slaLabel") }
           ]} />
+          <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[#E9F2FF]" role="img" aria-label={`${translate(language, "accepted")}: ${requisition.accepted_count}/${requisition.head_count}; ${Math.round(fillPercent)}%`}><div className="h-full bg-primary" style={{ width: `${fillPercent}%` }} /></div>
+          <p className="mt-2 text-xs leading-relaxed text-slate">{fillReadinessLabel(language, readiness.label)} · {readinessReason}</p>
+          </section>
           <InlineDataQualityIssues issues={issues} language={language} />
-          <DetailGrid rows={[
-            [translate(language, "requisitionId"), requisition.doc_id],
-            [translate(language, "site"), requisition.site],
-            [translate(language, "department"), requisition.department],
-            [translate(language, "section"), requisition.section ?? "-"],
-            [translate(language, "requestType"), requisition.request_type],
-            [translate(language, "replacementNames"), requisition.request_type === "Replacement" ? replacementNamesDisplay(requisition.replacement_names) : "-"],
-            [translate(language, "owner"), requisition.person_in_charge ?? "-"],
-            [translate(language, "lineManager"), requisition.line_manager ?? "-"],
-            [translate(language, "headcount"), String(requisition.head_count)],
-            [translate(language, "accepted"), String(requisition.accepted_count)],
-            [translate(language, "open"), String(requisition.open_headcount)]
+          <section className="rounded-xl border border-[#D7DEE8] bg-white p-4 sm:p-5">
+          <SectionHeading className="mb-3" icon={<Files size={19} />} title={translate(language, "requisitionProfile")} />
+          <DetailGrid workspace language={language} rows={[
+            { label: translate(language, "requisitionId"), value: requisition.doc_id, copyValue: requisition.doc_id, icon: <Hash size={18} /> },
+            { label: translate(language, "prApprovedDate"), value: formatDate(requisition.pr_approved_date, language), icon: <CalendarDays size={18} /> },
+            { label: translate(language, "position"), value: requisition.position, icon: <BriefcaseBusiness size={18} /> },
+            { label: translate(language, "jobLevel"), value: requisition.level ?? "—", icon: <Layers3 size={18} /> },
+            { label: translate(language, "site"), value: requisition.site || "—", icon: requisition.site === "HQ" ? <Building2 size={18} /> : <Factory size={18} /> },
+            { label: translate(language, "department"), value: requisition.department || "—", icon: <Building2 size={18} /> },
+            { label: translate(language, "section"), value: requisition.section ?? "—", icon: <Network size={18} /> },
+            { label: translate(language, "status"), value: requisitionStatusLabel(language, requisition.status), icon: <CheckCircle2 size={18} /> },
+            { label: translate(language, "requestType"), value: requestTypeLabel(language, requisition.request_type), icon: <RefreshCw size={18} /> },
+            { label: translate(language, "replacementNames"), value: requisition.request_type === "Replacement" ? replacementNamesDisplay(requisition.replacement_names) : "—", icon: <UsersRound size={18} /> },
+            { label: translate(language, "owner"), value: requisition.person_in_charge ?? "—", icon: <UserRound size={18} /> },
+            { label: translate(language, "lineManager"), value: requisition.line_manager ?? "—", icon: <ContactRound size={18} /> },
+            { label: translate(language, "headcount"), value: String(requisition.head_count), icon: <UsersRound size={18} /> },
+            { label: translate(language, "accepted"), value: String(requisition.accepted_count), icon: <CheckCircle2 size={18} /> },
+            { label: translate(language, "open"), value: String(requisition.open_headcount), icon: <BriefcaseBusiness size={18} /> },
+            { label: translate(language, "createdAt"), value: formatDateTime(requisition.created_at, language), icon: <CalendarPlus size={18} /> },
+            { label: translate(language, "updatedAt"), value: formatDateTime(requisition.updated_at, language), icon: <CalendarDays size={18} /> }
           ]} />
-          <DetailDisclosure title={translate(language, "workspaceJourney")} summary={`${candidates.length} ${translate(language, "candidatesUnit")} / ${offers.length} ${translate(language, "offersDetail")}`}>
+          </section>
+          <DetailDisclosure title={<SectionHeading icon={<JourneyTrendIcon />} title={translate(language, "workspaceJourney")} />} summary={`${candidates.length} ${translate(language, "candidatesUnit")} / ${offers.length} ${translate(language, "offersDetail")}`}>
             <PipelineFunnel
               language={language}
               rows={funnelRows}
-              subtitle="Historical stage touches, de-duplicated per candidate per stage"
+              subtitle={language === "th" ? "ประวัติการเข้าสู่ขั้นตอน นับผู้สมัครไม่ซ้ำในแต่ละขั้นตอน" : "Historical stage touches, de-duplicated per candidate per stage"}
               totalValue={applicantTotal}
             />
           </DetailDisclosure>
-          <DetailDisclosure title="Related records" summary="Candidates and offers">
+          <DetailDisclosure title={<SectionHeading icon={<UsersRound size={18} />} title={translate(language, "relatedRecords")} />} summary={`${candidates.length} ${translate(language, "candidatesUnit")} / ${offers.length} ${translate(language, "offersDetail")}`}>
             <div className="grid gap-4">
-              <DetailList title={translate(language, "candidates")} rows={candidates.map((row) => optionLabel([row.candidate_id, formatCandidateName(row), processLabel(row.latest_process, language)]))} />
-              <DetailList title={translate(language, "offers")} rows={offers.map((row) => `${row.candidate_id} / ${translate(language, "acceptedLower")} ${formatDate(row.accepted_date, language)}`)} />
+              <div><SectionHeading icon={<UserRound size={18} />} title={translate(language, "candidates")} /><div className="mt-2 divide-y divide-[#E7EDF5]">{candidates.length ? candidates.map(row => <a key={row.candidate_id} href={href(`/candidates?detailType=candidate&detailId=${encodeURIComponent(row.candidate_id)}`)} className="block min-w-0 rounded px-1 py-3 hover:bg-[#F1F6FC] focus:outline-none focus:ring-2 focus:ring-primary"><strong className="break-words text-sm font-semibold text-navy">{formatCandidateName(row)}</strong><span className="mt-1 block text-xs text-slate">{row.candidate_id} · {processLabel(row.latest_process, language)}</span></a>) : <p className="py-3 text-sm text-slate">{language === "th" ? "ไม่มีผู้สมัครที่เกี่ยวข้อง" : "No related candidates"}</p>}</div></div>
+              <div><SectionHeading icon={<Files size={18} />} title={translate(language, "offers")} /><div className="mt-2 divide-y divide-[#E7EDF5]">{offers.length ? offers.map(row => <a key={row.offer_id} href={href(`/offers?offerSearch=${encodeURIComponent(row.candidate_id)}`)} className="block rounded px-1 py-3 hover:bg-[#F1F6FC] focus:outline-none focus:ring-2 focus:ring-primary"><strong className="text-sm font-semibold text-navy">{row.candidate_id}</strong><span className="mt-1 block text-xs text-slate">#{row.offer_id} · {translate(language, "accepted")}: {formatDate(row.accepted_date, language)}{row.start_confirmation === "did_not_start" ? ` · ${language === "th" ? "ไม่มาทำงาน" : "Did not start"}` : ""}</span></a>) : <p className="py-3 text-sm text-slate">{language === "th" ? "ไม่มีข้อเสนอที่เกี่ยวข้อง" : "No related offers"}</p>}</div></div>
             </div>
+          </DetailDisclosure>
+          <DetailDisclosure title={<SectionHeading icon={<Activity size={18} />} title={translate(language, "history")} />} summary={String(history.length)}>
+            <div className="divide-y divide-[#E7EDF5]">{history.length ? history.map(row => <div key={row.log_id} className="py-3"><p className="text-sm font-semibold text-navy">{requisitionStatusLabel(language, row.status)}</p><p className="mt-1 text-xs text-slate">{formatDate(row.log_date, language)}</p>{row.remark ? <p className="mt-1 break-words text-sm text-slate">{row.remark}</p> : null}</div>) : <p className="text-sm text-slate">{language === "th" ? "ยังไม่มีประวัติการเปลี่ยนสถานะ" : "No status changes recorded"}</p>}</div>
           </DetailDisclosure>
         </div>
       )
@@ -3883,6 +3914,21 @@ function JourneyTrendIcon() {
       <circle cx="13.5" cy="15.2" r="2" fill="white" />
       <circle cx="20.5" cy="6.5" r="2" fill="white" />
     </svg>
+  );
+}
+
+function RequisitionDetailHeader({ requisition, language, readiness }: { requisition: EnrichedRequisition; language: Language; readiness: FillReadiness }) {
+  return (
+    <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+      <span className="grid size-12 shrink-0 place-items-center rounded-full bg-[#F1F6FC] text-primary sm:size-16" aria-hidden="true"><BriefcaseBusiness size={27} strokeWidth={1.8} /></span>
+      <div className="min-w-0">
+        <p className="text-base font-semibold leading-tight text-navy sm:text-xl"><span className="block break-words sm:inline">{formatRequisitionTitle(requisition)}</span><span className="hidden sm:inline"> / </span><span className="block whitespace-nowrap sm:inline">{requisition.doc_id}</span></p>
+        <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2">
+          <Tag appearance="soft" tone={statusTone(requisition.status)}>{requisitionStatusLabel(language, requisition.status)}</Tag>
+          <Tag appearance="soft" tone={readiness.tone}>{fillReadinessLabel(language, readiness.label)}</Tag>
+        </div>
+      </div>
+    </div>
   );
 }
 

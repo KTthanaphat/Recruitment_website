@@ -43,3 +43,7 @@ This file is a concise ownership index for the current Hiring Workspace and recr
 - Treat `docs/CANDIDATE_PIPELINE_ADJUSTMENT_PLAN.md` as the focused Pipeline implementation record; current rules live in Website Structure.
 - Treat `docs/AI_HANDOVER.md` as the quickest operational briefing for a new AI session.
 - Update this map when a feature changes ownership between component, helper, route, RPC, or test surface.
+
+## Recruitment Performance reporting
+
+[Reporting owners](maps/system/reporting.md) index the overview controller, calculations, presentation, shared chart help and focused tests. Requisition Detail remains owned by `buildDetailBodyV2` and `RequisitionDetailHeader` in `src/components/RecruitmentWorkspace.tsx`; see its [design contract](design/requisition-detail.md).

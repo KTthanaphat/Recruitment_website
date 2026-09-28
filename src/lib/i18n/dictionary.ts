@@ -1963,3 +1963,6 @@ export function actionToneLabel(language: Language, value: string | null | undef
 export function severityLabel(language: Language, value: string | null | undefined) {
   return semanticLabel(language, value, severityKeys);
 }
+
+Object.assign(en, { requisitionProfile: "Requisition profile", requisitionOverview: "Requisition overview", relatedRecords: "Related records" });
+Object.assign(th, { requisitionProfile: "ข้อมูลคำขอ", requisitionOverview: "ภาพรวมคำขอ", relatedRecords: "รายการที่เกี่ยวข้อง" });
