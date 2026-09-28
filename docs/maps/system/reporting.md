@@ -16,6 +16,7 @@ Recruitment Performance overview: [RecruitmentPerformanceOverview.tsx](../../../
 - Owner/search: [src/components/dashboard/VacancyWaterfallView.tsx](../../../src/components/dashboard/VacancyWaterfallView.tsx), [src/components/ui/Field.tsx](../../../src/components/ui/Field.tsx).
 - Related symbols: shared DD/MM/YYYY picker; shared in-viewport 2× non-blank PNG capture; ExcelJS `TableStyleMedium2` workbook with hidden gridlines/wrapped body cells; canonical rules: [docs/WEBSITE_STRUCTURE.md](../../WEBSITE_STRUCTURE.md).
 - Entry: Calendar: `reportView` + `reportMonth`; Custom: `reportView=custom&start=<date>&end=<date>`.
+- Custom defaults: [dates.ts](../../../src/lib/dates.ts) `previousSourcingReportingRange` uses the Bangkok sourcing-cycle Saturday; saved or edited custom dates take precedence. `buildWaterfall` filters empty columns for both screen and PNG.
 - Verification: [dashboard-reports.spec.ts](../../../tests/e2e/dashboard-reports.spec.ts) includes report views, stage metrics and PNG downloads. A dedicated XLSX workbook-format test is not established by this index; inspect/add focused export assertions when that format changes.
 
 ## Dependency edges

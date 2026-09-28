@@ -1,6 +1,68 @@
 import { expect, test } from "@playwright/test";
 import { inflateSync } from "node:zlib";
+import { previousSourcingReportingRange } from "../../src/lib/dates";
 import { expectWorkspaceReady, installMockSupabase } from "./support/mock-supabase";
+
+test("custom default follows the completed sourcing week in Bangkok", () => {
+  for (const [now, startDate, endDate] of [
+    ["2026-09-28T05:00:00Z", "2026-09-19", "2026-09-25"],
+    ["2026-07-24T05:00:00Z", "2026-07-11", "2026-07-17"],
+    ["2026-07-24T17:00:00Z", "2026-07-18", "2026-07-24"],
+    ["2026-07-26T05:00:00Z", "2026-07-18", "2026-07-24"],
+    ["2026-01-01T05:00:00Z", "2025-12-20", "2025-12-26"]
+  ]) expect(previousSourcingReportingRange(new Date(now))).toEqual({ startDate, endDate });
+});
+
+test("custom range defaults to sourcing dates and preserves shared selections", async ({ page }) => {
+  await installMockSupabase(page);
+  await page.goto("/dashboard?reportView=pim&reportMonth=2026-06");
+  await expectWorkspaceReady(page);
+  const metric = page.getByRole("button", { name: "Metric view", exact: true });
+  await metric.click();
+  await page.getByRole("option", { name: "Custom range", exact: true }).click();
+  await expect(page).toHaveURL(/start=2026-07-11/);
+  await expect(page).toHaveURL(/end=2026-07-17/);
+
+  await page.goto("/dashboard?reportView=custom&start=2026-07-14&end=2026-07-20");
+  await expectWorkspaceReady(page);
+  await metric.click();
+  await page.getByRole("option", { name: "Month to Date", exact: true }).click();
+  await metric.click();
+  await page.getByRole("option", { name: "Custom range", exact: true }).click();
+  await expect(page).toHaveURL(/start=2026-07-14/);
+  await expect(page).toHaveURL(/end=2026-07-20/);
+
+  await page.goto("/dashboard?reportView=custom");
+  await expectWorkspaceReady(page);
+  await expect(page).toHaveURL(/start=2026-07-11/);
+  await expect(page).toHaveURL(/end=2026-07-17/);
+});
+
+test("waterfall keeps only populated columns in the chart and PNG surface", async ({ page }, testInfo) => {
+  const { data } = await installMockSupabase(page);
+  const requisition = data.requisitions[0];
+  const offer = data.offers[0];
+  data.requisitions.splice(0, data.requisitions.length,
+    { ...requisition, doc_id: "WF-HQ", site: "HQ", status: "ongoing", head_count: 5, pr_approved_date: "2026-07-01" },
+    { ...requisition, doc_id: "WF-KT1", site: "KT1", status: "ongoing", head_count: 2, pr_approved_date: "2026-07-15" },
+    { ...requisition, doc_id: "WF-KT2", site: "KT2", status: "ongoing", head_count: 3, pr_approved_date: "2026-08-01" }
+  );
+  data.offers.splice(0, data.offers.length, { ...offer, offer_id: 9990, doc_id: "WF-HQ", accepted_date: "2026-07-16", start_confirmation: null });
+  data.requisition_logs.splice(0, data.requisition_logs.length);
+  await page.goto("/dashboard?reportView=custom&start=2026-07-14&end=2026-07-20");
+  await expectWorkspaceReady(page);
+  for (const svg of await page.locator(".vacancy-waterfall-svg").all()) {
+    const bars = svg.locator("[data-waterfall-category]");
+    await expect(bars).toHaveCount(4);
+    expect(await bars.evaluateAll(nodes => nodes.map(node => node.getAttribute("data-waterfall-category"))))
+      .toEqual(["Week Start", "KT1 Open", "HQ Filled", "Total"]);
+    await expect(bars.locator(":scope > text")).toHaveText(["5", "2", "(1)", "6"]);
+  }
+  await page.screenshot({ path: testInfo.outputPath("waterfall-desktop.png"), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath("waterfall-phone.png"), fullPage: true });
+});
 
 test("dashboard report uses calendar views, persists its month, and keeps expandable sections", async ({ page }) => {
   await installMockSupabase(page, { role: "admin_recruiter" });
@@ -16,7 +78,8 @@ test("dashboard report uses calendar views, persists its month, and keeps expand
   await expect(page.getByRole("button", { name: "Export PNG" })).toHaveCount(2);
   await expect(page.getByRole("button", { name: "Export PNG" }).first()).toBeEnabled();
   await expect(page.getByRole("button", { name: "Export PDF" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Export XLSX" })).toBeVisible();
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  await expect(page.getByRole("dialog").getByRole("button", { name: "Export detail XLSX", exact: true })).toBeVisible();
 });
 
 test("active requisitions expose ordered Activity, Status, and Accum stage metrics", async ({ page }) => {
@@ -158,7 +221,7 @@ test("dashboard active-period vacancy follows PR date and resolved close date", 
   await page.goto("/dashboard?reportView=pim&reportMonth=2026-06&details=open");
   await expectWorkspaceReady(page);
 
-  await expect(page.getByText("Eligible vacancies", { exact: true })).toBeVisible();
+  await expect(page.getByText("Filled vacancies / eligible vacancies", { exact: true })).toBeVisible();
   await expect(page.getByText("Closed In Period", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("Accepted Fallback", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("No Close Date", { exact: true }).first()).toBeVisible();
@@ -244,11 +307,11 @@ test("dashboard active-period labels localize and fit at 390px", async ({ page }
   await installMockSupabase(page, { role: "admin_recruiter", language: "th" });
   await page.goto("/dashboard?reportView=mtd&reportMonth=2026-06");
   await expect(page.locator("[data-app-header-actions]")).toBeVisible();
-  await expect(page.getByText("อัตราที่เข้าเกณฑ์", { exact: true })).toBeVisible();
+  await expect(page.getByText("อัตราที่เติมแล้ว / อัตราที่เข้าเกณฑ์", { exact: true })).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
-test("home records use tabbed vertical panels while work queue keeps contained overflow", async ({ page }) => {
+test("home records keep scrolling inside the candidate list and Today’s Work ends at metrics", async ({ page }) => {
   await installMockSupabase(page, { role: "admin_recruiter" });
   await page.goto("/home");
   await expectWorkspaceReady(page);
@@ -259,14 +322,14 @@ test("home records use tabbed vertical panels while work queue keeps contained o
   await expect(pipelineTab).toHaveAttribute("aria-selected", "true");
   const tabPanel = page.getByRole("tabpanel");
   await expect(tabPanel).toBeVisible();
-  await expect(tabPanel).toHaveCSS("overflow-y", "auto");
+  await expect(tabPanel.locator("[data-home-candidate-scroll]")).toHaveCSS("overflow-y", "auto");
   await expect(tabPanel.getByText("Pat Phone")).toBeVisible();
   await expect(tabPanel.getByText("Tina Test")).toBeVisible();
   await expect(page.getByRole("button", { name: /Show all .* pipeline items/ })).toHaveCount(0);
 
-  const workScroller = page.locator('[data-home-scroll-section="Today\'s Work"]');
-  await expect(workScroller).toBeVisible();
-  await expect(workScroller).toHaveCSS("overflow-y", "auto");
+  const workPanel = page.getByRole("heading", { name: "Today's Work", exact: true }).locator("xpath=ancestor::section[1]");
+  await expect(workPanel).toBeVisible();
+  await expect(workPanel.locator("[data-home-scroll-section]")).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Show all .* data quality issues/ })).toHaveCount(0);
 });
 

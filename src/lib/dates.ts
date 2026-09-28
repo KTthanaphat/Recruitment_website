@@ -35,6 +35,15 @@ export function currentLocalSourcingCycleSaturday(date: Date = new Date()) {
   return sourcingCycleSaturday(formatLocalDateInput(date));
 }
 
+// Sourcing records the completed Saturday–Friday period before its cycle Saturday.
+export function previousSourcingReportingRange(date: Date = new Date()) {
+  const cycle = new Date(`${currentLocalSourcingCycleSaturday(date)}T00:00:00Z`);
+  cycle.setUTCDate(cycle.getUTCDate() - 1);
+  const endDate = cycle.toISOString().slice(0, 10);
+  cycle.setUTCDate(cycle.getUTCDate() - 6);
+  return { startDate: cycle.toISOString().slice(0, 10), endDate };
+}
+
 export function currentLocalYearStart(date: Date = new Date()) {
   return `${formatLocalDateInput(date).slice(0, 4)}-01-01`;
 }

@@ -19,7 +19,7 @@ import {
   type PipelineDisplayStage
 } from "@/lib/constants";
 import { filledSlaAtAcceptance, waterfallExecutiveRows } from "@/lib/vacancy-executive";
-import { formatLocalDateInput } from "@/lib/dates";
+import { formatLocalDateInput, previousSourcingReportingRange } from "@/lib/dates";
 import { formatDate, formatNumber } from "@/lib/format";
 import { organizationLabel, type DepartmentSectionRow } from "@/lib/department-section-data";
 import { processStageLabel, requestTypeLabel, translate } from "@/lib/i18n/dictionary";
@@ -96,8 +96,8 @@ export function VacancyWaterfallView({
 }) {
   const [reportView, setReportView] = useState<ReportView>("mtd");
   const [reportMonth, setReportMonth] = useState(today().slice(0, 7));
-  const [customStartDate, setCustomStartDate] = useState("");
-  const [customEndDate, setCustomEndDate] = useState("");
+  const [customStartDate, setCustomStartDate] = useState(() => previousSourcingReportingRange().startDate);
+  const [customEndDate, setCustomEndDate] = useState(() => previousSourcingReportingRange().endDate);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [waterfallOpen, setWaterfallOpen] = useState(true);
   const waterfallContentId = useId();
@@ -264,10 +264,6 @@ export function VacancyWaterfallView({
   }
 
   function changeReportView(nextView: ReportView) {
-    if (nextView === "custom" && reportView !== "custom") {
-      setCustomStartDate(startDate);
-      setCustomEndDate(endDate);
-    }
     setReportView(nextView);
   }
 
@@ -574,7 +570,7 @@ function VacancyWaterfallChart({ language, rows, sites = [], startDate, endDate,
         {chart.bars.map((bar) => {
           const x = categoryPosition(bar.categoryIndex) - barWidth / 2;
           return (
-            <g key={bar.key}>
+            <g key={bar.key} data-waterfall-category={bar.key}>
               {bar.segments.map((segment) => {
                 const yA = yScale(segment.bottom);
                 const yB = yScale(segment.top);
@@ -974,7 +970,8 @@ function isDetailStageHeader(header: string) {
 
 function buildWaterfall(rows: WaterfallRow[], language: Language, scopedSites: string[] = []) {
   const sites = Array.from(new Set([...scopedSites, ...rows.map((row) => row.site)])).sort((a, b) => a.localeCompare(b));
-  const categories = ["Week Start", ...sites.map(site => `${site} Open`), ...sites.map(site => `${site} Filled`), "Total"];
+  const categories = ["Week Start", ...sites.map(site => `${site} Open`), ...sites.map(site => `${site} Filled`), "Total"]
+    .filter(category => rowsForCategory(rows, category).some(row => row.vacancy_count !== 0));
 
   const categoryRows = categories.map((category) => rowsForCategory(rows, category));
   const totals = categoryRows.map((items) => items.reduce((sum, row) => sum + row.vacancy_count, 0));

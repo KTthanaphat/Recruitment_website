@@ -108,7 +108,7 @@ test("SLA axis adds ten percent headroom rounded up to an even count", async ({ 
   await expect(chart.locator('[data-sla-site="KT1"]')).toContainText("12");
 });
 
-test("empty periods keep complete overview and Waterfall axes", async ({ page }, testInfo) => {
+test("empty periods keep complete overview axes and omit empty Waterfall columns", async ({ page }, testInfo) => {
   const { data } = await installMockSupabase(page);
   installPerformanceFixture(data);
   await page.goto("/dashboard?overviewPeriod=pim&overviewYear=2020&overviewMonth=1&reportView=pim&reportMonth=2020-01");
@@ -120,8 +120,8 @@ test("empty periods keep complete overview and Waterfall axes", async ({ page },
   await expect(report.locator("[data-sla-site]")).toHaveCount(3);
   await expect(report.locator("[data-sla-site=KT2] [data-sla-band]")).toHaveCount(5);
   await expect(report.locator("[data-sla-chart]")).toHaveAttribute("data-axis-max", "2");
-  await expect(page.locator(".vacancy-waterfall-svg").first()).toContainText("HQ Open");
-  await expect(page.locator(".vacancy-waterfall-svg").first()).toContainText("KT2 Filled");
+  await expect(page.locator(".vacancy-waterfall-svg").first().locator("[data-waterfall-category]")).toHaveCount(0);
+  await expect(page.getByText("No requisition or accepted offer data for the selected date range.", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Recruitment Performance", exact: true }).click();
   await page.getByRole("button", { name: "Vacancy Waterfall", exact: true }).click();
   await page.screenshot({ path: testInfo.outputPath("collapsed-report-bars.png"), fullPage: true });
