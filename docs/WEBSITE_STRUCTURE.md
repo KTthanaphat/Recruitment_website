@@ -15,6 +15,8 @@ Browser UI
 
 The Home page is the first screen after opening or signing in. Dashboard is now a dedicated Vacancy Waterfall reporting page.
 Sidebar navigation preserves the current `lang`, `site`, `pic`, and `sourcingWeek` query parameters when moving between routes.
+Requisitions have a shared `is_priority` flag, initially false. Their detail drawer uses a star in place of the inline pencil; edit remains in More. Priority is editable by system/admin recruiters and site recruiters assigned to the site or PIC. `app_set_requisition_priority_v1` enforces that scope, rejects stale timestamps and records the change in the existing audit trail. The icon-only header star sits between PIC and Language and toggles All/Priority requisitions. It narrows requisition-related records, group candidate pools and company dashboard reports while preserving Site/PIC filters. `priority=only|all` persists in URLs and contextual navigation, with each user's last filter selection saved locally. An empty priority scope retains the header toggle and empty states. The overview PNG identifies priority scope in its filter context.
+
 Authenticated route headers show only the route title plus the compact top-right command row. Site and Person in Charge filters live in that row before language, refresh, and account controls, using the same blue command-control treatment; their visible stacked labels and Clear button are intentionally removed while accessible labels remain. There is no separate page subtitle or sticky filter card.
 
 The core product surface is the five-section Hiring Workspace:

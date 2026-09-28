@@ -168,7 +168,8 @@ export function HiringWorkspaceView({
     language,
     site: currentParams.get("site"),
     owner: currentParams.get("pic"),
-    sourcingWeek: currentParams.get("sourcingWeek") ?? weekStart
+    sourcingWeek: currentParams.get("sourcingWeek") ?? weekStart,
+    priority: currentParams.get("priority")
   });
 
   useEffect(() => {

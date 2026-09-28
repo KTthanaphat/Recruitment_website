@@ -49,7 +49,7 @@ test("Requisition Detail uses the candidate workspace hierarchy and retains role
   await expect(drawer.getByRole("heading", { name: "Requisition profile" })).toBeVisible();
   await expect(drawer.getByText("Open HC", { exact: true }).first()).toBeVisible();
   await expect(drawer.getByText("REQ-HQ-1", { exact: true }).last()).toBeVisible();
-  await expect(drawer.getByRole("button", { name: "Change record" })).toBeVisible();
+  await expect(drawer.getByRole("button", { name: "Mark as priority", exact: true })).toBeVisible();
   const close = drawer.getByRole("button", { name: "Close" });
   await close.focus();
   await expect(close).toBeFocused();
@@ -62,6 +62,7 @@ test("Requisition Detail uses the candidate workspace hierarchy and retains role
   const viewerDrawer = page.getByRole("dialog", { name: "Engineer (L4)" });
   await expect(viewerDrawer.getByRole("heading", { name: "Requisition profile" })).toBeVisible();
   await expect(viewerDrawer.getByRole("button", { name: "Change record" })).toHaveCount(0);
+  await expect(viewerDrawer.getByRole("button", { name: "Mark as priority", exact: true })).toBeDisabled();
 });
 
 test("long requisition titles wrap at 390px without page-level overflow", async ({ page }) => {

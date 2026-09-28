@@ -18,6 +18,7 @@ create table if not exists public.profiles (
 
 create table if not exists public.requisitions (
   doc_id text primary key,
+  is_priority boolean not null default false,
   pr_approved_date date,
   site text not null,
   position text not null,

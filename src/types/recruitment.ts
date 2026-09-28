@@ -32,6 +32,7 @@ export type Profile = {
 
 export type Requisition = {
   doc_id: string;
+  is_priority?: boolean;
   pr_approved_date: string | null;
   site: string;
   position: string;

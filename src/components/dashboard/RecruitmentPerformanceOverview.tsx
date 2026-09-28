@@ -5,6 +5,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { CommandSelector } from "@/components/ui/CommandSelector";
 import { CommandMultiSelector } from "@/components/ui/CommandMultiSelector";
+import { translate } from "@/lib/i18n/dictionary";
 import { todayDate } from "@/lib/sla";
 import { formatDate } from "@/lib/format";
 import { readWorkspaceUrlState, updateWorkspaceUrlState } from "@/lib/workspace-url-state";
@@ -13,7 +14,7 @@ import { orderedReportSites, PerformanceReport, performanceCopy } from "./Perfor
 import styles from "./performance.module.css";
 import type { DashboardData, EnrichedOffer, EnrichedRequisition, Language } from "@/types/recruitment";
 
-export function RecruitmentPerformanceOverview({ language, data, requisitions, offers, globalSite = "", globalOwner = "" }: { language: Language; data: DashboardData; requisitions: EnrichedRequisition[]; offers: EnrichedOffer[]; globalSite?: string; globalOwner?: string }) {
+export function RecruitmentPerformanceOverview({ language, data, requisitions, offers, globalSite = "", globalOwner = "", globalPriorityOnly = false }: { language: Language; data: DashboardData; requisitions: EnrichedRequisition[]; offers: EnrichedOffer[]; globalSite?: string; globalOwner?: string; globalPriorityOnly?: boolean }) {
   const t = performanceCopy[language], today = todayDate();
   const [expanded, setExpanded] = useState(true);
   const contentId = useId();
@@ -86,7 +87,7 @@ export function RecruitmentPerformanceOverview({ language, data, requisitions, o
     finally { setExporting(false); }
   }
 
-  const metadata = `${formatDate(range.start, language)} – ${formatDate(range.end, language)} · ${period.toUpperCase()} · ${t.site}: ${selectedSites.join(", ") || globalSite || t.all} · ${t.department}: ${selectedDepartments.join(", ") || t.all}${globalOwner ? ` · ${language === "th" ? "ผู้รับผิดชอบ" : "Person in Charge"}: ${globalOwner}` : ""}`;
+  const metadata = `${globalPriorityOnly ? `${translate(language, "priorityRequestsLabel")} · ` : ""}${formatDate(range.start, language)} – ${formatDate(range.end, language)} · ${period.toUpperCase()} · ${t.site}: ${selectedSites.join(", ") || globalSite || t.all} · ${t.department}: ${selectedDepartments.join(", ") || t.all}${globalOwner ? ` · ${language === "th" ? "ผู้รับผิดชอบ" : "Person in Charge"}: ${globalOwner}` : ""}`;
   return <section className={`${styles.root} ${styles.reportSection}`} aria-label={t.title} data-performance-overview>
     <header className={styles.header}>
       <h2 className={styles.barHeading} aria-label={t.title}><button type="button" className={styles.collapseButton} aria-label={t.title} aria-expanded={expanded} aria-controls={contentId} onClick={() => setExpanded(value => !value)}><span><strong>{t.title}</strong><span className={styles.barMetadata}>{metadata}</span></span><ChevronDown size={20} className={expanded ? styles.expandedChevron : ""} aria-hidden="true" /></button></h2>

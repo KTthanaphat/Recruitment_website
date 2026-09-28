@@ -9,6 +9,7 @@ export type WorkspaceNavigationContext = {
   site?: string | null;
   owner?: string | null;
   sourcingWeek?: string | null;
+  priority?: string | null;
 };
 
 export function readWorkspaceUrlState() {
@@ -31,6 +32,7 @@ export function buildContextualHref(path: string, context: WorkspaceNavigationCo
   setOptionalParam(params, "site", context.site);
   setOptionalParam(params, "pic", context.owner);
   setOptionalParam(params, "sourcingWeek", context.sourcingWeek);
+  setOptionalParam(params, "priority", context.priority);
   const query = params.toString();
   return query ? `${pathname}?${query}` : pathname;
 }

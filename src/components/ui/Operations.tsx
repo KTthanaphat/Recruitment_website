@@ -44,7 +44,8 @@ export function RecordQuickActions({ actions, label }: { actions: RecordQuickAct
         language: searchParams.get("lang"),
         site: searchParams.get("site"),
         owner: searchParams.get("pic"),
-        sourcingWeek: searchParams.get("sourcingWeek")
+        sourcingWeek: searchParams.get("sourcingWeek"),
+        priority: searchParams.get("priority")
       })
     }
     : action;
@@ -69,7 +70,8 @@ export function RecordActionGroup({ label, primary, inlineAction, items, flat = 
         language: searchParams.get("lang"),
         site: searchParams.get("site"),
         owner: searchParams.get("pic"),
-        sourcingWeek: searchParams.get("sourcingWeek")
+        sourcingWeek: searchParams.get("sourcingWeek"),
+        priority: searchParams.get("priority")
       })
     }
     : action;

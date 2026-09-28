@@ -1,7 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Activity, AlertTriangle, Bookmark, BriefcaseBusiness, Building2, CalendarDays, CalendarPlus, CheckCircle2, ContactRound, Copy, CopyCheck, Factory, EyeOff, Files, Hash, Info, LampDesk, Layers3, Mail, Network, Pencil, Phone, Plus, RefreshCw, Send, UserRound, UsersRound, X } from "lucide-react";
+import type { Requisition } from "@/types/recruitment";
+import { Activity, AlertTriangle, Bookmark, BriefcaseBusiness, Building2, CalendarDays, CalendarPlus, CheckCircle2, ContactRound, Copy, CopyCheck, Factory, EyeOff, Files, Hash, Info, LampDesk, Layers3, Mail, Network, Pencil, Phone, Plus, RefreshCw, Send, Star, UserRound, UsersRound, X } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AdminView } from "@/components/admin/AdminView";
 import { AuditView } from "@/components/audit/AuditView";
@@ -15,6 +16,8 @@ import { OffersView } from "@/components/offers/OffersView";
 import { PipelineBoardView } from "@/components/pipeline/PipelineBoardView";
 import { RejectionLetterComposer } from "@/components/rejection-letters/RejectionLetterComposer";
 import { TeamsInterviewComposer } from "@/components/interviews/TeamsInterviewComposer";
+import { RequisitionPriorityButton } from "@/components/requisitions/RequisitionPriorityButton";
+import { canManageRequisitionPriority, priorityRequisitionScope } from "@/lib/requisition-priority";
 import { RequisitionsView } from "@/components/requisitions/RequisitionsView";
 import { EmbeddedSourcingEditor, SourcingView } from "@/components/sourcing/SourcingView";
 import { WorkspaceOfferSection } from "@/components/workspace/WorkspaceOfferSection";
@@ -224,6 +227,7 @@ type ParsedWorkspaceUrlState = {
   hasFilterParams: boolean;
   language: Language | null;
   owner: string | null;
+  priorityOnly: boolean;
   site: string | null;
   sourcingWeek: string | null;
   workspaceId: string | null;
@@ -238,7 +242,8 @@ function parseStoredFilters(value: string | null) {
     const filters = parsed as Record<string, unknown>;
     return {
       site: typeof filters.site === "string" ? filters.site : "",
-      owner: typeof filters.owner === "string" ? filters.owner : ""
+      owner: typeof filters.owner === "string" ? filters.owner : "",
+      priorityOnly: filters.priorityOnly === true
     };
   } catch {
     return null;
@@ -276,7 +281,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const [status, setStatus] = useState("Loading recruitment records...");
   const [error, setError] = useState<string | null>(null);
   const [updateDenial, setUpdateDenial] = useState<string | null>(null);
-  const [filters, setFilters] = useState({ site: "", owner: "" });
+  const [filters, setFilters] = useState({ site: "", owner: "", priorityOnly: false });
   const [sourcingWeek, setSourcingWeek] = useState(currentWeekStart());
   const [activeModal, setActiveModal] = useState<ModalName>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
@@ -359,7 +364,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     const storedFilters = parseStoredFilters(savedFilters);
     setLanguage(urlState.language ?? savedLanguage ?? "th");
     if (urlState.hasFilterParams) {
-      setFilters({ site: urlState.site ?? "", owner: urlState.owner ?? "" });
+      setFilters({ site: urlState.site ?? "", owner: urlState.owner ?? "", priorityOnly: urlState.priorityOnly });
     } else if (storedFilters) {
       setFilters(storedFilters);
     } else if (savedFilters) {
@@ -377,8 +382,8 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       setLanguage((current) => urlState.language ?? current);
       if (urlState.hasFilterParams) {
         setFilters((current) => {
-          const next = { site: urlState.site ?? "", owner: urlState.owner ?? "" };
-          return current.site === next.site && current.owner === next.owner ? current : next;
+          const next = { site: urlState.site ?? "", owner: urlState.owner ?? "", priorityOnly: urlState.priorityOnly };
+          return current.site === next.site && current.owner === next.owner && current.priorityOnly === next.priorityOnly ? current : next;
         });
       }
       if (urlState.sourcingWeek) setSourcingWeek(sourcingCycleSaturday(urlState.sourcingWeek));
@@ -409,6 +414,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       lang: language,
       site: filters.site,
       pic: filters.owner,
+      priority: filters.priorityOnly ? "only" : "all",
       sourcingSite: null,
       sourcingOwner: null,
       sourcingWeek,
@@ -426,6 +432,8 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const canManageRejectionTemplates = role === "system_admin" || role === "admin_recruiter";
   const canDeleteRecords = role === "system_admin";
 
+  const priorityData = useMemo(() => priorityRequisitionScope(data, filters.priorityOnly), [data, filters.priorityOnly]);
+
   const enrichedRequisitions = useMemo(() => enrichRequisitions(data), [data]);
   const enrichedCandidates = useMemo(() => enrichCandidates(data), [data]);
   const enrichedOffers = useMemo(() => enrichOffers(data), [data]);
@@ -433,22 +441,26 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const rejectionLetterSentCandidateIds = useMemo(() => new Set(data.rejection_letter_drafts.filter((draft) => draft.status === "sent").map((draft) => draft.candidate_id)), [data.rejection_letter_drafts]);
   const enrichedSourcingGroups = useMemo(() => enrichSourcingGroups(data, sourcingWeek), [data, sourcingWeek]);
   const homeSourcingGroups = useMemo(
-    () => sourcingGroupsInScope(enrichedSourcingGroups, data.profile, filters.site, filters.owner),
-    [data.profile, enrichedSourcingGroups, filters.owner, filters.site]
+    () => sourcingGroupsInScope(enrichedSourcingGroups.filter(group => !filters.priorityOnly || group.doc_ids.some(id => data.requisitions.some(req => req.doc_id === id && req.is_priority))), data.profile, filters.site, filters.owner),
+    [data.profile, data.requisitions, enrichedSourcingGroups, filters.owner, filters.site, filters.priorityOnly]
   );
-  const staleSourcingGroups = useMemo(() => staleOpenSourcingGroups(data), [data]);
-  const dataQualityIssues = useMemo(() => deriveDataQualityIssues(data), [data]);
+  const staleSourcingGroups = useMemo(() => staleOpenSourcingGroups(priorityData), [priorityData]);
+  const dataQualityIssues = useMemo(() => deriveDataQualityIssues(priorityData), [priorityData]);
   const welcomeSummary = useMemo(
     () => buildWelcomeSummary(enrichedRequisitions, enrichedCandidates, data.offers, data.requisition_logs, data.profile),
     [data.offers, data.profile, data.requisition_logs, enrichedCandidates, enrichedRequisitions]
   );
 
-  const filteredRequisitions = useMemo(() => filterByText(enrichedRequisitions, filters), [enrichedRequisitions, filters]);
-  const filteredCandidates = useMemo(() => filterByText(enrichedCandidates, filters), [enrichedCandidates, filters]);
-  const filteredOffers = useMemo(() => filterByText(enrichedOffers, filters), [enrichedOffers, filters]);
+  const priorityRequisitions = useMemo(() => enrichRequisitions(priorityData), [priorityData]);
+  const priorityCandidates = useMemo(() => enrichCandidates(priorityData), [priorityData]);
+  const priorityOffers = useMemo(() => enrichOffers(priorityData), [priorityData]);
+
+  const filteredRequisitions = useMemo(() => filterByText(priorityRequisitions, filters), [priorityRequisitions, filters]);
+  const filteredCandidates = useMemo(() => filterByText(priorityCandidates, filters), [priorityCandidates, filters]);
+  const filteredOffers = useMemo(() => filterByText(priorityOffers, filters), [priorityOffers, filters]);
   const dashboardReportData = useMemo(
-    () => companyDashboardReport ? { ...data, ...companyDashboardReport } : data,
-    [companyDashboardReport, data]
+    () => priorityRequisitionScope(companyDashboardReport ? { ...data, ...companyDashboardReport } : data, filters.priorityOnly),
+    [companyDashboardReport, data, filters.priorityOnly]
   );
   const dashboardRequisitions = useMemo(
     () => filterByText(enrichRequisitions(dashboardReportData), filters),
@@ -458,7 +470,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     () => filterByText(enrichOffers(dashboardReportData), filters),
     [dashboardReportData, filters]
   );
-  const filteredChangeLogs = useMemo(() => filterChangeLogsByText(data, filters), [data, filters]);
+  const filteredChangeLogs = useMemo(() => filterChangeLogsByText(priorityData, filters), [priorityData, filters]);
   useEffect(() => {
     if (initialView !== "workspace" || workspaceLoadState !== "ready" || workspaceTarget.type !== "requisition" || !workspaceTarget.id) return;
     const docId = workspaceTarget.id;
@@ -511,7 +523,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     }
     const visibleDocIds = new Set([...docIds].filter((docId) => {
       const requisition = enrichedRequisitions.find((row) => row.doc_id === docId);
-      return Boolean(requisition && (!filters.site || requisition.site === filters.site) && (!filters.owner || requisition.person_in_charge === filters.owner));
+      return Boolean(requisition && (!filters.priorityOnly || requisition.is_priority) && (!filters.site || requisition.site === filters.site) && (!filters.owner || requisition.person_in_charge === filters.owner));
     }));
     const documentGroups = data.document_groups.filter((row) => (
       (row.group_id && groupIds.has(row.group_id))
@@ -519,7 +531,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     ) && visibleDocIds.has(row.doc_id));
     const scopedDocumentGroups = documentGroups;
     const candidateDocGroupIds = new Set(documentGroups.map((row) => row.doc_group_id));
-    const scopedCandidates = enrichedCandidates.filter((row) => (row.group_id ? groupIds.has(row.group_id) : Boolean(row.doc_group_id && candidateDocGroupIds.has(row.doc_group_id))));
+    const scopedCandidates = enrichedCandidates.filter((row) => (row.group_id ? groupIds.has(row.group_id) && (!filters.priorityOnly || documentGroups.some(match => match.group_id === row.group_id)) : Boolean(row.doc_group_id && candidateDocGroupIds.has(row.doc_group_id))));
     const scopedRequisitions = enrichedRequisitions.filter((row) => visibleDocIds.has(row.doc_id));
     const scopedOffers = enrichedOffers.filter((row) => visibleDocIds.has(row.doc_id));
     return {
@@ -530,7 +542,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       offers: scopedOffers,
       requisitions: scopedRequisitions
     };
-  }, [data.document_groups, enrichedCandidates, enrichedOffers, enrichedRequisitions, filters.owner, filters.site, workspaceTarget]);
+  }, [data.document_groups, enrichedCandidates, enrichedOffers, enrichedRequisitions, filters.owner, filters.site, filters.priorityOnly, workspaceTarget]);
   const historicalWorkspace = workspaceTarget.type === "group" && workspaceScope.requisitions.length > 0
     && !workspaceScope.requisitions.some((row) => row.status === "ongoing" && row.open_headcount > 0);
 
@@ -999,7 +1011,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     if (initialView === "workspace") setWorkspaceTarget({ type: "group", id: groupId });
     const section = docId ? "sourcing" : "overview";
     const path = `/workspace?type=group&id=${encodeURIComponent(groupId)}&section=${section}`;
-    router.push(buildContextualHref(path, { language, site: filters.site, owner: filters.owner, sourcingWeek }));
+    router.push(buildContextualHref(path, { language, site: filters.site, owner: filters.owner, sourcingWeek, priority: filters.priorityOnly ? "only" : "all" }));
   }
 
   function openOfferFromHandoff() {
@@ -1022,12 +1034,12 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       return;
     }
     const path = `/workspace?type=${groupId ? "group" : "requisition"}&id=${encodeURIComponent(groupId ?? handoff.docId)}&section=offer&offerCandidate=${encodeURIComponent(handoff.candidateId)}&offerDoc=${encodeURIComponent(handoff.docId)}&offerDate=${encodeURIComponent(handoff.passedDate)}`;
-    router.push(buildContextualHref(path, { language, site: filters.site, owner: filters.owner, sourcingWeek }));
+    router.push(buildContextualHref(path, { language, site: filters.site, owner: filters.owner, sourcingWeek, priority: filters.priorityOnly ? "only" : "all" }));
   }
 
   const navigationContext = useMemo(
-    () => ({ language, site: filters.site, owner: filters.owner, sourcingWeek }),
-    [filters.owner, filters.site, language, sourcingWeek]
+    () => ({ language, site: filters.site, owner: filters.owner, sourcingWeek, priority: filters.priorityOnly ? "only" : "all" }),
+    [filters.owner, filters.site, filters.priorityOnly, language, sourcingWeek]
   );
   const prepareDestructiveRpcAction = useCallback((endpoint: string, payload: Record<string, unknown>, summary: string) => {
     setDestructiveAction({
@@ -1067,9 +1079,21 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       await loadData();
     } finally { setBusy(false); }
   }, [loadData]);
+  const toggleRequisitionPriority = useCallback(async (requisition: Requisition) => {
+    if (!supabase || !canManageRequisitionPriority(data.profile, requisition)) throw new Error("Permission denied");
+    const { data: result, error: rpcError } = await supabase.rpc("app_set_requisition_priority_v1", { payload: {
+      doc_id: requisition.doc_id, is_priority: !requisition.is_priority, expected_updated_at: requisition.updated_at
+    } });
+    if (rpcError || result?.error || result?.ok !== true) throw new Error(rpcError?.message ?? result?.error ?? "Priority could not be saved");
+    const patch = (rows: Requisition[]) => rows.map(row => row.doc_id === requisition.doc_id ? { ...row, is_priority: result.is_priority, updated_at: result.updated_at } : row);
+    setData(current => ({ ...current, requisitions: patch(current.requisitions) }));
+    setCompanyDashboardReport(current => current ? { ...current, requisitions: patch(current.requisitions) } : current);
+    setStatus(translate(language, "prioritySaved"));
+  }, [data.profile, language]);
+
   const detailBody = useMemo(
-    () => buildDetailBodyV2(detail, data, language, canWrite, canDeleteRecords, openProcessFromDetail, openCurrentStageEdit, openDetailOffer, (offer) => { setProcessDefaults({ offer_id: offer.offer_id, offer_expected_updated_at: offer.updated_at, offer_start_confirmation: offer.start_confirmation }); setActiveModal("start_confirmation"); }, navigationContext, openDetailRequisitionChange, openDetailCandidateChange, openCandidateReference, openCandidateReferenceStatus, openCandidateReferenceCheck, prepareDestructiveRpcAction, openRejectionLetter),
-    [canDeleteRecords, canWrite, detail, data, language, navigationContext, openCandidateReference, openCandidateReferenceCheck, openCandidateReferenceStatus, openDetailCandidateChange, openDetailRequisitionChange, openDetailOffer, openCurrentStageEdit, openProcessFromDetail, prepareDestructiveRpcAction, openRejectionLetter]
+    () => buildDetailBodyV2(detail, data, language, canWrite, canDeleteRecords, openProcessFromDetail, openCurrentStageEdit, openDetailOffer, (offer) => { setProcessDefaults({ offer_id: offer.offer_id, offer_expected_updated_at: offer.updated_at, offer_start_confirmation: offer.start_confirmation }); setActiveModal("start_confirmation"); }, navigationContext, openDetailRequisitionChange, openDetailCandidateChange, openCandidateReference, openCandidateReferenceStatus, openCandidateReferenceCheck, prepareDestructiveRpcAction, openRejectionLetter, toggleRequisitionPriority),
+    [canDeleteRecords, canWrite, detail, data, language, navigationContext, openCandidateReference, openCandidateReferenceCheck, openCandidateReferenceStatus, openDetailCandidateChange, openDetailRequisitionChange, openDetailOffer, openCurrentStageEdit, openProcessFromDetail, prepareDestructiveRpcAction, openRejectionLetter, toggleRequisitionPriority]
   );
 
   if (!hasSupabaseConfig) {
@@ -1128,6 +1152,11 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
         <>
           <CommandSelector ariaLabel={translate(language, "site")} density="compact" emptyLabel={translate(language, "allSites")} options={[{ value: "", label: translate(language, "allSites") }, ...siteOptions.map((value) => ({ value, label: value }))]} value={filters.site} onValueChange={(value) => setFilters((old) => ({ ...old, site: value }))} className="w-full min-w-[8.5rem] sm:w-36" />
           <CommandSelector ariaLabel={translate(language, "personInCharge")} density="compact" emptyLabel={translate(language, "allOwners")} options={[{ value: "", label: translate(language, "allOwners") }, ...ownerOptions.map((value) => ({ value, label: value }))]} value={filters.owner} onValueChange={(value) => setFilters((old) => ({ ...old, owner: value }))} className="w-full min-w-[11rem] sm:w-48" />
+          <Button type="button" size="icon-sm" variant="secondary" className={filters.priorityOnly ? "min-h-11 min-w-11 !bg-[#FFF4D8] !text-[#A65C00] !ring-[#E5B96B] sm:min-h-9 sm:min-w-9" : "min-h-11 min-w-11 sm:min-h-9 sm:min-w-9"}
+            icon={<Star size={18} fill={filters.priorityOnly ? "currentColor" : "none"} aria-hidden="true" />}
+            aria-label={translate(language, "priorityRequisitionFilter")} aria-pressed={filters.priorityOnly}
+            title={translate(language, filters.priorityOnly ? "priorityRequisitions" : "allRequisitions")}
+            onClick={() => setFilters(current => ({ ...current, priorityOnly: !current.priorityOnly }))} />
         </>
       )}
       language={language}
@@ -1146,12 +1175,12 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       ) : null}
 
       {initialView === "home" ? (
-        <HomeView language={language} profile={data.profile} requisitions={filteredRequisitions} candidates={filteredCandidates} offers={filteredOffers} recruitmentLogs={data.recruitment_logs} sourcingGroups={homeSourcingGroups} sourcingHref={buildContextualHref("/sourcing", { language, site: filters.site, owner: filters.owner, sourcingWeek })} staleSourcingGroups={staleSourcingGroups} changeLogs={filteredChangeLogs} dataQualityIssues={dataQualityIssues} canViewRecentActivity={canWrite} onConfirmStart={(offer) => { setProcessDefaults({ offer_id: offer.offer_id, offer_expected_updated_at: offer.updated_at, offer_start_confirmation: offer.start_confirmation }); setActiveModal("start_confirmation"); }} onEditPending={openPendingEdit} onOpenRequisition={(id) => setDetail({ type: "requisition", id })} onOpenCandidate={openCandidateDetail} />
+        <HomeView language={language} profile={data.profile} requisitions={filteredRequisitions} candidates={filteredCandidates} offers={filteredOffers} recruitmentLogs={data.recruitment_logs} sourcingGroups={homeSourcingGroups} sourcingHref={buildContextualHref("/sourcing", { language, site: filters.site, owner: filters.owner, sourcingWeek, priority: filters.priorityOnly ? "only" : "all" })} staleSourcingGroups={staleSourcingGroups} changeLogs={filteredChangeLogs} dataQualityIssues={dataQualityIssues} canViewRecentActivity={canWrite} onConfirmStart={(offer) => { setProcessDefaults({ offer_id: offer.offer_id, offer_expected_updated_at: offer.updated_at, offer_start_confirmation: offer.start_confirmation }); setActiveModal("start_confirmation"); }} onEditPending={openPendingEdit} onOpenRequisition={(id) => setDetail({ type: "requisition", id })} onOpenCandidate={openCandidateDetail} />
       ) : null}
 
       {initialView === "dashboard" ? (
         <div className="grid min-w-0 gap-6">
-          <RecruitmentPerformanceOverview language={language} data={dashboardReportData} requisitions={dashboardRequisitions} offers={dashboardOffers} globalSite={filters.site} globalOwner={filters.owner} />
+          <RecruitmentPerformanceOverview language={language} data={dashboardReportData} requisitions={dashboardRequisitions} offers={dashboardOffers} globalSite={filters.site} globalOwner={filters.owner} globalPriorityOnly={filters.priorityOnly} />
           <VacancyWaterfallView
             language={language}
             data={dashboardReportData}
@@ -1165,7 +1194,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
         <HiringWorkspaceView
           canManageSetup={canManageSetup}
           canWrite={canWrite && !historicalWorkspace}
-          data={data}
+          data={priorityData}
           language={language}
           siteFilter={filters.site}
           ownerFilter={filters.owner}
@@ -1215,7 +1244,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
             <EmbeddedSourcingEditor
               canManageSetup={canManageSetup && !historicalWorkspace}
               canWrite={canWrite && !historicalWorkspace}
-              data={data}
+              data={priorityData}
               docIds={workspaceScope.requisitions.map((row) => row.doc_id)}
               groupIds={workspaceScope.groupIds}
               language={language}
@@ -1256,7 +1285,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       {initialView === "sourcing" ? (
         <SourcingView
           language={language}
-          data={data}
+          data={priorityData}
           profile={data.profile}
           siteFilter={filters.site}
           ownerFilter={filters.owner}
@@ -3357,7 +3386,8 @@ function buildDetailBodyV2(
   onSetReferenceStatus: (candidateId: string, referenceId: string) => void,
   onSaveReferenceCheck: (candidateId: string, referenceId: string) => void,
   onDeleteRecord: (endpoint: string, payload: Record<string, unknown>, summary: string) => void,
-  onCreateRejectionLetter: (candidate: EnrichedCandidate, retryDraftId?: string) => void
+  onCreateRejectionLetter: (candidate: EnrichedCandidate, retryDraftId?: string) => void,
+  onTogglePriority: (requisition: Requisition) => Promise<void>
 ): DetailBodyResult {
   if (!detail) return { title: "Detail", body: null };
   const href = (path: string) => buildContextualHref(path, navigationContext);
@@ -3402,7 +3432,7 @@ function buildDetailBodyV2(
           label={formatRequisitionOptionLabel(requisition)}
           flat
           primary={{ id: "workspace", label: translate(language, "workspaceOpen"), href: href(positionGroupIds.size === 1 ? `/workspace?type=group&id=${encodeURIComponent([...positionGroupIds][0])}&section=overview` : positionGroupIds.size > 1 ? `/workspace?groupChoices=${encodeURIComponent([...positionGroupIds].sort().join(","))}&section=overview` : "/workspace"), icon: <LampDesk size={17} aria-hidden="true" />, iconOnly: true, flat: true }}
-          inlineAction={canWrite ? <Button type="button" variant="ghost" size="icon-sm" className="text-primary hover:bg-[#F1F6FC] hover:text-primary" icon={<Pencil size={17} aria-hidden="true" />} aria-label={translate(language, "changeRecord")} title={translate(language, "changeRecord")} onClick={() => onChangeRequisition(requisition.doc_id)} /> : null}
+          inlineAction={<RequisitionPriorityButton key={requisition.doc_id} requisition={requisition} language={language} canManage={canManageRequisitionPriority(data.profile, requisition)} onToggle={onTogglePriority} />}
           items={[
             ...(canWrite ? [{ id: "change-record", label: translate(language, "changeRecord"), onSelect: () => onChangeRequisition(requisition.doc_id) }] : []),
             ...(canDeleteRecords ? [{
@@ -4130,7 +4160,7 @@ function offerPassHandoffFromResult(result: RpcResult, data: DashboardData): Off
 
 function parseWorkspaceUrlState(): ParsedWorkspaceUrlState {
   if (typeof window === "undefined") {
-    return { language: null, site: null, owner: null, sourcingWeek: null, detailType: null, detailId: null, workspaceType: null, workspaceId: null, hasFilterParams: false };
+    return { language: null, site: null, owner: null, priorityOnly: false, sourcingWeek: null, detailType: null, detailId: null, workspaceType: null, workspaceId: null, hasFilterParams: false };
   }
   const params = readWorkspaceUrlParams();
   const language = params.get("lang");
@@ -4141,12 +4171,13 @@ function parseWorkspaceUrlState(): ParsedWorkspaceUrlState {
     language: parsedLanguage,
     site: params.get("site") ?? params.get("sourcingSite"),
     owner: params.get("pic") ?? params.get("sourcingOwner"),
+    priorityOnly: params.get("priority") === "only",
     sourcingWeek: params.get("sourcingWeek"),
     detailType: detailType === "candidate" || detailType === "requisition" ? detailType : null,
     detailId: params.get("detailId"),
     workspaceType: workspaceType === "requisition" || workspaceType === "group" ? workspaceType : null,
     workspaceId: params.get("id"),
-    hasFilterParams: params.has("site") || params.has("pic") || params.has("sourcingSite") || params.has("sourcingOwner")
+    hasFilterParams: params.has("site") || params.has("pic") || params.has("priority") || params.has("sourcingSite") || params.has("sourcingOwner")
   };
 }
 

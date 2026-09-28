@@ -1,4 +1,4 @@
-import { Plus, RotateCw, Search } from "lucide-react";
+import { Plus, RotateCw, Search, Star } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -108,7 +108,7 @@ export function RequisitionsView({
               <div className="mb-2 flex items-center justify-between gap-2">
                 <div className="min-w-0">
                   <strong className={`font-semibold ${getRequisitionSlaState(row, { openOnly: true }).isOverdue ? "text-scarlet" : "text-navy"}`}>
-                    {formatRequisitionCardTitle(row)}
+                    {row.is_priority ? <Star size={15} fill="currentColor" className="mr-1 inline-block text-[#A65C00]" aria-label={translate(language, "priorityRequestsLabel")} /> : null}{formatRequisitionCardTitle(row)}
                   </strong>
                 </div>
                 <Tag appearance="soft" tone={statusTone(row.status) as never}>{requisitionStatusLabel(language, row.status)}</Tag>
@@ -173,7 +173,7 @@ export function RequisitionsView({
                   </td>
                   <td className="px-3 py-3">
                     <button type="button" aria-label={translate(language, "viewRequisitionDetailFor", { id: row.doc_id })} className={`font-semibold hover:underline focus:outline-none focus:ring-2 focus:ring-primary/30 ${getRequisitionSlaState(row, { openOnly: true }).isOverdue ? "text-scarlet" : "text-navy"}`} onClick={() => onOpen(row.doc_id)}>
-                      {row.doc_id}
+                      {row.is_priority ? <Star size={15} fill="currentColor" className="mr-1 inline-block text-[#A65C00]" aria-label={translate(language, "priorityRequestsLabel")} /> : null}{row.doc_id}
                     </button>
                   </td>
                   <td className="px-3 py-3 font-semibold text-navy"><TruncatedTableText value={formatRequisitionTitle(row)} /></td>

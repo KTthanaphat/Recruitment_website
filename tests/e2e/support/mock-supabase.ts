@@ -88,6 +88,17 @@ export async function installMockSupabase(page: Page, options: MockSupabaseOptio
       });
       return;
     }
+    if (endpoint === "app_set_requisition_priority_v1") {
+      const current = data.requisitions.find(row => row.doc_id === payload.doc_id);
+      if (!current || current.updated_at !== payload.expected_updated_at) {
+        await json(route, { message: "PRIORITY_STALE_WRITE" }, 409);
+        return;
+      }
+      current.is_priority = payload.is_priority === true;
+      current.updated_at = "2026-07-24T05:00:01.000Z";
+      await json(route, { ok: true, id: current.doc_id, is_priority: current.is_priority, updated_at: current.updated_at });
+      return;
+    }
     applyRpcMutation(data, endpoint, payload);
     const completedOffer = endpoint === "app_complete_pipeline_stage_v2"
       && asRecord(payload.outcome).result === "pass"

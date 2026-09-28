@@ -100,7 +100,8 @@ export function AppShell({
     language: navigationContext?.language ?? searchParams.get("lang"),
     site: navigationContext?.site ?? searchParams.get("site"),
     owner: navigationContext?.owner ?? searchParams.get("pic"),
-    sourcingWeek: navigationContext?.sourcingWeek ?? searchParams.get("sourcingWeek")
+    sourcingWeek: navigationContext?.sourcingWeek ?? searchParams.get("sourcingWeek"),
+    priority: navigationContext?.priority ?? searchParams.get("priority")
   };
   const isRecordsActive = recordsViews.some((view) => pathname === paths[view] || activeView === view);
   const [recordsOpen, setRecordsOpen] = useState(isRecordsActive);

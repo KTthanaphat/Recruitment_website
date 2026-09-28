@@ -71,3 +71,6 @@ revoke all on function public.app_upsert_offer(jsonb) from public, anon, authent
 grant execute on function public.app_upsert_offer(jsonb) to authenticated;
 revoke all on function public.app_upsert_vacancy_weekly_snapshot(jsonb) from public, anon, authenticated;
 grant execute on function public.app_upsert_vacancy_weekly_snapshot(jsonb) to authenticated;
+
+revoke all on function public.app_set_requisition_priority_v1(jsonb) from public, anon, authenticated;
+grant execute on function public.app_set_requisition_priority_v1(jsonb) to authenticated;

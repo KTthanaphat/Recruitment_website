@@ -11,6 +11,7 @@ Recruitment Performance overview: [RecruitmentPerformanceOverview.tsx](../../../
 ### F04: Dashboard report views, exports, and XLSX
 
 - Overview Site/Department controls: [CommandMultiSelector.tsx](../../../src/components/ui/CommandMultiSelector.tsx) owns multiple selections and keyboard interaction; overview controller owns URL serialization and global scope.
+- The shared priority scope uses [requisition-priority.ts](../../../src/lib/requisition-priority.ts); the [company report schema](../../../supabase/schemas/55_dashboard_report.sql) supplies `is_priority` in the authenticated report feed. The overview export metadata identifies an active priority scope.
 - Chart help: [ReportHelp.tsx](../../../src/components/dashboard/ReportHelp.tsx) supplies viewport-contained hover/focus/tap tooltips for overview charts, Waterfall and [PipelineFunnel.tsx](../../../src/components/ui/PipelineFunnel.tsx). KPI definitions use accessible descriptions without a help control. Overview and Waterfall own independent expanded state; export surfaces remain complete when collapsed.
 
 - Owner/search: [src/components/dashboard/VacancyWaterfallView.tsx](../../../src/components/dashboard/VacancyWaterfallView.tsx), [src/components/ui/Field.tsx](../../../src/components/ui/Field.tsx).

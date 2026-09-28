@@ -2209,3 +2209,36 @@ begin
   return jsonb_build_object('ok', true, 'check_id', v_check.check_id, 'updated_at', v_check.updated_at);
 end;
 $$;
+
+-- SECURITY DEFINER follows existing RPC-only writes; authenticated clients have no table UPDATE grant.
+-- Authorization is checked before the single-field update, with a fixed search path.
+create or replace function public.app_set_requisition_priority_v1(payload jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_doc_id text := nullif(payload ->> 'doc_id', '');
+  v_expected timestamptz := nullif(payload ->> 'expected_updated_at', '')::timestamptz;
+  v_row public.requisitions%rowtype;
+begin
+  if auth.uid() is null then raise exception 'An authenticated application profile is required.'; end if;
+  perform app_private.assert_recruitment_writer();
+  if v_doc_id is null or v_expected is null or jsonb_typeof(payload -> 'is_priority') is distinct from 'boolean' then
+    raise exception 'PRIORITY_INVALID_PAYLOAD: Doc ID, expected timestamp and boolean priority are required.';
+  end if;
+  if not app_private.can_manage_requisition(v_doc_id) then
+    raise exception 'PRIORITY_PERMISSION_DENIED: You cannot manage this requisition.';
+  end if;
+  select * into v_row from public.requisitions where doc_id = v_doc_id for update;
+  if not found then raise exception 'PRIORITY_NOT_FOUND: Requisition not found.'; end if;
+  if v_row.updated_at is distinct from v_expected then
+    raise exception 'PRIORITY_STALE_WRITE: The requisition changed. Refresh and try again.';
+  end if;
+  perform set_config('app.action', 'requisition:priority', true);
+  update public.requisitions set is_priority = (payload ->> 'is_priority')::boolean
+  where doc_id = v_doc_id returning * into v_row;
+  return jsonb_build_object('ok', true, 'id', v_row.doc_id, 'is_priority', v_row.is_priority, 'updated_at', v_row.updated_at);
+end;
+$$;
