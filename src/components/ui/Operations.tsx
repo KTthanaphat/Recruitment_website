@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Button } from "@/components/ui/Button";
+import { detailUtilityClassName } from "@/components/ui/detail-utility";
 import { Tag } from "@/components/ui/Tag";
 import type { DisabledReason, NextActionTone, OperationalSummaryItem, WorkQueueItem } from "@/lib/operations";
 import { buildContextualHref } from "@/lib/workspace-url-state";
@@ -29,6 +30,7 @@ export type RecordActionGroupProps = {
   inlineAction?: ReactNode;
   items: RecordAction[];
   flat?: boolean;
+  uniformUtilities?: boolean;
 };
 
 export type RecordQuickAction = RecordAction & {
@@ -57,7 +59,7 @@ export function RecordQuickActions({ actions, label }: { actions: RecordQuickAct
   );
 }
 
-export function RecordActionGroup({ label, primary, inlineAction, items, flat = false }: RecordActionGroupProps) {
+export function RecordActionGroup({ label, primary, inlineAction, items, flat = false, uniformUtilities = false }: RecordActionGroupProps) {
   const searchParams = useSearchParams();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -117,7 +119,7 @@ export function RecordActionGroup({ label, primary, inlineAction, items, flat = 
 
   return (
     <div ref={rootRef} className="relative flex min-w-0 flex-wrap items-center gap-2">
-      {primary ? <RecordActionControl action={withContext(primary)} prominent onComplete={() => setOpen(false)} /> : null}
+      {primary ? <RecordActionControl action={withContext(primary)} uniformUtility={uniformUtilities} prominent onComplete={() => setOpen(false)} /> : null}
       {inlineAction}
       {items.length > 0 ? (
         <>
@@ -126,12 +128,13 @@ export function RecordActionGroup({ label, primary, inlineAction, items, flat = 
             type="button"
             size="icon-sm"
             variant={flat ? "ghost" : "secondary"}
-            icon={<MoreVertical size={17} />}
+            icon={<MoreVertical size={uniformUtilities ? 18 : 17} aria-hidden="true" />}
+            data-detail-utility={uniformUtilities || undefined}
             aria-haspopup="menu"
             aria-expanded={open}
             aria-label={`More actions for ${label}`}
             title={`More actions for ${label}`}
-            className={flat ? "text-primary hover:bg-[#F1F6FC] hover:text-primary" : undefined}
+            className={uniformUtilities ? detailUtilityClassName(open) : flat ? "text-primary hover:bg-[#F1F6FC] hover:text-primary" : undefined}
             onClick={() => setOpen((current) => !current)}
           >
             <span className="sr-only">More</span>
@@ -157,12 +160,14 @@ function RecordActionControl({
   action,
   menuItem = false,
   onComplete,
-  prominent = false
+  prominent = false,
+  uniformUtility = false
 }: {
   action: RecordAction;
   menuItem?: boolean;
   onComplete: () => void;
   prominent?: boolean;
+  uniformUtility?: boolean;
 }) {
   const blocked = action.disabledReason?.blocked === true;
   const iconOnly = action.iconOnly && !menuItem;
@@ -187,7 +192,8 @@ function RecordActionControl({
         role={menuItem ? "menuitem" : undefined}
         aria-label={iconOnly ? action.label : undefined}
         title={iconOnly ? action.label : undefined}
-        className={`${className} ${action.flat ? "bg-transparent text-primary hover:bg-[#F1F6FC] hover:text-primary" : prominent ? "bg-primary text-white hover:bg-primary/90" : menuItem ? actionMenuClass(action.tone) : actionClass(action.tone)}`}
+        data-detail-utility={uniformUtility || undefined}
+        className={`${className} ${uniformUtility ? detailUtilityClassName() : action.flat ? "bg-transparent text-primary hover:bg-[#F1F6FC] hover:text-primary" : prominent ? "bg-primary text-white hover:bg-primary/90" : menuItem ? actionMenuClass(action.tone) : actionClass(action.tone)}`}
         href={action.href}
         target={action.external ? "_blank" : undefined}
         rel={action.external ? "noreferrer" : undefined}
@@ -204,7 +210,8 @@ function RecordActionControl({
       type="button"
       aria-label={iconOnly ? action.label : undefined}
       title={blocked ? action.disabledReason?.detail : iconOnly ? action.label : undefined}
-      className={`${className} ${action.flat ? "bg-transparent text-primary hover:bg-[#F1F6FC] hover:text-primary" : prominent ? "bg-primary text-white hover:bg-primary/90" : menuItem ? actionMenuClass(action.tone) : actionClass(action.tone)}`}
+      data-detail-utility={uniformUtility || undefined}
+      className={`${className} ${uniformUtility ? detailUtilityClassName() : action.flat ? "bg-transparent text-primary hover:bg-[#F1F6FC] hover:text-primary" : prominent ? "bg-primary text-white hover:bg-primary/90" : menuItem ? actionMenuClass(action.tone) : actionClass(action.tone)}`}
       disabled={blocked}
       onClick={() => {
         action.onSelect?.();

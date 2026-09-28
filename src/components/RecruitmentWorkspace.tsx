@@ -1397,6 +1397,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
         headerActions={detailBody.headerActions}
         variant={detail ? "candidate-workspace" : "side"}
         mobileActionRow={detail?.type === "requisition"}
+        uniformHeaderActions={detail?.type === "requisition"}
         inactive={Boolean(activeModal || pendingAction || destructiveAction || offerPassHandoff || journeyActionCandidateId || currentStageActionCandidateId)}
         onClose={() => setDetail(null)}
       >
@@ -3431,7 +3432,8 @@ function buildDetailBodyV2(
         <RecordActionGroup
           label={formatRequisitionOptionLabel(requisition)}
           flat
-          primary={{ id: "workspace", label: translate(language, "workspaceOpen"), href: href(positionGroupIds.size === 1 ? `/workspace?type=group&id=${encodeURIComponent([...positionGroupIds][0])}&section=overview` : positionGroupIds.size > 1 ? `/workspace?groupChoices=${encodeURIComponent([...positionGroupIds].sort().join(","))}&section=overview` : "/workspace"), icon: <LampDesk size={17} aria-hidden="true" />, iconOnly: true, flat: true }}
+          uniformUtilities
+          primary={{ id: "workspace", label: translate(language, "workspaceOpen"), href: href(positionGroupIds.size === 1 ? `/workspace?type=group&id=${encodeURIComponent([...positionGroupIds][0])}&section=overview` : positionGroupIds.size > 1 ? `/workspace?groupChoices=${encodeURIComponent([...positionGroupIds].sort().join(","))}&section=overview` : "/workspace"), icon: <LampDesk size={18} aria-hidden="true" />, iconOnly: true, flat: true }}
           inlineAction={<RequisitionPriorityButton key={requisition.doc_id} requisition={requisition} language={language} canManage={canManageRequisitionPriority(data.profile, requisition)} onToggle={onTogglePriority} />}
           items={[
             ...(canWrite ? [{ id: "change-record", label: translate(language, "changeRecord"), onSelect: () => onChangeRequisition(requisition.doc_id) }] : []),

@@ -9,8 +9,22 @@ test("priority bookmark persists, filters records and survives navigation", asyn
   await page.goto("/requisitions?detailType=requisition&detailId=REQ-HQ-1");
   await expectWorkspaceReady(page);
   const drawer = page.getByRole("dialog", { name: "Engineer (L4)" });
+  const utilities = drawer.locator("[data-detail-utility]");
+  await expect(utilities).toHaveCount(4);
+  const geometry = await utilities.evaluateAll(nodes => nodes.map(node => {
+    const box = node.getBoundingClientRect();
+    const icon = node.querySelector("svg")!.getBoundingClientRect();
+    return { width: box.width, height: box.height, center: box.y + box.height / 2, iconWidth: icon.width, iconHeight: icon.height };
+  }));
+  expect(geometry.every(box => box.width === 36 && box.height === 36 && box.iconWidth === 18 && box.iconHeight === 18)).toBe(true);
+  expect(Math.max(...geometry.map(box => box.center)) - Math.min(...geometry.map(box => box.center))).toBeLessThan(1);
+  await expect(drawer.getByRole("button", { name: "Mark as priority", exact: true }).locator("svg")).toHaveAttribute("fill", "none");
   await drawer.getByRole("button", { name: "Mark as priority", exact: true }).click();
   await expect(drawer.getByRole("button", { name: "Remove priority", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.mouse.move(0, 0);
+  await expect(drawer.getByRole("button", { name: "Remove priority", exact: true }).locator("svg")).toHaveCSS("color", "rgb(10, 60, 220)");
+  await expect(drawer.getByRole("button", { name: "Remove priority", exact: true }).locator("svg")).toHaveAttribute("fill", "currentColor");
+  await page.screenshot({ path: testInfo.outputPath("priority-detail-desktop.png"), fullPage: true });
   expect(mock.rpcCalls.find(call => call.endpoint === "app_set_requisition_priority_v1")?.payload)
     .toEqual({ doc_id: "REQ-HQ-1", is_priority: true, expected_updated_at: originalTimestamp });
   await expect(drawer.getByRole("button", { name: "Change record", exact: true })).toHaveCount(0);
@@ -103,6 +117,15 @@ test("Thai phone controls fit and place the bookmark between PIC and language", 
   await page.goto("/requisitions?lang=th&detailType=requisition&detailId=REQ-HQ-1");
   const drawer = page.getByRole("dialog");
   await expect(drawer.getByRole("button", { name: "ทำเครื่องหมายคำขอเร่งด่วน", exact: true })).toBeVisible();
+  const utilitySizes = await drawer.locator("[data-detail-utility]").evaluateAll(nodes => nodes.map(node => {
+    const box = node.getBoundingClientRect();
+    return { width: box.width, height: box.height };
+  }));
+  expect(utilitySizes).toHaveLength(4);
+  expect(utilitySizes.every(box => box.width === 44 && box.height === 44)).toBe(true);
+  await drawer.getByRole("button", { name: "ทำเครื่องหมายคำขอเร่งด่วน", exact: true }).click();
+  await page.mouse.move(0, 0);
+  await expect(drawer.locator('[aria-pressed="true"] svg')).toHaveCSS("color", "rgb(10, 60, 220)");
   await page.screenshot({ path: testInfo.outputPath("priority-phone.png"), fullPage: true });
   await drawer.getByRole("button", { name: "Close", exact: true }).click();
   const header = page.locator("[data-app-header-actions]");

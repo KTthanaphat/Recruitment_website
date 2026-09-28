@@ -4,6 +4,7 @@ import { X } from "lucide-react";
 import { useEffect, useId, useRef } from "react";
 import type { KeyboardEvent, ReactNode, RefObject } from "react";
 import { Button } from "@/components/ui/Button";
+import { detailUtilityClassName } from "@/components/ui/detail-utility";
 import { useOverlayScrollLock } from "@/components/ui/overlay-scroll-lock";
 
 export function Drawer({
@@ -15,6 +16,7 @@ export function Drawer({
   headerMeta,
   headerContent,
   mobileActionRow = false,
+  uniformHeaderActions = false,
   backAction,
   variant = "side",
   inactive = false,
@@ -29,6 +31,7 @@ export function Drawer({
   headerMeta?: ReactNode;
   headerContent?: ReactNode;
   mobileActionRow?: boolean;
+  uniformHeaderActions?: boolean;
   backAction?: ReactNode;
   variant?: "side" | "candidate-workspace";
   inactive?: boolean;
@@ -62,7 +65,7 @@ export function Drawer({
         onKeyDown={(event) => trapDrawerTabKey(event, panelRef.current)}
         className={`h-full min-w-0 w-full overflow-x-hidden overflow-y-auto overscroll-contain bg-white shadow-2xl outline-none ${variant === "candidate-workspace" ? "sm:max-w-2xl sm:border-l sm:border-[#D7DEE8]" : "sm:max-w-2xl"}`}
       >
-        <div className={`sticky top-0 z-30 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] ${mobileActionRow ? "sm:grid-cols-[minmax(0,1fr)_auto_auto]" : ""} gap-3 border-b border-[#D7DEE8] bg-white px-4 py-4 sm:px-5`}>
+        <div className={`sticky top-0 z-30 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] ${uniformHeaderActions ? "items-center" : ""} ${mobileActionRow ? "sm:grid-cols-[minmax(0,1fr)_auto_auto]" : ""} gap-3 border-b border-[#D7DEE8] bg-white px-4 py-4 sm:px-5`}>
           <div className="min-w-0">
             {headerContent ? <><h3 id={titleId} className="sr-only">{title}</h3>{headerContent}</> : <>
               {backAction ? <div className="mb-2">{backAction}</div> : null}
@@ -71,8 +74,8 @@ export function Drawer({
               {headerMeta ? <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2">{headerMeta}</div> : null}
             </>}
           </div>
-          {mobileActionRow && headerActions ? <div className="col-span-2 row-start-2 flex items-start justify-end sm:col-span-1 sm:col-start-2 sm:row-start-1">{headerActions}</div> : null}
-          <div className={`flex items-start justify-end gap-2 ${mobileActionRow ? "col-start-2 row-start-1 sm:col-start-3" : ""}`}>
+          {mobileActionRow && headerActions ? <div className={`col-span-2 row-start-2 flex ${uniformHeaderActions ? "items-center" : "items-start"} justify-end sm:col-span-1 sm:col-start-2 sm:row-start-1`}>{headerActions}</div> : null}
+          <div className={`flex ${uniformHeaderActions ? "items-center" : "items-start"} justify-end gap-2 ${mobileActionRow ? "col-start-2 row-start-1 sm:col-start-3" : ""}`}>
             {!mobileActionRow ? headerActions : null}
             <Button
               type="button"
@@ -81,8 +84,9 @@ export function Drawer({
               onClick={onClose}
               title={closeLabel}
               aria-label={closeLabel}
-              className="relative text-slate after:absolute after:-inset-1 hover:text-navy"
-              icon={<X size={16} aria-hidden="true" />}
+              data-detail-utility={uniformHeaderActions || undefined}
+              className={uniformHeaderActions ? detailUtilityClassName() : "relative text-slate after:absolute after:-inset-1 hover:text-navy"}
+              icon={<X size={uniformHeaderActions ? 18 : 16} aria-hidden="true" />}
             />
           </div>
         </div>
