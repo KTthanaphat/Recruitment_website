@@ -70,8 +70,8 @@ import {
   uniqueValues
 } from "@/lib/data";
 import { boolFromForm, emptyToNull, formatCandidateName, formatDate, formatDateTime, formatNumber, formatRequisitionOptionLabel, formatRequisitionTitle, formatThaiMobilePhone, resultText, statusTone } from "@/lib/format";
-import { fillReadinessLabel, requisitionStatusLabel, requestTypeLabel, roleLabel, translate } from "@/lib/i18n/dictionary";
-import { activeProcessStage, candidatePipelineCapability, candidateProcessDisabledReason, deriveDataQualityIssues, latestSuccessfulOfferPassDate, pipelineMoveDisabledReason, pipelineStageRecords, requisitionFillReadiness, type FillReadiness } from "@/lib/operations";
+import { sourcingLinkReadinessLabel, sourcingLinkReadinessReason, requisitionStatusLabel, requestTypeLabel, roleLabel, translate } from "@/lib/i18n/dictionary";
+import { activeProcessStage, candidatePipelineCapability, candidateProcessDisabledReason, deriveDataQualityIssues, latestSuccessfulOfferPassDate, pipelineMoveDisabledReason, pipelineStageRecords, requisitionSourcingLinkReadiness, type SourcingLinkReadiness } from "@/lib/operations";
 import { getRequisitionAgeDays, getRequisitionSlaState } from "@/lib/sla";
 import { clearStoredSupabaseSession, hasSupabaseConfig, supabase, withAuthTimeout } from "@/lib/supabase/client";
 import { asNumber, requireFields } from "@/lib/validation/forms";
@@ -3404,16 +3404,8 @@ function buildDetailBodyV2(
     const offers = data.offers.filter((row) => row.doc_id === requisition.doc_id);
     const applicantTotal = applicantCountForPositionGroups(data, positionGroupIds);
     const funnelRows = buildPipelineFunnelRows(applicantTotal, historicalPipelineCountsForCandidates(data, candidates.map((row) => row.candidate_id)), language);
-    const readiness = requisitionFillReadiness(requisition, enrichCandidates(data));
-    const readinessReason = language === "th" ? ({
-      "Filled": "ข้อเสนอที่ตอบรับครบตามอัตราที่ขอแล้ว",
-      "Cancelled": "คำขอนี้ไม่อยู่ในสถานะดำเนินการแล้ว",
-      "No coverage": "ยังไม่มีผู้สมัครที่เชื่อมโยงกับคำขอนี้",
-      "Late-stage coverage": "มีผู้สมัครที่กำลังตรวจสอบข้อมูลอ้างอิงหรืออยู่ในขั้นตอนข้อเสนอ",
-      "Aging coverage": "มีผู้สมัครที่กำลังดำเนินการอย่างน้อยหนึ่งรายค้างเกิน 7 วัน",
-      "Active coverage": "ผู้สมัครกำลังดำเนินการตามขั้นตอน",
-      "Needs candidate": "ผู้สมัครที่เชื่อมโยงไม่อยู่ระหว่างดำเนินการ ไม่ผ่าน หรือเสร็จสิ้นแล้ว"
-    }[readiness.label] ?? readiness.reason) : readiness.reason;
+    const readiness = requisitionSourcingLinkReadiness(requisition);
+    const readinessReason = sourcingLinkReadinessReason(language, readiness.groupIds);
     const sla = getRequisitionSlaState(requisition, { openOnly: true });
     const fillPercent = requisition.head_count > 0 ? Math.min(100, requisition.accepted_count / requisition.head_count * 100) : 0;
     const history = data.requisition_logs.filter(row => row.doc_id === requisition.doc_id).sort((a, b) => b.log_date.localeCompare(a.log_date) || b.log_id - a.log_id);
@@ -3460,7 +3452,7 @@ function buildDetailBodyV2(
             { label: translate(language, "currentSla"), value: sla?.label ?? "—", tone: sla?.isOverdue ? "danger" : "muted", helper: translate(language, "slaLabel") }
           ]} />
           <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[#E9F2FF]" role="img" aria-label={`${translate(language, "accepted")}: ${requisition.accepted_count}/${requisition.head_count}; ${Math.round(fillPercent)}%`}><div className="h-full bg-primary" style={{ width: `${fillPercent}%` }} /></div>
-          <p className="mt-2 text-xs leading-relaxed text-slate">{fillReadinessLabel(language, readiness.label)} · {readinessReason}</p>
+          <p className="mt-2 text-xs leading-relaxed text-slate">{sourcingLinkReadinessLabel(language, readiness.linked)} · {readinessReason}</p>
           </section>
           <InlineDataQualityIssues issues={issues} language={language} />
           <section className="rounded-xl border border-[#D7DEE8] bg-white p-4 sm:p-5">
@@ -3741,8 +3733,7 @@ function buildDetailBody(detail: { type: "requisition" | "candidate"; id: string
     const offers = data.offers.filter((row) => row.doc_id === requisition.doc_id);
     const applicantTotal = applicantCountForPositionGroups(data, positionGroupIds);
     const funnelRows = buildPipelineFunnelRows(applicantTotal, historicalPipelineCountsForCandidates(data, candidates.map((row) => row.candidate_id)), language);
-    const allCandidates = enrichCandidates(data);
-    const readiness = requisitionFillReadiness(requisition, allCandidates);
+    const readiness = requisitionSourcingLinkReadiness(requisition);
     const issues = deriveDataQualityIssues(data).filter((issue) => issue.entityId === requisition.doc_id || candidates.some((candidate) => candidate.candidate_id === issue.entityId) || offers.some((offer) => String(offer.offer_id) === issue.entityId));
 
     return {
@@ -3752,10 +3743,10 @@ function buildDetailBody(detail: { type: "requisition" | "candidate"; id: string
           <div className="rounded-md border border-[#D7DEE8] bg-lightgray/70 p-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <div>
-                <p className="text-xs font-medium uppercase tracking-normal text-slate">Fill readiness</p>
-                <p className="mt-1 text-sm font-medium text-slate">{readiness.reason}</p>
+                <p className="text-xs font-medium uppercase tracking-normal text-slate">{translate(language, "sourcingLinkReadiness")}</p>
+                <p className="mt-1 text-sm font-medium text-slate">{sourcingLinkReadinessReason(language, readiness.groupIds)}</p>
               </div>
-              <Tag tone={readiness.tone}>{fillReadinessLabel(language, readiness.label)}</Tag>
+              <Tag tone={readiness.tone}>{sourcingLinkReadinessLabel(language, readiness.linked)}</Tag>
             </div>
             <RecordActionGroup
               label={formatRequisitionOptionLabel(requisition)}
@@ -3947,7 +3938,7 @@ function JourneyTrendIcon() {
   );
 }
 
-function RequisitionDetailHeader({ requisition, language, readiness }: { requisition: EnrichedRequisition; language: Language; readiness: FillReadiness }) {
+function RequisitionDetailHeader({ requisition, language, readiness }: { requisition: EnrichedRequisition; language: Language; readiness: SourcingLinkReadiness }) {
   return (
     <div className="flex min-w-0 items-center gap-2 sm:gap-3">
       <span className="grid size-12 shrink-0 place-items-center rounded-full bg-[#F1F6FC] text-primary sm:size-16" aria-hidden="true"><BriefcaseBusiness size={27} strokeWidth={1.8} /></span>
@@ -3955,7 +3946,7 @@ function RequisitionDetailHeader({ requisition, language, readiness }: { requisi
         <p className="text-base font-semibold leading-tight text-navy sm:text-xl"><span className="block break-words sm:inline">{formatRequisitionTitle(requisition)}</span><span className="hidden sm:inline"> / </span><span className="block whitespace-nowrap sm:inline">{requisition.doc_id}</span></p>
         <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2">
           <Tag appearance="soft" tone={statusTone(requisition.status)}>{requisitionStatusLabel(language, requisition.status)}</Tag>
-          <Tag appearance="soft" tone={readiness.tone}>{fillReadinessLabel(language, readiness.label)}</Tag>
+          <span title={sourcingLinkReadinessReason(language, readiness.groupIds)}><Tag appearance="soft" tone={readiness.tone}>{sourcingLinkReadinessLabel(language, readiness.linked)}</Tag></span>
         </div>
       </div>
     </div>

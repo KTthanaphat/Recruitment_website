@@ -116,7 +116,7 @@ test("complete requisition profile, related links and sorted history fit desktop
   await page.goto('/requisitions?lang=th&detailType=requisition&detailId=REQ-UNMATCHED-1');
   const empty = page.getByRole('dialog', { name: 'Senior Procurement Operations and Supplier Development Specialist' });
   await expect(empty).toBeVisible();
-  await expect(empty.locator('[data-requisition-detail] > section').first()).toContainText('ยังไม่มีผู้สมัครที่เชื่อมโยงกับคำขอนี้');
+  await expect(empty.locator('[data-requisition-detail] > section').first()).toContainText('คำขอนี้ยังไม่ได้เชื่อมกับกลุ่มสรรหา');
   const emptyRelated = empty.locator('details').filter({ has: page.getByRole('heading', { name: 'รายการที่เกี่ยวข้อง', exact: true }) });
   if (await emptyRelated.getAttribute('open') === null) await emptyRelated.locator('summary').click();
   await expect(empty).toContainText('ไม่มีผู้สมัครที่เกี่ยวข้อง');

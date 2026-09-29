@@ -9,8 +9,8 @@ import { Tag } from "@/components/ui/Tag";
 import { RecordQuickActions, type RecordQuickAction } from "@/components/ui/Operations";
 import { BulkActionToolbar, BulkReviewModal } from "@/components/ui/Workflow";
 import { formatDate, formatRequisitionCardTitle, formatRequisitionOptionLabel, formatRequisitionTitle, statusTone } from "@/lib/format";
-import { fillReadinessLabel, requisitionStatusLabel, requestTypeLabel, translate } from "@/lib/i18n/dictionary";
-import { bulkActionDisabledReason, requisitionFillReadiness, type BulkActionResult } from "@/lib/operations";
+import { sourcingLinkReadinessLabel, sourcingLinkReadinessReason, requisitionStatusLabel, requestTypeLabel, translate } from "@/lib/i18n/dictionary";
+import { bulkActionDisabledReason, requisitionSourcingLinkReadiness, type BulkActionResult } from "@/lib/operations";
 import { getRequisitionSlaState } from "@/lib/sla";
 import { readTableUrlState, writeTableUrlValues } from "@/lib/table-url-state";
 import { updateWorkspaceUrlState } from "@/lib/workspace-url-state";
@@ -48,7 +48,7 @@ export function RequisitionsView({
     { key: "position", label: translate(language, "position"), value: (row) => formatRequisitionTitle(row) },
     { key: "status", label: translate(language, "status"), value: (row) => requisitionStatusLabel(language, row.status), filterMode: "category" },
     { key: "open_headcount", label: translate(language, "openHeadcountShort"), value: (row) => row.open_headcount },
-    { key: "readiness", label: translate(language, "fillReadiness"), value: (row) => fillReadinessLabel(language, requisitionFillReadiness(row, candidates).label) },
+    { key: "readiness", label: translate(language, "sourcingLinkReadiness"), value: (row) => sourcingLinkReadinessLabel(language, requisitionSourcingLinkReadiness(row).linked) },
     { key: "sla", label: translate(language, "slaLabel"), value: (row) => getRequisitionSlaState(row, { openOnly: true }).label },
     { key: "age", label: translate(language, "ageLabel"), value: (row) => ageLabel(row), sortValue: (row) => getRequisitionSlaState(row, { openOnly: true }).ageDays ?? Number.POSITIVE_INFINITY },
     { key: "owner", label: translate(language, "owner"), value: (row) => row.person_in_charge ?? "-" },
@@ -119,7 +119,7 @@ export function RequisitionsView({
                 <div className="flex min-w-0 gap-2"><dt className="shrink-0 font-medium text-slate">{translate(language, "department")}</dt><dd className="min-w-0 break-words font-semibold text-navy">{row.department}</dd></div>
                 <div className="flex min-w-0 gap-2"><dt className="shrink-0 font-medium text-slate">{translate(language, "requestType")}</dt><dd className="min-w-0 break-words font-semibold text-navy">{requestTypeLabel(language, row.request_type)}</dd></div>
                 <div className="flex min-w-0 gap-2"><dt className="shrink-0 font-medium text-slate">{translate(language, "owner")}</dt><dd className="min-w-0 break-words font-semibold text-navy">{row.person_in_charge ?? "-"}</dd></div>
-                <div className="flex min-w-0 gap-2"><dt className="shrink-0 font-medium text-slate">{translate(language, "readiness")}</dt><dd className="min-w-0 break-words"><ReadinessText row={row} candidates={candidates} language={language} /></dd></div>
+                <div className="flex min-w-0 gap-2"><dt className="shrink-0 font-medium text-slate">{translate(language, "sourcingLinkReadiness")}</dt><dd className="min-w-0 break-words"><ReadinessText row={row} candidates={candidates} language={language} /></dd></div>
                 <div className="flex min-w-0 gap-2"><dt className="shrink-0 font-medium text-slate">{translate(language, "ageLabel")}</dt><dd className="min-w-0 break-words font-semibold text-navy">{ageLabel(row)}</dd></div>
                 <div className="flex min-w-0 gap-2"><dt className="shrink-0 font-medium text-slate">{translate(language, "slaLabel")}</dt><dd className="min-w-0 break-words font-semibold text-navy">{getRequisitionSlaState(row, { openOnly: true }).label}</dd></div>
               </dl>
@@ -250,7 +250,7 @@ function requisitionActions(row: EnrichedRequisition, language: Language, onOpen
 }
 
 function ReadinessText({ candidates, language, row }: { candidates: EnrichedCandidate[]; language: Language; row: EnrichedRequisition }) {
-  const readiness = requisitionFillReadiness(row, candidates);
+  const readiness = requisitionSourcingLinkReadiness(row);
   const className = readiness.tone === "danger"
     ? "text-scarlet"
     : readiness.tone === "warning"
@@ -258,7 +258,7 @@ function ReadinessText({ candidates, language, row }: { candidates: EnrichedCand
       : readiness.tone === "success"
         ? "text-primary"
         : "text-slate";
-  return <span className={`font-semibold ${className}`}>{fillReadinessLabel(language, readiness.label)}</span>;
+  return <span className={`font-semibold ${className}`} title={sourcingLinkReadinessReason(language, readiness.groupIds)}>{sourcingLinkReadinessLabel(language, readiness.linked)}</span>;
 }
 
 function DetailButton({ ariaLabel, onClick }: { ariaLabel: string; onClick: () => void }) {

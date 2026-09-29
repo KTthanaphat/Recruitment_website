@@ -84,7 +84,7 @@ for (const viewport of phoneViewports) {
     await expect(page.getByRole("button", { name: "New Requisition" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Status", exact: true })).toBeVisible();
     const card = page.locator("article", { hasText: "REQ-HQ-1" });
-    for (const label of ["Requisition ID", "Department", "Request Type", "Owner", "Readiness", "Age", "SLA"]) {
+    for (const label of ["Requisition ID", "Department", "Request Type", "Owner", "Sourcing link readiness", "Age", "SLA"]) {
       await expect(card.getByText(label, { exact: true })).toBeVisible();
     }
     await expect(card.getByText("Operations", { exact: true })).toBeVisible();

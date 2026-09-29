@@ -183,6 +183,7 @@ export function enrichRequisitions(data: DashboardData): EnrichedRequisition[] {
 
     return {
       ...requisition,
+      sourcing_group_ids: [...relatedPositionGroupIds].sort(),
       candidate_count: candidateCount,
       accepted_count: acceptedCount,
       open_headcount: Math.max(requisition.head_count - acceptedCount, 0),

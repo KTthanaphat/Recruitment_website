@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { expectWorkspaceReady, installMockSupabase } from "./support/mock-supabase";
+import { expectWorkspaceReady, installMockSupabase, seedCrossSiteMatchScenario } from "./support/mock-supabase";
 
 test("grouped sidebar gates admin and preserves global navigation context", async ({ page }) => {
   await installMockSupabase(page, { role: "viewer" });
@@ -240,6 +240,66 @@ test("group details can add an eligible requisition to an existing group", async
   await confirmDialog.getByRole("button", { name: "Save Changes" }).click();
   await expect.poll(() => mock.rpcCalls.at(-1)?.endpoint).toBe("app_create_group_match");
   expect(mock.rpcCalls.at(-1)?.payload).toEqual({ group_id: "GRP-ENG", doc_id: "REQ-UNMATCHED-1" });
+});
+
+test("Admin Recruiters can add cross-site matches and the mixed-site group persists", async ({ page }) => {
+  const adminMock = await installMockSupabase(page, { role: "admin_recruiter" });
+  seedCrossSiteMatchScenario(adminMock.data);
+  await page.goto("/sourcing?sourcingWeek=2026-07-06");
+  await expectWorkspaceReady(page);
+  const adminGroup = page.getByRole("article").filter({ hasText: "GRP-MIX" });
+  await adminGroup.getByRole("button", { name: "Details" }).click();
+  const adminDialog = page.getByRole("dialog", { name: "Group details · GRP-MIX" });
+  const adminOptions = await adminDialog.getByLabel("Select requisition to add").locator("option").allTextContents();
+  expect(adminOptions.join(" ")).toContain("REQ-KT2-MIX-BOB");
+  await adminDialog.getByLabel("Select requisition to add").selectOption("REQ-KT2-MIX-BOB");
+  await adminDialog.getByRole("button", { name: "Add Match" }).click();
+  const confirmDialog = page.getByRole("dialog", { name: "Confirm Save" });
+  await confirmDialog.getByRole("button", { name: "Save Changes" }).click();
+  await expect.poll(() => adminMock.rpcCalls.at(-1)?.endpoint).toBe("app_create_group_match");
+  await page.getByRole("article").filter({ hasText: "GRP-MIX" }).getByRole("button", { name: "Details" }).click();
+  await expect(page.getByRole("dialog", { name: "Group details · GRP-MIX" })).toContainText("REQ-KT2-MIX-BOB · KT2");
+
+  await page.reload();
+  await expectWorkspaceReady(page);
+  await page.getByRole("article").filter({ hasText: "GRP-MIX" }).getByRole("button", { name: "Details" }).click();
+  await expect(page.getByRole("dialog", { name: "Group details · GRP-MIX" })).toContainText("REQ-KT2-MIX-BOB · KT2");
+});
+
+test("Site Recruiters can add an existing group-site requisition, while viewers cannot add matches", async ({ page }) => {
+  const siteMock = await installMockSupabase(page, { role: "site_recruiter" });
+  seedCrossSiteMatchScenario(siteMock.data);
+  await page.goto("/sourcing?sourcingWeek=2026-07-06");
+  await expectWorkspaceReady(page);
+  const group = page.getByRole("article").filter({ hasText: "GRP-MIX" });
+  await group.getByRole("button", { name: "Details" }).click();
+  const dialog = page.getByRole("dialog", { name: "Group details · GRP-MIX" });
+  const options = await dialog.getByLabel("Select requisition to add").locator("option").allTextContents();
+  expect(options.join(" ")).toContain("REQ-KT1-MIX-PEER");
+  expect(options.join(" ")).not.toContain("REQ-KT2-MIX-BOB");
+  await dialog.getByLabel("Select requisition to add").selectOption("REQ-KT1-MIX-PEER");
+  await dialog.getByRole("button", { name: "Add Match" }).click();
+  await page.getByRole("dialog", { name: "Confirm Save" }).getByRole("button", { name: "Save Changes" }).click();
+  await expect.poll(() => siteMock.rpcCalls.at(-1)?.endpoint).toBe("app_create_group_match");
+  expect(siteMock.rpcCalls.at(-1)?.payload).toEqual({ group_id: "GRP-MIX", doc_id: "REQ-KT1-MIX-PEER" });
+
+  const viewerMock = await installMockSupabase(page, { role: "viewer" });
+  seedCrossSiteMatchScenario(viewerMock.data);
+  await page.goto("/sourcing?sourcingWeek=2026-07-06");
+  await expectWorkspaceReady(page);
+  const viewerGroup = page.getByRole("article").filter({ hasText: "GRP-MIX" });
+  await viewerGroup.getByRole("button", { name: "Details" }).click();
+  await expect(page.getByRole("dialog", { name: "Group details · GRP-MIX" }).getByRole("heading", { name: "Add requisition" })).toHaveCount(0);
+});
+
+test("System Admins can choose a requisition from another site for Group Details Add Match", async ({ page }) => {
+  const mock = await installMockSupabase(page, { role: "system_admin" });
+  seedCrossSiteMatchScenario(mock.data);
+  await page.goto("/sourcing?sourcingWeek=2026-07-06");
+  await expectWorkspaceReady(page);
+  await page.getByRole("article").filter({ hasText: "GRP-MIX" }).getByRole("button", { name: "Details" }).click();
+  const options = await page.getByRole("dialog", { name: "Group details · GRP-MIX" }).getByLabel("Select requisition to add").locator("option").allTextContents();
+  expect(options.join(" ")).toContain("REQ-KT2-MIX-BOB");
 });
 
 test("group details use compact checkbox-style channel controls, Save, and icon-only unmatch", async ({ page }) => {

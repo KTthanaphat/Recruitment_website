@@ -144,7 +144,9 @@ values
   ('__authz_test_pic_other_site', '__authz_other_site', 'PIC other site group', 'Test', 'Scope Owner', 'ongoing'),
   ('__authz_test_atomic', '__authz_test_site', 'Atomic group', 'Test', 'Scope Owner', 'ongoing'),
   ('__authz_test_atomic_second', '__authz_test_site', 'Atomic group two', 'Test', 'Scope Owner', 'ongoing'),
-  ('__authz_test_cross_site_owned', '__authz_test_site', 'Cross-site match', 'Test', 'Scope Owner', 'ongoing');
+  ('__authz_test_cross_site_owned', '__authz_test_site', 'Cross-site match', 'Test', 'Scope Owner', 'ongoing'),
+  ('__authz_test_cross_site_same_site_add', '__authz_test_site', 'Existing site addition', 'Test', 'Scope Owner', 'ongoing'),
+  ('__authz_test_cross_site_new_site_add', '__authz_test_third_site', 'New site addition', 'Test', 'Scope Owner', 'ongoing');
 
 insert into public.position_groups (group_id, group_position)
 values
@@ -256,6 +258,42 @@ select pg_temp.expect_error(
   $sql$,
   'Group ID can only be matched to requisitions at one site.'
 );
+
+select set_config('request.jwt.claim.sub', 'a1100000-0000-0000-0000-000000000002', true);
+select pg_temp.assert_true(
+  (public.app_create_group_match('{
+    "doc_id":"__authz_test_cross_site_owned",
+    "group_id":"__authz_test_other_site_group"
+  }'::jsonb) ->> 'ok')::boolean,
+  'an Admin Recruiter can add a cross-site requisition to an existing group'
+);
+
+select set_config('request.jwt.claim.sub', 'a1100000-0000-0000-0000-000000000001', true);
+select pg_temp.assert_true(
+  (public.app_create_group_match('{
+    "doc_id":"__authz_test_cross_site_same_site_add",
+    "group_id":"__authz_test_other_site_group"
+  }'::jsonb) ->> 'ok')::boolean,
+  'a Site Recruiter can add a requisition from either site already represented by a mixed group'
+);
+
+select pg_temp.expect_error(
+  $sql$
+    select public.app_create_group_match('{"doc_id":"__authz_test_cross_site_new_site_add","group_id":"__authz_test_other_site_group"}'::jsonb)
+  $sql$,
+  'Group ID can only be matched to requisitions at one site.'
+);
+
+select set_config('request.jwt.claim.sub', 'a1100000-0000-0000-0000-000000000004', true);
+select pg_temp.assert_true(
+  (public.app_create_group_match('{
+    "doc_id":"__authz_test_cross_site_new_site_add",
+    "group_id":"__authz_test_other_site_group"
+  }'::jsonb) ->> 'ok')::boolean,
+  'a System Admin can introduce another site to a mixed sourcing group'
+);
+
+select set_config('request.jwt.claim.sub', 'a1100000-0000-0000-0000-000000000001', true);
 
 select pg_temp.assert_true(
   (public.app_create_and_match_sourcing_group_v2(

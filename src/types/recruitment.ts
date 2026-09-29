@@ -356,6 +356,7 @@ export type DashboardData = {
 };
 
 export type EnrichedRequisition = Requisition & {
+  sourcing_group_ids: string[];
   candidate_count: number;
   accepted_count: number;
   open_headcount: number;

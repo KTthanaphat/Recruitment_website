@@ -127,6 +127,18 @@ export async function expectWorkspaceReady(page: Page) {
   await expect(page.getByText("Loading recruitment records...")).toHaveCount(0);
 }
 
+export function seedCrossSiteMatchScenario(data: DashboardData) {
+  data.requisitions.push(
+    requisition("REQ-KT1-MIX-PEER", "KT1", "Peer-owned Production Operator", "Production", "Nina", 2, "2026-07-09", "ongoing", null),
+    requisition("REQ-KT2-MIX-BOB", "KT2", "Cross-site Bob requisition", "Planning", "Bob", 2, "2026-07-10", "ongoing", null)
+  );
+  data.position_groups.push(positionGroup("GRP-MIX", "Mixed-site support"));
+  data.document_groups.push(
+    documentGroup("DG-MIX-HQ", "REQ-HQ-1", "GRP-MIX", "Mixed-site support"),
+    documentGroup("DG-MIX-KT1", "REQ-KT1-1", "GRP-MIX", "Mixed-site support")
+  );
+}
+
 function createRecruitmentDataset(activeRole: MockUserRole): DashboardData {
   const profiles = [
     profile("qa-system", "system@example.com", "System Admin", "System", null, "system_admin"),
@@ -269,6 +281,14 @@ function createRecruitmentDataset(activeRole: MockUserRole): DashboardData {
 }
 
 function applyRpcMutation(data: DashboardData, endpoint: string, payload: Record<string, unknown>) {
+  if (endpoint === "app_create_group_match") {
+    const docId = String(payload.doc_id ?? "");
+    const groupId = String(payload.group_id ?? "");
+    const group = data.position_groups.find((row) => row.group_id === groupId);
+    if (docId && groupId && group && !data.document_groups.some((row) => row.doc_id === docId)) {
+      data.document_groups.push(documentGroup(`DG-GENERATED-${docId}`, docId, groupId, group.group_position));
+    }
+  }
   if (endpoint === "app_upsert_sourcing_weekly_update") {
     const groupId = String(payload.group_id ?? "");
     const weekStart = String(payload.week_start ?? "");

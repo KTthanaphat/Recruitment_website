@@ -331,13 +331,17 @@ begin
   if p_group_id is null then return; end if;
   select site into v_site from public.requisitions where doc_id = p_doc_id;
   if v_site is null then raise exception 'Requisition does not exist.'; end if;
+  if app_private.current_app_role() in ('system_admin', 'admin_recruiter') then return; end if;
+  if not exists (select 1 from public.document_groups where group_id = p_group_id) then return; end if;
   if exists (
     select 1
     from public.document_groups dg
     join public.requisitions r on r.doc_id = dg.doc_id
     where dg.group_id = p_group_id
-      and r.site is distinct from v_site
+      and r.site = v_site
   ) then
+    return;
+  else
     raise exception 'Group ID can only be matched to requisitions at one site.';
   end if;
 end;

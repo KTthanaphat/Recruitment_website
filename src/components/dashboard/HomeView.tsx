@@ -16,8 +16,8 @@ import { ACTIVE_PIPELINE_STAGES, PIPELINE_JOURNEY_STAGES, SOURCING_CHANNELS, pro
 import { dailyWelcomeMessage } from "@/lib/daily-messages";
 import { formatLocalDateInput } from "@/lib/dates";
 import { formatCandidateName, formatDate, formatDateTime, formatNumber, formatRequisitionTitle } from "@/lib/format";
-import { fillReadinessLabel, severityLabel, translate } from "@/lib/i18n/dictionary";
-import { ageDays, deriveWorkQueue, isCandidateAging, requisitionFillReadiness, type DataQualityIssue } from "@/lib/operations";
+import { sourcingLinkReadinessLabel, sourcingLinkReadinessReason, severityLabel, translate } from "@/lib/i18n/dictionary";
+import { ageDays, deriveWorkQueue, isCandidateAging, requisitionSourcingLinkReadiness, type DataQualityIssue } from "@/lib/operations";
 import { getRequisitionSlaState } from "@/lib/sla";
 import { localizeWorkspaceIssue } from "@/lib/workspace-quality-copy";
 import type { ChangeLog, EnrichedCandidate, EnrichedOffer, EnrichedRequisition, EnrichedSourcingGroup, Language, Profile, RecruitmentLog } from "@/types/recruitment";
@@ -332,7 +332,7 @@ function HomeRecordTabs({
                 </select>
               </label>
             </div>
-            <HomeRecordHeader columns={[translate(language, "openRequisition"), translate(language, "remainingVacancyShort"), translate(language, "fillReadiness"), translate(language, "ageSla"), translate(language, "owner")]} gridClass={headcountColumns} />
+            <HomeRecordHeader columns={[translate(language, "openRequisition"), translate(language, "remainingVacancyShort"), translate(language, "sourcingLinkReadiness"), translate(language, "ageSla"), translate(language, "owner")]} gridClass={headcountColumns} />
             <div ref={recordListRef} className="grid grid-cols-1 divide-y divide-[#E4E9F2] md:max-h-[min(62dvh,44rem)] md:overflow-y-auto md:overscroll-y-contain" data-home-record-list="true">{needsAction.length === 0 ? <TabEmptyState message={translate(language, "noOpenHeadcount")} /> : [...needsAction].sort((a, b) => compareHeadcount(a, b, headcountSort)).map((row) => <NeedActionCard key={row.doc_id} candidates={candidates} language={language} onOpenRequisition={onOpenRequisition} row={row} />)}</div>
           </>
         ) : null}
@@ -397,13 +397,13 @@ function NeedActionCard({
   onOpenRequisition: (docId: string) => void;
 }) {
   const slaState = getRequisitionSlaState(row, { openOnly: true });
-  const readiness = requisitionFillReadiness(row, candidates);
+  const readiness = requisitionSourcingLinkReadiness(row);
   const title = formatRequisitionTitle(row);
   return (
     <article data-home-requisition-row="true" className={`grid min-w-0 gap-2 px-2 py-2.5 text-[13px] md:items-center md:gap-3 md:text-xs xl:text-[13px] ${headcountColumns}`}>
       <div className="min-w-0"><MobileFieldLabel>{translate(language, "openRequisition")}</MobileFieldLabel><button type="button" className="block min-h-11 max-w-full rounded-sm text-left font-semibold text-navy underline-offset-2 hover:text-primary hover:underline focus:outline-none focus:ring-2 focus:ring-primary/30 md:min-h-0" aria-label={`${translate(language, "openRequisition")}: ${title}`} title={title} onClick={() => onOpenRequisition(row.doc_id)}><span className="block truncate">{title}</span></button><p className="truncate text-[11px] font-medium text-slate" title={`${row.doc_id} · ${row.site}`}>{row.doc_id} · {row.site}</p></div>
       <div className="min-w-0"><MobileFieldLabel>{translate(language, "remainingVacancyShort")}</MobileFieldLabel><span className="block font-semibold tabular-nums text-navy">{formatNumber(row.open_headcount, language)}</span></div>
-      <div className="min-w-0"><MobileFieldLabel>{translate(language, "fillReadiness")}</MobileFieldLabel><span title={readiness.reason} className="block min-w-0"><Tag appearance="soft" tone={readiness.tone}>{fillReadinessLabel(language, readiness.label)}</Tag></span></div>
+      <div className="min-w-0"><MobileFieldLabel>{translate(language, "sourcingLinkReadiness")}</MobileFieldLabel><span title={sourcingLinkReadinessReason(language, readiness.groupIds)} className="block min-w-0"><Tag appearance="soft" tone={readiness.tone}>{sourcingLinkReadinessLabel(language, readiness.linked)}</Tag></span></div>
       <div className="min-w-0"><MobileFieldLabel>{translate(language, "ageSla")}</MobileFieldLabel><span className="block font-semibold tabular-nums text-navy">{slaState.ageDays === null || slaState.slaDays === null ? "—" : `${slaState.ageDays}d/${slaState.slaDays}d`}</span>{slaState.isOverdue && slaState.ageDays !== null && slaState.slaDays !== null ? <span className="block text-[11px] font-normal text-scarlet">{translate(language, "overdueDays", { count: formatNumber(slaState.ageDays - slaState.slaDays, language) })}</span> : null}</div>
       <div className="min-w-0"><MobileFieldLabel>{translate(language, "owner")}</MobileFieldLabel><span className="block truncate font-medium text-slate" title={row.person_in_charge ?? translate(language, "unassigned")}>{row.person_in_charge ?? translate(language, "unassigned")}</span></div>
     </article>

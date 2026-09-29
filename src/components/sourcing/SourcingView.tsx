@@ -173,7 +173,9 @@ function GroupDetailModal({ language, group: input, data, selectedWeek, profile,
   const canUnmatch = Boolean(onUnmatchGroupRequisition && canManage(group, profile));
   const matchedDocIds = new Set(data.document_groups.map((match) => match.doc_id));
   const groupSite = group.sites[0] ?? "";
-  const eligibleRequisitions = enrichRequisitions(data).filter((requisition) => requisition.status === "ongoing" && requisition.open_headcount > 0 && requisition.site === groupSite && !matchedDocIds.has(requisition.doc_id) && canManageRequisition(requisition, profile));
+  const canLinkAcrossSites = profile?.role === "system_admin" || profile?.role === "admin_recruiter";
+  const linkedGroupSites = new Set(data.document_groups.filter((match) => match.group_id === group.group_id).map((match) => data.requisitions.find((requisition) => requisition.doc_id === match.doc_id)?.site).filter((site): site is string => Boolean(site)));
+  const eligibleRequisitions = enrichRequisitions(data).filter((requisition) => requisition.status === "ongoing" && requisition.open_headcount > 0 && (canLinkAcrossSites || linkedGroupSites.has(requisition.site)) && !matchedDocIds.has(requisition.doc_id) && canManageRequisition(requisition, profile));
   const canAddRequisition = Boolean(onAddGroupRequisition && groupSite && canManage(group, profile));
   const isSystemAdmin = profile?.role === "system_admin";
   function rename(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!positionGroup || !onUpdateGroupInfo) return; const name = String(new FormData(event.currentTarget).get("group_position") ?? "").trim(); if (!name) return; onUpdateGroupInfo({ group_id: group.group_id, group_position: name, expected_updated_at: positionGroup.updated_at }, `rename sourcing group - ${group.group_id}`); }

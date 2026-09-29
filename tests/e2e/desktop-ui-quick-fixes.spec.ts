@@ -21,7 +21,7 @@ test("requisition priority columns fit the initial 1440px viewport and preserve 
 
   const viewport = page.locator(".table-scroll:visible");
   await expect(viewport).toHaveJSProperty("scrollLeft", 0);
-  const labels = ["Doc ID", "Position", "Status", "Open HC", "Fill Readiness", "SLA", "Age", "Owner"];
+  const labels = ["Doc ID", "Position", "Status", "Open HC", "Sourcing link readiness", "SLA", "Age", "Owner"];
   const geometry = await viewport.evaluate((element, expectedLabels) => {
     const bounds = element.getBoundingClientRect();
     const headers = Array.from(element.querySelectorAll("th")).map((header) => ({

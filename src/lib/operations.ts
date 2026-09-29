@@ -50,6 +50,17 @@ export type FillReadiness = {
   reason: string;
 };
 
+export type SourcingLinkReadiness = {
+  linked: boolean;
+  tone: NextActionTone;
+  groupIds: string[];
+};
+
+export function requisitionSourcingLinkReadiness(row: EnrichedRequisition): SourcingLinkReadiness {
+  const groupIds = row.sourcing_group_ids;
+  return { linked: groupIds.length > 0, tone: groupIds.length > 0 ? "success" : "warning", groupIds };
+}
+
 export type OfferStatus = {
   label: string;
   tone: NextActionTone;

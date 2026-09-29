@@ -16,6 +16,7 @@ Read this node for this feature only. It indexes ownership; product rules remain
 - Owner/search: [src/lib/format.ts](../../../src/lib/format.ts), requisition/Home/Offer views, [src/components/workspace/HiringWorkspaceView.tsx](../../../src/components/workspace/HiringWorkspaceView.tsx), [src/components/RecruitmentWorkspace.tsx](../../../src/components/RecruitmentWorkspace.tsx).
 - Related symbols: `formatRequisitionTitle`, `formatRequisitionOptionLabel`, `RequisitionDetailHeader`, `EnrichedOffer.level`; [Requisition Detail design](../../design/requisition-detail.md); canonical rules: [docs/WEBSITE_STRUCTURE.md](../../WEBSITE_STRUCTURE.md).
 - Entry: `/home`, `/workspace`, `/requisitions`, `/offers`.
+- Sourcing link readiness: `EnrichedRequisition.sourcing_group_ids` derives from `document_groups`; `requisitionSourcingLinkReadiness` supplies Linked/Not linked for Records, Home and requisition details. Verify with [sourcing-link-readiness.spec.ts](../../../tests/e2e/sourcing-link-readiness.spec.ts).
 - Priority: [RequisitionPriorityButton.tsx](../../../src/components/requisitions/RequisitionPriorityButton.tsx) owns the bookmark/pending/error state; [detail-utility.ts](../../../src/components/ui/detail-utility.ts) supplies the shared requisition header icon treatment; [requisition-priority.ts](../../../src/lib/requisition-priority.ts) owns permission visibility and the related-record scope. `app_set_requisition_priority_v1` persists the flag with existing audit/authorization rules. [Priority tests](../../../tests/e2e/requisition-priority.spec.ts) cover save/remove, failures, global filtering, shared links, roles and Thai phones.
 - Existing check/search: [tests/e2e/requisition-identity.spec.ts](../../../tests/e2e/requisition-identity.spec.ts), [tests/e2e/workspace.spec.ts](../../../tests/e2e/workspace.spec.ts), [tests/e2e/wave-4.spec.ts](../../../tests/e2e/wave-4.spec.ts).
 
@@ -47,10 +48,10 @@ Read this node for this feature only. It indexes ownership; product rules remain
 - Entry: `/workspace?...&section=pipeline`, `/sourcing`.
 - Existing check/search: candidate/form, workspace, Pipeline, Offer, and candidate SQL checks.
 
-### F17: Same-site sourcing group visibility, ownership, and setup actions
+### F17: Sourcing group visibility, ownership, and setup actions
 
 - Owner/search: [src/components/sourcing/SourcingView.tsx](../../../src/components/sourcing/SourcingView.tsx), [src/components/RecruitmentWorkspace.tsx](../../../src/components/RecruitmentWorkspace.tsx).
-- Related symbols: New Group manages links; Unmatch preserves the group candidate pool and clears/reassigns optional match context.
+- Related symbols: System Admin and Admin Recruiter may add cross-site Group Details matches; Site Recruiters may add only from existing group sites and retain site/PIC ownership checks. New Group remains single-site. Unmatch preserves the group candidate pool and clears/reassigns optional match context.
 - Entry: `/sourcing` → `/workspace?type=group&id=<group_id>&section=sourcing`.
 - Existing check/search: [tests/e2e/wave-4.spec.ts](../../../tests/e2e/wave-4.spec.ts), [tests/db/workspace-group-authorization.sql](../../../tests/db/workspace-group-authorization.sql).
 

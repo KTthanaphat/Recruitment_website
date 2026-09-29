@@ -1293,6 +1293,11 @@ Object.assign(en, {
   candidatesCount: "{count} candidates",
   readiness: "Readiness",
   fillReadiness: "Fill Readiness",
+  sourcingLinkReadiness: "Sourcing link readiness",
+  sourcingLinked: "Linked",
+  sourcingNotLinked: "Not linked",
+  sourcingLinkedGroups: "Linked to sourcing group: {groups}",
+  sourcingNotLinkedHelp: "This requisition is not linked to a sourcing group yet.",
   age: "Age",
   noRecentWorkspaceActivity: "No recent activity for this workspace.",
   noMatchingWorkspaces: "No matching workspaces.",
@@ -1646,6 +1651,11 @@ Object.assign(th, {
   candidatesCount: "{count} ผู้สมัคร",
   readiness: "ความพร้อม",
   fillReadiness: "ความพร้อมการปิดอัตรา",
+  sourcingLinkReadiness: "ความพร้อมการเชื่อมกลุ่มสรรหา",
+  sourcingLinked: "เชื่อมแล้ว",
+  sourcingNotLinked: "ยังไม่เชื่อม",
+  sourcingLinkedGroups: "เชื่อมกับกลุ่มสรรหา: {groups}",
+  sourcingNotLinkedHelp: "คำขอนี้ยังไม่ได้เชื่อมกับกลุ่มสรรหา",
   age: "อายุรายการ",
   noRecentWorkspaceActivity: "ยังไม่มีกิจกรรมล่าสุดสำหรับพื้นที่ทำงานนี้",
   noMatchingWorkspaces: "ไม่พบพื้นที่ทำงานที่ตรงเงื่อนไข",
@@ -2256,6 +2266,14 @@ export function offerStatusLabel(language: Language, label: string | null | unde
 
 export function fillReadinessLabel(language: Language, label: string | null | undefined) {
   return semanticLabel(language, label, fillReadinessKeys);
+}
+
+export function sourcingLinkReadinessLabel(language: Language, linked: boolean) {
+  return translate(language, linked ? "sourcingLinked" : "sourcingNotLinked");
+}
+
+export function sourcingLinkReadinessReason(language: Language, groupIds: readonly string[]) {
+  return translate(language, groupIds.length ? "sourcingLinkedGroups" : "sourcingNotLinkedHelp", { groups: groupIds.join(", ") });
 }
 
 export function actionToneLabel(language: Language, value: string | null | undefined) {
