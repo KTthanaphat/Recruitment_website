@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { inflateSync } from "node:zlib";
 import { previousSourcingReportingRange } from "../../src/lib/dates";
+import { formatSourcingWeekRange } from "../../src/lib/format";
 import { expectWorkspaceReady, installMockSupabase } from "./support/mock-supabase";
 
 test("custom default follows the completed sourcing week in Bangkok", () => {
@@ -11,6 +12,12 @@ test("custom default follows the completed sourcing week in Bangkok", () => {
     ["2026-07-26T05:00:00Z", "2026-07-18", "2026-07-24"],
     ["2026-01-01T05:00:00Z", "2025-12-20", "2025-12-26"]
   ]) expect(previousSourcingReportingRange(new Date(now))).toEqual({ startDate, endDate });
+});
+
+test("sourcing update date displays its preceding Saturday–Friday range", () => {
+  expect(formatSourcingWeekRange("2026-09-26", "en")).toBe("19/09/2026–25/09/2026");
+  expect(formatSourcingWeekRange("2026-09-26", "th")).toBe("19/09/2026–25/09/2026");
+  expect(formatSourcingWeekRange("2026-01-03", "en")).toBe("27/12/2025–02/01/2026");
 });
 
 test("custom range defaults to sourcing dates and preserves shared selections", async ({ page }) => {

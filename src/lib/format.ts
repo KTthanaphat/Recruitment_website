@@ -56,8 +56,10 @@ export function formatRequisitionCompactParts(requisition: RequisitionTitleField
 export function formatSourcingWeekRange(weekStart: string, language: Language = "en") {
   const end = new Date(`${weekStart.slice(0, 10)}T00:00:00Z`);
   if (Number.isNaN(end.getTime())) return "—";
-  end.setUTCDate(end.getUTCDate() + 6);
-  return `${formatDate(weekStart, language)}–${formatDate(end.toISOString().slice(0, 10), language)}`;
+  end.setUTCDate(end.getUTCDate() - 1);
+  const start = new Date(end);
+  start.setUTCDate(start.getUTCDate() - 6);
+  return `${formatDate(start.toISOString().slice(0, 10), language)}–${formatDate(end.toISOString().slice(0, 10), language)}`;
 }
 
 export function formatDateTime(value: string | null | undefined, language: Language = "en") {

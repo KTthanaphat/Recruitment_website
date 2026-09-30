@@ -710,8 +710,8 @@ test("Sourcing reference layout reflows with accurate periods and Thai copy", as
   const pieBounds = await summary.getByTestId("workspace-sourcing-pie").boundingBox();
   const legendBounds = await summary.getByTestId("workspace-sourcing-legend").boundingBox();
   expect(pieBounds!.x + pieBounds!.width <= legendBounds!.x).toBe(true);
-  await expect(page.getByTestId("workspace-sourcing-dates")).toContainText("Saturday–Friday");
-  await expect(page.getByTestId("workspace-sourcing-layout")).toContainText("04/07/2026–10/07/2026");
+  await expect(page.getByTestId("workspace-sourcing-dates")).toContainText("27/06/2026–03/07/2026");
+  await expect(page.getByTestId("workspace-sourcing-layout")).toContainText("27/06/2026–03/07/2026");
   const facebookInput = page.getByTestId("workspace-sourcing-layout").getByRole("spinbutton", { name: "Facebook" });
   await expect(facebookInput).toHaveCSS("text-align", "right");
   const editorHeader = page.getByTestId("workspace-sourcing-layout").locator("form > div").first();
@@ -757,7 +757,7 @@ test("Sourcing reference layout reflows with accurate periods and Thai copy", as
   }
   await page.goto("/workspace?lang=th&type=group&id=GRP-ENG&section=sourcing&sourcingWeek=2026-07-04");
   await expect(page.getByRole("button", { name: "รีเฟรช" })).toBeVisible();
-  await expect(page.getByTestId("workspace-sourcing-dates")).toContainText("วันเสาร์–วันศุกร์");
+  await expect(page.getByTestId("workspace-sourcing-dates")).toContainText("27/06/2026–03/07/2026");
   await expect(summary.getByTestId("workspace-sourcing-top-summary")).toContainText("ช่องทางสูงสุด 1 อันดับ");
   await expect(page.getByTestId("workspace-sourcing-draft-total")).toContainText("ผู้สมัครรวมในรายการที่กำลังแก้ไข");
   const thaiHelp = summary.getByRole("button", { name: /ข้อมูลเกี่ยวกับ/ }).first();
