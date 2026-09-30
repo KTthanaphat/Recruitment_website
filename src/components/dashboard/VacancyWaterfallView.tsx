@@ -10,6 +10,7 @@ import { CommandMonthSelector, CommandSelector } from "@/components/ui/CommandSe
 import { DayDateSelector, Field } from "@/components/ui/Field";
 import { OperationalSummaryStrip } from "@/components/ui/Operations";
 import { PipelineFunnel, type PipelineFunnelRow } from "@/components/ui/PipelineFunnel";
+import { SOURCING_CHANNEL_COLORS, UNKNOWN_SOURCING_CHANNEL_COLOR } from "@/lib/sourcing-colors";
 import { SortableFilterHeader, type TableColumn, useTableControls } from "@/components/ui/TableControls";
 import {
   ACTIVE_PIPELINE_STAGES,
@@ -48,6 +49,7 @@ const funnelLevelOptions: Array<{ value: FunnelLevelBand; label: string }> = [
 type FunnelLevelBand = "0-3" | "4-6" | "7-9" | "10-14";
 type FunnelChannelFilter = "all" | string;
 type FunnelStageCounts = Record<PipelineDisplayStage, number>;
+type FunnelChannelSegment = NonNullable<PipelineFunnelRow["segments"]>[number];
 type ReportView = "mtd" | "ytd" | "pim" | "custom";
 
 type WaterfallRow = {
@@ -98,7 +100,6 @@ export function VacancyWaterfallView({
   const [reportMonth, setReportMonth] = useState(today().slice(0, 7));
   const [customStartDate, setCustomStartDate] = useState(() => previousSourcingReportingRange().startDate);
   const [customEndDate, setCustomEndDate] = useState(() => previousSourcingReportingRange().endDate);
-  const [detailsOpen, setDetailsOpen] = useState(false);
   const [waterfallOpen, setWaterfallOpen] = useState(true);
   const waterfallContentId = useId();
   const [executiveBreakdownOpen, setExecutiveBreakdownOpen] = useState(false);
@@ -150,8 +151,8 @@ export function VacancyWaterfallView({
     else if (/^\d{4}-\d{2}-\d{2}$/.test(params.get("end") ?? "")) setReportMonth(params.get("end")!.slice(0, 7));
     if (/^\d{4}-\d{2}-\d{2}$/.test(params.get("start") ?? "")) setCustomStartDate(params.get("start")!);
     if (/^\d{4}-\d{2}-\d{2}$/.test(params.get("end") ?? "")) setCustomEndDate(params.get("end")!);
-    if (params.get("details") === "open") setDetailsOpen(true);
-    if (params.get("details") === "closed") setDetailsOpen(false);
+    if (params.get("details") === "open") setWaterfallOpen(true);
+    if (params.get("details") === "closed") setWaterfallOpen(false);
     if (params.get("funnelStart")) setFunnelStartDate(params.get("funnelStart")!);
     if (params.get("funnelEnd")) setFunnelEndDate(params.get("funnelEnd")!);
     const savedLevelBands = (params.get("funnelLevel") ?? "").split(",").filter(isFunnelLevelBand);
@@ -175,14 +176,14 @@ export function VacancyWaterfallView({
       end: reportView === "custom" ? customEndDate : null,
       reportView,
       reportMonth: reportView === "custom" ? null : reportMonth,
-      details: detailsOpen ? "open" : "closed",
+      details: waterfallOpen ? "open" : "closed",
       funnelStart: funnelStartDate,
       funnelEnd: funnelEndDate,
       funnelLevel: funnelLevelBands.length > 0 ? funnelLevelBands.join(",") : null,
       funnelChannel,
       funnel: funnelOpen ? "open" : "closed"
     });
-  }, [customEndDate, customStartDate, detailsOpen, funnelChannel, funnelEndDate, funnelLevelBands, funnelOpen, funnelStartDate, reportMonth, reportView, urlStateReady]);
+  }, [customEndDate, customStartDate, waterfallOpen, funnelChannel, funnelEndDate, funnelLevelBands, funnelOpen, funnelStartDate, reportMonth, reportView, urlStateReady]);
 
   async function exportPng(surface: HTMLDivElement | null, filename: string) {
     if (!surface) return;
@@ -271,10 +272,11 @@ export function VacancyWaterfallView({
     <div className="grid min-w-0 max-w-full gap-4 overflow-x-hidden">
       <section className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-[#E4E9F2] bg-[#F8FAFD] shadow-none">
         <div className="flex flex-col gap-3 px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
-          <h2 className="min-w-0 flex-1" aria-label={translate(language, "vacancyWaterfall")}><button type="button" className="flex min-h-11 w-full items-center justify-between gap-3 text-left focus:outline-none focus:ring-2 focus:ring-primary" aria-label={translate(language, "vacancyWaterfall")} aria-expanded={waterfallOpen} aria-controls={waterfallContentId} onClick={() => setWaterfallOpen(value => !value)}><span><strong className="block text-lg font-semibold text-navy">{translate(language, "vacancyWaterfall")}</strong><span className="text-sm font-medium text-slate">{formatDate(startDate, language)} – {formatDate(endDate, language)}</span></span><ChevronDown size={20} className={waterfallOpen ? "rotate-180" : ""} aria-hidden="true" /></button></h2>
+          <h2 className="min-w-0 flex-1"><button type="button" className="flex min-h-11 w-full items-center justify-between gap-3 text-left focus:outline-none focus:ring-2 focus:ring-primary" aria-expanded={waterfallOpen} aria-controls={waterfallContentId} onClick={() => setWaterfallOpen(value => !value)}><span><strong className="block text-lg font-semibold text-navy">{translate(language, "vacancyWaterfall")} &amp; {translate(language, "activeRequisitionsSelectedRange")}</strong><span className="text-sm font-medium text-slate">{formatDate(startDate, language)} – {formatDate(endDate, language)} · {translate(language, "activeRequisitionsInRange", { count: formatNumber(requisitionRows.length, language), start: formatDate(startDate, language), end: formatDate(endDate, language) })}</span></span><ChevronDown size={20} className={waterfallOpen ? "rotate-180" : ""} aria-hidden="true" /></button></h2>
           <div className="flex flex-wrap items-center gap-2 print:hidden">
           <ReportHelp label={language === "th" ? "คำอธิบายกราฟอัตราว่าง" : "Vacancy Waterfall help"} text={language === "th" ? "แสดงการเปลี่ยนแปลงอัตราว่างจากต้นช่วงถึงปลายช่วง แท่งสีแยกสถานที่และประเภทคำขอ การบรรจุลดอัตราว่าง ตัวกรองรายงานนี้แยกจากผลการสรรหาด้านบน" : "Tracks open vacancies from the start to the end of the selected range. Stacks separate sites and request types; fills reduce open vacancies. These report filters are independent of Recruitment Performance above."} />
-          <Button type="button" size="sm" variant="secondary" icon={<ImageDown size={16} />} disabled={exportPreparing || !validReportRange} onClick={() => exportPng(chartExportRef.current, `vacancy-waterfall-${startDate}-to-${endDate}.png`)}>{translate(language, "exportPng")}</Button>
+          <Button type="button" size="sm" variant="secondary" icon={<ImageDown size={16} />} disabled={exportPreparing || !validReportRange} onClick={() => exportPng(chartExportRef.current, `vacancy-waterfall-${startDate}-to-${endDate}.png`)}>{translate(language, "vacancyWaterfall")} PNG</Button>
+          <Button type="button" size="sm" variant="secondary" icon={<Download size={16} />} disabled={exportPreparing || !validReportRange} onClick={() => { setExportColumns(defaultExportColumns()); setExportOpen(true); }}>{translate(language, "activeRequisitionsSelectedRange")} · {translate(language, "export")}</Button>
           </div>
         </div>
         <div id={waterfallContentId} hidden={!waterfallOpen} className="border-t border-[#E4E9F2] bg-white py-4">
@@ -309,35 +311,15 @@ export function VacancyWaterfallView({
           </div>
         ) : null}
         {exportError ? <p className="mx-4 mb-1 text-sm font-medium text-danger sm:mx-6 lg:mx-8" role="alert">{translate(language, "exportPngFailed")}</p> : null}
-        </div>
-      </section>
-
-      <section className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-[#E4E9F2] bg-[#F8FAFD] shadow-none">
-        <div className="flex flex-col gap-3 px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
-          <button
-            type="button"
-            className="flex min-w-0 flex-1 items-center justify-between gap-3 text-left"
-            onClick={() => setDetailsOpen((open) => !open)}
-          >
-            <span>
-              <strong className="block text-lg font-semibold text-navy">{translate(language, "activeRequisitionsSelectedRange")}</strong>
-              <span className="text-sm font-medium text-slate">{translate(language, "activeRequisitionsInRange", { count: formatNumber(requisitionRows.length, language), start: formatDate(startDate, language), end: formatDate(endDate, language) })}</span>
-            </span>
-            <ChevronDown className={`shrink-0 transition-transform motion-reduce:transition-none ${detailsOpen ? "rotate-180" : ""}`} size={20} />
-          </button>
-          <div className="flex flex-wrap gap-2 print:hidden">
-            <Button type="button" size="sm" variant="secondary" icon={<Download size={16} />} disabled={exportPreparing || !validReportRange} onClick={() => { setExportColumns(defaultExportColumns()); setExportOpen(true); }}>{translate(language, "export")}</Button>
-          </div>
-        </div>
-        {detailsOpen ? (
-          <div className="min-w-0 max-w-full overflow-hidden border-t border-[#E4E9F2] bg-white p-4 sm:p-6 lg:p-8">
+        <div className="min-w-0 max-w-full overflow-hidden border-t border-[#E4E9F2] bg-white p-4 sm:p-6 lg:p-8">
+          <h3 className="mb-3 text-lg font-semibold text-navy">{translate(language, "activeRequisitionsSelectedRange")}</h3>
             <div className="mb-3 inline-flex rounded-xl border border-[#C9D5E6] bg-[#F8FAFD] p-1" role="group" aria-label={translate(language, "stageCountMode")}>
               {(["activity", "status", "accum"] as StageCountMode[]).map((mode) => <button key={mode} type="button" className={`rounded-lg px-3 py-2 text-sm font-semibold ${stageCountMode === mode ? "bg-primary text-white shadow-sm" : "text-slate hover:bg-white"}`} aria-pressed={stageCountMode === mode} onClick={() => setStageCountMode(mode)}>{translate(language, mode === "status" ? "pipelineStatus" : mode === "activity" ? "pipelineActivity" : "pipelineAccum")}</button>)}
             </div>
             {stageCountMode === "accum" ? <p className="mb-3 text-sm font-medium text-slate">{translate(language, "pipelineAccumHelp")}</p> : null}
             <RequisitionDetailTable rows={requisitionRows} language={language} onStageClick={(row, stage) => setStageDrilldown({ row, stage, matches: stageCandidatesForRequisition(data, row.doc_id, stage, stageCountMode, startDate, endDate) })} />
           </div>
-        ) : null}
+        </div>
       </section>
 
       <section className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-[#E4E9F2] bg-[#F8FAFD] shadow-none">
@@ -1196,14 +1178,29 @@ function buildDashboardPipelineFunnelRows(
   const linkedDocGroupIds = docGroupIdsForGroupIds(data, groupIds);
   for (const docGroupId of directDocGroupIds) linkedDocGroupIds.add(docGroupId);
 
-  return buildPipelineFunnelRows(
-    applicantCountForGroups(data, groupIds, startDate, endDate, channelFilter),
-    passedStageActivityCountsForDocGroups(data, linkedDocGroupIds, startDate, endDate, channelFilter),
-    language
-  );
+  const applicants = applicantCountForGroups(data, groupIds, startDate, endDate, channelFilter);
+  const stages = passedStageActivityCountsForDocGroups(data, linkedDocGroupIds, startDate, endDate, channelFilter);
+  const channelKeys = channelFilter === "all" ? SOURCING_CHANNELS.map((channel) => channel.label) : [channelFilter];
+  const segments: Record<string, FunnelChannelSegment[]> = { applicants: [] };
+  for (const stage of PIPELINE_FUNNEL_STAGES) segments[stage] = [];
+  for (const label of channelKeys) {
+    const channel = SOURCING_CHANNELS.find((item) => item.label === label);
+    const color = channel ? SOURCING_CHANNEL_COLORS[channel.enabled] : UNKNOWN_SOURCING_CHANNEL_COLOR;
+    const key = channel?.enabled ?? "unknown";
+    segments.applicants.push({ key, label, color, count: applicantCountForGroups(data, groupIds, startDate, endDate, label) });
+    const byStage = passedStageActivityCountsForDocGroups(data, linkedDocGroupIds, startDate, endDate, label);
+    for (const stage of PIPELINE_FUNNEL_STAGES) segments[stage].push({ key, label, color, count: byStage[stage] });
+  }
+  if (channelFilter === "all") {
+    for (const stage of PIPELINE_FUNNEL_STAGES) {
+      const known = segments[stage].reduce((sum, segment) => sum + segment.count, 0);
+      if (stages[stage] > known) segments[stage].push({ key: "unknown", label: translate(language, "sourcingUnknownChannel"), color: UNKNOWN_SOURCING_CHANNEL_COLOR, count: stages[stage] - known });
+    }
+  }
+  return buildPipelineFunnelRows(applicants, stages, language, segments);
 }
 
-function buildPipelineFunnelRows(applicantTotal: number, stageCounts: FunnelStageCounts, language: Language): PipelineFunnelRow[] {
+function buildPipelineFunnelRows(applicantTotal: number, stageCounts: FunnelStageCounts, language: Language, segments: Record<string, FunnelChannelSegment[]> = {}): PipelineFunnelRow[] {
   const baseRows = [
     { key: "applicants", label: translate(language, "applicants"), count: applicantTotal },
     ...PIPELINE_FUNNEL_STAGES.map((stage) => ({ key: stage, label: pipelineDisplayLabel(stage, language), count: stageCounts[stage] ?? 0 }))
@@ -1213,6 +1210,7 @@ function buildPipelineFunnelRows(applicantTotal: number, stageCounts: FunnelStag
     const previousCount = index > 0 ? baseRows[index - 1].count : null;
     return {
       ...row,
+      segments: segments[row.key] ?? [],
       conversionRate: previousCount && previousCount > 0 ? row.count / previousCount : null,
       yieldRate: applicantTotal > 0 ? row.count / applicantTotal : null,
       barRatio: applicantTotal > 0 ? Math.min(row.count / applicantTotal, 1) : null

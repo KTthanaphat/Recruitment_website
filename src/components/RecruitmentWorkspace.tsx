@@ -15,6 +15,8 @@ import { AppShell } from "@/components/layout/AppShell";
 import { OffersView } from "@/components/offers/OffersView";
 import { PipelineBoardView } from "@/components/pipeline/PipelineBoardView";
 import { RejectionLetterComposer } from "@/components/rejection-letters/RejectionLetterComposer";
+import { FailureReasonFields } from "@/components/rejection-reasons/FailureReasonFields";
+import { failureActorLabel, failureReasonText } from "@/lib/rejection-reasons";
 import { TeamsInterviewComposer } from "@/components/interviews/TeamsInterviewComposer";
 import { RequisitionPriorityButton } from "@/components/requisitions/RequisitionPriorityButton";
 import { canManageRequisitionPriority, priorityRequisitionScope } from "@/lib/requisition-priority";
@@ -156,6 +158,9 @@ type ProcessDefaults = {
   outcome_date?: string | null;
   outcome_interviewer?: string | null;
   outcome_remark?: string | null;
+  failure_actor?: "candidate" | "company" | null;
+  failure_main_reason_id?: string | null;
+  failure_detail_reason_id?: string | null;
   outcome_result?: string | null;
   reference_id?: string;
   reference_expected_updated_at?: string;
@@ -663,7 +668,10 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       outcome_result: log.result === null ? null : log.result === 1 ? "pass" : "fail",
       outcome_date: log.outcome_date,
       outcome_interviewer: log.outcome_interviewer,
-      outcome_remark: log.outcome_remark
+      outcome_remark: log.outcome_remark,
+      failure_actor: log.failure_actor,
+      failure_main_reason_id: log.failure_main_reason_id,
+      failure_detail_reason_id: log.failure_detail_reason_id
     });
     setActiveModal("pipeline_record_correction");
   }
@@ -1347,6 +1355,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
 
       <ConfirmModal
         language={language}
+        reasons={data.rejection_reasons}
         action={pendingAction}
         busy={busy}
         onClose={() => setPendingAction(null)}
@@ -1561,7 +1570,8 @@ function buildPayload(modal: Exclude<ModalName, null>, formData: FormData) {
         result: outcome,
         date: emptyToNull(formData.get("outcome_date")),
         interviewer: emptyToNull(formData.get("outcome_interviewer")),
-        remark: emptyToNull(formData.get("outcome_remark"))
+        remark: emptyToNull(formData.get("outcome_remark")),
+        ...(outcome === "fail" ? { failure_actor: emptyToNull(formData.get("failure_actor")), failure_main_reason_id: emptyToNull(formData.get("failure_main_reason_id")), failure_detail_reason_id: emptyToNull(formData.get("failure_detail_reason_id")) } : {})
       },
       next_pending: targetStage ? {
         stage: targetStage,
@@ -1572,7 +1582,8 @@ function buildPayload(modal: Exclude<ModalName, null>, formData: FormData) {
       } : null
     };
     requireFields(payload, ["candidate_id", "stage_instance_id", "expected_updated_at"]);
-    if (!payload.pending.opened_date || !payload.outcome.date) throw new Error("A pass requires an outcome date.");
+    if (!payload.pending.opened_date || !payload.outcome.date) throw new Error("An outcome date is required.");
+    if (outcome === "fail" && (!payload.outcome.failure_actor || !payload.outcome.failure_main_reason_id || !payload.outcome.failure_detail_reason_id)) throw new Error("Select who ended the process, a main reason, and a detailed reason.");
     return payload;
   }
 
@@ -1650,7 +1661,7 @@ function buildPayload(modal: Exclude<ModalName, null>, formData: FormData) {
       stage_instance_id: emptyToNull(formData.get("stage_instance_id")),
       expected_updated_at: emptyToNull(formData.get("expected_updated_at")),
       pending: { opened_date: emptyToNull(formData.get("opened_date")), estimated_action_date: emptyToNull(formData.get("estimated_action_date")), interviewer: emptyToNull(formData.get("interviewer")), remark: emptyToNull(formData.get("remark")) },
-      outcome: outcomeResult ? { result: outcomeResult, date: emptyToNull(formData.get("outcome_date")), interviewer: emptyToNull(formData.get("outcome_interviewer")), remark: emptyToNull(formData.get("outcome_remark")) } : undefined
+      outcome: outcomeResult ? { result: outcomeResult, date: emptyToNull(formData.get("outcome_date")), interviewer: emptyToNull(formData.get("outcome_interviewer")), remark: emptyToNull(formData.get("outcome_remark")), ...(outcomeResult === "fail" && formData.get("failure_actor") ? { failure_actor: emptyToNull(formData.get("failure_actor")), failure_main_reason_id: emptyToNull(formData.get("failure_main_reason_id")), failure_detail_reason_id: emptyToNull(formData.get("failure_detail_reason_id")) } : {}) } : undefined
     };
     requireFields(payload, ["candidate_id", "stage_instance_id", "expected_updated_at"]);
     if (!payload.pending.opened_date || (outcomeResult && !payload.outcome?.date)) throw new Error("Pending and completed outcome dates are required.");
@@ -1897,8 +1908,8 @@ function RecordModal({
         {modal === "reference_check" ? <CandidateReferenceCheckFields defaults={processDefaults} language={language} /> : null}
         {modal === "pipeline_start" ? <PipelineStartFields defaults={processDefaults} language={language} /> : null}
         {modal === "pending_edit" ? <PendingEditFields defaults={processDefaults} language={language} /> : null}
-        {modal === "pipeline_record_correction" ? <PipelineRecordCorrectionFields canEditPendingDate={data.profile?.role === "system_admin"} defaults={processDefaults} language={language} /> : null}
-        {modal === "stage_outcome" ? <StageOutcomeFields defaults={processDefaults} language={language} /> : null}
+        {modal === "pipeline_record_correction" ? <PipelineRecordCorrectionFields canEditPendingDate={data.profile?.role === "system_admin"} defaults={processDefaults} language={language} reasons={data.rejection_reasons} /> : null}
+        {modal === "stage_outcome" ? <StageOutcomeFields defaults={processDefaults} language={language} reasons={data.rejection_reasons} /> : null}
         {modal === "pipeline_pass" ? <PipelinePassFields data={data} defaults={processDefaults} language={language} /> : null}
         {modal === "offer" ? <OfferPrefillFields data={data} language={language} mode={mode} selectedId={selectedId} selected={selectedRecords.offer} defaults={modalDefaults} onSelect={setSelectedId} /> : null}
         {modal === "start_confirmation" ? <StartConfirmationFields defaults={processDefaults} language={language} /> : null}
@@ -2499,7 +2510,7 @@ function PipelineStartFields({ defaults, language }: { defaults: ProcessDefaults
   );
 }
 
-function StageOutcomeFields({ defaults, language }: { defaults: ProcessDefaults; language: Language }) {
+function StageOutcomeFields({ defaults, language, reasons }: { defaults: ProcessDefaults; language: Language; reasons: DashboardData["rejection_reasons"] }) {
   const isPass = defaults.outcome === "pass";
   const hasNextPending = isPass && defaults.recruitment_process !== "Offer" && Boolean(defaults.target_stage);
   const [outcomeDate, setOutcomeDate] = useState(today());
@@ -2519,7 +2530,8 @@ function StageOutcomeFields({ defaults, language }: { defaults: ProcessDefaults;
       <div className="border-b border-[#D7DEE8] pb-2 text-sm font-semibold text-navy md:col-span-2">{translate(language, "outcome")}</div>
       <Field label={translate(language, "outcomeDate")}><DayDateSelector ariaLabel={translate(language, "outcomeDate")} language={language} name="outcome_date" nextMonthLabel={translate(language, "nextMonth")} previousMonthLabel={translate(language, "previousMonth")} value={outcomeDate} onChange={(event) => setOutcomeDate(event.target.value)} required /></Field>
       <Field label={translate(language, "interviewer")}><TextInput name="outcome_interviewer" list="interviewer-options" defaultValue={defaults.pending_interviewer ?? ""} /></Field>
-      <Field label={translate(language, "remark")} className="md:col-span-2"><TextArea name="outcome_remark" rows={3} placeholder={translate(language, "pipelineOutcomeRemarkPlaceholder", { stage: processLabel(defaults.recruitment_process as ProcessStage, language) })} /></Field>
+      {!isPass ? <FailureReasonFields reasons={reasons} language={language} /> : null}
+      <Field label={!isPass ? (language === "th" ? "หมายเหตุ (ไม่บังคับ)" : "Remark (optional)") : translate(language, "remark")} className="md:col-span-2"><TextArea name="outcome_remark" rows={3} placeholder={translate(language, "pipelineOutcomeRemarkPlaceholder", { stage: processLabel(defaults.recruitment_process as ProcessStage, language) })} /></Field>
       {hasNextPending ? <>
         <div className="border-t border-[#D7DEE8] pt-3 text-sm font-semibold text-navy md:col-span-2">{translate(language, "nextPendingStage")}: {processLabel(defaults.target_stage as ProcessStage, language)}</div>
         <input type="hidden" name="next_round" value={isRepeatableStage(defaults.recruitment_process as ProcessStage) && defaults.recruitment_process === defaults.target_stage ? (defaults.round ?? 1) + 1 : 1} />
@@ -3054,7 +3066,7 @@ function isAcceptedThisCalendarMonth(value: string | null | undefined) {
   return acceptedDate >= monthStart && acceptedDate <= today;
 }
 
-function PipelineRecordCorrectionFields({ canEditPendingDate, defaults, language }: { canEditPendingDate: boolean; defaults: ProcessDefaults; language: Language }) {
+function PipelineRecordCorrectionFields({ canEditPendingDate, defaults, language, reasons }: { canEditPendingDate: boolean; defaults: ProcessDefaults; language: Language; reasons: DashboardData["rejection_reasons"] }) {
   const completed = Boolean(defaults.outcome_result);
   return <div className="grid gap-4 md:grid-cols-2">
     <input type="hidden" name="candidate_id" value={defaults.candidate_id ?? ""} />
@@ -3072,6 +3084,7 @@ function PipelineRecordCorrectionFields({ canEditPendingDate, defaults, language
       <Field label={translate(language, "result")}><SelectInput name="outcome_result" defaultValue={defaults.outcome_result ?? ""}><option value="pass">{resultText(1, language)}</option><option value="fail">{resultText(0, language)}</option></SelectInput></Field>
       <Field label={translate(language, "outcomeDate")}><TextInput name="outcome_date" type="date" defaultValue={defaults.outcome_date ?? today()} required /></Field>
       <Field label={translate(language, "interviewer")}><TextInput name="outcome_interviewer" list="interviewer-options" defaultValue={defaults.outcome_interviewer ?? ""} /></Field>
+      {defaults.outcome_result === "fail" ? <FailureReasonFields reasons={reasons} language={language} defaults={{ actor: defaults.failure_actor, main: defaults.failure_main_reason_id, detail: defaults.failure_detail_reason_id }} /> : null}
       <Field label={translate(language, "remark")} className="md:col-span-2"><TextArea name="outcome_remark" rows={3} defaultValue={defaults.outcome_remark ?? ""} /></Field>
     </> : null}
   </div>;
@@ -3247,22 +3260,28 @@ function GuidePrompt({
 
 function ConfirmModal({
   language,
+  reasons,
   action,
   busy,
   onClose,
   onConfirm
 }: {
   language: Language;
+  reasons: DashboardData["rejection_reasons"];
   action: PendingAction | null;
   busy: boolean;
   onClose: () => void;
   onConfirm: () => void;
 }) {
+  const outcome = (action?.payload.outcome ?? null) as { result?: string; date?: string | null; interviewer?: string | null; remark?: string | null; failure_actor?: "candidate" | "company"; failure_main_reason_id?: string; failure_detail_reason_id?: string } | null;
+  const failure = action?.modal === "stage_outcome" && outcome?.result === "fail";
+  const main = reasons.find((reason) => reason.reason_id === outcome?.failure_main_reason_id);
+  const detail = reasons.find((reason) => reason.reason_id === outcome?.failure_detail_reason_id);
   return (
     <Modal open={Boolean(action)} title={action?.title ?? "Confirm Save"} onClose={onClose} width="max-w-lg">
       <div className="grid gap-4">
         <p className="text-sm font-bold text-slate">{action?.summary}</p>
-        <pre className="max-h-72 overflow-auto rounded-md border border-[#D7DEE8] bg-lightgray p-3 text-xs text-navy">{JSON.stringify(action?.payload ?? {}, null, 2)}</pre>
+        {failure ? <dl className="grid gap-2 rounded-md border border-[#D7DEE8] bg-lightgray p-3 text-sm text-navy"><div><dt className="font-semibold">{translate(language, "outcomeDate")}</dt><dd>{formatDate(outcome?.date, language)}</dd></div><div><dt className="font-semibold">{translate(language, "interviewer")}</dt><dd>{outcome?.interviewer || "—"}</dd></div><div><dt className="font-semibold">{language === "th" ? "ผู้สิ้นสุดกระบวนการ" : "Who ended the process"}</dt><dd>{outcome?.failure_actor ? failureActorLabel(outcome.failure_actor, language) : "—"}</dd></div><div><dt className="font-semibold">{language === "th" ? "เหตุผลหลัก" : "Main reason"}</dt><dd>{main ? language === "th" ? main.label_th : main.label_en : "—"}</dd></div><div><dt className="font-semibold">{language === "th" ? "เหตุผลโดยละเอียด" : "Detailed reason"}</dt><dd>{detail ? language === "th" ? detail.label_th : detail.label_en : "—"}</dd></div><div><dt className="font-semibold">{language === "th" ? "หมายเหตุ" : "Remark"}</dt><dd>{outcome?.remark || "—"}</dd></div></dl> : <pre className="max-h-72 overflow-auto rounded-md border border-[#D7DEE8] bg-lightgray p-3 text-xs text-navy">{JSON.stringify(action?.payload ?? {}, null, 2)}</pre>}
         <div className="flex justify-end gap-2">
           <Button type="button" variant="secondary" onClick={onClose}>{translate(language, "cancel")}</Button>
           <Button type="button" disabled={busy} onClick={onConfirm}>{translate(language, "saveChanges")}</Button>
@@ -3666,6 +3685,7 @@ function buildDetailBodyV2(
                     <p className="mt-1 text-xs font-medium text-slate">{translate(language, "pendingDetails")}: {formatDate(record.pending.openedDate, language)} / {record.pending.interviewer ?? translate(language, "noInterviewer")}</p>
                     {record.pending.estimatedActionDate ? <p className="mt-1 text-xs font-semibold text-primary">{translate(language, "estimatedDateValue", { date: formatDate(record.pending.estimatedActionDate, language) })}</p> : null}
                     <p className="mt-1 text-xs font-medium text-slate">{translate(language, "outcome")}: {formatDate(record.outcome?.date, language)} / {record.outcome?.interviewer ?? translate(language, "noInterviewer")}</p>
+                    {record.outcome?.result === "fail" ? <p className="mt-1 break-words text-xs font-semibold text-navy">{failureReasonText(logs.find((log) => log.stage_instance_id === record.stageInstanceId), language)}</p> : null}
                     {record.outcome?.remark ? <p className="mt-1 break-words text-xs text-slate">{translate(language, "remark")}: {record.outcome.remark}</p> : null}
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       {record.origin === "migration" ? <Tag tone="muted">{translate(language, "migrated")}</Tag> : null}
@@ -3678,6 +3698,7 @@ function buildDetailBodyV2(
                   <div className="grid gap-2 border-t border-[#D7DEE8] p-3">
                     {olderCompletedStageRecords.map((record) => <div key={record.stageInstanceId} className="min-w-0 rounded-md border border-[#D7DEE8] bg-white p-3">
                       <div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-sm text-navy">{processLabel(record.stage, language)} / {translate(language, "round")} {record.round}</strong>{record.outcome?.result === "pass" ? <span className="inline-flex min-h-5 items-center rounded-md bg-[#E9F9EF] px-2 text-[11px] font-semibold text-[#167A3D]">{resultText(1, language)}</span> : <Tag tone="danger">{resultText(0, language)}</Tag>}</div>
+                      {record.outcome?.result === "fail" ? <p className="mt-1 break-words text-xs font-semibold text-navy">{failureReasonText(logs.find((log) => log.stage_instance_id === record.stageInstanceId), language)}</p> : null}
                       <p className="mt-1 text-xs font-medium text-slate">{translate(language, "pendingDetails")}: {formatDate(record.pending.openedDate, language)} / {record.pending.interviewer ?? translate(language, "noInterviewer")}</p>
                       <p className="mt-1 text-xs font-medium text-slate">{translate(language, "outcome")}: {formatDate(record.outcome?.date, language)} / {record.outcome?.interviewer ?? translate(language, "noInterviewer")}</p>
                       {record.outcome?.remark ? <p className="mt-1 break-words text-xs text-slate">{translate(language, "remark")}: {record.outcome.remark}</p> : null}

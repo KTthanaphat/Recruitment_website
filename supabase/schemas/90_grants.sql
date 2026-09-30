@@ -12,6 +12,7 @@ grant select on public.candidates to authenticated;
 grant select on public.candidate_references to authenticated;
 grant select on public.candidate_reference_checks to authenticated;
 grant select on public.recruitment_logs to authenticated;
+grant select, insert, update on public.rejection_reasons to authenticated;
 grant select on public.offers to authenticated;
 grant select on public.sourcing_weekly_updates to authenticated;
 grant select on public.vacancy_weekly_snapshots to authenticated;

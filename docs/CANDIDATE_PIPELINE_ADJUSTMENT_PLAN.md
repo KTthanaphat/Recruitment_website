@@ -148,6 +148,7 @@ The board card remains compact. Full Pending/Outcome fields live in modals and C
 - Edit Pending loads exact saved values and locks candidate/stage/round/status.
 - Pass displays locked stage/round context, editable Pass Outcome, and the required next Pending unless current stage is Offer; stored Current Pending values are submitted unchanged.
 - Fail hides Current Pending controls, carries the saved values invisibly, and shows only locked stage context plus the Fail Outcome section.
+- Fail Outcome retains date and interviewer, then requires the catalog's actor → active main reason → active detailed reason before an optional remark. The confirmation shows readable selections. `app_complete_pipeline_stage_v2` validates the active hierarchy and captures reason IDs plus bilingual label snapshots on the terminal failed stage; no next Pending is created. The catalog is maintained by System Admin/Admin Recruiter in Configuration. Admin stage-record correction may replace a failed reason selection through the existing supersession audit; legacy failures without a reason remain readable. See [Pipeline product behavior](WEBSITE_STRUCTURE.md#recruitment-workflows) for display and catalog rules.
 - Outcome date defaults to Bangkok today; Outcome interviewer copies Pending; new remarks and new next-stage interviewer/remark start blank.
 - Drag/drop and the equivalent keyboard menu command open the same jump confirmation and never write on drop.
 - Jump shows a Pending/Passed pair for every crossed stage plus the target Pending.

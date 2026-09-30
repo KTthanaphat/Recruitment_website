@@ -703,6 +703,30 @@ drop trigger if exists audit_vacancy_weekly_snapshots on public.vacancy_weekly_s
 create trigger audit_vacancy_weekly_snapshots after insert or update or delete on public.vacancy_weekly_snapshots
 for each row execute function app_private.audit_row_change();
 
+create or replace function app_private.guard_rejection_reason_edit()
+returns trigger language plpgsql set search_path = public, app_private as $$
+declare parent_row public.rejection_reasons%rowtype;
+begin
+  if tg_op = 'UPDATE' then
+    if (new.reason_id, new.reason_kind, new.actor, new.parent_id) is distinct from (old.reason_id, old.reason_kind, old.actor, old.parent_id) then
+      raise exception 'REJECTION_REASON_IDENTITY_IMMUTABLE: Archive and create a new reason to change classification.';
+    end if;
+  end if;
+  if new.reason_kind = 'detail' then
+    select * into parent_row from public.rejection_reasons where reason_id = new.parent_id;
+    if not found or parent_row.reason_kind <> 'main' or parent_row.actor <> new.actor then
+      raise exception 'REJECTION_REASON_PARENT_INVALID: Detail must belong to a main reason for the same actor.';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists guard_rejection_reason_edit on public.rejection_reasons;
+create trigger guard_rejection_reason_edit before insert or update on public.rejection_reasons for each row execute function app_private.guard_rejection_reason_edit();
+drop trigger if exists set_rejection_reasons_updated_at on public.rejection_reasons;
+create trigger set_rejection_reasons_updated_at before update on public.rejection_reasons for each row execute function app_private.set_updated_at();
+drop trigger if exists audit_rejection_reasons on public.rejection_reasons;
+create trigger audit_rejection_reasons after insert or update on public.rejection_reasons for each row execute function app_private.audit_row_change();
 drop trigger if exists set_rejection_letter_templates_updated_at on public.rejection_letter_templates;
 create trigger set_rejection_letter_templates_updated_at before update on public.rejection_letter_templates for each row execute function app_private.set_updated_at();
 drop trigger if exists audit_rejection_letter_templates on public.rejection_letter_templates;

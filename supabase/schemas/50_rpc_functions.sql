@@ -1351,6 +1351,22 @@ begin
 end;
 $$;
 
+create or replace function app_private.failure_reason_snapshot(p_actor text, p_main uuid, p_detail uuid)
+returns jsonb language plpgsql stable set search_path = public, app_private as $$
+declare v_main public.rejection_reasons%rowtype; v_detail public.rejection_reasons%rowtype;
+begin
+  if p_actor not in ('candidate', 'company') or p_main is null or p_detail is null then
+    raise exception 'REJECTION_REASON_REQUIRED: Select who ended the process, a main reason, and a detailed reason.';
+  end if;
+  select * into v_main from public.rejection_reasons where reason_id = p_main and reason_kind = 'main' and actor = p_actor and active;
+  select * into v_detail from public.rejection_reasons where reason_id = p_detail and reason_kind = 'detail' and parent_id = p_main and actor = p_actor and active;
+  if v_main.reason_id is null or v_detail.reason_id is null then
+    raise exception 'REJECTION_REASON_INVALID: The selected reasons are no longer active or do not belong together.';
+  end if;
+  return jsonb_build_object('actor', p_actor, 'main_th', v_main.label_th, 'main_en', v_main.label_en, 'detail_th', v_detail.label_th, 'detail_en', v_detail.label_en);
+end;
+$$;
+
 create or replace function public.app_complete_pipeline_stage_v2(payload jsonb)
 returns jsonb
 language plpgsql
@@ -1373,10 +1389,12 @@ declare
   v_next_estimated_action_date date := nullif(v_next ->> 'estimated_action_date', '')::date;
   v_expected_next_stage text;
   v_previous_outcome_date date;
+  v_next_opened_date date;
   v_row public.recruitment_logs%rowtype;
   v_next_row public.recruitment_logs%rowtype;
   v_next_id uuid;
   v_handoff jsonb;
+  v_failure_snapshot jsonb;
 begin
   perform app_private.lock_pipeline_candidate(v_candidate_id);
   perform app_private.assert_candidate_pipeline_open(v_candidate_id);
@@ -1411,6 +1429,7 @@ begin
 
   if v_result = 0 then
     if v_next_stage is not null then raise exception 'PIPELINE_INVALID_TRANSITION: Fail cannot create a next Pending stage.'; end if;
+    v_failure_snapshot := app_private.failure_reason_snapshot(nullif(v_outcome ->> 'failure_actor', ''), nullif(v_outcome ->> 'failure_main_reason_id', '')::uuid, nullif(v_outcome ->> 'failure_detail_reason_id', '')::uuid);
   elsif v_row.recruitment_process = 'Offer' then
     if v_next_stage is not null then raise exception 'PIPELINE_INVALID_TRANSITION: Offer Pass uses handoff and cannot create a next Pending stage.'; end if;
   elsif v_row.recruitment_process in ('Line Interview', 'Test') and v_next_stage = v_row.recruitment_process then
@@ -1443,6 +1462,10 @@ begin
       outcome_date = v_outcome_date,
       outcome_interviewer = nullif(v_outcome ->> 'interviewer', ''),
       outcome_remark = nullif(v_outcome ->> 'remark', ''),
+      failure_actor = case when v_result = 0 then v_outcome ->> 'failure_actor' else null end,
+      failure_main_reason_id = case when v_result = 0 then nullif(v_outcome ->> 'failure_main_reason_id', '')::uuid else null end,
+      failure_detail_reason_id = case when v_result = 0 then nullif(v_outcome ->> 'failure_detail_reason_id', '')::uuid else null end,
+      failure_reason_snapshot = v_failure_snapshot,
       outcome_recorded_at = now()
   where log_id = v_row.log_id
   returning * into v_row;
@@ -1664,6 +1687,7 @@ declare
   v_replacement_id uuid := gen_random_uuid();
   v_previous_outcome_date date;
   v_next_opened_date date;
+  v_failure_snapshot jsonb;
 begin
   perform app_private.assert_system_admin();
   if v_candidate_id is null or v_stage_instance_id is null or v_expected_updated_at is null or v_result is null or v_outcome_date is null then
@@ -1679,6 +1703,13 @@ begin
   if v_row.updated_at <> v_expected_updated_at then raise exception 'PIPELINE_STALE_WRITE: The Outcome changed after it was opened.'; end if;
   if v_result is distinct from v_row.result then
     raise exception 'PIPELINE_CORRECTION_RESULT_IMMUTABLE: Outcome correction cannot change Pass/Fail.';
+  end if;
+  if v_row.result = 0 then
+    if v_outcome ? 'failure_actor' or v_outcome ? 'failure_main_reason_id' or v_outcome ? 'failure_detail_reason_id' then
+      v_failure_snapshot := app_private.failure_reason_snapshot(nullif(v_outcome ->> 'failure_actor', ''), nullif(v_outcome ->> 'failure_main_reason_id', '')::uuid, nullif(v_outcome ->> 'failure_detail_reason_id', '')::uuid);
+    else
+      v_failure_snapshot := v_row.failure_reason_snapshot;
+    end if;
   end if;
   select outcome_date into v_previous_outcome_date
   from public.recruitment_logs
@@ -1707,12 +1738,17 @@ begin
   insert into public.recruitment_logs (
     stage_instance_id, candidate_id, log_date, recruitment_process, round, interviewer, result, remark,
     outcome_date, outcome_interviewer, outcome_remark, outcome_recorded_at,
+    failure_actor, failure_main_reason_id, failure_detail_reason_id, failure_reason_snapshot,
     pending_edited_at, pending_edited_by, record_origin, migration_note,
     created_at
   ) values (
     v_replacement_id, v_row.candidate_id, v_row.log_date, v_row.recruitment_process, v_row.round, v_row.interviewer,
     v_row.result, v_row.remark, v_outcome_date, nullif(v_outcome ->> 'interviewer', ''),
-    nullif(v_outcome ->> 'remark', ''), now(), v_row.pending_edited_at, v_row.pending_edited_by,
+    nullif(v_outcome ->> 'remark', ''), now(),
+    case when v_result = 0 then coalesce(nullif(v_outcome ->> 'failure_actor', ''), v_row.failure_actor) else null end,
+    case when v_result = 0 then coalesce(nullif(v_outcome ->> 'failure_main_reason_id', '')::uuid, v_row.failure_main_reason_id) else null end,
+    case when v_result = 0 then coalesce(nullif(v_outcome ->> 'failure_detail_reason_id', '')::uuid, v_row.failure_detail_reason_id) else null end,
+    v_failure_snapshot, v_row.pending_edited_at, v_row.pending_edited_by,
     'correction', concat_ws('; ', nullif(v_row.migration_note, ''), 'corrected from ' || v_row.stage_instance_id::text),
     v_row.created_at
   ) returning * into v_replacement;
@@ -1784,6 +1820,7 @@ declare
   v_replacement_id uuid := gen_random_uuid();
   v_previous_outcome_date date;
   v_next_opened_date date;
+  v_failure_snapshot jsonb;
 begin
   if app_private.current_app_role() not in ('system_admin', 'admin_recruiter') then
     raise exception 'PIPELINE_ADMIN_REQUIRED: System admin or admin recruiter role is required.';
@@ -1801,6 +1838,16 @@ begin
   if v_row.updated_at <> v_expected_updated_at then raise exception 'PIPELINE_STALE_WRITE: The pipeline record changed after it was opened.'; end if;
   if (v_row.result is null and v_outcome is not null) or (v_row.result is not null and (v_outcome is null or v_result is null or v_outcome_date is null)) then
     raise exception 'PIPELINE_INVALID_PAYLOAD: Pending records have no Outcome; completed records require result and Outcome date.';
+  end if;
+  if v_row.result is not null and v_result is distinct from v_row.result then
+    raise exception 'PIPELINE_CORRECTION_RESULT_IMMUTABLE: Outcome correction cannot change Pass/Fail.';
+  end if;
+  if v_row.result = 0 then
+    if v_outcome ? 'failure_actor' or v_outcome ? 'failure_main_reason_id' or v_outcome ? 'failure_detail_reason_id' then
+      v_failure_snapshot := app_private.failure_reason_snapshot(nullif(v_outcome ->> 'failure_actor', ''), nullif(v_outcome ->> 'failure_main_reason_id', '')::uuid, nullif(v_outcome ->> 'failure_detail_reason_id', '')::uuid);
+    else
+      v_failure_snapshot := v_row.failure_reason_snapshot;
+    end if;
   end if;
 
   select outcome_date into v_previous_outcome_date from public.recruitment_logs
@@ -1821,6 +1868,7 @@ begin
   insert into public.recruitment_logs (
     stage_instance_id, candidate_id, log_date, recruitment_process, round, interviewer, result, remark,
     estimated_action_date, outcome_date, outcome_interviewer, outcome_remark, outcome_recorded_at,
+    failure_actor, failure_main_reason_id, failure_detail_reason_id, failure_reason_snapshot,
     pending_edited_at, pending_edited_by, record_origin, migration_note, created_at
   ) values (
     v_replacement_id, v_row.candidate_id, v_opened_date, v_row.recruitment_process, v_row.round,
@@ -1830,6 +1878,10 @@ begin
     case when v_row.result is null then null else nullif(v_outcome ->> 'interviewer', '') end,
     case when v_row.result is null then null else nullif(v_outcome ->> 'remark', '') end,
     case when v_row.result is null then null else now() end,
+    case when v_result = 0 then coalesce(nullif(v_outcome ->> 'failure_actor', ''), v_row.failure_actor) else null end,
+    case when v_result = 0 then coalesce(nullif(v_outcome ->> 'failure_main_reason_id', '')::uuid, v_row.failure_main_reason_id) else null end,
+    case when v_result = 0 then coalesce(nullif(v_outcome ->> 'failure_detail_reason_id', '')::uuid, v_row.failure_detail_reason_id) else null end,
+    v_failure_snapshot,
     now(), auth.uid(), 'correction', concat_ws('; ', nullif(v_row.migration_note, ''), 'corrected from ' || v_row.stage_instance_id::text), v_row.created_at
   ) returning * into v_replacement;
   update public.candidates set updated_at = now() where candidate_id = v_candidate_id;

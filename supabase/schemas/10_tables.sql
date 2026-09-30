@@ -150,6 +150,10 @@ create table if not exists public.recruitment_logs (
   outcome_date date,
   outcome_interviewer text,
   outcome_remark text,
+  failure_actor text check (failure_actor in ('candidate', 'company')),
+  failure_main_reason_id uuid,
+  failure_detail_reason_id uuid,
+  failure_reason_snapshot jsonb,
   outcome_recorded_at timestamptz,
   pending_edited_at timestamptz,
   pending_edited_by uuid references auth.users(id) on delete set null,
@@ -297,6 +301,24 @@ create table if not exists public.rejection_letter_drafts (
   created_at timestamptz not null default now(),
   finalized_at timestamptz
 );
+
+create table if not exists public.rejection_reasons (
+  reason_id uuid primary key default gen_random_uuid(),
+  reason_kind text not null check (reason_kind in ('main', 'detail')),
+  actor text not null check (actor in ('candidate', 'company')),
+  parent_id uuid references public.rejection_reasons(reason_id),
+  label_th text not null check (btrim(label_th) <> ''),
+  label_en text not null check (btrim(label_en) <> ''),
+  sort_order integer not null default 0,
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  check ((reason_kind = 'main' and parent_id is null) or (reason_kind = 'detail' and parent_id is not null))
+);
+
+alter table public.recruitment_logs
+  add constraint recruitment_logs_failure_main_reason_fk foreign key (failure_main_reason_id) references public.rejection_reasons(reason_id),
+  add constraint recruitment_logs_failure_detail_reason_fk foreign key (failure_detail_reason_id) references public.rejection_reasons(reason_id);
 
 create table if not exists public.interview_invitation_templates (
   template_id uuid primary key default gen_random_uuid(),

@@ -157,6 +157,10 @@ export type RecruitmentLog = {
   outcome_date?: string | null;
   outcome_interviewer?: string | null;
   outcome_remark?: string | null;
+  failure_actor?: "candidate" | "company" | null;
+  failure_main_reason_id?: string | null;
+  failure_detail_reason_id?: string | null;
+  failure_reason_snapshot?: { actor: "candidate" | "company"; main_th: string; main_en: string; detail_th: string; detail_en: string } | null;
   outcome_recorded_at?: string | null;
   pending_edited_at?: string | null;
   pending_edited_by?: string | null;
@@ -309,6 +313,19 @@ export type RejectionLetterDraft = {
   finalized_at: string | null;
 };
 
+export type RejectionReason = {
+  reason_id: string;
+  reason_kind: "main" | "detail";
+  actor: "candidate" | "company";
+  parent_id: string | null;
+  label_th: string;
+  label_en: string;
+  sort_order: number;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
 export type InterviewMeetingStatus = "creating" | "scheduled" | "rescheduling" | "cancelling" | "cancelled" | "failed";
 export type InterviewInvitationTemplate = {
   template_id: string;
@@ -345,6 +362,7 @@ export type DashboardData = {
   recruitment_logs: RecruitmentLog[];
   /** Includes superseded rows for the Pipeline Table audit-history filter. */
   recruitment_log_history: RecruitmentLog[];
+  rejection_reasons: RejectionReason[];
   offers: Offer[];
   sourcing_weekly_updates: SourcingWeeklyUpdate[];
   vacancy_weekly_snapshots: VacancyWeeklySnapshot[];

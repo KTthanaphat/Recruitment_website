@@ -10,6 +10,7 @@ export type PipelineFunnelRow = {
   conversionRate: number | null;
   yieldRate: number | null;
   barRatio: number | null;
+  segments?: Array<{ key: string; label: string; count: number; color: string }>;
 };
 
 export function PipelineFunnel({
@@ -31,6 +32,7 @@ export function PipelineFunnel({
 }) {
   const resolvedTitle = title ?? translate(language, "candidatePipeline");
   const resolvedTotalLabel = totalLabel ?? translate(language, "applicants");
+  const legend = Array.from(new Map(rows.flatMap((row) => row.segments ?? []).filter((segment) => segment.count > 0).map((segment) => [segment.key, segment])).values());
 
   return (
     <section className="pipeline-funnel min-w-0 rounded-lg border border-[#D7DEE8] bg-white p-4 shadow-[0_4px_14px_rgba(11,19,43,0.025)]">
@@ -45,6 +47,8 @@ export function PipelineFunnel({
           <p className="text-lg font-semibold tabular-nums text-navy">{formatNumber(totalValue, language)}</p>
         </div>
       </div>
+
+      {legend.length > 0 ? <div className="mb-4 flex flex-wrap gap-x-4 gap-y-2 text-xs font-medium text-slate" aria-label={language === "th" ? "สีช่องทางการสรรหา" : "Recruitment channel colors"}>{legend.map((segment) => <span key={segment.key} className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: segment.color }} aria-hidden="true" />{segment.label}</span>)}</div> : null}
 
       <div className="min-w-0 max-w-full overflow-x-auto overscroll-x-contain">
         <div className="grid min-w-[680px] grid-cols-[9rem_minmax(12rem,1fr)_72px_72px_72px] items-stretch overflow-hidden rounded-md border border-[#D7DEE8] text-xs">
@@ -64,10 +68,10 @@ export function PipelineFunnel({
                 </div>
                 <div className="border-t border-l border-[#D7DEE8] bg-white px-3 py-2">
                   <div className="relative min-h-9 overflow-hidden rounded-r-md bg-[#EEF2F7]" tabIndex={0} title={`${row.label}: ${formatNumber(row.count, language)}; ${translate(language, "conversionShort")}: ${formatPercent(row.conversionRate)}; ${translate(language, "yieldShort")}: ${formatPercent(row.yieldRate)}`} aria-label={`${row.label}: ${formatNumber(row.count, language)}`}>
-                    <div
-                      className={`absolute inset-y-0 left-0 rounded-r-md ${active ? "bg-primary" : "bg-[#D7DEE8]"}`}
-                      style={{ width: barWidth }}
-                    />
+                    <div className="absolute inset-y-0 left-0 flex overflow-hidden rounded-r-md" style={{ width: barWidth }}>
+                      {active && row.segments?.length ? row.segments.filter((segment) => segment.count > 0).map((segment) => <div key={segment.key} className="h-full" style={{ width: `${segment.count / row.count * 100}%`, backgroundColor: segment.color }} title={`${segment.label}: ${formatNumber(segment.count, language)}`} aria-label={`${segment.label}: ${formatNumber(segment.count, language)}`} />) : <div className={`h-full w-full ${active ? "bg-primary" : "bg-[#D7DEE8]"}`} />}
+                    </div>
+                    {row.segments?.length ? <span className="sr-only">{row.segments.filter((segment) => segment.count > 0).map((segment) => `${segment.label}: ${formatNumber(segment.count, language)}`).join(", ")}</span> : null}
                   </div>
                 </div>
                 <div className="border-t border-l border-[#D7DEE8] bg-white px-2 py-2 text-right font-semibold tabular-nums text-navy">

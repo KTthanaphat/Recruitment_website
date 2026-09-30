@@ -7,6 +7,7 @@ alter table public.position_groups enable row level security;
 alter table public.document_groups enable row level security;
 alter table public.candidates enable row level security;
 alter table public.recruitment_logs enable row level security;
+alter table public.rejection_reasons enable row level security;
 alter table public.offers enable row level security;
 alter table public.sourcing_weekly_updates enable row level security;
 alter table public.vacancy_weekly_snapshots enable row level security;
@@ -99,6 +100,9 @@ for select to authenticated
 using (app_private.is_global_recruitment_reader());
 
 create policy rejection_letter_templates_read on public.rejection_letter_templates for select to authenticated using (active or app_private.current_app_role() in ('system_admin', 'admin_recruiter'));
+create policy rejection_reasons_read on public.rejection_reasons for select to authenticated using (active or app_private.current_app_role() in ('system_admin', 'admin_recruiter'));
+create policy rejection_reasons_insert on public.rejection_reasons for insert to authenticated with check (app_private.current_app_role() in ('system_admin', 'admin_recruiter'));
+create policy rejection_reasons_update on public.rejection_reasons for update to authenticated using (app_private.current_app_role() in ('system_admin', 'admin_recruiter')) with check (app_private.current_app_role() in ('system_admin', 'admin_recruiter'));
 create policy rejection_letter_drafts_read on public.rejection_letter_drafts for select to authenticated using (app_private.can_read_candidate(candidate_id));
 create policy interview_invitation_templates_read on public.interview_invitation_templates for select to authenticated using (active or app_private.current_app_role() in ('system_admin', 'admin_recruiter'));
 create policy interview_meetings_read on public.interview_meetings for select to authenticated using (app_private.can_read_candidate(candidate_id));

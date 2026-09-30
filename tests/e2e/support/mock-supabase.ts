@@ -112,6 +112,13 @@ export async function installMockSupabase(page: Page, options: MockSupabaseOptio
     const url = new URL(route.request().url());
     if (url.pathname.includes("/rpc/")) return route.fallback();
     const table = url.pathname.split("/").at(-1) ?? "";
+    if (table === "rejection_reasons" && route.request().method() !== "GET") {
+      if (role !== "system_admin" && role !== "admin_recruiter") { await json(route, { message: "Permission denied" }, 403); return; }
+      const body = route.request().postDataJSON() as Record<string, unknown>;
+      if (route.request().method() === "POST") data.rejection_reasons.push({ reason_id: `10000000-0000-4000-8000-${String(data.rejection_reasons.length + 10).padStart(12, "0")}`, reason_kind: String(body.reason_kind) as "main" | "detail", actor: String(body.actor) as "candidate" | "company", parent_id: body.parent_id ? String(body.parent_id) : null, label_th: String(body.label_th), label_en: String(body.label_en), sort_order: Number(body.sort_order), active: Boolean(body.active), created_at: fixtureNow.toISOString(), updated_at: fixtureNow.toISOString() });
+      if (route.request().method() === "PATCH") { const id = url.searchParams.get("reason_id")?.replace(/^eq\./, ""); const row = data.rejection_reasons.find((reason) => reason.reason_id === id); if (row) Object.assign(row, body); }
+      await json(route, []); return;
+    }
     const rows = tableRows(data, table);
     await json(route, applyRestQuery(rows, url));
   });
@@ -254,6 +261,12 @@ function createRecruitmentDataset(activeRole: MockUserRole): DashboardData {
       sourcingUpdate("GRP-ANL", "2026-07-06", 5)
     ],
     vacancy_weekly_snapshots: [],
+    rejection_reasons: [
+      { reason_id: "10000000-0000-4000-8000-000000000001", reason_kind: "main", actor: "candidate", parent_id: null, label_th: "ค่าตอบแทนและสวัสดิการ", label_en: "Compensation and benefits", sort_order: 1, active: true, created_at: "2026-07-01T00:00:00.000Z", updated_at: "2026-07-01T00:00:00.000Z" },
+      { reason_id: "10000000-0000-4000-8000-000000000002", reason_kind: "detail", actor: "candidate", parent_id: "10000000-0000-4000-8000-000000000001", label_th: "เงินเดือนต่ำกว่าความคาดหวัง", label_en: "Salary below expectations", sort_order: 1, active: true, created_at: "2026-07-01T00:00:00.000Z", updated_at: "2026-07-01T00:00:00.000Z" },
+      { reason_id: "10000000-0000-4000-8000-000000000003", reason_kind: "main", actor: "company", parent_id: null, label_th: "ทักษะและผลการประเมิน", label_en: "Skills and assessment results", sort_order: 1, active: true, created_at: "2026-07-01T00:00:00.000Z", updated_at: "2026-07-01T00:00:00.000Z" },
+      { reason_id: "10000000-0000-4000-8000-000000000004", reason_kind: "detail", actor: "company", parent_id: "10000000-0000-4000-8000-000000000003", label_th: "ผลสัมภาษณ์ไม่ผ่านเกณฑ์", label_en: "Interview result did not meet criteria", sort_order: 1, active: true, created_at: "2026-07-01T00:00:00.000Z", updated_at: "2026-07-01T00:00:00.000Z" }
+    ],
     rejection_letter_templates: [
       { template_id: "template-th", name: "Thai rejection", language: "th", subject_template: "Result for {candidate_name}", body_template: "Dear {candidate_name}", active: true, version: 1, created_by: "qa-system", updated_by: "qa-system", created_at: "2026-07-01T00:00:00.000Z", updated_at: "2026-07-01T00:00:00.000Z" },
       { template_id: "template-en", name: "English rejection", language: "en", subject_template: "Result for {candidate_name}", body_template: "Dear {candidate_name}", active: true, version: 1, created_by: "qa-system", updated_by: "qa-system", created_at: "2026-07-01T00:00:00.000Z", updated_at: "2026-07-01T00:00:00.000Z" }
@@ -440,6 +453,14 @@ function applyRpcMutation(data: DashboardData, endpoint: string, payload: Record
     current.outcome_date = String(outcome.date ?? current.log_date);
     current.outcome_interviewer = nullableText(outcome.interviewer);
     current.outcome_remark = nullableText(outcome.remark);
+    if (current.result === 0 && outcome.failure_actor) {
+      const main = data.rejection_reasons.find((reason) => reason.reason_id === outcome.failure_main_reason_id);
+      const detail = data.rejection_reasons.find((reason) => reason.reason_id === outcome.failure_detail_reason_id);
+      current.failure_actor = String(outcome.failure_actor) as "candidate" | "company";
+      current.failure_main_reason_id = main?.reason_id ?? null;
+      current.failure_detail_reason_id = detail?.reason_id ?? null;
+      current.failure_reason_snapshot = main && detail ? { actor: current.failure_actor, main_th: main.label_th, main_en: main.label_en, detail_th: detail.label_th, detail_en: detail.label_en } : null;
+    }
     current.outcome_recorded_at = "2026-07-24T05:00:00.000Z";
     current.updated_at = "2026-07-24T05:00:00.000Z";
     const next = asRecord(payload.next_pending);
@@ -481,6 +502,7 @@ function tableRows(data: DashboardData, table: string) {
     candidate_references: data.candidate_references,
     candidate_reference_checks: data.candidate_reference_checks,
     recruitment_logs: data.recruitment_logs,
+    rejection_reasons: data.rejection_reasons,
     offers: data.offers,
     sourcing_weekly_updates: data.sourcing_weekly_updates,
     vacancy_weekly_snapshots: data.vacancy_weekly_snapshots,

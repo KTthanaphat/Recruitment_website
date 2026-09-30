@@ -255,7 +255,7 @@ select public.app_complete_pipeline_stage_v2(jsonb_build_object(
   'stage_instance_id', (select stage_instance_id from public.recruitment_logs where candidate_id = '__paired_pipeline_candidate' and recruitment_process = 'HR Interview' and superseded_at is null),
   'expected_updated_at', (select updated_at from public.recruitment_logs where candidate_id = '__paired_pipeline_candidate' and recruitment_process = 'HR Interview' and superseded_at is null),
   'pending', jsonb_build_object('opened_date', app_private.pipeline_business_date() - 1),
-  'outcome', jsonb_build_object('result', 'fail', 'date', app_private.pipeline_business_date() - 1, 'remark', 'Closed after interview'),
+  'outcome', jsonb_build_object('result', 'fail', 'date', app_private.pipeline_business_date() - 1, 'remark', 'Closed after interview', 'failure_actor', 'candidate', 'failure_main_reason_id', md5('rejection-reason:c1')::uuid, 'failure_detail_reason_id', md5('rejection-reason:c1_1')::uuid),
   'next_pending', '{}'::jsonb
 ));
 select public.app_correct_pipeline_outcome_v2(jsonb_build_object(

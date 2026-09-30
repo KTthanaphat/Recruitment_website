@@ -70,15 +70,26 @@ test("dashboard report uses calendar views, persists its month, and keeps expand
   await expectWorkspaceReady(page);
 
   await expect(page.getByRole("heading", { name: "Vacancy Waterfall" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Requisitions Active in Selected Period/ })).toBeVisible();
+  const combinedReport = page.getByRole("button", { name: /Vacancy Waterfall & Requisitions Active in Selected Period/ });
+  await expect(combinedReport).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByRole("heading", { name: "Requisitions Active in Selected Period", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /Recruitment Pipeline Health in Selected Range/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "Metric view" })).toContainText("Performance in Month");
   await expect(page.getByRole("button", { name: "Report month" })).toContainText("Jul 2026");
   await expect(page.getByRole("heading", { name: "Recruitment Pipeline Health" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Export PNG" })).toHaveCount(2);
-  await expect(page.getByRole("button", { name: "Export PNG" }).first()).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Vacancy Waterfall PNG" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Export PNG" })).toHaveCount(1);
+  await expect(page.getByLabel("Recruitment channel colors").first()).toContainText("Facebook");
+  await combinedReport.click();
+  await expect(combinedReport).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByRole("heading", { name: "Requisitions Active in Selected Period", exact: true })).toBeHidden();
+  await expect(page.getByRole("button", { name: "Vacancy Waterfall PNG" })).toBeEnabled();
+  await combinedReport.click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(combinedReport).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await expect(page.getByRole("button", { name: "Export PDF" })).toHaveCount(0);
-  await page.getByRole("button", { name: "Export", exact: true }).click();
+  await page.getByRole("button", { name: "Requisitions Active in Selected Period · Export" }).click();
   await expect(page.getByRole("dialog").getByRole("button", { name: "Export detail XLSX", exact: true })).toBeVisible();
 });
 
@@ -94,13 +105,31 @@ test("active requisitions expose ordered Activity, Status, and Accum stage metri
   await expect(page.getByText(/Unique candidates who entered each stage/)).toBeVisible();
 });
 
+test("Pipeline Health channel segments match row totals and Workspace Sourcing colors", async ({ page }) => {
+  await installMockSupabase(page, { role: "admin_recruiter" });
+  await page.goto("/dashboard?funnel=open");
+  await expectWorkspaceReady(page);
+  const funnel = page.locator(".pipeline-funnel").first();
+  const legend = funnel.getByLabel("Recruitment channel colors");
+  await expect(legend).toContainText("Facebook");
+  const facebook = funnel.locator('[title^="Facebook:"]').first();
+  await expect(facebook).toHaveCSS("background-color", "rgb(59, 111, 232)");
+  const totals = await funnel.locator("div.contents").evaluateAll((rows) => rows.map((row) => {
+    const count = Number(row.children[2]?.textContent?.trim().replaceAll(",", "") ?? 0);
+    const segmentTotal = Array.from(row.querySelectorAll('div[title][aria-label]:not([tabindex])')).reduce((sum, segment) => sum + Number(segment.getAttribute("title")?.split(": ").at(-1)?.replaceAll(",", "") ?? 0), 0);
+    return { count, segmentTotal };
+  }));
+  expect(totals.length).toBeGreaterThan(1);
+  expect(totals.every((row) => row.count === row.segmentTotal)).toBe(true);
+});
+
 test("dashboard PNG exports download visible non-blank reports", async ({ page }) => {
   test.setTimeout(90_000);
   await installMockSupabase(page, { role: "admin_recruiter" });
   await page.goto("/dashboard?reportView=pim&reportMonth=2026-07&details=open&funnel=open");
   await expectWorkspaceReady(page);
 
-  const directExportButtons = page.getByRole("button", { name: "Export PNG" });
+  const directExportButtons = page.getByRole("button", { name: /Vacancy Waterfall PNG|^Export PNG$/ });
   await expect(directExportButtons).toHaveCount(2);
   const waterfallExportSurface = page.locator(".export-report-surface").filter({ has: page.locator(".vacancy-waterfall-svg") });
   await expect(waterfallExportSurface.locator("h3")).toContainText("Recruitment Performance in Selected Period");
@@ -121,7 +150,7 @@ test("dashboard PNG exports download visible non-blank reports", async ({ page }
     if (index === 0) expect(png.height / png.width).toBeGreaterThan(0.62);
   }
 
-  await page.getByRole("button", { name: "Export", exact: true }).click();
+  await page.getByRole("button", { name: "Requisitions Active in Selected Period · Export" }).click();
   const modal = page.getByRole("dialog");
   const modalPngExport = modal.getByRole("button", { name: "Export PNG" });
   await expect(modalPngExport).toBeEnabled();

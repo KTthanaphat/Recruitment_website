@@ -38,6 +38,8 @@ Add search only when list size warrants it; current `CommandSelector` has no sea
 
 ## Fields, buttons and overlays
 
+The Fail Candidate form uses visible labels and required native selects for actor, main, and detailed reasons. Disable a dependent selector until its parent is chosen, clear stale selections when the parent changes, and present the optional remark after the hierarchy. Its confirmation uses readable field/value pairs rather than raw payload JSON. On phones, keep fields and footer controls within the modal viewport.
+
 Reuse `Field`, `TextInput`, `TextArea`, [Button](../../src/components/ui/Button.tsx) and existing validation/disabled helpers. Values outweigh optional hints. Associate inline errors with fields, preserve inputs on failure and distinguish loading from disabled. Placeholder/color alone cannot identify required fields or errors.
 
 Main task uses the primary action; secondary commands remain quiet; icon utilities have accessible names. Value-selection dropdowns and command menus have different semantics. Use [Operations](../../src/components/ui/Operations.tsx) for record actions, [Modal](../../src/components/ui/Modal.tsx), [Drawer](../../src/components/ui/Drawer.tsx), and [MobileBottomSheet](../../src/components/ui/MobileBottomSheet.tsx) for overlays. Preserve destructive confirmations in product flows without adding permission interruptions to routine design work.

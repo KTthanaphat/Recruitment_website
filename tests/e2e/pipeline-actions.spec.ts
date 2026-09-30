@@ -128,17 +128,44 @@ test("Fail stage is atomic and never sends or creates next pending data", async 
   await expect(dialog.locator('input[name="pending_interviewer"]')).toHaveAttribute("type", "hidden");
   await expect(dialog.locator('textarea[name="pending_remark"]')).toHaveCount(0);
   await expect(dialog.locator('input[name="next_opened_date"]')).toHaveCount(0);
+  await dialog.locator('select[name="failure_actor"]').selectOption("company");
+  await dialog.locator('select[name="failure_main_reason_id"]').selectOption("10000000-0000-4000-8000-000000000003");
+  await dialog.locator('select[name="failure_detail_reason_id"]').selectOption("10000000-0000-4000-8000-000000000004");
   await dialog.getByRole("button", { name: "Review changes" }).click();
+  await expect(page.getByRole("dialog", { name: "Confirm Save" })).toContainText("Interview result did not meet criteria");
   await page.getByRole("button", { name: "Save changes" }).click();
 
   await expect.poll(() => mock.rpcCalls.at(-1)?.endpoint).toBe("app_complete_pipeline_stage_v2");
   expect(mock.rpcCalls.at(-1)?.payload).toMatchObject({
     candidate_id: "C-PHONE",
     pending: { opened_date: "2026-07-09", estimated_action_date: "2026-07-25", interviewer: "QA Interviewer", remark: "QA Phone Screen" },
-    outcome: { result: "fail" }
+    outcome: { result: "fail", failure_actor: "company", failure_main_reason_id: "10000000-0000-4000-8000-000000000003", failure_detail_reason_id: "10000000-0000-4000-8000-000000000004" }
   });
   expect(mock.rpcCalls.at(-1)?.payload.next_pending).toBeNull();
   expect(mock.data.recruitment_logs.filter((row) => row.candidate_id === "C-PHONE")).toHaveLength(1);
+  expect(mock.data.recruitment_logs.find((row) => row.candidate_id === "C-PHONE")?.failure_reason_snapshot?.detail_en).toBe("Interview result did not meet criteria");
+});
+
+test("Fail reason choices cascade and clear stale selections", async ({ page }) => {
+  await installMockSupabase(page, { role: "admin_recruiter" });
+  await page.goto("/pipeline");
+  await expectWorkspaceReady(page);
+  const menu = await openPatMenu(page);
+  await menu.getByRole("menuitem").filter({ hasText: "Fail stage" }).click();
+  const dialog = page.getByRole("dialog", { name: /Fail .*stage|Complete Stage/i });
+  const actor = dialog.locator('select[name="failure_actor"]');
+  const main = dialog.locator('select[name="failure_main_reason_id"]');
+  const detail = dialog.locator('select[name="failure_detail_reason_id"]');
+  await expect(main).toBeDisabled();
+  await actor.selectOption("candidate");
+  await expect(main).toContainText("Compensation and benefits");
+  await main.selectOption("10000000-0000-4000-8000-000000000001");
+  await detail.selectOption("10000000-0000-4000-8000-000000000002");
+  await actor.selectOption("company");
+  await expect(main).toHaveValue("");
+  await expect(detail).toHaveValue("");
+  await expect(main).toContainText("Skills and assessment results");
+  await expect(detail).toBeDisabled();
 });
 
 test("Test has a separate next-round action while Pass stage exits to Reference Check", async ({ page }) => {

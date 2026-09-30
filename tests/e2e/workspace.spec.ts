@@ -344,6 +344,34 @@ test("Workspace Sourcing bounds a long date history without hiding the editor", 
   await expect(page.getByTestId("workspace-sourcing-layout").locator("form")).toBeVisible();
 });
 
+test("group channel controls follow the selected effective week and its saved channel state", async ({ page }) => {
+  const mock = await installMockSupabase(page, { role: "admin_recruiter" });
+  const update = mock.data.sourcing_weekly_updates.find((row) => row.group_id === "GRP-ENG" && row.week_start === "2026-07-06");
+  if (!update) throw new Error("Missing sourcing update fixture");
+  update.week_start = "2026-07-04";
+  update.channel_others = false;
+  mock.data.sourcing_weekly_updates.push({ ...update, week_start: "2026-07-11", channel_others: true });
+  await page.goto("/workspace?type=group&id=GRP-ENG&section=sourcing&sourcingWeek=2026-07-04");
+  await expectWorkspaceReady(page);
+
+  const details = page.getByTestId("workspace-sourcing-update-header").getByRole("button", { name: "Details" });
+  await details.click();
+  const dialog = page.getByRole("dialog", { name: "Group details · GRP-ENG" });
+  const effectiveDate = dialog.locator("label").filter({ hasText: "Effective week" }).getByRole("button");
+  await expect(effectiveDate).toContainText("04/07/2026");
+  await expect(dialog.getByRole("switch", { name: "Toggle Others" })).toHaveAttribute("aria-checked", "false");
+  await dialog.getByRole("switch", { name: "Toggle Others" }).click();
+  const confirmation = page.getByRole("dialog", { name: "Confirm Save" });
+  await expect(confirmation).toContainText("enable Others - GRP-ENG from 2026-07-04");
+  await confirmation.getByRole("button", { name: "Cancel" }).click();
+  await dialog.getByRole("button", { name: "Close" }).click();
+
+  await page.getByTestId("workspace-sourcing-dates").getByRole("button", { name: /11\/07\/2026/ }).click();
+  await details.click();
+  await expect(effectiveDate).toContainText("11/07/2026");
+  await expect(dialog.getByRole("switch", { name: "Toggle Others" })).toHaveAttribute("aria-checked", "true");
+});
+
 test("overview truncates long requisition positions and shows one localized overdue tag", async ({ page }) => {
   const mock = await installMockSupabase(page, { role: "admin_recruiter" });
   const requisition = mock.data.requisitions.find((row) => row.doc_id === "REQ-HQ-1");

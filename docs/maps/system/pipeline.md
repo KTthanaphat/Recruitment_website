@@ -17,6 +17,7 @@ Read this node for this feature only. It indexes ownership; product rules remain
 
 - Owner/search: [src/components/pipeline/PipelineBoardView.tsx](../../../src/components/pipeline/PipelineBoardView.tsx), [src/components/RecruitmentWorkspace.tsx](../../../src/components/RecruitmentWorkspace.tsx), [supabase/schemas/50_rpc_functions.sql](../../../supabase/schemas/50_rpc_functions.sql).
 - Related symbols: derived `log_date`, optional estimate, audit history, correction.
+- Rejection reasons: `rejection-reasons/FailureReasonFields.tsx`, `rejection-reasons/RejectionReasonAdmin.tsx`, `src/lib/rejection-reasons.ts`, and `supabase/schemas/15_rejection_reason_seed.sql`; behavior is owned by [Candidate Pipeline](../../WEBSITE_STRUCTURE.md#recruitment-workflows), verified by [pipeline actions](../../../tests/e2e/pipeline-actions.spec.ts).
 - Entry: `/pipeline`.
 - Existing check/search: [tests/e2e/pipeline-actions.spec.ts](../../../tests/e2e/pipeline-actions.spec.ts), [tests/e2e/pipeline-board.spec.ts](../../../tests/e2e/pipeline-board.spec.ts), [tests/db/candidate-pipeline-paired-status.sql](../../../tests/db/candidate-pipeline-paired-status.sql).
 

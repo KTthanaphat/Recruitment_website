@@ -4,6 +4,7 @@ project_id = "recruitment-tracking"
 schema_paths = [
   "./schemas/00_extensions.sql",
   "./schemas/10_tables.sql",
+  "./schemas/15_rejection_reason_seed.sql",
   "./schemas/20_indexes.sql",
   "./schemas/30_triggers_audit.sql",
   "./schemas/40_rls_policies.sql",

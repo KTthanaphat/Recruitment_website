@@ -21,6 +21,7 @@ Preserve copy feedback/live announcement and localized names for icon controls. 
 `StageRail` owns journey presentation, rounds and derived Resume Screening. Do not collapse stages, invent progress or flatten Pending/Outcome records through styling.
 
 Activity prioritizes current Pending: compact amber-accented row, stage/round title, dates/interviewer below, meaningful estimate emphasis, capability-gated edit. Recent completions follow; older history is disclosed. Keep Outcome-detail correction distinct from advancing a candidate.
+Failed completions show the saved actor, main reason, detailed reason, and optional remark below the Outcome date/interviewer. Older unclassified failures show a quiet unclassified label. The Fail modal uses the same hierarchy and preserves the stage/date/interviewer context; its three selectors are required and reset dependent selections on parent changes.
 
 Soft tags use pale backgrounds with dark text: green success, amber pending, red failure. Preserve this local treatment instead of indiscriminately applying bright generic tags.
 
