@@ -415,7 +415,7 @@ export function VacancyWaterfallView({
       <div ref={funnelExportRef} className="export-report-surface flex flex-col" style={{ width: funnelExportWidth, minWidth: funnelExportWidth, height: funnelExportHeight, minHeight: funnelExportHeight }} aria-hidden="true">
         <ReportHeader exportMode language={language} title={translate(language, "recruitmentPipelineHealthSelectedRange")} startDate={funnelStartDate} endDate={funnelEndDate} />
         <p className="px-4 pb-3 text-sm font-medium text-slate sm:px-6 lg:px-8">{reportViewLabel(funnelView, language)} · {translate(language, "levelMeta")}: {funnelLevelLabel(funnelLevelBands, language)} · {translate(language, "channelMeta")}: {funnelChannelLabel} · {language === "th" ? "คำอธิบายสีช่องทาง" : "Channel legend"}: {funnelLegend ? (language === "th" ? "เปิด" : "On") : (language === "th" ? "ปิด" : "Off")}</p>
-        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,3fr)_minmax(0,2fr)] items-stretch gap-3">
+        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,3fr)_minmax(0,2fr)] items-start gap-3">
         <PipelineFunnel
           language={language}
           rows={funnelRows}

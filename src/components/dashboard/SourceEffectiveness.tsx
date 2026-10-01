@@ -54,6 +54,7 @@ export function SourceEffectiveness({ rows, language, exportMode = false }: { ro
   ];
   const totals = Object.fromEntries(measures.map(({ key }) => [key, rows.reduce((sum, row) => sum + row[key], 0)])) as Record<Measure, number>;
   const largestApplicants = Math.max(0, ...rows.map((row) => row.applicants));
+  const exportDetailRowHeight = Math.min(60, Math.max(48, Math.floor(660 / Math.max(rows.length, 1))));
   const percent = (value: number, prior: number) => prior > 0 ? `${Math.round(value / prior * 100)}%` : "—";
 
   function miniBar(row: SourceEffectivenessRow, measure: Measure) {
@@ -82,9 +83,9 @@ export function SourceEffectiveness({ rows, language, exportMode = false }: { ro
     </div>;
   }
 
-  return <section className={`source-effectiveness min-w-0 rounded-lg border border-[#D7DEE8] bg-white ${exportMode ? "flex h-full flex-col p-6" : "p-4"}`} data-testid="source-effectiveness">
+  return <section className={`source-effectiveness min-w-0 rounded-lg border border-[#D7DEE8] bg-white ${exportMode ? "p-5" : "p-4"}`} data-testid="source-effectiveness">
     <div className="flex items-center gap-2"><h4 className={`font-semibold text-navy ${exportMode ? "text-2xl" : ""}`}>{title}</h4>{exportMode ? <Info size={20} className="text-[#6B7D99]" aria-hidden="true" /> : <ReportHelp label={`${title} ${th ? "คำอธิบาย" : "help"}`} text={th ? "เปรียบเทียบกิจกรรมในช่วงเวลาเดียวกัน ผู้สมัครมาจากยอดรายสัปดาห์ คัดกรองโทรศัพท์นับผู้สมัครไม่ซ้ำที่ผ่านขั้นตอนคัดกรองโทรศัพท์ และรับเข้าทำงานนับผู้สมัครไม่ซ้ำที่รับข้อเสนอแล้ว ตัวเลขในแท่งบนเทียบกับยอดรวมของแต่ละแถว ตารางแสดงเปอร์เซ็นต์คัดกรองโทรศัพท์เทียบผู้สมัคร และรับข้อเสนอเทียบผู้ผ่านคัดกรองโทรศัพท์; แท่งเล็กทั้งสามใช้ผู้สมัครของช่องทางเป็นฐาน อัตราส่วนอาจเกิน 100% ได้" : "Same-period activity: Applicants use saved weekly counts, Phone Screening counts distinct candidates who passed Phone Screen, and Hired counts distinct candidates with accepted offers. Labels in the top bars use each measure's total. Table percentages compare Phone Screening with Applicants and Hired with Phone Screening; all three mini bars use each channel's Applicants as their baseline. Period ratios may exceed 100%."} />}</div>
-    <div className={`grid min-w-0 ${exportMode ? "mt-7 gap-5" : "mt-4 gap-3"}`} aria-label={th ? "สัดส่วนตามช่องทาง" : "Channel composition"}>
+    <div className={`grid min-w-0 ${exportMode ? "mt-5 gap-4" : "mt-4 gap-3"}`} aria-label={th ? "สัดส่วนตามช่องทาง" : "Channel composition"}>
       {measures.map(({ key, label }) => {
         const active = rows.filter((row) => row[key] > 0);
         return <div key={key} data-measure={key} className="min-w-0">
@@ -97,8 +98,8 @@ export function SourceEffectiveness({ rows, language, exportMode = false }: { ro
         </div>;
       })}
     </div>
-    <div className={`source-detail-wide min-w-0 max-w-full ${exportMode ? "mt-6 min-h-0 flex-1" : "mt-4"}`}>
-      <table className={`w-full table-fixed border-collapse leading-tight ${exportMode ? "text-base" : "text-[10px]"}`} style={exportMode ? { height: Math.min(42 + rows.length * 68, 560) } : undefined}>
+    <div className={`source-detail-wide min-w-0 max-w-full ${exportMode ? "mt-5" : "mt-4"}`}>
+      <table className={`w-full table-fixed border-collapse leading-tight ${exportMode ? "text-base" : "text-[10px]"}`} style={exportMode ? { height: 38 + rows.length * exportDetailRowHeight } : undefined}>
         <colgroup><col style={{ width: "30%" }} /><col /><col /><col /></colgroup>
         <thead><tr className="border-b border-[#D7DEE8] bg-[#F8FAFD] text-slate"><th scope="col" className="px-0.5 py-2 text-left">{th ? "ช่องทาง" : "Channel"}</th>{measures.map(({ key, label }) => <th key={key} scope="col" className="px-0.5 py-2 text-left">{label}</th>)}</tr></thead>
         <tbody>{rows.map((row) => <tr key={row.key} data-channel={row.key} className="border-b border-[#E4E9F2] text-navy"><th scope="row" className="px-0.5 py-2 text-left font-medium"><span className="flex min-w-0 items-center gap-1"><span className="size-2 shrink-0" style={{ backgroundColor: row.color }} aria-hidden="true" /><span className="min-w-0 break-words" title={row.label}>{row.label}</span></span></th>{measures.map(({ key }) => <td key={key} className="min-w-0 px-0.5 py-2">{metricValue(row, key)}</td>)}</tr>)}</tbody>

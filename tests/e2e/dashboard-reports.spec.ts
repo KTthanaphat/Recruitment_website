@@ -304,7 +304,22 @@ test("Pipeline panels and compact filters fit from 1080px, while Source bars ret
   expect(await exportFunnelGrid.evaluate((element) => element.firstElementChild!.getBoundingClientRect().width / element.getBoundingClientRect().width)).toBeGreaterThan(0.47);
   expect(await exportSurface.locator(".pipeline-funnel div.contents").first().locator("[tabindex='0']").evaluate((element) => element.getBoundingClientRect().width)).toBeGreaterThan(100);
   expect(await exportSurface.locator(".pipeline-funnel div.contents").first().locator("[title^='Facebook:']").evaluate((element) => element.getBoundingClientRect().width)).toBeGreaterThan(0);
-  expect(await exportSurface.evaluate((element) => element.querySelector(".pipeline-funnel")!.getBoundingClientRect().bottom >= element.getBoundingClientRect().bottom - 36)).toBe(true);
+  const compactExportGeometry = await exportSurface.evaluate((surface) => {
+    const funnel = surface.querySelector<HTMLElement>(".pipeline-funnel")!;
+    const source = surface.querySelector<HTMLElement>(".source-effectiveness")!;
+    const funnelRows = Array.from(funnel.querySelectorAll<HTMLElement>(".grid > .contents"));
+    const detailRows = Array.from(source.querySelectorAll<HTMLElement>(".source-detail-wide tbody tr"));
+    return {
+      funnelRowHeights: funnelRows.map((row) => row.children[0].getBoundingClientRect().height),
+      detailRowHeights: detailRows.map((row) => row.getBoundingClientRect().height),
+      detailRowLabels: detailRows.map((row) => row.querySelector("th")?.textContent),
+      bottomSpace: surface.getBoundingClientRect().bottom - Math.max(funnel.getBoundingClientRect().bottom, source.getBoundingClientRect().bottom)
+    };
+  });
+  expect(compactExportGeometry.funnelRowHeights.every((height) => height >= 72 && height <= 84), JSON.stringify(compactExportGeometry)).toBe(true);
+  expect(compactExportGeometry.detailRowHeights.reduce((sum, height) => sum + height, 0) / compactExportGeometry.detailRowHeights.length).toBeLessThan(64);
+  expect(compactExportGeometry.detailRowHeights.every((height) => height <= 80), JSON.stringify(compactExportGeometry)).toBe(true);
+  expect(compactExportGeometry.bottomSpace).toBeGreaterThan(80);
   const sourceTable = source.locator(".source-detail-wide table");
   expect(await sourceTable.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
   expect(await sourceTable.evaluate((element) => element.getBoundingClientRect().right <= element.closest('section')!.getBoundingClientRect().right + 1)).toBe(true);
@@ -371,6 +386,13 @@ test("Pipeline panels and compact filters fit from 1080px, while Source bars ret
   expect(new Set(thaiFilterBottoms).size).toBe(1);
   await expect(source.locator('[data-measure="phone"]')).toContainText("คัดกรองโทรศัพท์");
   expect(await funnel.locator(".grid div.contents span[title]").evaluateAll((elements) => elements.every((element) => getComputedStyle(element).textOverflow !== "ellipsis" && element.scrollWidth <= element.clientWidth + 1))).toBe(true);
+  expect(await exportSurface.evaluate((surface) => surface.scrollWidth <= surface.clientWidth + 1 && surface.scrollHeight <= surface.clientHeight + 1 && Array.from(surface.querySelectorAll<HTMLElement>(".pipeline-funnel, .source-effectiveness")).every((card) => card.scrollWidth <= card.clientWidth + 1 && card.scrollHeight <= card.clientHeight + 1))).toBe(true);
+  const thaiPngPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "ส่งออก สุขภาพ Pipeline สรรหา PNG" }).click();
+  const thaiDownload = await thaiPngPromise;
+  await thaiDownload.saveAs(testInfo.outputPath("pipeline-presentation-thai.png"));
+  const thaiPng = await inspectPng(await thaiDownload.createReadStream());
+  expect([thaiPng.width, thaiPng.height, thaiPng.visible]).toEqual([3840, 2160, true]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 

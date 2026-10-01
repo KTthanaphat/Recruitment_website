@@ -46,8 +46,8 @@ export function PipelineFunnel({
   const legend = Array.from(new Map(rows.flatMap((row) => row.segments ?? []).filter((segment) => segment.count > 0).map((segment) => [segment.key, segment])).values());
 
   return (
-    <section className={`pipeline-funnel min-w-0 rounded-lg border border-[#D7DEE8] bg-white shadow-[0_4px_14px_rgba(11,19,43,0.025)] ${exportMode ? "flex h-full flex-col p-6" : "p-4"}`}>
-      <div className={`${exportMode ? "mb-6" : "mb-4"} flex flex-wrap items-start justify-between gap-3`}>
+    <section className={`pipeline-funnel min-w-0 rounded-lg border border-[#D7DEE8] bg-white shadow-[0_4px_14px_rgba(11,19,43,0.025)] ${exportMode ? "p-5" : "p-4"}`}>
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2"><h4 className={`font-semibold text-navy ${exportMode ? "text-2xl" : ""}`}>{resolvedTitle}</h4>{exportMode ? <Info size={20} className="text-[#6B7D99]" aria-hidden="true" /> : <ReportHelp label={`${resolvedTitle} ${language === "th" ? "คำอธิบาย" : "help"}`} text={helpText ?? (language === "th" ? "จำนวนแสดงผู้สมัครแต่ละขั้นตอน Conversion คือสัดส่วนเทียบขั้นก่อนหน้า Yield คือสัดส่วนเทียบผู้สมัครทั้งหมด ความกว้างแท่งเทียบกับผู้สมัครทั้งหมด" : "Counts show candidates at each stage. Conversion compares with the preceding stage; yield compares with all applicants. Bar widths are relative to the total applicant count.")} />}</div>
           {subtitle ? <p className="mt-1 text-xs font-medium text-slate">{subtitle}</p> : null}
@@ -61,8 +61,8 @@ export function PipelineFunnel({
 
       {showChannelLegend && legend.length > 0 ? <div className="mb-4 flex flex-wrap gap-x-4 gap-y-2 text-xs font-medium text-slate" aria-label={language === "th" ? "สีช่องทางการสรรหา" : "Recruitment channel colors"}>{legend.map((segment) => <span key={segment.key} className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: segment.color }} aria-hidden="true" />{segment.label}</span>)}</div> : null}
 
-      <div className={`min-w-0 max-w-full ${exportMode ? "min-h-0 flex-1 overflow-visible" : "overflow-x-auto overscroll-x-contain"}`}>
-        <div className={`grid min-w-[620px] grid-cols-[minmax(10rem,1fr)_8rem_4rem_4rem_4rem] items-stretch rounded-md border border-[#D7DEE8] text-xs ${compactAtDesktop ? "min-[1080px]:min-w-0 min-[1080px]:grid-cols-[minmax(6rem,1fr)_minmax(9rem,11rem)_2.75rem_2.75rem_2.75rem]" : ""} ${exportMode ? "h-full w-full !min-w-0 !text-base" : "overflow-hidden"}`} style={exportMode ? { gridTemplateColumns: "minmax(0, 48fr) minmax(0, 29fr) repeat(3, minmax(0, 7.666fr))", gridTemplateRows: `minmax(0, 0.8fr) repeat(${rows.length}, minmax(0, 1fr))` } : undefined}>
+      <div className={`min-w-0 max-w-full ${exportMode ? "overflow-visible" : "overflow-x-auto overscroll-x-contain"}`}>
+        <div className={`grid min-w-[620px] grid-cols-[minmax(10rem,1fr)_8rem_4rem_4rem_4rem] items-stretch rounded-md border border-[#D7DEE8] text-xs ${compactAtDesktop ? "min-[1080px]:min-w-0 min-[1080px]:grid-cols-[minmax(6rem,1fr)_minmax(9rem,11rem)_2.75rem_2.75rem_2.75rem]" : ""} ${exportMode ? "w-full !min-w-0 !text-base" : "overflow-hidden"}`} style={exportMode ? { gridTemplateColumns: "minmax(0, 48fr) minmax(0, 29fr) repeat(3, minmax(0, 7.666fr))", gridTemplateRows: `40px repeat(${rows.length}, minmax(72px, auto))` } : undefined}>
           <div className="bg-[#F8FAFD] px-3 py-2 font-semibold text-slate">{translate(language, "funnel")}</div>
           <div className="border-l border-[#D7DEE8] bg-[#F8FAFD] px-3 py-2 font-semibold text-slate">{translate(language, "stage")}</div>
           <div className="bg-[#F8FAFD] px-2 py-2 text-right font-semibold text-slate">{translate(language, "count")}</div>
