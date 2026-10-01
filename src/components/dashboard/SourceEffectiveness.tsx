@@ -2,6 +2,7 @@ import { ReportHelp } from "@/components/dashboard/ReportHelp";
 import { formatNumber } from "@/lib/format";
 import type { Language } from "@/types/recruitment";
 import { Info } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 export type SourceEffectivenessRow = {
   key: string;
@@ -16,6 +17,31 @@ type Measure = "applicants" | "phone" | "hired";
 
 function channelTint(color: string) {
   return `#${[1, 3, 5].map((offset) => Math.round(Number.parseInt(color.slice(offset, offset + 2), 16) * 0.25 + 255 * 0.75).toString(16).padStart(2, "0")).join("")}`;
+}
+
+function CompositionSegment({ row, value, total, language, exportMode }: { row: SourceEffectivenessRow; value: number; total: number; language: Language; exportMode: boolean }) {
+  const segmentRef = useRef<HTMLSpanElement>(null);
+  const labelRef = useRef<HTMLSpanElement>(null);
+  const [labelFits, setLabelFits] = useState(false);
+  const count = formatNumber(value, language);
+  const percentage = `${Math.round(value / total * 100)}%`;
+  const label = `${count} (${percentage})`;
+
+  useEffect(() => {
+    const segment = segmentRef.current;
+    const text = labelRef.current;
+    if (!segment || !text) return;
+    const measure = () => setLabelFits(text.getBoundingClientRect().width + 8 <= segment.getBoundingClientRect().width);
+    const observer = new ResizeObserver(measure);
+    observer.observe(segment);
+    measure();
+    void document.fonts?.ready.then(measure);
+    return () => observer.disconnect();
+  }, [label]);
+
+  return <span ref={segmentRef} data-channel={row.key} data-label-visible={labelFits} title={`${row.label}: ${label}`} className={`relative h-full shrink-0 overflow-hidden font-light tabular-nums ${exportMode ? "text-base" : "text-[11px]"}`} style={{ flexBasis: `${value / total * 100}%`, backgroundColor: row.color, color: "#F8FAFC", textShadow: "none" }}>
+    <span ref={labelRef} aria-hidden="true" className="absolute left-1/2 top-1/2 w-max -translate-x-1/2 -translate-y-1/2 whitespace-nowrap leading-none" style={{ visibility: labelFits ? "visible" : "hidden" }}>{label}</span>
+  </span>;
 }
 
 export function SourceEffectiveness({ rows, language, exportMode = false }: { rows: SourceEffectivenessRow[]; language: Language; exportMode?: boolean }) {
@@ -61,23 +87,11 @@ export function SourceEffectiveness({ rows, language, exportMode = false }: { ro
     <div className={`grid min-w-0 ${exportMode ? "mt-7 gap-5" : "mt-4 gap-3"}`} aria-label={th ? "สัดส่วนตามช่องทาง" : "Channel composition"}>
       {measures.map(({ key, label }) => {
         const active = rows.filter((row) => row[key] > 0);
-        const segmentWidth = (row: SourceEffectivenessRow, twoLine = false) => {
-          const count = formatNumber(row[key], language);
-          const ratio = `(${percent(row[key], totals[key])})`;
-          if (exportMode) return twoLine ? Math.max(56, Math.max(count.length, ratio.length) * 8 + 16) : Math.max(68, `${count} ${ratio}`.length * 8 + 16);
-          return Math.max(58, `${count} ${ratio}`.length * 7 + 20);
-        };
-        const twoLineExport = exportMode && active.reduce((sum, row) => sum + segmentWidth(row), 0) > 690;
-        const minWidth = active.reduce((sum, row) => sum + segmentWidth(row, twoLineExport), 0);
         return <div key={key} data-measure={key} className="min-w-0">
           <div className={`mb-1 font-semibold text-navy ${exportMode ? "text-sm" : "text-xs"}`}><span>{label}: <span className="tabular-nums">{formatNumber(totals[key], language)}</span></span></div>
-          <div className={`max-w-full ${exportMode ? "overflow-visible" : "overflow-x-auto overscroll-x-contain"}`} tabIndex={exportMode ? undefined : 0}>
-            <div className={`flex w-full bg-[#EEF2F7] ${exportMode ? "h-12" : "h-8"}`} style={{ minWidth }} role="img" aria-label={`${label}: ${formatNumber(totals[key], language)}; ${active.map((row) => `${row.label}: ${formatNumber(row[key], language)} (${percent(row[key], totals[key])})`).join(", ")}`}>
-              {active.map((row) => {
-                const count = formatNumber(row[key], language);
-                const ratio = `(${percent(row[key], totals[key])})`;
-                return <span key={row.key} data-channel={row.key} title={`${row.label}: ${count} ${ratio}`} className={`flex h-full shrink-0 grow items-center justify-center px-1 font-light tabular-nums ${exportMode ? twoLineExport ? "flex-col text-sm leading-tight" : "whitespace-nowrap text-base" : "whitespace-nowrap text-[11px]"}`} style={{ flexGrow: row[key], flexBasis: 0, minWidth: segmentWidth(row, twoLineExport), backgroundColor: row.color, color: "#F8FAFC", textShadow: "none" }}>{twoLineExport ? <>{count}<span>{ratio}</span></> : `${count} ${ratio}`}</span>;
-              })}
+          <div className="max-w-full">
+            <div className={`flex w-full bg-[#EEF2F7] ${exportMode ? "h-6" : "h-5"}`} role="img" aria-label={`${label}: ${formatNumber(totals[key], language)}; ${active.map((row) => `${row.label}: ${formatNumber(row[key], language)} (${percent(row[key], totals[key])})`).join(", ")}`}>
+              {active.map((row) => <CompositionSegment key={row.key} row={row} value={row[key]} total={totals[key]} language={language} exportMode={exportMode} />)}
             </div>
           </div>
         </div>;

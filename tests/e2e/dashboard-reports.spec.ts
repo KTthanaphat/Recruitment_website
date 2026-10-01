@@ -252,15 +252,22 @@ test("Pipeline panels and compact filters fit from 1080px, while Source bars ret
   await expect(source.locator('[data-measure="phone"] > div').first()).toContainText(/^Phone Screening: \d/);
   await expect(source.locator('[data-measure="hired"] > div').first()).toContainText(/^Hired: \d/);
   await expect(applicants.locator('[data-channel]')).toHaveCount(9);
-  await expect(applicants.locator('[role="img"]')).toHaveCSS("height", "32px");
+  await expect(applicants.locator('[role="img"]')).toHaveCSS("height", "20px");
   expect((await applicants.locator('[data-channel]').allTextContents()).every((label) => /^\d[\d,]* \(\d+%\)$/.test(label))).toBe(true);
   expect(await applicants.locator('[data-channel]').first().evaluate((element) => getComputedStyle(element).color)).toBe("rgb(248, 250, 252)");
   expect(await applicants.locator('[data-channel]').first().evaluate((element) => getComputedStyle(element).fontWeight)).toBe("300");
   expect(await applicants.locator('[data-channel]').first().evaluate((element) => getComputedStyle(element).textShadow)).toBe("none");
-  const barWidths = await applicants.locator(".overflow-x-auto").evaluate((element) => ({ scroll: element.scrollWidth, client: element.clientWidth, parent: element.parentElement?.clientWidth }));
-  expect(barWidths.scroll > barWidths.client, JSON.stringify({ barWidths, geometry: await page.evaluate(() => ({ viewport: innerWidth, document: document.documentElement.scrollWidth, layout: document.querySelector('[data-testid="pipeline-source-layout"]')?.getBoundingClientRect().toJSON(), source: document.querySelector('[data-testid="pipeline-source-layout"] [data-testid="source-effectiveness"]')?.getBoundingClientRect().toJSON() })) })).toBe(true);
+  expect(await applicants.locator('[role="img"]').evaluate((bar) => bar.scrollWidth <= bar.clientWidth + 1)).toBe(true);
+  expect(await applicants.locator('[data-channel]').evaluateAll((segments) => {
+    const barWidth = segments[0].parentElement!.getBoundingClientRect().width;
+    const counts = segments.map((segment) => Number(segment.getAttribute("title")?.match(/: ([\d,]+) \(/)?.[1].replaceAll(",", "") ?? 0));
+    const total = counts.reduce((sum, count) => sum + count, 0);
+    return segments.every((segment, index) => Math.abs(segment.getBoundingClientRect().width / barWidth - counts[index] / total) < 0.005);
+  })).toBe(true);
+  await expect(applicants.locator('[data-channel][data-label-visible="false"]').first()).toBeAttached();
   const exportSource = page.locator(".export-report-surface").getByTestId("source-effectiveness");
-  expect(await exportSource.locator('[data-measure="applicants"] .overflow-visible').evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+  await expect(exportSource.locator('[data-measure="applicants"] [role="img"]')).toHaveCSS("height", "24px");
+  expect(await exportSource.locator('[data-measure="applicants"] [role="img"]').evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
   await expect(exportSource.locator(".source-detail-wide")).toBeVisible();
   await expect(exportSource.locator(".source-detail-compact")).toBeHidden();
   expect(await exportSource.locator(".source-detail-wide [data-metric-value]").first().evaluate((element) => {
@@ -273,7 +280,7 @@ test("Pipeline panels and compact filters fit from 1080px, while Source bars ret
   await expect(exportSurface.locator("h1")).toContainText("Recruitment Pipeline Health in Selected Range");
   await expect(exportSurface).toContainText("Date range:");
   await expect(exportSurface.locator("h4 + svg")).toHaveCount(2);
-  await expect(exportSource.locator('[data-measure="applicants"] [data-channel]').first()).toHaveCSS("white-space", "nowrap");
+  await expect(exportSource.locator('[data-measure="applicants"] [data-channel] > span').first()).toHaveCSS("white-space", "nowrap");
   expect(await exportSurface.locator(":scope > div:last-child > section").evaluateAll((cards) => Math.abs(cards[0].getBoundingClientRect().width / cards[1].getBoundingClientRect().width - 1.5) < 0.03)).toBe(true);
   expect(await exportSurface.evaluate((element) => element.scrollWidth <= element.clientWidth + 1 && element.scrollHeight <= element.clientHeight + 1)).toBe(true);
   const exportGeometry = await exportSurface.evaluate((surface) => {
@@ -370,12 +377,19 @@ test("Pipeline panels and compact filters fit from 1080px, while Source bars ret
 test("Pipeline export keeps crowded labels and a single-channel table within the slide", async ({ page }) => {
   const { data } = await installMockSupabase(page, { role: "admin_recruiter" });
   const update = data.sourcing_weekly_updates.find((row) => row.group_id === "GRP-ENG" && row.week_start === "2026-07-06")!;
-  for (const column of ["applicants_fb", "applicants_jobthai", "applicants_jobtopgun", "applicants_jobdb", "applicants_jobbkk", "applicants_linkedin", "applicants_walkin", "applicants_referral", "applicants_others"]) (update as unknown as Record<string, number>)[column] = 999;
+  for (const column of ["applicants_fb", "applicants_jobthai", "applicants_jobtopgun", "applicants_jobdb", "applicants_jobbkk", "applicants_linkedin", "applicants_walkin", "applicants_referral", "applicants_others"]) (update as unknown as Record<string, number>)[column] = column === "applicants_fb" ? 8999 : 1;
   await page.goto("/dashboard?funnel=open&funnelView=custom&funnelStart=2026-07-01&funnelEnd=2026-07-31");
   await expectWorkspaceReady(page);
   const exportSurface = page.locator('.export-report-surface:has([data-testid="source-effectiveness"])');
   const applicantsSegment = exportSurface.locator('[data-measure="applicants"] [data-channel]').first();
-  await expect(applicantsSegment).toHaveCSS("flex-direction", "column");
+  await expect(applicantsSegment).toHaveAttribute("data-label-visible", "true");
+  await expect(exportSurface.locator('[data-measure="applicants"] [data-channel="channel_jobthai"]')).toHaveAttribute("data-label-visible", "false");
+  expect(await exportSurface.locator('[data-measure="applicants"] [data-channel]').evaluateAll((segments) => {
+    const barWidth = segments[0].parentElement!.getBoundingClientRect().width;
+    const dominant = segments[0].getBoundingClientRect().width / barWidth;
+    const others = segments.slice(1).map((segment) => segment.getBoundingClientRect().width / barWidth);
+    return Math.abs(dominant - 8999 / 9007) < 0.005 && others.every((share) => Math.abs(share - 1 / 9007) < 0.005);
+  })).toBe(true);
   expect(await exportSurface.evaluate((surface) => surface.scrollWidth <= surface.clientWidth + 1 && surface.scrollHeight <= surface.clientHeight + 1)).toBe(true);
   await page.goto("/dashboard?funnel=open&funnelView=custom&funnelStart=2026-07-01&funnelEnd=2026-07-31&funnelChannel=Facebook");
   await expectWorkspaceReady(page);
