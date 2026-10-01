@@ -50,7 +50,7 @@ function SummaryHelp({ label, description, language }: { label: string; descript
 
   return <span ref={rootRef} className="relative inline-flex shrink-0" onMouseEnter={() => setOpen(true)} onMouseLeave={() => { if (!rootRef.current?.contains(document.activeElement)) setOpen(false); }}>
     <button type="button" className="grid h-7 w-7 place-items-center rounded-full text-[#8A9BB4] hover:bg-[#EEF5FF] hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40" aria-label={translate(language, "sourcingSummaryInfo", { metric: label })} aria-expanded={open} aria-controls={open ? id : undefined} aria-describedby={open ? id : undefined} onFocus={() => setOpen(true)} onBlur={() => setOpen(false)} onClick={() => setOpen(true)}><Info size={16} aria-hidden="true" /></button>
-    {open ? <span ref={tooltipRef} id={id} role="tooltip" style={placement} className="pointer-events-none fixed z-30 rounded-lg bg-navy px-3 py-2 text-left text-xs font-normal leading-relaxed text-white shadow-lg">{description}</span> : null}
+    {open ? <span ref={tooltipRef} id={id} role="tooltip" style={placement} className="pointer-events-none fixed z-30 box-border rounded-lg bg-navy px-3 py-2 text-left text-xs font-normal leading-relaxed text-white shadow-lg">{description}</span> : null}
   </span>;
 }
 
@@ -187,7 +187,7 @@ export function SourcingSummaryCharts({ data, language, rows, selectedWeek, sele
         <div data-testid="workspace-sourcing-stage-bars" className="mt-2 divide-y divide-dashed divide-[#E4E9F2]">
           {stageData?.stages.map((stage) => <div key={stage.stage} data-stage={stage.stage} className="grid min-w-0 grid-cols-[8rem_minmax(0,1fr)_1.5rem] items-center gap-1.5 py-1.5 text-xs first:pt-0 last:pb-0" aria-label={pipelineDisplayLabel(stage.stage, language) + ": " + stage.total + " " + translate(language, "candidates") + "; " + stage.segments.map((segment) => stageChannelLabel(segment.key, language) + ": " + segment.count).join(", ")}>
             <span className="min-w-0 truncate whitespace-nowrap text-slate" title={pipelineDisplayLabel(stage.stage, language)}>{pipelineDisplayLabel(stage.stage, language)}</span>
-            <div className="flex h-4 min-w-0 overflow-hidden rounded-full bg-[#EEF2F7]">{stage.segments.map((segment) => <span key={segment.key} data-channel={segment.key} title={stageChannelLabel(segment.key, language) + ": " + segment.count} className="h-full" style={{ width: segment.count / stageMax * 100 + "%", backgroundColor: stageChannelColor(segment.key) }} />)}</div>
+            <div className="flex h-4 min-w-0 overflow-hidden bg-[#EEF2F7]">{stage.segments.map((segment) => <span key={segment.key} data-channel={segment.key} title={stageChannelLabel(segment.key, language) + ": " + segment.count} className="h-full" style={{ width: segment.count / stageMax * 100 + "%", backgroundColor: stageChannelColor(segment.key) }} />)}</div>
             <span className="text-right font-bold tabular-nums text-navy">{stage.total}</span>
           </div>)}
         </div>

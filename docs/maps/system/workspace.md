@@ -15,7 +15,7 @@ Read this node for this feature only. It indexes ownership; product rules remain
 
 ### F00 section presentation search keys
 
-- Sourcing summary/trend/donut/stage bars: [SourcingSummaryCharts.tsx](../../../src/components/sourcing/SourcingSummaryCharts.tsx), [stage derivation](../../../src/lib/sourcing-stage-channels.ts), [channel palette](../../../src/lib/sourcing-colors.ts); week list/editor: [EmbeddedSourcingPanel.tsx](../../../src/components/sourcing/EmbeddedSourcingPanel.tsx), [SourcingView.tsx](../../../src/components/sourcing/SourcingView.tsx); [design](../../design/workspace.md#sourcing-pipeline-offer-activity); [focused E2E](../../../tests/e2e/workspace.spec.ts).
+- Sourcing summary/trend/donut/square stage bars: [SourcingSummaryCharts.tsx](../../../src/components/sourcing/SourcingSummaryCharts.tsx), [stage derivation](../../../src/lib/sourcing-stage-channels.ts), [channel palette](../../../src/lib/sourcing-colors.ts); week list/editor: [EmbeddedSourcingPanel.tsx](../../../src/components/sourcing/EmbeddedSourcingPanel.tsx), [SourcingView.tsx](../../../src/components/sourcing/SourcingView.tsx); [design](../../design/workspace.md#sourcing-pipeline-offer-activity); [focused E2E](../../../tests/e2e/workspace.spec.ts).
 - Pipeline: [src/components/pipeline/PipelineBoardView.tsx](../../../src/components/pipeline/PipelineBoardView.tsx), `embedded`.
 - Offer: [src/components/workspace/WorkspaceOfferSection.tsx](../../../src/components/workspace/WorkspaceOfferSection.tsx).
 - Overview journey/quality and Activity: [HiringWorkspaceView.tsx](../../../src/components/workspace/HiringWorkspaceView.tsx), `OverviewSection`, `JourneyGuide`, `ActivitySection`; [Overview design](../../design/workspace.md#overview).

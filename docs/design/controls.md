@@ -38,6 +38,10 @@ Add search only when list size warrants it; current `CommandSelector` has no sea
 
 ## Fields, buttons and overlays
 
+The Dashboard Channel legend uses `.ats-square-switch` with shared track width/height, corner radius, thumb size, border and state tokens in `globals.css`. Match the supplied reference: blue ON track and right white rounded-square thumb, neutral OFF track and left thumb, with the state text inside the track. The visual track is 64×32px; on phones/coarse pointers its button has a 44px-high touch target around that track. Keep `role="switch"`, `aria-checked`, and a focus indicator. The legacy generic switch styling must not override this tokenized control; Configuration Active switches retain their existing presentation.
+
+The Configuration reason catalog uses labeled icon-only Add and Edit controls. Each main/detail reason has an Active switch whose checked state matches its saved active flag. Show saving feedback within the open section and disable its controls while saving; refresh only the reason catalog so the page and scroll position stay in place. Close the editor after success. Failed writes or refreshes keep its input and the previous confirmed switch state visible with an error. An archived main remains named in its detail's editor. Keep these controls usable by keyboard and at phone widths.
+
 The Fail Candidate form uses visible labels and required native selects for actor, main, and detailed reasons. Disable a dependent selector until its parent is chosen, clear stale selections when the parent changes, and present the optional remark after the hierarchy. Its confirmation uses readable field/value pairs rather than raw payload JSON. On phones, keep fields and footer controls within the modal viewport.
 
 Reuse `Field`, `TextInput`, `TextArea`, [Button](../../src/components/ui/Button.tsx) and existing validation/disabled helpers. Values outweigh optional hints. Associate inline errors with fields, preserve inputs on failure and distinguish loading from disabled. Placeholder/color alone cannot identify required fields or errors.

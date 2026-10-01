@@ -92,6 +92,7 @@ import type {
   OfferPassHandoff,
   Profile,
   ProcessStage,
+  RejectionReason,
   RecruitmentLog,
   RequisitionRequestType,
   RequisitionStatus,
@@ -360,6 +361,13 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       setLoading(false);
     }
   }, [router]);
+
+  const refreshRejectionReasons = useCallback(async () => {
+    if (!supabase) throw new Error("Supabase is not configured.");
+    const { data: reasons, error: refreshError } = await supabase.from("rejection_reasons").select("*").order("sort_order", { ascending: true });
+    if (refreshError) throw refreshError;
+    setData((current) => ({ ...current, rejection_reasons: (reasons ?? []) as RejectionReason[] }));
+  }, []);
 
   useEffect(() => {
     loadData();
@@ -1194,6 +1202,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
             data={dashboardReportData}
             requisitions={dashboardRequisitions}
             offers={dashboardOffers}
+            candidateOffers={priorityData.offers}
           />
         </div>
       ) : null}
@@ -1316,7 +1325,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
         />
       ) : null}
 
-      {initialView === "configuration" ? <ConfigurationView language={language} data={data} canManageRejectionTemplates={canManageRejectionTemplates} onTemplatesChanged={loadData} /> : null}
+      {initialView === "configuration" ? <ConfigurationView language={language} data={data} canManageRejectionTemplates={canManageRejectionTemplates} onTemplatesChanged={loadData} onReasonsChanged={refreshRejectionReasons} /> : null}
 
       {initialView === "admin" ? <AdminView language={language} data={data} canManageUsers={canManageUsers} onInvite={() => setActiveModal("user")} /> : null}
 

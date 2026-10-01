@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeftRight, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, Download, ImageDown, Info, SlidersHorizontal } from "lucide-react";
+import { ArrowLeftRight, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, Download, FileSpreadsheet, ImageDown, Info, SlidersHorizontal } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { ReportHelp } from "./ReportHelp";
 import { Button } from "@/components/ui/Button";
@@ -10,6 +10,7 @@ import { CommandMonthSelector, CommandSelector } from "@/components/ui/CommandSe
 import { DayDateSelector, Field } from "@/components/ui/Field";
 import { OperationalSummaryStrip } from "@/components/ui/Operations";
 import { PipelineFunnel, type PipelineFunnelRow } from "@/components/ui/PipelineFunnel";
+import { SourceEffectiveness, type SourceEffectivenessRow } from "./SourceEffectiveness";
 import { SOURCING_CHANNEL_COLORS, UNKNOWN_SOURCING_CHANNEL_COLOR } from "@/lib/sourcing-colors";
 import { SortableFilterHeader, type TableColumn, useTableControls } from "@/components/ui/TableControls";
 import {
@@ -32,6 +33,7 @@ import type {
   EnrichedOffer,
   EnrichedRequisition,
   Language,
+  Offer,
   ProcessStage,
   RequisitionStatus,
   RequisitionRequestType,
@@ -70,6 +72,7 @@ type RequisitionDetailRow = {
   level: string;
   vacancy: number;
   applicant_count: number;
+  applicant_channels: Record<(typeof SOURCING_CHANNELS)[number]["count"], number>;
   request_type: RequisitionRequestType;
   requisition_date: string;
   actual_age_days: number | null;
@@ -81,7 +84,7 @@ type RequisitionDetailRow = {
   period_detail: string | null;
 };
 type StageCountMode = "status" | "activity" | "accum";
-type ExportColumnKey = "site" | "department" | "department_th" | "section" | "section_th" | "position" | "level" | "vacancy" | "request_type" | "requisition_date" | "person_in_charge" | "status" | "detail" | "applicants" | ProcessStage | "actual_age" | "sla" | "filled_date";
+type ExportColumnKey = "site" | "department" | "department_th" | "section" | "section_th" | "position" | "level" | "vacancy" | "request_type" | "requisition_date" | "person_in_charge" | "status" | "detail" | "applicants" | (typeof SOURCING_CHANNELS)[number]["count"] | ProcessStage | "actual_age" | "sla" | "filled_date";
 type StageCandidateMatch = { candidateId: string; name: string; stage: ProcessStage; pendingDate: string; resultDate: string | null; remark: string | null; result: 0 | 1 | null };
 type StageCandidateReportDetail = StageCandidateMatch & { personInCharge: string };
 
@@ -89,12 +92,14 @@ export function VacancyWaterfallView({
   language,
   data,
   requisitions,
-  offers
+  offers,
+  candidateOffers
 }: {
   language: Language;
   data: DashboardData;
   requisitions: EnrichedRequisition[];
   offers: EnrichedOffer[];
+  candidateOffers: Offer[];
 }) {
   const [reportView, setReportView] = useState<ReportView>("mtd");
   const [reportMonth, setReportMonth] = useState(today().slice(0, 7));
@@ -103,10 +108,13 @@ export function VacancyWaterfallView({
   const [waterfallOpen, setWaterfallOpen] = useState(true);
   const waterfallContentId = useId();
   const [executiveBreakdownOpen, setExecutiveBreakdownOpen] = useState(false);
-  const [funnelStartDate, setFunnelStartDate] = useState(`${today().slice(0, 4)}-01-01`);
-  const [funnelEndDate, setFunnelEndDate] = useState(today());
+  const [funnelView, setFunnelView] = useState<ReportView>("mtd");
+  const [funnelMonth, setFunnelMonth] = useState(today().slice(0, 7));
+  const [funnelCustomStart, setFunnelCustomStart] = useState(() => previousSourcingReportingRange().startDate);
+  const [funnelCustomEnd, setFunnelCustomEnd] = useState(() => previousSourcingReportingRange().endDate);
   const [funnelLevelBands, setFunnelLevelBands] = useState<FunnelLevelBand[]>([]);
   const [funnelChannel, setFunnelChannel] = useState<FunnelChannelFilter>("all");
+  const [funnelLegend, setFunnelLegend] = useState(true);
   const [funnelOpen, setFunnelOpen] = useState(false);
   const [exportPreparing, setExportPreparing] = useState(false);
   const [exportError, setExportError] = useState(false);
@@ -125,6 +133,11 @@ export function VacancyWaterfallView({
     [customEndDate, customStartDate, reportMonth, reportView]
   );
   const validReportRange = Boolean(startDate && endDate && startDate <= endDate);
+  const { startDate: funnelStartDate, endDate: funnelEndDate } = useMemo(
+    () => reportRange(funnelView, funnelMonth, funnelCustomStart, funnelCustomEnd),
+    [funnelView, funnelMonth, funnelCustomStart, funnelCustomEnd]
+  );
+  const validFunnelRange = Boolean(funnelStartDate && funnelEndDate && funnelStartDate <= funnelEndDate);
 
   const waterfallRows = useMemo(
     () => buildLiveWaterfallRows(data, requisitions, offers, startDate, endDate, reportView),
@@ -135,9 +148,18 @@ export function VacancyWaterfallView({
     [data, endDate, reportView, requisitions, stageCountMode, startDate]
   );
   const funnelRows = useMemo(
-    () => buildDashboardPipelineFunnelRows(data, requisitions, funnelStartDate, funnelEndDate, funnelLevelBands, funnelChannel, language),
-    [data, funnelChannel, funnelEndDate, funnelLevelBands, funnelStartDate, language, requisitions]
+    () => buildDashboardPipelineFunnelRows(data, requisitions, funnelStartDate, funnelEndDate, funnelView, funnelLevelBands, funnelChannel, language),
+    [data, funnelChannel, funnelEndDate, funnelLevelBands, funnelStartDate, funnelView, language, requisitions]
   );
+  const sourceRows = useMemo(
+    () => buildSourceEffectivenessRows(data, candidateOffers, requisitions, funnelStartDate, funnelEndDate, funnelView, funnelLevelBands, funnelChannel, language),
+    [data, candidateOffers, requisitions, funnelStartDate, funnelEndDate, funnelView, funnelLevelBands, funnelChannel, language]
+  );
+  const funnelHelp = language === "th"
+    ? "ผู้สมัครมาจากยอดรายสัปดาห์ที่บันทึกไว้ ขั้นตอนจริงนับผู้สมัครไม่ซ้ำที่มีผลผ่านในช่วงวันที่เลือก หนึ่งครั้งต่อผู้สมัครต่อขั้นตอน Resume Screening เป็นขั้นแสดงผลที่นับผู้สมัครซึ่งเข้าสู่ Phone Screen ไม่จำเป็นต้องผ่าน Con% เทียบกับขั้นก่อนหน้า Yield เทียบกับผู้สมัคร และความกว้างแท่งเทียบกับผู้สมัคร"
+    : "Applicants come from saved weekly sourcing counts. Each real stage counts distinct candidates with a passed result dated in the selected range, once per candidate per stage. Derived Resume Screening counts candidates who reached Phone Screen, whether or not they passed. Con% compares with the preceding row, Yield with Applicants, and bar width with Applicants.";
+  const funnelExportWidth = 1920;
+  const funnelExportHeight = 1080;
   const funnelApplicantTotal = funnelRows[0]?.count ?? 0;
   const funnelChannelOptions = useMemo(() => buildFunnelChannelOptions(data, language), [data, language]);
   const funnelChannelLabel = channelFilterLabel(funnelChannel, language);
@@ -153,11 +175,15 @@ export function VacancyWaterfallView({
     if (/^\d{4}-\d{2}-\d{2}$/.test(params.get("end") ?? "")) setCustomEndDate(params.get("end")!);
     if (params.get("details") === "open") setWaterfallOpen(true);
     if (params.get("details") === "closed") setWaterfallOpen(false);
-    if (params.get("funnelStart")) setFunnelStartDate(params.get("funnelStart")!);
-    if (params.get("funnelEnd")) setFunnelEndDate(params.get("funnelEnd")!);
+    if (isReportView(params.get("funnelView"))) setFunnelView(params.get("funnelView") as ReportView);
+    else if (params.get("funnelStart") && params.get("funnelEnd")) setFunnelView("custom");
+    if (/^\d{4}-\d{2}$/.test(params.get("funnelMonth") ?? "")) setFunnelMonth(params.get("funnelMonth")!);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(params.get("funnelStart") ?? "")) setFunnelCustomStart(params.get("funnelStart")!);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(params.get("funnelEnd") ?? "")) setFunnelCustomEnd(params.get("funnelEnd")!);
     const savedLevelBands = (params.get("funnelLevel") ?? "").split(",").filter(isFunnelLevelBand);
     if (savedLevelBands.length > 0) setFunnelLevelBands(savedLevelBands);
     if (params.get("funnelChannel")) setFunnelChannel(params.get("funnelChannel")!);
+    if (params.get("funnelLegend") === "off") setFunnelLegend(false);
     if (params.get("funnel") === "open") setFunnelOpen(true);
     if (params.get("funnel") === "closed") setFunnelOpen(false);
     setUrlStateReady(true);
@@ -177,15 +203,18 @@ export function VacancyWaterfallView({
       reportView,
       reportMonth: reportView === "custom" ? null : reportMonth,
       details: waterfallOpen ? "open" : "closed",
-      funnelStart: funnelStartDate,
-      funnelEnd: funnelEndDate,
+      funnelView,
+      funnelMonth: funnelView === "custom" ? null : funnelMonth,
+      funnelStart: funnelView === "custom" ? funnelCustomStart : null,
+      funnelEnd: funnelView === "custom" ? funnelCustomEnd : null,
       funnelLevel: funnelLevelBands.length > 0 ? funnelLevelBands.join(",") : null,
       funnelChannel,
+      funnelLegend: funnelLegend ? "on" : "off",
       funnel: funnelOpen ? "open" : "closed"
     });
-  }, [customEndDate, customStartDate, waterfallOpen, funnelChannel, funnelEndDate, funnelLevelBands, funnelOpen, funnelStartDate, reportMonth, reportView, urlStateReady]);
+  }, [customEndDate, customStartDate, waterfallOpen, funnelChannel, funnelCustomEnd, funnelCustomStart, funnelLevelBands, funnelLegend, funnelMonth, funnelOpen, funnelView, reportMonth, reportView, urlStateReady]);
 
-  async function exportPng(surface: HTMLDivElement | null, filename: string) {
+  async function exportPng(surface: HTMLDivElement | null, filename: string, pixelRatio = 2) {
     if (!surface) return;
     setExportPreparing(true);
     setExportError(false);
@@ -195,11 +224,12 @@ export function VacancyWaterfallView({
       const width = surface.scrollWidth;
       const height = surface.scrollHeight;
       if (width < 2 || height < 2) throw new Error("Export surface has no dimensions");
+      if (surface === funnelExportRef.current && (width > surface.clientWidth + 1 || height > surface.clientHeight + 1)) throw new Error("Pipeline export content exceeds its slide");
       const dataUrl = await toPng(surface, {
         backgroundColor: "#ffffff",
         cacheBust: true,
         height,
-        pixelRatio: 2,
+        pixelRatio,
         style: { left: "0", opacity: "1", position: "static", top: "0", transform: "none", visibility: "visible" },
         width
       });
@@ -275,8 +305,8 @@ export function VacancyWaterfallView({
           <h2 className="min-w-0 flex-1"><button type="button" className="flex min-h-11 w-full items-center justify-between gap-3 text-left focus:outline-none focus:ring-2 focus:ring-primary" aria-expanded={waterfallOpen} aria-controls={waterfallContentId} onClick={() => setWaterfallOpen(value => !value)}><span><strong className="block text-lg font-semibold text-navy">{translate(language, "vacancyWaterfall")} &amp; {translate(language, "activeRequisitionsSelectedRange")}</strong><span className="text-sm font-medium text-slate">{formatDate(startDate, language)} – {formatDate(endDate, language)} · {translate(language, "activeRequisitionsInRange", { count: formatNumber(requisitionRows.length, language), start: formatDate(startDate, language), end: formatDate(endDate, language) })}</span></span><ChevronDown size={20} className={waterfallOpen ? "rotate-180" : ""} aria-hidden="true" /></button></h2>
           <div className="flex flex-wrap items-center gap-2 print:hidden">
           <ReportHelp label={language === "th" ? "คำอธิบายกราฟอัตราว่าง" : "Vacancy Waterfall help"} text={language === "th" ? "แสดงการเปลี่ยนแปลงอัตราว่างจากต้นช่วงถึงปลายช่วง แท่งสีแยกสถานที่และประเภทคำขอ การบรรจุลดอัตราว่าง ตัวกรองรายงานนี้แยกจากผลการสรรหาด้านบน" : "Tracks open vacancies from the start to the end of the selected range. Stacks separate sites and request types; fills reduce open vacancies. These report filters are independent of Recruitment Performance above."} />
-          <Button type="button" size="sm" variant="secondary" icon={<ImageDown size={16} />} disabled={exportPreparing || !validReportRange} onClick={() => exportPng(chartExportRef.current, `vacancy-waterfall-${startDate}-to-${endDate}.png`)}>{translate(language, "vacancyWaterfall")} PNG</Button>
-          <Button type="button" size="sm" variant="secondary" icon={<Download size={16} />} disabled={exportPreparing || !validReportRange} onClick={() => { setExportColumns(defaultExportColumns()); setExportOpen(true); }}>{translate(language, "activeRequisitionsSelectedRange")} · {translate(language, "export")}</Button>
+          <Button type="button" size="sm" variant="secondary" icon={<ImageDown size={16} />} aria-label={`${translate(language, "export")} ${translate(language, "vacancyWaterfall")} PNG`} title={`${translate(language, "export")} ${translate(language, "vacancyWaterfall")} PNG`} disabled={exportPreparing || !validReportRange} onClick={() => exportPng(chartExportRef.current, `vacancy-waterfall-${startDate}-to-${endDate}.png`)}>{translate(language, "export")}</Button>
+          <Button type="button" size="sm" variant="secondary" icon={<Download size={16} />} aria-label={`${translate(language, "export")} ${translate(language, "activeRequisitionsSelectedRange")}`} title={`${translate(language, "export")} ${translate(language, "activeRequisitionsSelectedRange")}`} disabled={exportPreparing || !validReportRange} onClick={() => { setExportColumns(defaultExportColumns()); setExportOpen(true); }}>{translate(language, "export")}</Button>
           </div>
         </div>
         <div id={waterfallContentId} hidden={!waterfallOpen} className="border-t border-[#E4E9F2] bg-white py-4">
@@ -327,6 +357,7 @@ export function VacancyWaterfallView({
           <button
             type="button"
             className="flex min-w-0 flex-1 items-center justify-between gap-3 text-left"
+            aria-expanded={funnelOpen}
             onClick={() => setFunnelOpen((open) => !open)}
           >
             <span>
@@ -338,25 +369,32 @@ export function VacancyWaterfallView({
             <ChevronDown className={`shrink-0 transition-transform motion-reduce:transition-none ${funnelOpen ? "rotate-180" : ""}`} size={20} />
           </button>
           <div className="flex flex-wrap gap-2 print:hidden">
-            <Button type="button" size="sm" variant="secondary" icon={<ImageDown size={16} />} disabled={exportPreparing} onClick={() => exportPng(funnelExportRef.current, `pipeline-funnel-${funnelStartDate}-to-${funnelEndDate}.png`)}>{translate(language, "exportPng")}</Button>
+            <Button type="button" size="sm" variant="secondary" icon={<ImageDown size={16} />} aria-label={`${translate(language, "export")} ${translate(language, "recruitmentPipelineHealth")} PNG`} title={`${translate(language, "export")} ${translate(language, "recruitmentPipelineHealth")} PNG`} disabled={exportPreparing || !validFunnelRange} onClick={() => exportPng(funnelExportRef.current, `pipeline-funnel-${funnelStartDate}-to-${funnelEndDate}.png`, 2)}>{translate(language, "export")}</Button>
           </div>
         </div>
         {funnelOpen ? (
           <div className="grid min-w-0 gap-4 border-t border-[#E4E9F2] bg-white p-4 sm:p-6 lg:p-8">
-            <div className="grid gap-3 rounded-2xl border border-[#E4E9F2] bg-[#F8FAFD] p-3 sm:grid-cols-2 lg:grid-cols-[repeat(4,minmax(0,10rem))_auto] sm:items-end">
-              <Field label={translate(language, "startDate")} className="text-xs font-medium"><DayDateSelector ariaLabel={translate(language, "startDate")} language={language} name="funnel_start" value={funnelStartDate} onChange={(event) => setFunnelStartDate(event.target.value)} required /></Field>
-              <Field label={translate(language, "endDate")} className="text-xs font-medium"><DayDateSelector ariaLabel={translate(language, "endDate")} language={language} name="funnel_end" value={funnelEndDate} onChange={(event) => setFunnelEndDate(event.target.value)} required /></Field>
+            <div data-testid="pipeline-filters" className={`grid min-w-0 gap-2 rounded-2xl border border-[#E4E9F2] bg-[#F8FAFD] p-3 sm:grid-cols-2 min-[1080px]:items-end ${funnelView === "custom" ? "min-[1080px]:grid-cols-[repeat(6,minmax(0,1fr))]" : "min-[1080px]:grid-cols-[repeat(5,minmax(0,1fr))]"}`}>
+              <Field label={translate(language, "metricView")} className="min-w-0 text-xs font-medium"><CommandSelector density="compact" ariaLabel={`${translate(language, "recruitmentPipelineHealth")} ${translate(language, "metricView")}`} emptyLabel={translate(language, "metricView")} options={(["mtd", "ytd", "pim", "custom"] as ReportView[]).map((value) => ({ value, label: reportViewLabel(value, language) }))} value={funnelView} onValueChange={(value) => setFunnelView(value as ReportView)} /></Field>
+              {funnelView === "custom" ? <><Field label={translate(language, "startDate")} className="min-w-0 text-xs font-medium"><DayDateSelector ariaLabel={`${translate(language, "recruitmentPipelineHealth")} ${translate(language, "startDate")}`} language={language} name="funnel_start" value={funnelCustomStart} onChange={(event) => setFunnelCustomStart(event.target.value)} required /></Field><Field label={translate(language, "endDate")} className="min-w-0 text-xs font-medium"><DayDateSelector ariaLabel={`${translate(language, "recruitmentPipelineHealth")} ${translate(language, "endDate")}`} language={language} name="funnel_end" value={funnelCustomEnd} onChange={(event) => setFunnelCustomEnd(event.target.value)} required /></Field></> : <Field label={translate(language, "reportMonth")} className="min-w-0 text-xs font-medium"><CommandMonthSelector ariaLabel={`${translate(language, "recruitmentPipelineHealth")} ${translate(language, "reportMonth")}`} monthLabel={(month) => monthPickerMonthLabel(month, language)} previousYearLabel={translate(language, "previousYear")} nextYearLabel={translate(language, "nextYear")} value={funnelMonth} onValueChange={setFunnelMonth} /></Field>}
               <DashboardMultiFilterPicker id="funnel-level-options" label={translate(language, "level")} language={language} options={localizedFunnelLevelOptions} values={funnelLevelBands} onValuesChange={(values) => setFunnelLevelBands(values as FunnelLevelBand[])} />
               <DashboardFilterPicker id="funnel-channel-options" label={translate(language, "channel")} options={funnelChannelOptions} value={funnelChannel} onValueChange={setFunnelChannel} />
+              <div className="grid min-w-0 gap-1.5 text-xs font-semibold text-slate"><span className="truncate" title={language === "th" ? "คำอธิบายสีช่องทาง" : "Channel legend"}>{language === "th" ? "คำอธิบายสีช่องทาง" : "Channel legend"}</span><span className="flex min-h-10 items-center text-sm text-navy"><button type="button" role="switch" aria-label={language === "th" ? "คำอธิบายสีช่องทาง" : "Channel legend"} aria-checked={funnelLegend} title={language === "th" ? "สลับคำอธิบายสีช่องทาง" : "Toggle channel legend"} onClick={() => setFunnelLegend((value) => !value)} className="ats-square-switch"><span className="ats-square-switch-label" aria-hidden="true">{funnelLegend ? (language === "th" ? "เปิด" : "ON") : (language === "th" ? "ปิด" : "OFF")}</span><span className="ats-square-switch-thumb" aria-hidden="true" /></button></span></div>
             </div>
+            {validFunnelRange ? null : <p role="alert" className="text-sm font-medium text-danger">{translate(language, "invalidCustomDateRange")}</p>}
+            <div className="grid min-w-0 gap-3 min-[1080px]:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]" data-testid="pipeline-source-layout">
             <PipelineFunnel
               language={language}
               rows={funnelRows}
               title={translate(language, "recruitmentPipelineHealth")}
-              subtitle={translate(language, "funnelSubtitle")}
-              meta={`${funnelLevelLabel(funnelLevelBands, language)} - ${funnelChannelLabel}`}
+              helpText={funnelHelp}
+              compactAtDesktop
               totalValue={funnelApplicantTotal}
+              showTotalSummary={false}
+              showChannelLegend={funnelLegend}
             />
+            <SourceEffectiveness rows={sourceRows} language={language} />
+            </div>
             <p className="text-sm font-medium text-slate">{funnelApplicantTotal === 0 ? translate(language, "noApplicantsMatchFunnelFilters") : translate(language, "topBottleneck", { value: topFunnelBottleneck(funnelRows, language) })}</p>
           </div>
         ) : null}
@@ -364,7 +402,7 @@ export function VacancyWaterfallView({
 
       <div ref={requisitionExportRef} className="export-report-surface" aria-hidden="true">
         <ReportHeader exportMode language={language} title={translate(language, "activeRequisitionsSelectedRange")} startDate={startDate} endDate={endDate} meta={translate(language, "stageCountModeMeta", { mode: translate(language, stageCountMode === "status" ? "pipelineStatus" : stageCountMode === "activity" ? "pipelineActivity" : "pipelineAccum") })} />
-        <RequisitionDetailTable rows={requisitionRows} language={language} printMode />
+        <RequisitionExportTable rows={requisitionRows} language={language} organizationRows={organizationRows} columns={exportColumns} />
       </div>
       <ActiveRequisitionExportModal open={exportOpen} language={language} rows={requisitionRows} organizationRows={organizationRows} columns={exportColumns} onClose={() => setExportOpen(false)} onColumnsChange={setExportColumns} onExportXlsx={() => exportRequisitionDetailXlsx(exportColumns)} onExportPng={() => exportPng(requisitionExportRef.current, `active-requisitions-${startDate}-to-${endDate}.png`)} />
       <StageCandidateModal language={language} drilldown={stageDrilldown} onClose={() => setStageDrilldown(null)} onOpenCandidate={(candidate) => setReportCandidate({ ...candidate, personInCharge: stageDrilldown?.row.person_in_charge ?? "" })} />
@@ -374,17 +412,22 @@ export function VacancyWaterfallView({
         <VacancyWaterfallChart sites={requisitions.map(row => row.site)} isExport breakdownOpen={executiveBreakdownOpen} language={language} rows={waterfallRows} startDate={startDate} endDate={endDate} />
       </div>
 
-      <div ref={funnelExportRef} className="export-report-surface" aria-hidden="true">
+      <div ref={funnelExportRef} className="export-report-surface flex flex-col" style={{ width: funnelExportWidth, minWidth: funnelExportWidth, height: funnelExportHeight, minHeight: funnelExportHeight }} aria-hidden="true">
         <ReportHeader exportMode language={language} title={translate(language, "recruitmentPipelineHealthSelectedRange")} startDate={funnelStartDate} endDate={funnelEndDate} />
-        <p className="px-4 pb-3 text-sm font-medium text-slate sm:px-6 lg:px-8">{translate(language, "levelMeta")}: {funnelLevelLabel(funnelLevelBands, language)} - {translate(language, "channelMeta")}: {funnelChannelLabel}</p>
+        <p className="px-4 pb-3 text-sm font-medium text-slate sm:px-6 lg:px-8">{reportViewLabel(funnelView, language)} · {translate(language, "levelMeta")}: {funnelLevelLabel(funnelLevelBands, language)} · {translate(language, "channelMeta")}: {funnelChannelLabel} · {language === "th" ? "คำอธิบายสีช่องทาง" : "Channel legend"}: {funnelLegend ? (language === "th" ? "เปิด" : "On") : (language === "th" ? "ปิด" : "Off")}</p>
+        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,3fr)_minmax(0,2fr)] items-stretch gap-3">
         <PipelineFunnel
           language={language}
           rows={funnelRows}
           title={translate(language, "recruitmentPipelineHealth")}
-          subtitle={translate(language, "funnelSubtitle")}
-          meta={`${funnelLevelLabel(funnelLevelBands, language)} - ${funnelChannelLabel}`}
+          helpText={funnelHelp}
+          exportMode
           totalValue={funnelApplicantTotal}
+          showTotalSummary={false}
+          showChannelLegend={funnelLegend}
         />
+        <SourceEffectiveness rows={sourceRows} language={language} exportMode />
+        </div>
       </div>
 
       {exportPreparing ? (
@@ -432,9 +475,9 @@ function DashboardFilterPicker({
   }, []);
 
   return (
-    <div ref={ref} className="relative grid gap-1.5 text-sm font-medium text-navy">
-      <span className="text-xs font-semibold text-slate">{label}</span>
-      <button type="button" className="flex min-h-10 w-full items-center gap-2 rounded-xl border border-[#B8CCE4] bg-white px-3 text-left text-sm font-semibold text-navy shadow-sm transition hover:border-primary/60 hover:bg-[#FBFDFF] focus:outline-none focus:ring-2 focus:ring-primary/20" aria-haspopup="listbox" aria-expanded={open} aria-controls={id} onClick={() => setOpen((current) => !current)}>
+    <div ref={ref} className="relative grid min-w-0 gap-1.5 text-sm font-medium text-navy">
+      <span className="truncate text-xs font-semibold text-slate" title={label}>{label}</span>
+      <button type="button" className="flex min-h-10 w-full min-w-0 items-center gap-1 rounded-xl border border-[#B8CCE4] bg-white px-2 text-left text-sm font-semibold text-navy shadow-sm transition hover:border-primary/60 hover:bg-[#FBFDFF] focus:outline-none focus:ring-2 focus:ring-primary/20" aria-label={`${label}: ${selectedLabel}`} title={`${label}: ${selectedLabel}`} aria-haspopup="listbox" aria-expanded={open} aria-controls={id} onClick={() => setOpen((current) => !current)}>
         <SlidersHorizontal size={15} className="shrink-0 text-primary" aria-hidden="true" />
         <span className="min-w-0 flex-1 truncate" title={selectedLabel}>{selectedLabel}</span>
         <ChevronDown size={16} className={`shrink-0 text-slate transition-transform ${open ? "rotate-180" : ""}`} aria-hidden="true" />
@@ -466,9 +509,9 @@ function DashboardMultiFilterPicker({ id, label, language, options, values, onVa
     return () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", closeOnEscape); };
   }, []);
 
-  return <div ref={ref} className="relative grid gap-1.5 text-sm font-medium text-navy">
-    <span className="text-xs font-semibold text-slate">{label}</span>
-    <button type="button" className="flex min-h-10 w-full items-center gap-2 rounded-xl border border-[#B8CCE4] bg-white px-3 text-left text-sm font-semibold text-navy shadow-sm transition hover:border-primary/60 hover:bg-[#FBFDFF] focus:outline-none focus:ring-2 focus:ring-primary/20" aria-haspopup="listbox" aria-expanded={open} aria-controls={id} onClick={() => setOpen((current) => !current)}><SlidersHorizontal size={15} className="shrink-0 text-primary" aria-hidden="true" /><span className="min-w-0 flex-1 truncate" title={selectedLabel}>{selectedLabel}</span><ChevronDown size={16} className={`shrink-0 text-slate transition-transform ${open ? "rotate-180" : ""}`} aria-hidden="true" /></button>
+  return <div ref={ref} className="relative grid min-w-0 gap-1.5 text-sm font-medium text-navy">
+    <span className="truncate text-xs font-semibold text-slate" title={label}>{label}</span>
+    <button type="button" className="flex min-h-10 w-full min-w-0 items-center gap-1 rounded-xl border border-[#B8CCE4] bg-white px-2 text-left text-sm font-semibold text-navy shadow-sm transition hover:border-primary/60 hover:bg-[#FBFDFF] focus:outline-none focus:ring-2 focus:ring-primary/20" aria-label={`${label}: ${selectedLabel}`} title={`${label}: ${selectedLabel}`} aria-haspopup="listbox" aria-expanded={open} aria-controls={id} onClick={() => setOpen((current) => !current)}><SlidersHorizontal size={15} className="shrink-0 text-primary" aria-hidden="true" /><span className="min-w-0 flex-1 truncate" title={selectedLabel}>{selectedLabel}</span><ChevronDown size={16} className={`shrink-0 text-slate transition-transform ${open ? "rotate-180" : ""}`} aria-hidden="true" /></button>
     {open ? <div id={id} role="listbox" aria-multiselectable="true" aria-label={label} className="absolute z-30 mt-[4.45rem] grid w-full min-w-[12rem] grid-cols-1 gap-1.5 rounded-2xl border border-[#C9D5E6] bg-white p-2 shadow-[0_18px_40px_rgba(11,19,43,0.18)]">
       <label className="flex min-h-9 items-center gap-2 border-b border-[#E4E9F2] pb-1.5 text-sm font-semibold"><input type="checkbox" checked={allSelected} onChange={(event) => onValuesChange(event.target.checked ? options.map((option) => option.value) : [])} />{translate(language, "selectAll")}</label>
       {options.map((option) => <label key={option.value} role="option" aria-selected={values.includes(option.value)} className="flex min-h-9 items-center gap-2 rounded-lg px-1 text-sm font-semibold hover:bg-[#F8FAFD]"><input type="checkbox" checked={values.includes(option.value)} onChange={(event) => onValuesChange(event.target.checked ? [...values, option.value] : values.filter((value) => value !== option.value))} />{option.label}</label>)}
@@ -748,19 +791,27 @@ function siteSummarySegments(
 }
 
 function exportColumnLabel(key: ExportColumnKey, language: Language) {
+  const channel = SOURCING_CHANNELS.find((item) => item.count === key);
+  if (channel) return `${channel.label} ${translate(language, "applicants")}`;
   return key === "department" ? "Department" : key === "section" ? "Section" : key === "department_th" ? translate(language, "departmentThai") : key === "section_th" ? translate(language, "sectionThai") : key === "request_type" ? translate(language, "requestType") : key === "requisition_date" ? translate(language, "requisitionDate") : key === "person_in_charge" ? translate(language, "personInCharge") : key === "actual_age" ? translate(language, "actualAge") : key === "filled_date" ? translate(language, "filledDate") : key === "applicants" ? translate(language, "applicants") : key === "sla" ? translate(language, "slaAtPeriodEnd") : detailStages.includes(key as ProcessStage) ? processStageLabel(language, key as ProcessStage) : translate(language, key);
 }
 
 function ActiveRequisitionExportModal({ open, language, rows, organizationRows, columns, onClose, onColumnsChange, onExportXlsx, onExportPng }: { open: boolean; language: Language; rows: RequisitionDetailRow[]; organizationRows: DepartmentSectionRow[]; columns: ExportColumnKey[]; onClose: () => void; onColumnsChange: (columns: ExportColumnKey[]) => void; onExportXlsx: () => void; onExportPng: () => void }) {
-  const registry: ExportColumnKey[] = ["site", "department", "department_th", "section", "section_th", "position", "level", "vacancy", "request_type", "requisition_date", "person_in_charge", "status", "detail", "applicants", ...detailStages, "actual_age", "sla", "filled_date"];
+  const registry: ExportColumnKey[] = ["site", "department", "department_th", "section", "section_th", "position", "level", "vacancy", "request_type", "requisition_date", "person_in_charge", "status", "detail", "applicants", ...SOURCING_CHANNELS.map((channel) => channel.count), ...detailStages, "actual_age", "sla", "filled_date"];
   const label = (key: ExportColumnKey) => exportColumnLabel(key, language);
   const [dragging, setDragging] = useState<ExportColumnKey | null>(null);
   const [insertBefore, setInsertBefore] = useState<ExportColumnKey | null>(null);
-  return <Modal open={open} title={translate(language, "export")} onClose={onClose} width="max-w-6xl"><div className="grid gap-4"><p className="text-sm text-slate">{translate(language, "exportColumnHelp")}</p><div className="grid max-h-52 grid-cols-1 gap-2 overflow-y-auto rounded-xl border border-[#D7DEE8] p-3 sm:grid-cols-2 lg:grid-cols-4">{registry.map((key) => <label key={key} className="flex min-w-0 items-center justify-between gap-2 rounded-lg border border-[#E4E9F2] bg-white px-3 py-2.5 shadow-sm transition hover:border-[#B8CCE4] hover:bg-[#F8FAFD]"><span className="flex min-w-0 items-center gap-1.5 text-sm font-medium text-navy"><span className="truncate">{label(key)}</span><span className="group relative shrink-0"><Info size={14} className="text-slate" aria-label={translate(language, "exportFieldDescription", { field: label(key) })} /><span role="tooltip" className="pointer-events-none absolute bottom-full right-0 z-30 mb-2 w-64 rounded-lg bg-navy px-3 py-2 text-xs font-normal leading-relaxed text-white opacity-0 shadow-xl transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">{exportFieldDescription(key, language)}<span className="absolute right-1.5 top-full border-x-4 border-t-4 border-x-transparent border-t-navy" /></span></span></span><input type="checkbox" checked={columns.includes(key)} onChange={() => onColumnsChange(columns.includes(key) ? columns.filter((value) => value !== key) : [...columns, key])} /></label>)}</div><div className="overflow-x-auto rounded-xl border border-[#D7DEE8]"><table className="min-w-max text-xs"><thead><tr>{columns.map((key) => <th key={key} className={`border-b bg-[#F8FAFD] px-3 py-2 text-left transition-[padding,margin] ${insertBefore === key && dragging !== key ? "border-l-4 border-l-primary pl-7" : ""}`} onDragEnter={(event) => { event.preventDefault(); if (dragging && dragging !== key) setInsertBefore(key); }} onDragOver={(event) => { event.preventDefault(); if (dragging && dragging !== key) setInsertBefore(key); }} onDrop={(event) => { event.preventDefault(); const from = (event.dataTransfer.getData("text/plain") || dragging) as ExportColumnKey | null; if (from && from !== key) { const next = columns.filter((item) => item !== from); const targetIndex = next.indexOf(key); if (targetIndex >= 0) { next.splice(targetIndex, 0, from); onColumnsChange(next); } } setDragging(null); setInsertBefore(null); }}><button type="button" draggable onDragStart={(event) => { event.dataTransfer.setData("text/plain", key); event.dataTransfer.effectAllowed = "move"; setDragging(key); }} onDragEnd={() => { setDragging(null); setInsertBefore(null); }} className="inline-flex cursor-grab items-center gap-1.5 font-semibold text-navy active:cursor-grabbing"><ArrowLeftRight size={15} aria-hidden="true" /> {label(key)}</button></th>)}</tr></thead><tbody>{rows.slice(0, 5).map((row) => <tr key={row.doc_id}>{columns.map((key) => <td key={key} className="max-w-44 truncate border-t px-3 py-2" title={String(exportValue(row, key, language, organizationRows))}>{previewValue(exportValue(row, key, language, organizationRows))}</td>)}</tr>)}</tbody></table></div><div className="flex flex-wrap justify-end gap-2"><Button type="button" variant="secondary" onClick={() => onColumnsChange(defaultExportColumns())}>{translate(language, "restoreDefault")}</Button><Button type="button" variant="secondary" disabled={!columns.length} onClick={onExportPng}>{translate(language, "exportPng")}</Button><Button type="button" disabled={!columns.length} onClick={onExportXlsx}>{translate(language, "exportDetailXlsx")}</Button></div></div></Modal>;
+  return <Modal open={open} title={translate(language, "export")} onClose={onClose} width="max-w-6xl"><div className="grid gap-4"><p className="text-sm text-slate">{translate(language, "exportColumnHelp")}</p><div className="grid max-h-52 grid-cols-1 gap-2 overflow-y-auto rounded-xl border border-[#D7DEE8] p-3 sm:grid-cols-2 lg:grid-cols-4">{registry.map((key) => <label key={key} className="flex min-w-0 items-center justify-between gap-2 rounded-lg border border-[#E4E9F2] bg-white px-3 py-2.5 shadow-sm transition hover:border-[#B8CCE4] hover:bg-[#F8FAFD]"><span className="flex min-w-0 items-center gap-1.5 text-sm font-medium text-navy"><span className="truncate">{label(key)}</span><span className="group relative shrink-0"><Info size={14} className="text-slate" aria-label={translate(language, "exportFieldDescription", { field: label(key) })} /><span role="tooltip" className="pointer-events-none absolute bottom-full right-0 z-30 mb-2 w-64 rounded-lg bg-navy px-3 py-2 text-xs font-normal leading-relaxed text-white opacity-0 shadow-xl transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">{exportFieldDescription(key, language)}<span className="absolute right-1.5 top-full border-x-4 border-t-4 border-x-transparent border-t-navy" /></span></span></span><input type="checkbox" checked={columns.includes(key)} onChange={() => onColumnsChange(columns.includes(key) ? columns.filter((value) => value !== key) : [...columns, key])} /></label>)}</div><div className="overflow-x-auto rounded-xl border border-[#D7DEE8]"><table className="min-w-max text-xs"><thead><tr>{columns.map((key) => <th key={key} className={`border-b bg-[#F8FAFD] px-3 py-2 text-left transition-[padding,margin] ${insertBefore === key && dragging !== key ? "border-l-4 border-l-primary pl-7" : ""}`} onDragEnter={(event) => { event.preventDefault(); if (dragging && dragging !== key) setInsertBefore(key); }} onDragOver={(event) => { event.preventDefault(); if (dragging && dragging !== key) setInsertBefore(key); }} onDrop={(event) => { event.preventDefault(); const from = (event.dataTransfer.getData("text/plain") || dragging) as ExportColumnKey | null; if (from && from !== key) { const next = columns.filter((item) => item !== from); const targetIndex = next.indexOf(key); if (targetIndex >= 0) { next.splice(targetIndex, 0, from); onColumnsChange(next); } } setDragging(null); setInsertBefore(null); }}><button type="button" draggable onDragStart={(event) => { event.dataTransfer.setData("text/plain", key); event.dataTransfer.effectAllowed = "move"; setDragging(key); }} onDragEnd={() => { setDragging(null); setInsertBefore(null); }} className="inline-flex cursor-grab items-center gap-1.5 font-semibold text-navy active:cursor-grabbing"><ArrowLeftRight size={15} aria-hidden="true" /> {label(key)}</button></th>)}</tr></thead><tbody>{rows.slice(0, 5).map((row) => <tr key={row.doc_id}>{columns.map((key) => <td key={key} className="max-w-44 truncate border-t px-3 py-2" title={String(exportValue(row, key, language, organizationRows))}>{previewValue(exportValue(row, key, language, organizationRows))}</td>)}</tr>)}</tbody></table></div><div className="flex flex-wrap justify-end gap-2"><Button type="button" variant="secondary" onClick={() => onColumnsChange(defaultExportColumns())}>{translate(language, "restoreDefault")}</Button><Button type="button" variant="secondary" icon={<ImageDown size={16} />} aria-label={`${translate(language, "export")} ${translate(language, "activeRequisitionsSelectedRange")} PNG`} title={`${translate(language, "export")} ${translate(language, "activeRequisitionsSelectedRange")} PNG`} disabled={!columns.length} onClick={onExportPng}>{translate(language, "export")}</Button><Button type="button" icon={<FileSpreadsheet size={16} />} aria-label={`${translate(language, "export")} ${translate(language, "activeRequisitionsSelectedRange")} XLSX`} title={`${translate(language, "export")} ${translate(language, "activeRequisitionsSelectedRange")} XLSX`} disabled={!columns.length} onClick={onExportXlsx}>{translate(language, "export")}</Button></div></div></Modal>;
+}
+
+function RequisitionExportTable({ rows, language, organizationRows, columns }: { rows: RequisitionDetailRow[]; language: Language; organizationRows: DepartmentSectionRow[]; columns: ExportColumnKey[] }) {
+  return <div className="print-detail-scroll"><table className="print-detail-table min-w-full border-collapse text-xs"><thead><tr>{columns.map((key) => <th key={key} className="border border-[#D7DEE8] bg-[#F8FAFD] px-3 py-2 text-left font-semibold">{exportColumnLabel(key, language)}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={row.doc_id}>{columns.map((key) => <td key={key} className="border border-[#D7DEE8] px-3 py-2">{exportValue(row, key, language, organizationRows)}</td>)}</tr>)}</tbody></table></div>;
 }
 
 function previewValue(value: string | number) { const text = String(value); return text.length > 28 ? `${text.slice(0, 25)}...` : text; }
 function exportFieldDescription(key: ExportColumnKey, language: Language) {
+  const channel = SOURCING_CHANNELS.find((item) => item.count === key);
+  if (channel) return language === "th" ? `จำนวนผู้สมัคร ${channel.label} จากข้อมูลรายสัปดาห์ของกลุ่มที่เชื่อมกับคำขอ กลุ่มที่เชื่อมหลายคำขอจะนับซ้ำในแต่ละคำขอ` : `${channel.label} applicants from linked groups' saved weekly updates. A group linked to multiple requisitions contributes its count to each.`;
   const english: Partial<Record<ExportColumnKey, string>> = {
     site: "Site: The operating location responsible for the requisition.", department: "Department: The requisition's department in the selected system language.", department_th: "Department (Thai): The canonical Thai department name stored with the requisition.", section: "Section: The requisition's section in the selected system language.", section_th: "Section (Thai): The canonical Thai section name stored with the requisition.", position: "Position: The requested job title.", level: "Job Level: The approved job grade for the requisition.", vacancy: "Vacancy: Total approved headcount requested.", request_type: "Request Type: Whether the requisition is new or a replacement.", requisition_date: "Requisition Date: The approved opening date (pr_approved_date).", person_in_charge: "Person in Charge: The recruiter assigned to manage the requisition.", status: "Status at Period End: Requisition state at the selected period end. Filled is derived from accepted offer coverage; Cancelled is a recorded status action.", detail: "Detail: The remark attached to that latest historical status record.", applicants: "Applicants: Applicants recorded through sourcing during the selected period.", actual_age: "Actual Age: Age of the requisition since the requisition opened (pr_approved_date).", sla: "SLA at Period End: SLA age at the filled date when filled; otherwise at the selected period end.", filled_date: "Filled Date: The most recent date that accepted offers met the approved headcount, as of the selected period end."
   };
@@ -769,6 +820,8 @@ function exportFieldDescription(key: ExportColumnKey, language: Language) {
 }
 
 function exportValue(row: RequisitionDetailRow, key: ExportColumnKey, language: Language, organizationRows: DepartmentSectionRow[] = []): string | number {
+  const channel = SOURCING_CHANNELS.find((item) => item.count === key);
+  if (channel) return row.applicant_channels[channel.count];
   if (detailStages.includes(key as ProcessStage)) return row.stage_counts[key as ProcessStage] ?? 0;
   const values: Record<string, string | number> = { site: row.site, department: organizationLabel(organizationRows, language, row.site, row.department, "department"), department_th: organizationLabel(organizationRows, "th", row.site, row.department, "department"), section: organizationLabel(organizationRows, language, row.site, row.section, "section") || "-", section_th: organizationLabel(organizationRows, "th", row.site, row.section, "section") || "-", position: row.position, level: row.level, vacancy: row.vacancy, request_type: requestTypeLabel(language, row.request_type), requisition_date: formatDate(row.requisition_date, language), person_in_charge: row.person_in_charge, status: translate(language, row.period_status === "ongoing" ? "ongoing" : row.period_status === "filled" ? "filled" : "cancel"), detail: row.period_detail ?? "-", applicants: row.applicant_count, actual_age: row.actual_age_days === null ? "-" : `${row.actual_age_days}d`, sla: slaExportValue(row.sla_state, language), filled_date: row.filled_date ? formatDate(row.filled_date, language) : "-" };
   return values[key];
@@ -1116,6 +1169,7 @@ function buildActiveRequisitionRows(data: DashboardData, requisitions: EnrichedR
         level: requisition.level ?? "-",
         vacancy: requisition.head_count,
         applicant_count: applicantCountForGroups(data, groupIds, startDate, endDate),
+        applicant_channels: Object.fromEntries(SOURCING_CHANNELS.map((channel) => [channel.count, applicantCountForGroups(data, groupIds, startDate, endDate, channel.label)])) as RequisitionDetailRow["applicant_channels"],
         request_type: requisition.request_type,
         requisition_date: requisitionDate,
         actual_age_days: calendarDayAge(requisitionDate, todayDate()),
@@ -1156,6 +1210,7 @@ function buildDashboardPipelineFunnelRows(
   requisitions: EnrichedRequisition[],
   startDate: string,
   endDate: string,
+  reportView: ReportView,
   levelBands: FunnelLevelBand[],
   channelFilter: FunnelChannelFilter,
   language: Language
@@ -1163,7 +1218,7 @@ function buildDashboardPipelineFunnelRows(
   if (!startDate || !endDate || startDate > endDate) return buildPipelineFunnelRows(0, emptyFunnelStageCounts(), language);
 
   const eligibleRequisitions = requisitions.filter((requisition) =>
-    requisition.status !== "cancel" && levelMatchesBands(requisition.level, levelBands)
+    isReportEligible(requisition, data, startDate, endDate, reportView) && levelMatchesBands(requisition.level, levelBands)
   );
   const eligibleDocIds = new Set(eligibleRequisitions.map((requisition) => requisition.doc_id));
   const groupIds = new Set<string>();
@@ -1198,6 +1253,61 @@ function buildDashboardPipelineFunnelRows(
     }
   }
   return buildPipelineFunnelRows(applicants, stages, language, segments);
+}
+
+function buildSourceEffectivenessRows(
+  data: DashboardData,
+  candidateOffers: Offer[],
+  requisitions: EnrichedRequisition[],
+  startDate: string,
+  endDate: string,
+  reportView: ReportView,
+  levelBands: FunnelLevelBand[],
+  channelFilter: FunnelChannelFilter,
+  language: Language
+): SourceEffectivenessRow[] {
+  if (!startDate || !endDate || startDate > endDate) return [];
+  const eligible = requisitions.filter((row) => isReportEligible(row, data, startDate, endDate, reportView) && levelMatchesBands(row.level, levelBands));
+  const docIds = new Set(eligible.map((row) => row.doc_id));
+  const groupIds = new Set(data.document_groups.filter((row) => docIds.has(row.doc_id) && row.group_id).map((row) => row.group_id as string));
+  const docGroupIds = docGroupIdsForGroupIds(data, groupIds);
+  const candidateById = new Map(data.candidates.map((candidate) => [candidate.candidate_id, candidate]));
+  const hiredByChannel = new Map<string, Set<string>>();
+  for (const offer of candidateOffers) {
+    const acceptedDate = validDateOnly(offer.accepted_date);
+    if (!acceptedDate || acceptedDate < startDate || acceptedDate > endDate || !docIds.has(offer.doc_id)) continue;
+    const candidate = candidateById.get(offer.candidate_id);
+    if (!candidate || !(candidate.group_id && groupIds.has(candidate.group_id)) && !(candidate.doc_group_id && docGroupIds.has(candidate.doc_group_id))) continue;
+    const key = candidate.channel?.trim() || "";
+    const ids = hiredByChannel.get(key) ?? new Set<string>();
+    ids.add(candidate.candidate_id);
+    hiredByChannel.set(key, ids);
+  }
+  const totalPhone = passedStageActivityCountsForDocGroups(data, docGroupIds, startDate, endDate)["Phone Screen"];
+  const knownPhone = SOURCING_CHANNELS.reduce((sum, channel) => sum + passedStageActivityCountsForDocGroups(data, docGroupIds, startDate, endDate, channel.label)["Phone Screen"], 0);
+  const knownHired = SOURCING_CHANNELS.reduce((sum, channel) => sum + (hiredByChannel.get(channel.label)?.size ?? 0), 0);
+  const knownRows: SourceEffectivenessRow[] = SOURCING_CHANNELS.map((channel) => ({
+    key: channel.enabled,
+    label: channel.label,
+    color: SOURCING_CHANNEL_COLORS[channel.enabled],
+    applicants: applicantCountForGroups(data, groupIds, startDate, endDate, channel.label),
+    phone: passedStageActivityCountsForDocGroups(data, docGroupIds, startDate, endDate, channel.label)["Phone Screen"],
+    hired: hiredByChannel.get(channel.label)?.size ?? 0
+  }));
+  const unknown: SourceEffectivenessRow = {
+    key: "unknown", label: translate(language, "sourcingUnknownChannel"), color: UNKNOWN_SOURCING_CHANNEL_COLOR,
+    applicants: 0, phone: Math.max(totalPhone - knownPhone, 0),
+    hired: Math.max(Array.from(hiredByChannel.values()).reduce((sum, ids) => sum + ids.size, 0) - knownHired, 0)
+  };
+  const rows = channelFilter === "all" ? [...knownRows, unknown] : knownRows.filter((row) => row.label === channelFilter);
+  if (channelFilter !== "all" && rows.length === 0) rows.push({
+    key: "unknown", label: channelFilter, color: UNKNOWN_SOURCING_CHANNEL_COLOR,
+    applicants: 0,
+    phone: passedStageActivityCountsForDocGroups(data, docGroupIds, startDate, endDate, channelFilter)["Phone Screen"],
+    hired: hiredByChannel.get(channelFilter)?.size ?? 0
+  });
+  return rows.filter((row) => row.applicants + row.phone + row.hired > 0)
+    .sort((a, b) => b.applicants - a.applicants || (a.key === "unknown" ? 1 : b.key === "unknown" ? -1 : SOURCING_CHANNELS.findIndex((channel) => channel.enabled === a.key) - SOURCING_CHANNELS.findIndex((channel) => channel.enabled === b.key)));
 }
 
 function buildPipelineFunnelRows(applicantTotal: number, stageCounts: FunnelStageCounts, language: Language, segments: Record<string, FunnelChannelSegment[]> = {}): PipelineFunnelRow[] {

@@ -91,7 +91,7 @@ export function RecruitmentPerformanceOverview({ language, data, requisitions, o
   return <section className={`${styles.root} ${styles.reportSection}`} aria-label={t.title} data-performance-overview>
     <header className={styles.header}>
       <h2 className={styles.barHeading} aria-label={t.title}><button type="button" className={styles.collapseButton} aria-label={t.title} aria-expanded={expanded} aria-controls={contentId} onClick={() => setExpanded(value => !value)}><span><strong>{t.title}</strong><span className={styles.barMetadata}>{metadata}</span></span><ChevronDown size={20} className={expanded ? styles.expandedChevron : ""} aria-hidden="true" /></button></h2>
-      <Button type="button" size="sm" variant="secondary" icon={<ImageDown size={14} />} disabled={exporting} onClick={exportPng}>{exporting ? t.loading : t.export}</Button>
+      <Button type="button" size="sm" variant="secondary" icon={<ImageDown size={14} />} aria-label={t.export} title={t.export} disabled={exporting} onClick={exportPng}>{exporting ? t.loading : translate(language, "export")}</Button>
     </header>
     <div id={contentId} hidden={!expanded} className={styles.reportContent}>
       <div className={styles.filters}>

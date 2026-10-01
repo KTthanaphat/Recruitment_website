@@ -317,9 +317,9 @@ test("Workspace Sourcing lists all weeks beside one editor and guards unsaved ch
   await expect(input).toHaveValue("");
   await dates.getByRole("button", { name: /Recorded/ }).last().click();
   await expect(input).toHaveValue(/8|12/);
-  await layout.getByRole("button", { name: "Week Starting" }).click();
-  await layout.getByRole("dialog", { name: "Week Starting" }).getByRole("button", { name: "Next month" }).click();
-  await layout.getByRole("dialog", { name: "Week Starting" }).getByRole("button", { name: "04/07/2026" }).click();
+  await layout.getByRole("button", { name: "Sourcing update date" }).click();
+  await layout.getByRole("dialog", { name: "Sourcing update date" }).getByRole("button", { name: "Next month" }).click();
+  await layout.getByRole("dialog", { name: "Sourcing update date" }).getByRole("button", { name: "04/07/2026" }).click();
   await expect(page).toHaveURL(/sourcingWeek=2026-07-04/);
   await expect(dates.getByRole("button", { name: /Recorded/ }).first()).toHaveAttribute("aria-current", "date");
   await page.setViewportSize({ width: 390, height: 800 });
@@ -826,6 +826,8 @@ test("stage channel bars use distinct group candidates through the selected week
   const summary = page.getByTestId("workspace-sourcing-summary");
   const bars = summary.getByTestId("workspace-sourcing-stage-bars");
   await expect(bars.locator("[data-stage]")).toHaveCount(6);
+  await expect(bars.locator('[data-stage="Phone Screen"] > div').first()).toHaveCSS("border-radius", "0px");
+  await expect(bars.locator('[data-stage="Phone Screen"] [data-channel]').first()).toHaveCSS("border-radius", "0px");
   await expect(bars.locator("[data-stage]").nth(1)).toHaveCSS("border-top-style", "dashed");
   const phoneBar = bars.locator('[data-stage="Phone Screen"]');
   await expect(phoneBar).toContainText("6");

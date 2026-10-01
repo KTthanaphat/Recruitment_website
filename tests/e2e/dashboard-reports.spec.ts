@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { inflateSync } from "node:zlib";
+import { Workbook } from "exceljs";
 import { previousSourcingReportingRange } from "../../src/lib/dates";
 import { formatSourcingWeekRange } from "../../src/lib/format";
 import { expectWorkspaceReady, installMockSupabase } from "./support/mock-supabase";
@@ -73,7 +74,7 @@ test("waterfall keeps only populated columns in the chart and PNG surface", asyn
 
 test("dashboard report uses calendar views, persists its month, and keeps expandable sections", async ({ page }) => {
   await installMockSupabase(page, { role: "admin_recruiter" });
-  await page.goto("/dashboard?reportView=pim&reportMonth=2026-07&details=open&funnel=open");
+  await page.goto("/dashboard?reportView=pim&reportMonth=2026-07&details=open&funnel=open&funnelMonth=2026-07");
   await expectWorkspaceReady(page);
 
   await expect(page.getByRole("heading", { name: "Vacancy Waterfall" })).toBeVisible();
@@ -81,23 +82,23 @@ test("dashboard report uses calendar views, persists its month, and keeps expand
   await expect(combinedReport).toHaveAttribute("aria-expanded", "true");
   await expect(page.getByRole("heading", { name: "Requisitions Active in Selected Period", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /Recruitment Pipeline Health in Selected Range/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Metric view" })).toContainText("Performance in Month");
-  await expect(page.getByRole("button", { name: "Report month" })).toContainText("Jul 2026");
+  await expect(page.getByRole("button", { name: "Metric view", exact: true })).toContainText("Performance in Month");
+  await expect(page.getByRole("button", { name: "Report month", exact: true })).toContainText("Jul 2026");
   await expect(page.getByRole("heading", { name: "Recruitment Pipeline Health" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Vacancy Waterfall PNG" })).toBeEnabled();
-  await expect(page.getByRole("button", { name: "Export PNG" })).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Export Vacancy Waterfall PNG" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Export Recruitment Pipeline Health PNG" })).toHaveCount(1);
   await expect(page.getByLabel("Recruitment channel colors").first()).toContainText("Facebook");
   await combinedReport.click();
   await expect(combinedReport).toHaveAttribute("aria-expanded", "false");
   await expect(page.getByRole("heading", { name: "Requisitions Active in Selected Period", exact: true })).toBeHidden();
-  await expect(page.getByRole("button", { name: "Vacancy Waterfall PNG" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Export Vacancy Waterfall PNG" })).toBeEnabled();
   await combinedReport.click();
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(combinedReport).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await expect(page.getByRole("button", { name: "Export PDF" })).toHaveCount(0);
-  await page.getByRole("button", { name: "Requisitions Active in Selected Period · Export" }).click();
-  await expect(page.getByRole("dialog").getByRole("button", { name: "Export detail XLSX", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Export Requisitions Active in Selected Period", exact: true }).click();
+  await expect(page.getByRole("dialog").getByRole("button", { name: "Export Requisitions Active in Selected Period XLSX" })).toBeVisible();
 });
 
 test("active requisitions expose ordered Activity, Status, and Accum stage metrics", async ({ page }) => {
@@ -114,7 +115,7 @@ test("active requisitions expose ordered Activity, Status, and Accum stage metri
 
 test("Pipeline Health channel segments match row totals and Workspace Sourcing colors", async ({ page }) => {
   await installMockSupabase(page, { role: "admin_recruiter" });
-  await page.goto("/dashboard?funnel=open");
+  await page.goto("/dashboard?funnel=open&funnelMonth=2026-07");
   await expectWorkspaceReady(page);
   const funnel = page.locator(".pipeline-funnel").first();
   const legend = funnel.getByLabel("Recruitment channel colors");
@@ -130,13 +131,307 @@ test("Pipeline Health channel segments match row totals and Workspace Sourcing c
   expect(totals.every((row) => row.count === row.segmentTotal)).toBe(true);
 });
 
+test("Pipeline report controls, legend toggle and Source effectiveness share one eligible period", async ({ page }) => {
+  const { data } = await installMockSupabase(page, { role: "admin_recruiter" });
+  data.candidates.find((row) => row.candidate_id === "C-PHONE-PASS")!.channel = "Unexpected channel";
+  data.sourcing_weekly_updates.find((row) => row.group_id === "GRP-ENG" && row.week_start === "2026-07-06")!.applicants_referral = 1;
+  data.offers[1].start_confirmation = "did_not_start";
+  data.offers.push({ ...data.offers[1], offer_id: 999, accepted_date: "2026-07-18" });
+  await page.setViewportSize({ width: 1080, height: 900 });
+  await page.goto("/dashboard?funnel=open&funnelView=pim&funnelMonth=2026-07");
+  await expectWorkspaceReady(page);
+  const funnel = page.locator(".pipeline-funnel").first();
+  const source = page.getByTestId("source-effectiveness").first();
+  await expect(funnel.getByTestId("pipeline-total-summary")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Recruitment Pipeline Health Metric view" })).toContainText("Performance in Month");
+  await expect(source.getByRole("heading", { name: "Source effectiveness" })).toBeVisible();
+  const referral = source.locator('.source-detail-wide tr[data-channel="channel_referral"]');
+  await expect(referral.locator("td").nth(2)).toContainText("(33%)");
+  await expect(referral.locator("td").nth(1)).toContainText("(300%)");
+  const referralPhoneBar = referral.locator('[data-mini-measure="phone"]');
+  await expect(referralPhoneBar).toHaveAttribute("aria-label", /of this channel's Applicants: 300%; bar capped at 100%/);
+  await expect(referralPhoneBar.locator("span.h-full")).toHaveCSS("width", /\d+px/);
+  await expect(referralPhoneBar.locator("[data-mini-baseline]")).toHaveCSS("background-color", "rgb(236, 221, 244)");
+  await expect(referralPhoneBar).toContainText(">100%");
+  await expect(source.locator('.source-detail-wide tr[data-channel="Unexpected channel"]')).toHaveCount(0);
+  const unknown = source.locator('.source-detail-wide tr[data-channel="unknown"]');
+  await expect(unknown.locator("td").nth(1)).toContainText("(—)");
+  await expect(unknown.locator('[data-mini-measure="phone"]')).toContainText("+");
+  await expect(unknown.locator('[data-mini-measure="phone"] [data-mini-track]')).toHaveAttribute("data-channel-tint", "#e4e8ed");
+  await expect(source.locator('[data-measure="phone"]')).toContainText("Phone Screening");
+  await source.getByRole("button", { name: "Source effectiveness help" }).click();
+  await expect(page.getByRole("tooltip")).toContainText("passed Phone Screen");
+  const headers = await funnel.locator(".grid").first().locator(":scope > div").allTextContents();
+  expect(headers.slice(0, 5).map((value) => value.trim())).toEqual(["Funnel", "Stage", "Count", "Con%", "Yield"]);
+  await expect(funnel.locator("[tabindex='0']").first()).toHaveCSS("justify-content", "flex-end");
+  await expect(funnel.locator("[tabindex='0']").first()).toHaveCSS("border-radius", "0px");
+  const legendSwitch = page.getByRole("switch", { name: "Channel legend" });
+  await expect(legendSwitch).toHaveCSS("width", "64px");
+  await expect(legendSwitch).toHaveCSS("height", "32px");
+  await expect(legendSwitch).toHaveCSS("background-color", "rgb(50, 153, 214)");
+  await expect(legendSwitch.locator(".ats-square-switch-label")).toHaveText("ON");
+  expect(await legendSwitch.evaluate((element) => element.querySelector(".ats-square-switch-thumb")!.getBoundingClientRect().x > element.querySelector(".ats-square-switch-label")!.getBoundingClientRect().x)).toBe(true);
+  expect(await legendSwitch.evaluate((element) => getComputedStyle(element, "::before").content)).toBe("none");
+  await legendSwitch.click();
+  await expect(legendSwitch.locator(".ats-square-switch-label")).toHaveText("OFF");
+  expect(await legendSwitch.evaluate((element) => element.querySelector(".ats-square-switch-thumb")!.getBoundingClientRect().x < element.querySelector(".ats-square-switch-label")!.getBoundingClientRect().x)).toBe(true);
+  await expect(funnel.getByLabel("Recruitment channel colors")).toHaveCount(0);
+  await expect(source.locator('[data-measure="applicants"] [data-channel]')).not.toHaveCount(0);
+  await expect(page).toHaveURL(/funnelLegend=off/);
+  await page.reload();
+  await expectWorkspaceReady(page);
+  await expect(page.getByRole("switch", { name: "Channel legend" })).not.toBeChecked();
+  await page.getByRole("switch", { name: "Channel legend" }).focus();
+  await page.keyboard.press("Space");
+  await expect(page.getByRole("switch", { name: "Channel legend" })).toBeChecked();
+  await page.getByRole("button", { name: "Recruitment Pipeline Health Metric view" }).click();
+  await page.getByRole("option", { name: "Year to Date" }).click();
+  await expect(page).toHaveURL(/funnelView=ytd/);
+  await expect(page.getByRole("button", { name: "Metric view", exact: true })).toContainText("Month to Date");
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test("Pipeline MTD eligibility differs from PIM and legacy dates restore Custom", async ({ page }) => {
+  const { data } = await installMockSupabase(page, { role: "admin_recruiter" });
+  const oldRequisition = data.requisitions.find((row) => row.doc_id === "REQ-KT1-PEER")!;
+  oldRequisition.pr_approved_date = "2026-01-01";
+  oldRequisition.level = "3";
+  await page.goto("/dashboard?funnel=open&funnelView=mtd&funnelMonth=2026-07");
+  await expectWorkspaceReady(page);
+  const applicants = page.locator(".pipeline-funnel").first().locator("div.contents").first().locator(":scope > div").nth(2);
+  const mtd = Number((await applicants.innerText()).replaceAll(",", ""));
+  await page.getByRole("button", { name: "Recruitment Pipeline Health Metric view" }).click();
+  await page.getByRole("option", { name: "Performance in Month" }).click();
+  const pim = Number((await applicants.innerText()).replaceAll(",", ""));
+  expect(pim - mtd).toBe(3);
+  await page.goto("/dashboard?funnel=open&funnelStart=2026-07-01&funnelEnd=2026-07-31");
+  await expectWorkspaceReady(page);
+  await expect(page.getByRole("button", { name: "Recruitment Pipeline Health Metric view" })).toContainText("Custom range");
+  await expect(page).toHaveURL(/funnelView=custom/);
+});
+
+test("Pipeline panels and compact filters fit from 1080px, while Source bars retain readable labels", async ({ page }, testInfo) => {
+  test.setTimeout(150_000);
+  const { data } = await installMockSupabase(page, { role: "admin_recruiter" });
+  const update = data.sourcing_weekly_updates.find((row) => row.group_id === "GRP-ENG" && row.week_start === "2026-07-06")!;
+  for (const column of ["applicants_fb", "applicants_jobthai", "applicants_jobtopgun", "applicants_jobdb", "applicants_jobbkk", "applicants_linkedin", "applicants_walkin", "applicants_referral", "applicants_others"]) (update as unknown as Record<string, number>)[column] = 1;
+  await page.setViewportSize({ width: 1080, height: 900 });
+  await page.goto("/dashboard?funnel=open&funnelView=custom&funnelStart=2026-07-01&funnelEnd=2026-07-31");
+  await expectWorkspaceReady(page);
+  const layout = page.getByTestId("pipeline-source-layout");
+  const funnel = layout.locator(".pipeline-funnel");
+  const source = layout.getByTestId("source-effectiveness");
+  const positions = await layout.locator(":scope > *").evaluateAll((elements) => elements.map((element) => ({ x: element.getBoundingClientRect().x, y: element.getBoundingClientRect().y })));
+  expect(positions[1].x).toBeGreaterThan(positions[0].x);
+  expect(positions[1].y).toBe(positions[0].y);
+  const widths = await layout.locator(":scope > *").evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().width));
+  expect(Math.abs(widths[0] / widths[1] - 1.5)).toBeLessThan(0.03);
+  await expect(source.locator(".source-detail-wide")).toBeVisible();
+  await expect(source.locator(".source-detail-compact")).toBeHidden();
+  await expect(source.locator(".source-detail-wide thead th")).toHaveText(["Channel", "Applicants", "Phone Screening", "Hired"]);
+  expect(await source.locator(".source-detail-wide thead th").evaluateAll((headers) => headers.every((header) => getComputedStyle(header).textAlign === "left"))).toBe(true);
+  expect(await source.locator(".source-detail-wide thead th").evaluateAll((headers) => {
+    const widths = headers.slice(1).map((header) => header.getBoundingClientRect().width);
+    return Math.max(...widths) - Math.min(...widths) <= 1;
+  })).toBe(true);
+  expect(await source.locator(".source-detail-wide table").evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+  await source.screenshot({ path: testInfo.outputPath("source-1080.png") });
+  await page.getByTestId("pipeline-filters").screenshot({ path: testInfo.outputPath("pipeline-filters.png") });
+  const filterBottoms = await page.getByTestId("pipeline-filters").locator(":scope > *").evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().bottom));
+  expect(new Set(filterBottoms).size).toBe(1);
+  expect(await funnel.locator(".grid").first().evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+  expect(await funnel.locator(".grid div.contents span[title]").evaluateAll((elements) => elements.every((element) => getComputedStyle(element).textOverflow !== "ellipsis" && element.scrollWidth <= element.clientWidth + 1))).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await funnel.getByRole("button", { name: "Recruitment Pipeline Health help" }).click();
+  await expect(page.getByRole("tooltip")).toContainText("passed result dated in the selected range");
+  await source.getByRole("button", { name: "Source effectiveness help" }).click();
+  await expect(page.getByRole("tooltip")).toContainText("Same-period activity");
+  const applicants = source.locator('[data-measure="applicants"]');
+  await expect(applicants.locator(":scope > div").first()).toContainText(/^Applicants: \d/);
+  await expect(source.locator('[data-measure="phone"] > div').first()).toContainText(/^Phone Screening: \d/);
+  await expect(source.locator('[data-measure="hired"] > div').first()).toContainText(/^Hired: \d/);
+  await expect(applicants.locator('[data-channel]')).toHaveCount(9);
+  await expect(applicants.locator('[role="img"]')).toHaveCSS("height", "32px");
+  expect((await applicants.locator('[data-channel]').allTextContents()).every((label) => /^\d[\d,]* \(\d+%\)$/.test(label))).toBe(true);
+  expect(await applicants.locator('[data-channel]').first().evaluate((element) => getComputedStyle(element).color)).toBe("rgb(248, 250, 252)");
+  expect(await applicants.locator('[data-channel]').first().evaluate((element) => getComputedStyle(element).fontWeight)).toBe("300");
+  expect(await applicants.locator('[data-channel]').first().evaluate((element) => getComputedStyle(element).textShadow)).toBe("none");
+  const barWidths = await applicants.locator(".overflow-x-auto").evaluate((element) => ({ scroll: element.scrollWidth, client: element.clientWidth, parent: element.parentElement?.clientWidth }));
+  expect(barWidths.scroll > barWidths.client, JSON.stringify({ barWidths, geometry: await page.evaluate(() => ({ viewport: innerWidth, document: document.documentElement.scrollWidth, layout: document.querySelector('[data-testid="pipeline-source-layout"]')?.getBoundingClientRect().toJSON(), source: document.querySelector('[data-testid="pipeline-source-layout"] [data-testid="source-effectiveness"]')?.getBoundingClientRect().toJSON() })) })).toBe(true);
+  const exportSource = page.locator(".export-report-surface").getByTestId("source-effectiveness");
+  expect(await exportSource.locator('[data-measure="applicants"] .overflow-visible').evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+  await expect(exportSource.locator(".source-detail-wide")).toBeVisible();
+  await expect(exportSource.locator(".source-detail-compact")).toBeHidden();
+  expect(await exportSource.locator(".source-detail-wide [data-metric-value]").first().evaluate((element) => {
+    const value = element.firstElementChild!.getBoundingClientRect();
+    const track = element.querySelector("[data-mini-track]")!.getBoundingClientRect();
+    const cell = element.closest("td")!.getBoundingClientRect();
+    return getComputedStyle(element).gridTemplateColumns.split(" ").length === 1 && getComputedStyle(element.firstElementChild!).textAlign === "right" && value.bottom <= track.top && cell.right - track.right >= 4;
+  })).toBe(true);
+  const exportSurface = page.locator('.export-report-surface:has([data-testid="source-effectiveness"])');
+  await expect(exportSurface.locator("h1")).toContainText("Recruitment Pipeline Health in Selected Range");
+  await expect(exportSurface).toContainText("Date range:");
+  await expect(exportSurface.locator("h4 + svg")).toHaveCount(2);
+  await expect(exportSource.locator('[data-measure="applicants"] [data-channel]').first()).toHaveCSS("white-space", "nowrap");
+  expect(await exportSurface.locator(":scope > div:last-child > section").evaluateAll((cards) => Math.abs(cards[0].getBoundingClientRect().width / cards[1].getBoundingClientRect().width - 1.5) < 0.03)).toBe(true);
+  expect(await exportSurface.evaluate((element) => element.scrollWidth <= element.clientWidth + 1 && element.scrollHeight <= element.clientHeight + 1)).toBe(true);
+  const exportGeometry = await exportSurface.evaluate((surface) => {
+    const cardChecks = Array.from(surface.querySelectorAll<HTMLElement>(".pipeline-funnel, .source-effectiveness")).map((card) => ({
+      overflow: getComputedStyle(card).overflow,
+      fitsWidth: card.scrollWidth <= card.clientWidth + 1,
+      fitsHeight: card.scrollHeight <= card.clientHeight + 1,
+      insideSlide: card.getBoundingClientRect().bottom <= surface.getBoundingClientRect().bottom + 1
+    }));
+    const funnelWrapper = surface.querySelector<HTMLElement>(".pipeline-funnel > div:last-child")!;
+    const sourceTable = surface.querySelector<HTMLElement>(".source-detail-wide")!;
+    return { cardChecks, funnelOverflowX: getComputedStyle(funnelWrapper).overflowX, funnelOverflowY: getComputedStyle(funnelWrapper).overflowY, funnelFits: funnelWrapper.scrollWidth <= funnelWrapper.clientWidth + 1 && funnelWrapper.scrollHeight <= funnelWrapper.clientHeight + 1, sourceFits: sourceTable.scrollWidth <= sourceTable.clientWidth + 1 && sourceTable.scrollHeight <= sourceTable.clientHeight + 1 };
+  });
+  expect(exportGeometry.cardChecks.every((card) => card.fitsWidth && card.fitsHeight && card.insideSlide), JSON.stringify(exportGeometry)).toBe(true);
+  expect(exportGeometry.funnelOverflowX).not.toMatch(/auto|scroll/);
+  expect(exportGeometry.funnelOverflowY).not.toMatch(/auto|scroll/);
+  expect(exportGeometry.funnelFits, JSON.stringify(exportGeometry)).toBe(true);
+  expect(exportGeometry.sourceFits, JSON.stringify(exportGeometry)).toBe(true);
+  const exportFunnelGrid = exportSurface.locator(".pipeline-funnel .grid").first();
+  expect(await exportFunnelGrid.evaluate((element) => element.getBoundingClientRect().width)).toBeGreaterThan(950);
+  expect(await exportFunnelGrid.evaluate((element) => element.firstElementChild!.getBoundingClientRect().width / element.getBoundingClientRect().width)).toBeGreaterThan(0.47);
+  expect(await exportSurface.locator(".pipeline-funnel div.contents").first().locator("[tabindex='0']").evaluate((element) => element.getBoundingClientRect().width)).toBeGreaterThan(100);
+  expect(await exportSurface.locator(".pipeline-funnel div.contents").first().locator("[title^='Facebook:']").evaluate((element) => element.getBoundingClientRect().width)).toBeGreaterThan(0);
+  expect(await exportSurface.evaluate((element) => element.querySelector(".pipeline-funnel")!.getBoundingClientRect().bottom >= element.getBoundingClientRect().bottom - 36)).toBe(true);
+  const sourceTable = source.locator(".source-detail-wide table");
+  expect(await sourceTable.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+  expect(await sourceTable.evaluate((element) => element.getBoundingClientRect().right <= element.closest('section')!.getBoundingClientRect().right + 1)).toBe(true);
+  const firstMetric = source.locator(".source-detail-wide [data-metric-value]").first();
+  expect(await firstMetric.evaluate((element) => element.firstElementChild?.tagName)).toBe("SPAN");
+  await expect(firstMetric).toHaveCSS("display", "grid");
+  await expect(firstMetric.locator("span").first()).toHaveCSS("text-align", "right");
+  await expect(firstMetric).toHaveCSS("padding-right", "4px");
+  expect(await firstMetric.evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(" ").length)).toBe(1);
+  expect(await firstMetric.evaluate((element) => {
+    const value = element.firstElementChild!.getBoundingClientRect();
+    const track = element.querySelector("[data-mini-track]")!.getBoundingClientRect();
+    const cell = element.closest("td")!.getBoundingClientRect();
+    return value.bottom <= track.top && cell.right - track.right >= 4;
+  })).toBe(true);
+  const compactBarWidth = await firstMetric.locator("[data-mini-track]").evaluate((element) => element.getBoundingClientRect().width);
+  expect(compactBarWidth).toBeGreaterThan(0);
+  await page.getByRole("button", { name: "Collapse sidebar" }).click();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const wide = await layout.locator(":scope > *").evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().y));
+  expect(wide[1]).toBe(wide[0]);
+  await page.setViewportSize({ width: 1920, height: 900 });
+  await expect(source.locator(".source-detail-wide")).toBeVisible();
+  expect(await source.locator(".source-detail-wide table").evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+  expect(await firstMetric.evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(" ").length)).toBe(2);
+  expect(await firstMetric.evaluate((element) => element.firstElementChild!.getBoundingClientRect().right < element.querySelector("[data-mini-track]")!.getBoundingClientRect().left)).toBe(true);
+  expect(await firstMetric.locator("[data-mini-track]").evaluate((element) => element.getBoundingClientRect().width)).toBeGreaterThan(compactBarWidth);
+  await page.getByRole("switch", { name: "Channel legend" }).click();
+  await expect(exportSurface.getByLabel("Recruitment channel colors")).toHaveCount(0);
+  const desktopPngPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export Recruitment Pipeline Health PNG" }).click();
+  const desktopDownload = await desktopPngPromise;
+  await desktopDownload.saveAs(testInfo.outputPath("pipeline-presentation.png"));
+  const desktopPng = await inspectPng(await desktopDownload.createReadStream());
+  expect([desktopPng.width, desktopPng.height, desktopPng.visible]).toEqual([3840, 2160, true]);
+  await page.setViewportSize({ width: 1079, height: 900 });
+  const stacked = await layout.locator(":scope > *").evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().y));
+  expect(stacked[1]).toBeGreaterThan(stacked[0]);
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await expect(page.getByRole("switch", { name: "Channel legend" })).toHaveCSS("width", "64px");
+  await expect(page.getByRole("switch", { name: "Channel legend" })).toHaveCSS("height", "44px");
+  await expect(source.locator(".source-detail-compact")).toBeVisible();
+  await expect(exportSource.locator(".source-detail-wide")).toBeVisible();
+  await expect(exportSource.locator(".source-detail-compact")).toBeHidden();
+  expect(await exportSurface.evaluate((surface) => {
+    const funnelWrapper = surface.querySelector<HTMLElement>(".pipeline-funnel > div:last-child")!;
+    const sourceTable = surface.querySelector<HTMLElement>(".source-detail-wide")!;
+    return surface.scrollWidth <= surface.clientWidth + 1 && surface.scrollHeight <= surface.clientHeight + 1 && funnelWrapper.scrollWidth <= funnelWrapper.clientWidth + 1 && funnelWrapper.scrollHeight <= funnelWrapper.clientHeight + 1 && sourceTable.scrollWidth <= sourceTable.clientWidth + 1 && sourceTable.scrollHeight <= sourceTable.clientHeight + 1;
+  })).toBe(true);
+  const pngPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export Recruitment Pipeline Health PNG" }).click();
+  const phoneDownload = await pngPromise;
+  await phoneDownload.saveAs(testInfo.outputPath("pipeline-presentation-phone.png"));
+  const png = await inspectPng(await phoneDownload.createReadStream());
+  expect(png.visible).toBe(true);
+  expect(png.width).toBe(3840);
+  expect(png.height).toBe(2160);
+  await page.setViewportSize({ width: 1080, height: 900 });
+  await page.getByRole("button", { name: "TH", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  const thaiFilterBottoms = await page.getByTestId("pipeline-filters").locator(":scope > *").evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().bottom));
+  expect(new Set(thaiFilterBottoms).size).toBe(1);
+  await expect(source.locator('[data-measure="phone"]')).toContainText("คัดกรองโทรศัพท์");
+  expect(await funnel.locator(".grid div.contents span[title]").evaluateAll((elements) => elements.every((element) => getComputedStyle(element).textOverflow !== "ellipsis" && element.scrollWidth <= element.clientWidth + 1))).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test("Pipeline export keeps crowded labels and a single-channel table within the slide", async ({ page }) => {
+  const { data } = await installMockSupabase(page, { role: "admin_recruiter" });
+  const update = data.sourcing_weekly_updates.find((row) => row.group_id === "GRP-ENG" && row.week_start === "2026-07-06")!;
+  for (const column of ["applicants_fb", "applicants_jobthai", "applicants_jobtopgun", "applicants_jobdb", "applicants_jobbkk", "applicants_linkedin", "applicants_walkin", "applicants_referral", "applicants_others"]) (update as unknown as Record<string, number>)[column] = 999;
+  await page.goto("/dashboard?funnel=open&funnelView=custom&funnelStart=2026-07-01&funnelEnd=2026-07-31");
+  await expectWorkspaceReady(page);
+  const exportSurface = page.locator('.export-report-surface:has([data-testid="source-effectiveness"])');
+  const applicantsSegment = exportSurface.locator('[data-measure="applicants"] [data-channel]').first();
+  await expect(applicantsSegment).toHaveCSS("flex-direction", "column");
+  expect(await exportSurface.evaluate((surface) => surface.scrollWidth <= surface.clientWidth + 1 && surface.scrollHeight <= surface.clientHeight + 1)).toBe(true);
+  await page.goto("/dashboard?funnel=open&funnelView=custom&funnelStart=2026-07-01&funnelEnd=2026-07-31&funnelChannel=Facebook");
+  await expectWorkspaceReady(page);
+  const sourceTable = exportSurface.locator(".source-detail-wide table");
+  await expect(sourceTable.locator("tbody tr")).toHaveCount(1);
+  expect(await sourceTable.evaluate((table) => table.getBoundingClientRect().height)).toBeLessThan(150);
+  expect(await exportSurface.evaluate((surface) => surface.scrollWidth <= surface.clientWidth + 1 && surface.scrollHeight <= surface.clientHeight + 1)).toBe(true);
+});
+
+test("Requisitions export offers all channel counts and preserves shared-group numbers in XLSX and PNG", async ({ page }) => {
+  const { data } = await installMockSupabase(page, { role: "admin_recruiter" });
+  const update = data.sourcing_weekly_updates.find((row) => row.group_id === "GRP-ENG" && row.week_start === "2026-07-06")!;
+  for (const [index, count] of ["applicants_fb", "applicants_jobthai", "applicants_jobtopgun", "applicants_jobdb", "applicants_jobbkk", "applicants_linkedin", "applicants_walkin", "applicants_referral", "applicants_others"].entries()) (update as unknown as Record<string, number>)[count] = index + 1;
+  await page.goto("/dashboard?reportView=pim&reportMonth=2026-07");
+  await expectWorkspaceReady(page);
+  await page.getByRole("button", { name: "Export Requisitions Active in Selected Period", exact: true }).click();
+  const modal = page.getByRole("dialog");
+  const labels = ["Facebook", "JobThai", "JobTopGun", "JobsDB", "JobBKK", "LinkedIn", "Walk-in", "Referral", "Others"];
+  for (const label of labels) {
+    const option = modal.getByRole("checkbox", { name: `${label} Applicants` });
+    await expect(option).not.toBeChecked();
+    await option.check();
+  }
+  await expect(modal.getByRole("columnheader", { name: "JobsDB Applicants" })).toBeVisible();
+  const exportTable = page.locator(".export-report-surface").filter({ has: page.locator(".print-detail-table") }).first().locator("table");
+  await expect(exportTable.locator("th", { hasText: "JobsDB Applicants" })).toHaveCount(1);
+  const downloadPromise = page.waitForEvent("download");
+  await modal.getByRole("button", { name: "Export Requisitions Active in Selected Period XLSX" }).click();
+  const download = await downloadPromise;
+  const chunks: Buffer[] = [];
+  for await (const chunk of (await download.createReadStream())!) chunks.push(Buffer.from(chunk));
+  const workbook = new Workbook();
+  await workbook.xlsx.load(Buffer.concat(chunks));
+  const sheet = workbook.worksheets[0];
+  const header = sheet.getRow(2).values as Array<string | undefined>;
+  expect(labels.every((label) => header.includes(`${label} Applicants`))).toBe(true);
+  const jobsDbColumn = header.indexOf("JobsDB Applicants");
+  const vacancyColumn = header.indexOf("Vacancy");
+  const engineerRows = Array.from({ length: sheet.rowCount - 2 }, (_, index) => sheet.getRow(index + 3)).filter((row) => [1, 5].includes(Number(row.getCell(vacancyColumn).value)) && row.values?.toString().includes("Engineer"));
+  expect(engineerRows).toHaveLength(2);
+  expect(engineerRows.map((row) => row.getCell(jobsDbColumn).value)).toEqual([4, 4]);
+  await expect(exportTable.locator("tbody tr").filter({ hasText: "Engineer" })).toHaveCount(2);
+  const pngPromise = page.waitForEvent("download");
+  await modal.getByRole("button", { name: "Export Requisitions Active in Selected Period PNG" }).click();
+  const png = await pngPromise;
+  expect(png.suggestedFilename()).toBe("active-requisitions-2026-07-01-to-2026-07-31.png");
+  expect((await inspectPng(await png.createReadStream())).visible).toBe(true);
+});
+
 test("dashboard PNG exports download visible non-blank reports", async ({ page }) => {
   test.setTimeout(90_000);
   await installMockSupabase(page, { role: "admin_recruiter" });
-  await page.goto("/dashboard?reportView=pim&reportMonth=2026-07&details=open&funnel=open");
+  await page.goto("/dashboard?reportView=pim&reportMonth=2026-07&details=open&funnel=open&funnelMonth=2026-07");
   await expectWorkspaceReady(page);
 
-  const directExportButtons = page.getByRole("button", { name: /Vacancy Waterfall PNG|^Export PNG$/ });
+  const directExportButtons = page.getByRole("button", { name: /Export Vacancy Waterfall PNG|Export Recruitment Pipeline Health PNG/ });
   await expect(directExportButtons).toHaveCount(2);
   const waterfallExportSurface = page.locator(".export-report-surface").filter({ has: page.locator(".vacancy-waterfall-svg") });
   await expect(waterfallExportSurface.locator("h3")).toContainText("Recruitment Performance in Selected Period");
@@ -145,7 +440,7 @@ test("dashboard PNG exports download visible non-blank reports", async ({ page }
 
   for (const [index, filename] of [
     "vacancy-waterfall-2026-07-01-to-2026-07-31.png",
-    /^pipeline-funnel-2026-01-01-to-\d{4}-\d{2}-\d{2}\.png$/
+    "pipeline-funnel-2026-07-01-to-2026-07-31.png"
   ].entries()) {
     await expect(directExportButtons.nth(index)).toBeEnabled();
     const downloadPromise = page.waitForEvent("download");
@@ -157,9 +452,9 @@ test("dashboard PNG exports download visible non-blank reports", async ({ page }
     if (index === 0) expect(png.height / png.width).toBeGreaterThan(0.62);
   }
 
-  await page.getByRole("button", { name: "Requisitions Active in Selected Period · Export" }).click();
+  await page.getByRole("button", { name: "Export Requisitions Active in Selected Period", exact: true }).click();
   const modal = page.getByRole("dialog");
-  const modalPngExport = modal.getByRole("button", { name: "Export PNG" });
+  const modalPngExport = modal.getByRole("button", { name: "Export Requisitions Active in Selected Period PNG" });
   await expect(modalPngExport).toBeEnabled();
   const downloadPromise = page.waitForEvent("download");
   await modalPngExport.click();
