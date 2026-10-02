@@ -4,7 +4,7 @@ Updated: 2026-09-14. Start with the row closest to the task; read one feature no
 
 | Task | Entry |
 | --- | --- |
-| Create/add a feature with Astra–Luna roles | [Feature delivery loop](workflows/FEATURE_DELIVERY_LOOP.md) |
+| Create/add a feature; choose direct or agent work | [Feature delivery process](workflows/FEATURE_DELIVERY_LOOP.md) |
 | Change behavior, component or record flow | [System map](maps/SYSTEM_MAP.md) |
 | Run locally, configure services, schema workflow or release | [Setup map](maps/SETUP_MAP.md) |
 | Home banner, summary, calendar or Recruitment Records tables | [SYS-HOME F10/F11](maps/system/home.md#f10-home-metrics-recruitment-events-calendar-and-tabbed-records) → [Home design](design/home.md#recruitment-records) → [Home tests](../tests/e2e/home-candidate-pipeline.spec.ts) |

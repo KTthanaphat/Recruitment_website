@@ -4,7 +4,7 @@ Purpose: environment, verification, schema and release navigation. Product/UI ow
 
 ## SETUP-FEATURE-LOOP
 
-For creating/adding a feature, use the [Astra–Luna delivery loop](../workflows/FEATURE_DELIVERY_LOOP.md): Astra orders and independently verifies; Luna (`gpt-6-luna`, medium) writes code/tests and repairs failures. This coordinates work through relevant system nodes, then SETUP-VERIFY. It does not activate a background task or grant deployment authorization.
+For new features, follow the [feature delivery process](../workflows/FEATURE_DELIVERY_LOOP.md) for the user's agent choice, then use the relevant system node and SETUP-VERIFY.
 
 ## SETUP-LOCAL
 

@@ -1,8 +1,6 @@
 # Recruitment application
 
-For creating/adding features, use the [Astra–Luna delivery loop](docs/workflows/FEATURE_DELIVERY_LOOP.md): Astra issues orders and independently verifies; `gpt-6-luna` at `medium` writes application code and tests, runs them, and repairs failures. Internal subagent delegation is authorized for this bounded workflow. Documentation-only work does not require launching the loop.
-
-Worker exemption: when executing an assigned Luna work order, implement that order directly. Do not launch another delivery loop, spawn a coordinator, or require your worker model to be Astra. The model requirement applies to the coordinating role only.
+Before implementing each new feature, ask the user whether to use agents and wait for the answer. Follow the [feature delivery process](docs/workflows/FEATURE_DELIVERY_LOOP.md) for the chosen mode. Assigned workers execute their order directly; documentation-only work does not trigger the feature question.
 
 Use [docs/FEATURE_FILE_MAP.md](docs/FEATURE_FILE_MAP.md) to select a task-specific path when the owner is unclear. Product/UI work routes through the system map; environment, schema and release work through the setup map. Do not read every linked document before a small edit.
 

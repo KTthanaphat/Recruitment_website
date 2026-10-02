@@ -5,7 +5,7 @@ import { ArrowRight, Filter, Mail, Pencil, Plus, Search } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/Button";
-import { DayDateSelector } from "@/components/ui/Field";
+import { DayDateSelector, SelectInput } from "@/components/ui/Field";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { OperationalSummaryStrip } from "@/components/ui/Operations";
 import { Panel, SectionTitle } from "@/components/ui/Panel";
@@ -234,7 +234,7 @@ export function PipelineBoardView({
               <button
                 ref={filterTriggerRef}
                 type="button"
-                className={`relative inline-flex h-9 w-9 items-center justify-center rounded-lg ring-1 ring-inset transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 ${activeFilterCount > 0 ? "bg-primary text-white ring-primary" : "bg-white text-slate ring-[#C9D5E6] hover:bg-[#F8FAFD]"}`}
+                className={`ats-dropdown-trigger relative inline-flex h-9 w-9 items-center justify-center rounded-lg transition-colors ${activeFilterCount > 0 ? "text-primary" : "text-slate"}`}
                 aria-label={activeFilterCount > 0 ? translate(language, "pipelineFiltersActive", { count: activeFilterCount }) : translate(language, "pipelineFilters")}
                 aria-expanded={filterOpen}
                 aria-controls="pipeline-filter-popover"
@@ -245,7 +245,7 @@ export function PipelineBoardView({
                 {activeFilterCount > 0 ? <span className="absolute -right-1 -top-1 inline-flex min-h-4 min-w-4 items-center justify-center rounded-full bg-navy px-1 text-[10px] font-bold leading-none text-white" aria-hidden="true">{activeFilterCount}</span> : null}
               </button>
               {filterOpen ? (
-                <div id="pipeline-filter-popover" role="dialog" aria-label={translate(language, "pipelineFilters")} className="absolute right-0 top-10 z-30 grid w-[min(22rem,calc(100vw-2rem))] gap-3 rounded-2xl border border-[#E4E9F2] bg-white p-3 shadow-[0_8px_24px_rgba(11,19,43,0.08)]">
+                <div id="pipeline-filter-popover" role="dialog" aria-label={translate(language, "pipelineFilters")} className="ats-dropdown-surface absolute right-0 top-10 z-30 grid max-h-[min(70dvh,28rem)] w-[min(22rem,calc(100vw-2rem))] gap-3 rounded-2xl border p-3">
                   <div className="flex items-center justify-between gap-3">
                     <strong className="text-sm text-navy">{translate(language, "pipelineFilters")}</strong>
                     {activeFilterCount > 0 ? <button type="button" className="text-xs font-semibold text-primary hover:underline focus:outline-none focus:ring-2 focus:ring-primary/30" onClick={() => { setBoardFilter("all"); setPipelineSearch(""); }}>{translate(language, "clear")}</button> : null}
@@ -283,9 +283,9 @@ export function PipelineBoardView({
           </div>
           <label className={`grid gap-1 md:hidden ${embedded ? "hidden" : ""}`}>
             <span className="text-xs font-semibold text-slate">{translate(language, "candidatePipeline")}</span>
-            <select
-              className="min-h-11 w-full min-w-0 truncate rounded-xl border border-[#C9D5E6] bg-white px-3 text-sm font-semibold text-navy outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+            <SelectInput
               defaultValue=""
+              aria-label={translate(language, "candidatePipeline")}
               onChange={(event) => {
                 const stage = event.target.value;
                 if (!stage) return;
@@ -295,7 +295,7 @@ export function PipelineBoardView({
             >
               <option value="">{translate(language, "candidatePipeline")}</option>
               {displayStages.map((stage) => <option key={stage} value={stage}>{processLabel(stage, language)}</option>)}
-            </select>
+            </SelectInput>
           </label>
         </div>
         {embedded ? <MobileWorkspacePipelineStages language={language} rows={activeRows} stages={displayStages} canWrite={canWrite} onMove={onMove} onOpen={onOpen} onStartProcess={onStartProcess} renderCandidate={(candidate) => (
@@ -581,7 +581,7 @@ function LegacyPipelineTableView({
     <SectionTitle title={translate(language, "candidatePipeline")} action={<div className="flex min-w-0 flex-wrap items-center justify-end gap-2"><PipelineViewSwitch language={language} value="table" onChange={onViewChange} />{canWrite && onNewCandidate ? <Button type="button" size="sm" icon={<Plus size={17} />} onClick={onNewCandidate}>{translate(language, "newCandidate")}</Button> : null}</div>} />
     <TableToolbar advancedFiltersOpen={advancedFiltersOpen} language={language} onAdvancedFiltersToggle={() => setAdvancedFiltersOpen((open) => !open)} onSearch={table.setSearch} resultCount={table.controlledRows.length} searchValue={table.search} totalCount={rows.length} />
     {advancedFiltersOpen ? <div className="mb-3 grid gap-2 rounded-xl border border-[#E4E9F2] bg-[#F8FAFD] p-3 md:grid-cols-4">
-      <label className="grid min-w-0 gap-1 text-xs font-semibold text-slate"><span>{translate(language, "pipelineState")}</span><select value={stateFilter} onChange={(event) => setStateFilter(event.target.value)} className="min-h-9 min-w-0 truncate rounded-lg border border-[#C9D5E6] bg-white px-2 text-sm text-navy"><option value="">{translate(language, "candidateTriageAll")}</option>{pipelineTableStates.map((state) => <option key={state} value={state}>{translate(language, `pipelineState${state}`)}</option>)}</select></label>
+      <label className="grid min-w-0 gap-1 text-xs font-semibold text-slate"><span>{translate(language, "pipelineState")}</span><SelectInput value={stateFilter} onChange={(event) => setStateFilter(event.target.value)}><option value="">{translate(language, "candidateTriageAll")}</option>{pipelineTableStates.map((state) => <option key={state} value={state}>{translate(language, `pipelineState${state}`)}</option>)}</SelectInput></label>
       <label className="grid gap-1 text-xs font-semibold text-slate"><span>{translate(language, "lastTouchFrom")}</span><DayDateSelector ariaLabel={translate(language, "lastTouchFrom")} language={language} name="last_touch_from" value={fromDate} onChange={(event) => setFromDate(event.target.value)} /></label>
       <label className="grid gap-1 text-xs font-semibold text-slate"><span>{translate(language, "lastTouchTo")}</span><DayDateSelector ariaLabel={translate(language, "lastTouchTo")} language={language} name="last_touch_to" value={toDate} onChange={(event) => setToDate(event.target.value)} /></label>
       <div className="flex items-end"><Button type="button" variant="secondary" size="sm" disabled={activeFilterCount === 0 && !table.search} onClick={clearFilters}>{translate(language, "clear")}</Button></div>
@@ -861,7 +861,7 @@ function PipelineCandidateCard({
           <button
             ref={actionsButtonRef}
             type="button"
-            className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:cursor-not-allowed disabled:bg-lightgray disabled:text-cool ${isCandidateAging(candidate) ? "text-scarlet ring-[#F4B4AE] hover:bg-[#FFF1F0] hover:text-scarlet" : "text-slate ring-[#C9D5E6] hover:bg-[#F8FAFD] hover:text-primary"}`}
+            className={`ats-dropdown-trigger inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors disabled:cursor-not-allowed disabled:bg-lightgray disabled:text-cool ${isCandidateAging(candidate) ? "text-scarlet" : "text-slate"}`}
             aria-haspopup="menu"
             aria-expanded={menuOpen}
             aria-controls={stageMenuId}
@@ -902,7 +902,7 @@ function PipelineCandidateCard({
           id={stageMenuId}
           role="menu"
           aria-label={translate(language, "candidateActionsFor", { name: formatCandidateName(candidate) })}
-          className="fixed z-[45] grid w-[min(20rem,calc(100vw-1rem))] max-h-[min(70vh,28rem)] gap-1 overflow-y-auto rounded-2xl border border-[#E4E9F2] bg-white p-2 shadow-[0_8px_24px_rgba(11,19,43,0.16)] max-md:w-[calc(100vw-1rem)] max-md:rounded-b-none max-md:[&_[role=menuitem]]:min-h-11 max-md:[&_[role=menuitem]]:px-3 max-md:[&_[role=menuitem]]:py-2 max-md:[&_[role=menuitem]]:text-sm"
+          className="ats-dropdown-menu fixed z-[45] grid w-[min(20rem,calc(100vw-1rem))] max-h-[min(70vh,28rem)] rounded-2xl border max-md:w-[calc(100vw-1rem)] max-md:[&_[role=menuitem]]:min-h-11 max-md:[&_[role=menuitem]]:px-3 max-md:[&_[role=menuitem]]:py-2 max-md:[&_[role=menuitem]]:text-sm"
           style={{ left: menuPosition.left, top: menuPosition.top, transform: menuPosition.above ? "translateY(-100%)" : undefined }}
           data-stage-menu-root="true"
           onClick={(event) => event.stopPropagation()}

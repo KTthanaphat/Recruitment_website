@@ -229,18 +229,18 @@ function CategoryFilter({ columnKey, filterValue, language, options, onFilter, l
 
   return (
     <details className="relative min-w-28 normal-case">
-      <summary className="flex min-h-8 min-w-0 cursor-pointer list-none items-center justify-between gap-1 rounded-lg border border-[#C9D5E6] bg-white px-2 py-1 text-xs font-medium text-navy focus:outline-none focus:ring-2 focus:ring-primary/15 [&::-webkit-details-marker]:hidden" aria-label={translate(language, "filterLabel", { label })}>
+      <summary className="ats-dropdown-trigger flex min-h-8 min-w-0 cursor-pointer list-none items-center justify-between gap-1 rounded-lg border px-2 py-1 text-xs font-medium text-navy [&::-webkit-details-marker]:hidden" aria-label={translate(language, "filterLabel", { label })}>
         <span className="min-w-0 truncate" title={selectedCount === 0 ? translate(language, "all") : translate(language, "filterSelected", { count: selectedCount })}>{selectedCount === 0 ? translate(language, "all") : translate(language, "filterSelected", { count: selectedCount })}</span>
         <span aria-hidden="true">⌄</span>
       </summary>
-      <div className="absolute left-0 z-30 mt-1 grid max-h-60 min-w-48 overflow-y-auto rounded-lg border border-[#C9D5E6] bg-white p-2 text-xs font-medium text-navy shadow-lg">
-        <label className="flex min-h-8 items-center gap-2 border-b border-[#E4E9F2] pb-1.5 font-semibold">
+      <div className="ats-dropdown-menu absolute left-0 z-30 mt-1 grid max-h-60 min-w-48 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-lg border text-xs font-medium text-navy">
+        <label className={`ats-dropdown-option flex items-center gap-2 font-semibold ${allSelected ? "is-selected" : ""}`}>
           <input type="checkbox" checked={allSelected} onChange={(event) => update(event.target.checked ? options : [])} />
           {translate(language, "selectAll")}
         </label>
         {options.map((option) => {
           const checked = selected.includes(option.toLowerCase());
-          return <label key={option} className="flex min-h-8 items-center gap-2 py-0.5"><input type="checkbox" checked={checked} onChange={(event) => update(event.target.checked ? [...selected, option] : selected.filter((value) => value !== option.toLowerCase()))} /><span className="break-words">{option}</span></label>;
+          return <label key={option} className={`ats-dropdown-option flex items-center gap-2 ${checked ? "is-selected" : ""}`}><input type="checkbox" checked={checked} onChange={(event) => update(event.target.checked ? [...selected, option] : selected.filter((value) => value !== option.toLowerCase()))} /><span className="break-words">{option}</span></label>;
         })}
       </div>
     </details>

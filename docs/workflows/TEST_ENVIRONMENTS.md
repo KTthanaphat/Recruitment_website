@@ -31,7 +31,7 @@ pnpm exec playwright test tests/e2e/ux-enhancements.spec.ts -g "home calendar"
 | Translation-key parity | [i18n.spec.ts](../../tests/e2e/i18n.spec.ts) | Dictionary parity, not rendered translation quality |
 | Rejection composer/state | [rejection-letter-ui.spec.ts](../../tests/e2e/rejection-letter-ui.spec.ts) | Inspect route interception before sending; does not establish mailbox delivery |
 
-Date-selector and command-dropdown keyboard/empty-list/collision behavior is an acceptance requirement in [Controls](../design/controls.md), not a verified dedicated suite. When such a control changes, Luna adds the missing focused regression scenario and Astra independently exercises it. Do not label a broad sourcing or form test as comprehensive selector accessibility coverage.
+Date-selector and command-dropdown keyboard/empty-list/collision behavior is an acceptance requirement in [Controls](../design/controls.md), not a verified dedicated suite. When such a control changes, add a focused regression scenario and exercise it during verification. Do not label a broad sourcing or form test as comprehensive selector accessibility coverage.
 
 ## Unmocked, database and external checks
 

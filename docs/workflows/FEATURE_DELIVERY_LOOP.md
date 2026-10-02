@@ -1,39 +1,18 @@
-# Feature delivery loop
+# Feature delivery process
 
-Workflow ID: SETUP-FEATURE-LOOP. Updated: 2026-09-14.
+Workflow ID: SETUP-FEATURE-LOOP. Updated: 2026-10-02.
 
-Astra defines acceptance and independently verifies; GPT-6 Luna at medium writes code/tests and repairs failures. This is an execution convention, not a background scheduler.
+## Ask before each new feature
 
-## Choose a role
+Before implementing a new application feature, ask the user: **“Use agents for this feature?”** Offer direct implementation and agent-assisted implementation as clear choices. Wait for an explicit answer; silence is not a selection. Ask once for that feature, including when a feature request already contains implementation instructions. The choice applies through its routine repair iterations. Documentation-only maintenance, bug fixes and an assigned worker order do not start a new feature decision.
 
-- [Astra coordinator](feature-loop/astra.md): order, delegate, review, verify and accept.
-- [Luna worker](feature-loop/luna.md): execute the supplied order directly; never delegate or start another coordinator loop.
+## Deliver in the chosen mode
 
-Do not read both role contracts by default. Actual model selection must match the role. A worker is not subject to the coordinator's Astra-model check.
+- **Direct:** The active agent defines observable acceptance criteria, implements code and relevant tests, runs focused checks, reviews its own diff, and reports evidence and limits. Do not delegate.
+- **With agents:** The coordinator selects suitable agents, roles and models for the feature and gives bounded orders with non-overlapping write ownership. The coordinator reviews each handoff, independently verifies decision-critical behavior, and sends defects back for repair. There is no mandatory model pairing. Use the [coordinator contract](feature-loop/astra.md) and [worker contract](feature-loop/luna.md) for their respective roles.
 
-```mermaid
-flowchart LR
-  Order[Astra order] --> Build[Luna code and tests]
-  Build --> Handoff[Stop edits and submit evidence]
-  Handoff --> Verify[Astra independent verification]
-  Verify -->|pass| Done[Accept]
-  Verify -->|defect| Repair[Astra repair order]
-  Repair --> Build
-  Verify -->|unavailable prerequisite| Blocked[Record blocker]
-  Blocked -->|resolved| Verify
-```
-
-## Scale the record to the task
-
-| Change | Record |
-| --- | --- |
-| Small bounded feature | One compact order and evidence/verdict in the handoff; no mandatory work-item folder |
-| Multi-step, cross-domain or externally integrated change | Versioned order, implementation evidence and review under `docs/work-items/<feature-slug>/` |
-
-Both modes preserve the same roles and acceptance standard. Required fields: outcome, scope, checkout, relevant contracts, observable acceptance criteria, appropriate checks and authorization boundary. Add process detail only when it supports a real decision.
+For either mode, identify the checkout, relevant contracts, outcome, scope, observable acceptance criteria, checks and authorization boundary. A small feature needs only a compact handoff; multi-step, cross-domain or externally integrated work may use versioned records under `docs/work-items/<feature-slug>/`. Keep maps as links to owners and contracts rather than copies of this process.
 
 ## Completion
 
-Luna's report is evidence, not acceptance. Astra verifies all in-scope criteria against the handed-off source state. Later changes invalidate affected results. Routine repairs proceed without repeated user approval. After repeated unsuccessful repairs, re-plan the affected slice rather than weakening acceptance.
-
-Report environmental limits as unverified, not passed. Release is included only when authorized. Use [test boundaries](TEST_ENVIRONMENTS.md) for verification and [Setup](../maps/SETUP_MAP.md) only when environment/schema/release work is relevant.
+Verify the final source state and report which criteria passed, failed or remain unverified. Later edits invalidate affected results. Continue routine repairs without asking for the same agent choice again. After repeated unsuccessful repairs, revise the approach instead of weakening acceptance. A local feature request does not authorize a push, deployment, database mutation or external delivery. Use [test boundaries](TEST_ENVIRONMENTS.md) and the task-specific [setup route](../maps/SETUP_MAP.md) when applicable.

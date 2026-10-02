@@ -279,13 +279,13 @@ export function AppShell({
             </Button>
             <details className="group relative min-w-0">
               <summary
-                className="flex min-h-9 max-w-[220px] cursor-pointer list-none items-center rounded-lg border border-[#E4E9F2] bg-white px-3 text-sm font-semibold text-navy transition hover:bg-[#F8FAFD] focus:outline-none focus:ring-2 focus:ring-primary/25 [&::-webkit-details-marker]:hidden"
+                className="ats-dropdown-trigger flex min-h-9 max-w-[220px] cursor-pointer list-none items-center rounded-lg px-3 text-sm font-semibold text-navy transition [&::-webkit-details-marker]:hidden"
                 aria-label={translate(language, "openAccountMenu")}
                 title={accountName}
               >
                 <span className="truncate">{accountName}</span>
               </summary>
-              <div className="absolute right-0 z-40 mt-2 w-64 rounded-2xl border border-[#E4E9F2] bg-white p-3 text-sm text-slate shadow-[0_8px_24px_rgba(11,19,43,0.08)]">
+              <div className="ats-dropdown-menu absolute right-0 z-40 mt-2 grid max-h-[min(70dvh,28rem)] w-64 max-w-[calc(100vw-2rem)] rounded-2xl border text-sm text-slate">
                 <div className="mb-2 flex items-center justify-between gap-3">
                   <span className="text-xs font-medium text-slate">{translate(language, "role")}</span>
                   <span className="rounded-md bg-lightgray px-2 py-1 text-xs font-semibold uppercase text-slate">{profile ? roleLabel(language, profile.role) : translate(language, "viewer")}</span>
@@ -296,7 +296,8 @@ export function AppShell({
                 </div>
                 <button
                   type="button"
-                  className="flex min-h-9 w-full items-center justify-center gap-2 rounded-md text-sm font-semibold text-scarlet transition hover:bg-[#FDEBEA] focus:outline-none focus:ring-2 focus:ring-scarlet/25"
+                  role="menuitem"
+                  className="flex min-h-9 w-full items-center justify-start gap-2 rounded-md px-2 text-sm font-semibold text-scarlet transition focus:outline-none focus:ring-2 focus:ring-scarlet/25"
                   onClick={onSignOut}
                 >
                   <LogOut size={16} />

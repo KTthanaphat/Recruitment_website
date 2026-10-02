@@ -1,6 +1,8 @@
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
-import { Children, isValidElement, useEffect, useId, useRef, useState, type ChangeEvent, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
+import { Children, createContext, isValidElement, useContext, useEffect, useId, useRef, useState, type ChangeEvent, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
 import { CommandSelector, type CommandOption } from "@/components/ui/CommandSelector";
+
+const FieldLabelContext = createContext<string | undefined>(undefined);
 
 export function Field({
   label,
@@ -11,11 +13,12 @@ export function Field({
   children: ReactNode;
   className?: string;
 }) {
+  const labelId = useId();
   return (
-    <label className={`grid gap-1.5 text-sm font-medium text-navy ${className}`}>
-      <span>{label}</span>
-      {children}
-    </label>
+    <div className={`grid gap-1.5 text-sm font-medium text-navy ${className}`}>
+      <span id={labelId}>{label}</span>
+      <FieldLabelContext.Provider value={labelId}>{children}</FieldLabelContext.Provider>
+    </div>
   );
 }
 
@@ -23,44 +26,55 @@ const fieldClass =
   "min-h-10 w-full rounded-md border border-[#D7DEE8] bg-white px-3 py-2 text-sm font-normal text-navy shadow-none transition placeholder:text-cool hover:border-[#C9D5E6] focus:border-primary focus:bg-[#FBFDFF]";
 
 export function TextInput({ className = "", ...props }: InputHTMLAttributes<HTMLInputElement>) {
+  const fieldLabelId = useContext(FieldLabelContext);
   if (props.type === "date") {
-    return <DayDateSelector ariaLabel={String(props["aria-label"] ?? props.name ?? "Date")} defaultValue={String(props.defaultValue ?? "")} disabled={props.disabled} name={props.name ?? "date"} onChange={props.onChange} required={Boolean(props.required)} value={props.value === undefined ? undefined : String(props.value)} />;
+    return <DayDateSelector ariaLabel={String(props["aria-label"] ?? props.name ?? "Date")} ariaLabelledBy={props["aria-labelledby"] ?? fieldLabelId} defaultValue={String(props.defaultValue ?? "")} disabled={props.disabled} name={props.name ?? "date"} onChange={props.onChange} required={Boolean(props.required)} value={props.value === undefined ? undefined : String(props.value)} />;
   }
-  return <input className={`${fieldClass} ${className}`} {...props} />;
+  return <input {...props} className={`${fieldClass} ${className}`} aria-labelledby={props["aria-labelledby"] ?? fieldLabelId} />;
 }
 
-export function SelectInput(props: SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select className={`${fieldClass} min-w-0 truncate`} {...props} />;
+export function SelectInput({ className = "", ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
+  const fieldLabelId = useContext(FieldLabelContext);
+  return <CreateSelectInput {...props} className={`w-full min-w-0 ${className}`} aria-labelledby={props["aria-labelledby"] ?? fieldLabelId} />;
 }
 
 /** Shared command-selector field that keeps the existing FormData shape. */
-export function CreateSelectInput({ children, defaultValue, disabled, name, onChange, value, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
-  const controlledValue = value === undefined ? undefined : String(value);
-  const [internalValue, setInternalValue] = useState(controlledValue ?? String(defaultValue ?? ""));
-  useEffect(() => { if (controlledValue !== undefined) setInternalValue(controlledValue); }, [controlledValue]);
+export function CreateSelectInput({ children, className = "", defaultValue, disabled, name, onChange, required, value, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
+  const fieldLabelId = useContext(FieldLabelContext);
   const options: CommandOption[] = Children.toArray(children).flatMap((child) => {
     if (!isValidElement<{ value?: string; children?: ReactNode; disabled?: boolean }>(child)) return [];
     const optionValue = child.props.value ?? "";
     const optionLabel = typeof child.props.children === "string" || typeof child.props.children === "number" ? String(child.props.children) : optionValue;
     return [{ value: optionValue, label: optionLabel, disabled: child.props.disabled }];
   });
+  const controlledValue = value === undefined ? undefined : String(value);
+  const defaultSelection = String(defaultValue ?? options[0]?.value ?? "");
+  const [internalValue, setInternalValue] = useState(controlledValue ?? defaultSelection);
+  useEffect(() => { setInternalValue(controlledValue ?? defaultSelection); }, [controlledValue, defaultSelection]);
   const selectorValue = controlledValue ?? internalValue;
   return <CommandSelector
     ariaLabel={String(props["aria-label"] ?? name ?? "Select option")}
+    ariaLabelledBy={props["aria-labelledby"] ?? fieldLabelId}
+    className={className}
     disabled={disabled}
     emptyLabel={options.find((option) => option.value === "")?.label ?? "Select option"}
+    emptyOptionsLabel={typeof window !== "undefined" && window.localStorage.getItem("recruitment_lang") === "th" ? "ไม่มีตัวเลือก" : "No options available"}
     name={name}
     onValueChange={(nextValue) => {
       if (controlledValue === undefined) setInternalValue(nextValue);
-      onChange?.({ target: { value: nextValue, name }, currentTarget: { value: nextValue, name } } as unknown as ChangeEvent<HTMLSelectElement>);
+      const event = { target: { value: nextValue, name }, currentTarget: { value: nextValue, name } } as unknown as ChangeEvent<HTMLSelectElement>;
+      onChange?.(event);
+      if (controlledValue === undefined) setInternalValue(String(event.currentTarget.value));
     }}
     options={options}
+    required={required}
     value={selectorValue}
   />;
 }
 
 export function TextArea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea className={`${fieldClass} min-h-24 resize-y`} {...props} />;
+  const fieldLabelId = useContext(FieldLabelContext);
+  return <textarea {...props} className={`${fieldClass} min-h-24 resize-y`} aria-labelledby={props["aria-labelledby"] ?? fieldLabelId} />;
 }
 
 const monthLabels = {
@@ -71,6 +85,7 @@ const weekdayLabels = { en: ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"], th: ["�
 
 export function DayDateSelector({
   ariaLabel,
+  ariaLabelledBy,
   clearLabel = "Clear",
   defaultValue = "",
   disabled = false,
@@ -84,6 +99,7 @@ export function DayDateSelector({
   value
 }: {
   ariaLabel: string;
+  ariaLabelledBy?: string;
   clearLabel?: string;
   defaultValue?: string;
   disabled?: boolean;
@@ -96,6 +112,8 @@ export function DayDateSelector({
   required?: boolean;
   value?: string;
 }) {
+  const contextualLabelId = useContext(FieldLabelContext);
+  const labelId = ariaLabelledBy ?? contextualLabelId;
   const resolvedLanguage = language ?? (typeof window !== "undefined" && window.localStorage.getItem("recruitment_lang") === "th" ? "th" : "en");
   const controlledValue = value === undefined ? undefined : normalizeIsoDate(value);
   const [internalValue, setInternalValue] = useState(normalizeIsoDate(defaultValue));
@@ -148,7 +166,8 @@ export function DayDateSelector({
       ref={triggerRef}
       type="button"
       disabled={disabled}
-      aria-label={ariaLabel}
+      aria-label={labelId ? undefined : ariaLabel}
+      aria-labelledby={labelId}
       aria-haspopup="dialog"
       aria-expanded={open}
       aria-controls={`${id}-calendar`}

@@ -1,6 +1,6 @@
-# Luna implementation worker
+# Agent implementation worker
 
-You are `gpt-6-luna` at `medium`, executing an assigned order. Do not spawn agents, launch another feature loop, or require your own model to be Astra. The parent is the coordinator. Read this contract, the order and relevant source/contracts only.
+Execute the assigned order using the actual model selected for this feature. Do not launch another feature-choice process or spawn agents unless the coordinator explicitly assigned delegation. Read this contract, the order and relevant source/contracts only.
 
 ## Implement
 

@@ -4,6 +4,52 @@ import { buildPerformanceReport, performanceRange, previousPerformanceRange } fr
 import { expectWorkspaceReady, installMockSupabase } from "./support/mock-supabase";
 import { installPerformanceFixture } from "./support/performance-fixture";
 
+test("shared dropdown tokens keep white blue triggers and compact, touch-safe choices", async ({ page }, testInfo) => {
+  const { data } = await installMockSupabase(page);
+  installPerformanceFixture(data);
+  data.requisitions.forEach((row, index) => { row.department = index === 0 ? "Operations and very long department name for wrapping" : `Department ${index}`; });
+  await page.goto("/dashboard?overviewPeriod=pim&overviewYear=2026&overviewMonth=6");
+  await expectWorkspaceReady(page);
+  const overview = page.locator("[data-performance-overview]");
+  const site = overview.getByRole("button", { name: "Site", exact: true });
+  await expect(site).toHaveCSS("background-color", "rgb(255, 255, 255)");
+  await expect(site).toHaveCSS("border-top-color", "rgb(147, 185, 255)");
+  await expect(site).toHaveCSS("box-shadow", /rgba\(20, 110, 250, 0\.1\) 0px 2px 6px/);
+  const department = overview.getByRole("button", { name: "Department", exact: true });
+  await department.click();
+  const departmentList = overview.getByRole("listbox", { name: "Department" });
+  await expect(departmentList).toBeVisible();
+  expect(await departmentList.evaluate(node => node.scrollHeight > node.clientHeight)).toBe(true);
+  await page.keyboard.press("Escape");
+  await site.focus();
+  await expect(site).toHaveCSS("outline-color", "rgb(10, 60, 220)");
+  await site.press("Enter");
+  const siteList = overview.getByRole("listbox", { name: "Site" });
+  const desktopRow = await siteList.getByRole("option", { name: "HQ" }).boundingBox();
+  expect(desktopRow!.height).toBeGreaterThanOrEqual(36);
+  expect(desktopRow!.height).toBeLessThan(44);
+  await site.press("Escape");
+  await expect(site).toBeFocused();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await site.click();
+  const phoneRow = await siteList.getByRole("option", { name: "HQ" }).boundingBox();
+  expect(phoneRow!.height).toBeGreaterThanOrEqual(44);
+  await siteList.getByRole("option", { name: "HQ" }).click();
+  await expect(site).toContainText("HQ");
+  await expect(siteList.getByRole("option", { name: "HQ" }).locator("span").first()).toHaveCSS("background-color", "rgb(10, 60, 220)");
+  await expect(siteList.getByRole("option", { name: "HQ" }).locator("span").first()).toHaveCSS("color", "rgb(255, 255, 255)");
+  await siteList.screenshot({ path: testInfo.outputPath("selected-dropdown-phone.png") });
+  await page.keyboard.press("Escape");
+  await expect(department).toHaveCSS("background-color", "rgb(255, 255, 255)");
+  await expect(department).toHaveCSS("border-top-color", "rgb(147, 185, 255)");
+  await department.click();
+  const longChoice = overview.getByRole("listbox", { name: "Department" }).getByRole("option", { name: /very long department name/ });
+  await expect(longChoice).toBeVisible();
+  const choiceBox = await longChoice.boundingBox();
+  expect(choiceBox!.x).toBeGreaterThanOrEqual(0);
+  expect(choiceBox!.x + choiceBox!.width).toBeLessThanOrEqual(390);
+});
+
 test("reference presentation reconciles and responds at desktop, tablet and phone sizes", async ({ page }, testInfo) => {
   test.setTimeout(120_000);
   const { data } = await installMockSupabase(page);
@@ -82,12 +128,12 @@ test("collapsible report bars retain filters and chart tooltips work with keyboa
   await expect(report).toBeHidden();
   await performance.click();
   await expect(page.getByRole("button", { name: "Period", exact: true })).toContainText("YTD");
-  const waterfall = page.getByRole("button", { name: "Vacancy Waterfall", exact: true });
+  const waterfall = page.getByRole("button", { name: /^Vacancy Waterfall &/ });
   await waterfall.click();
   await expect(waterfall).toHaveAttribute("aria-expanded", "false");
-  await expect(page.getByRole("button", { name: "Metric view" })).toBeHidden();
+  await expect(page.getByRole("button", { name: "Metric view", exact: true })).toBeHidden();
   await waterfall.click();
-  await expect(page.getByRole("button", { name: "Metric view" })).toContainText("Performance in Month");
+  await expect(page.getByRole("button", { name: "Metric view", exact: true })).toContainText("Performance in Month");
   await page.setViewportSize({ width: 390, height: 900 });
   await page.getByRole("button", { name: "Filled vs Open Vacancy by Job Level & Site help", exact: true }).click();
   await expect(page.getByRole("tooltip")).toContainText("Colored bars");
@@ -123,7 +169,7 @@ test("empty periods keep complete overview axes and omit empty Waterfall columns
   await expect(page.locator(".vacancy-waterfall-svg").first().locator("[data-waterfall-category]")).toHaveCount(0);
   await expect(page.getByText("No requisition or accepted offer data for the selected date range.", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Recruitment Performance", exact: true }).click();
-  await page.getByRole("button", { name: "Vacancy Waterfall", exact: true }).click();
+  await page.getByRole("button", { name: /^Vacancy Waterfall &/ }).click();
   await page.screenshot({ path: testInfo.outputPath("collapsed-report-bars.png"), fullPage: true });
 });
 
@@ -201,7 +247,7 @@ test("overview restores its own URL filters, keeps reports, and exports PNG", as
   await expect(page.getByRole("heading", { name: "Recruitment Performance", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Vacancy Waterfall" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Period", exact: true })).toContainText("PIM");
-  await expect(page.getByRole("button", { name: "Department" })).toContainText("Production");
+  await expect(page.getByRole("button", { name: "Department", exact: true })).toContainText("Production");
   await expect(page.getByRole("button", { name: "Metric view" })).toContainText("Performance in Month");
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export overview PNG" }).click();

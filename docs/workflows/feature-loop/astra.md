@@ -1,22 +1,22 @@
-# Sol coordinator
+# Agent coordinator
 
-Applies only to the coordinating agent. A Luna worker executes its supplied order and does not apply this role's model/delegation checks.
+Applies only when the user chose agents for this feature. An assigned worker executes its order directly.
 
 ## Order
 
-Inspect current checkout/status and the relevant [system node](../../maps/SYSTEM_MAP.md). Define the user-visible outcome, scope, acceptance criteria and expected test results before reviewing implementation. Preserve the requested design and business contracts. Select compact or versioned evidence according to the [shared loop](../FEATURE_DELIVERY_LOOP.md#scale-the-record-to-the-task).
+Inspect current checkout/status and the relevant [system node](../../maps/SYSTEM_MAP.md). Define the user-visible outcome, scope, acceptance criteria and expected test results before reviewing implementation. Preserve the requested design and business contracts. Select compact or versioned evidence according to the [feature process](../FEATURE_DELIVERY_LOOP.md#deliver-in-the-chosen-mode).
 
-Delegate a bounded slice to an internal agent with `model="gpt-6-sol"`, `reasoning_effort="medium"`, `fork_turns="none"`. Supply an absolute checkout/order path or compact order text, the [worker contract](luna.md), necessary source links and the authorization boundary. Explicitly say it is a worker and must not delegate. Use actual model selection; do not substitute silently. Reuse that agent for repairs.
+Select agents, roles and models that fit the task. Delegate bounded slices with an absolute checkout/order path or compact order text, the [worker contract](luna.md), necessary source links and the authorization boundary. State each worker's write ownership and whether further delegation is allowed. Use actual model selection; do not simulate model identities. Reuse the owning worker for repairs when practical.
 
-While Luna implements, independently prepare acceptance probes or inspect affected consumers. Do not edit product/test files or test a tree still being changed. Only one writer owns a slice.
+While a worker implements, independently prepare acceptance probes or inspect affected consumers. Do not edit product/test files or test a tree still being changed. Only one writer owns a slice.
 
 ## Review and verify
 
-At handoff confirm Luna has stopped editing and identify the source state (commit plus complete working diff/untracked changes, or hashes). Review implementation and test assertions for observable behavior, meaningful negative cases, skipped/weakened checks, over-mocking and unrelated edits.
+At handoff confirm the worker has stopped editing and identify the source state (commit plus complete working diff/untracked changes, or hashes). Review implementation and test assertions for observable behavior, meaningful negative cases, skipped/weakened checks, over-mocking and unrelated edits.
 
-Independently rerun decision-critical checks and exercise the changed flow; do not duplicate every command automatically. For UI, verify appropriate phone/desktop, language/role, keyboard and save/reopen behavior using the matching design contract. If durable test coverage is missing, ask Luna to implement it and then inspect/run it. Astra may execute temporary diagnostic probes but does not take over persistent code/test changes.
+Independently rerun decision-critical checks and exercise the changed flow; do not duplicate every command automatically. For UI, verify appropriate phone/desktop, language/role, keyboard and save/reopen behavior using the matching design contract. If durable test coverage is missing, ask the owning worker to implement it and then inspect/run it. The coordinator may execute temporary diagnostic probes but does not take over persistent code/test changes in that slice.
 
-Mark criteria verified, failed or blocked/unverified with evidence tied to the source identity. A screenshot or reported pass from Luna alone does not establish Astra verification. Use [test environment boundaries](../TEST_ENVIRONMENTS.md) rather than assuming local isolation.
+Mark criteria verified, failed or blocked/unverified with evidence tied to the source identity. A screenshot or reported pass from a worker alone does not establish independent verification. Use [test environment boundaries](../TEST_ENVIRONMENTS.md) rather than assuming local isolation.
 
 ## Repair and finish
 

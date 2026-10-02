@@ -36,10 +36,10 @@ Read this node for this feature only. It indexes ownership; product rules remain
 
 ### F12: Header command filters and selectors
 
-- Owner/search: [src/components/ui/CommandSelector.tsx](../../../src/components/ui/CommandSelector.tsx), [src/components/RecruitmentWorkspace.tsx](../../../src/components/RecruitmentWorkspace.tsx), [src/components/dashboard/VacancyWaterfallView.tsx](../../../src/components/dashboard/VacancyWaterfallView.tsx).
+- Owner/search: [src/components/ui/CommandSelector.tsx](../../../src/components/ui/CommandSelector.tsx), [src/components/ui/CommandMultiSelector.tsx](../../../src/components/ui/CommandMultiSelector.tsx), [src/components/ui/Field.tsx](../../../src/components/ui/Field.tsx), [src/components/ui/TableControls.tsx](../../../src/components/ui/TableControls.tsx), [src/components/dashboard/VacancyWaterfallView.tsx](../../../src/components/dashboard/VacancyWaterfallView.tsx), [src/app/globals.css](../../../src/app/globals.css).
 - Related symbols: Shared `site`/`pic` state and selector shell; canonical interaction rules: [docs/WEBSITE_STRUCTURE.md](../../WEBSITE_STRUCTURE.md).
 - Entry: Authenticated routes, Dashboard, create forms.
-- Verification: [exact scenarios and coverage boundaries](../../workflows/TEST_ENVIRONMENTS.md#exact-source-leads). Existing sourcing tests cover selected flows; dedicated date/dropdown keyboard coverage is not established and must be added when those behaviors change.
+- Verification: [exact scenarios and coverage boundaries](../../workflows/TEST_ENVIRONMENTS.md#exact-source-leads) and [Recruitment Performance browser tests](../../../tests/e2e/recruitment-performance.spec.ts). Inspect shared-control callers after token changes.
 
 ### F15: Frozen desktop record headers
 

@@ -134,7 +134,7 @@ export function RecordActionGroup({ label, primary, inlineAction, items, flat = 
             aria-expanded={open}
             aria-label={`More actions for ${label}`}
             title={`More actions for ${label}`}
-            className={uniformUtilities ? detailUtilityClassName(open) : flat ? "text-primary hover:bg-[#F1F6FC] hover:text-primary" : undefined}
+            className={`ats-dropdown-trigger ${uniformUtilities ? detailUtilityClassName(open) : flat ? "text-primary hover:bg-[#F1F6FC] hover:text-primary" : ""}`}
             onClick={() => setOpen((current) => !current)}
           >
             <span className="sr-only">More</span>
@@ -144,7 +144,7 @@ export function RecordActionGroup({ label, primary, inlineAction, items, flat = 
               ref={menuRef}
               role="menu"
               aria-label={`Actions for ${label}`}
-              className="absolute right-0 top-full z-50 mt-2 grid w-[min(20rem,calc(100vw-2rem))] gap-1 rounded-2xl border border-[#E4E9F2] bg-white p-1.5 shadow-[0_8px_24px_rgba(11,19,43,0.08)]"
+              className="ats-dropdown-menu absolute right-0 top-full z-50 mt-2 grid max-h-[min(70dvh,28rem)] w-[min(20rem,calc(100vw-2rem))] rounded-2xl border"
               onKeyDown={onMenuKeyDown}
             >
               {items.map((action) => <RecordActionControl key={action.id} action={withContext(action)} menuItem onComplete={() => closeMenu(false)} />)}
@@ -367,7 +367,7 @@ function actionClass(tone: RecordAction["tone"] = "secondary") {
 }
 
 function actionMenuClass(tone: RecordAction["tone"] = "secondary") {
-  if (tone === "danger") return "bg-[#FFF1F0] text-scarlet hover:bg-[#FFE1E1]";
-  if (tone === "primary") return "bg-primary text-white hover:bg-primary/90";
-  return "text-navy hover:bg-lightgray";
+  if (tone === "danger") return "text-scarlet";
+  if (tone === "primary") return "text-primary";
+  return "text-navy";
 }

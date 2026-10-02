@@ -19,8 +19,6 @@
 .filters { display: grid; grid-template-columns: 82px 70px 78px minmax(144px, .4fr) minmax(200px, 1fr); gap: 8px; margin-bottom: 12px; }
 .filterLabel { display: block; font-size: 11px; font-weight: 500; margin-bottom: 4px; }
 .filter { min-width: 0; }
-.filter button[aria-haspopup="listbox"] { padding: 0 8px; gap: 5px; min-height: 36px; border-radius: 4px; background: #e9f2ff; font-size: 12px; font-weight: 400; box-shadow: none; }
-.filter button[aria-haspopup="listbox"] > span[aria-hidden="true"] { display: none; }
 .context { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; color: #64748b; font-size: 11px; }
 .context button { min-height: 30px; }
 .body { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); grid-template-rows: 106px 122px minmax(322px, auto); gap: 12px; min-width: 0; align-items: stretch; }
@@ -89,7 +87,6 @@
 @container performance (max-width: 639px) {
   .filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .filter:last-child { grid-column: 1 / 3; }
-  .filter button[aria-haspopup="listbox"] { min-height: 44px; font-size: 14px; border-radius: 6px; }
   .filterLabel { font-size: 12px; }
   .context { align-items: start; flex-wrap: wrap; }
   .context button { min-height: 44px; }

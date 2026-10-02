@@ -1,12 +1,13 @@
 "use client";
 
-import { ArrowLeftRight, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, Download, FileSpreadsheet, ImageDown, Info, SlidersHorizontal } from "lucide-react";
+import { ArrowLeftRight, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Download, FileSpreadsheet, ImageDown, Info } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { ReportHelp } from "./ReportHelp";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { CommandMonthSelector, CommandSelector } from "@/components/ui/CommandSelector";
+import { CommandMultiSelector } from "@/components/ui/CommandMultiSelector";
 import { DayDateSelector, Field } from "@/components/ui/Field";
 import { OperationalSummaryStrip } from "@/components/ui/Operations";
 import { PipelineFunnel, type PipelineFunnelRow } from "@/components/ui/PipelineFunnel";
@@ -377,8 +378,8 @@ export function VacancyWaterfallView({
             <div data-testid="pipeline-filters" className={`grid min-w-0 gap-2 rounded-2xl border border-[#E4E9F2] bg-[#F8FAFD] p-3 sm:grid-cols-2 min-[1080px]:items-end ${funnelView === "custom" ? "min-[1080px]:grid-cols-[repeat(6,minmax(0,1fr))]" : "min-[1080px]:grid-cols-[repeat(5,minmax(0,1fr))]"}`}>
               <Field label={translate(language, "metricView")} className="min-w-0 text-xs font-medium"><CommandSelector density="compact" ariaLabel={`${translate(language, "recruitmentPipelineHealth")} ${translate(language, "metricView")}`} emptyLabel={translate(language, "metricView")} options={(["mtd", "ytd", "pim", "custom"] as ReportView[]).map((value) => ({ value, label: reportViewLabel(value, language) }))} value={funnelView} onValueChange={(value) => setFunnelView(value as ReportView)} /></Field>
               {funnelView === "custom" ? <><Field label={translate(language, "startDate")} className="min-w-0 text-xs font-medium"><DayDateSelector ariaLabel={`${translate(language, "recruitmentPipelineHealth")} ${translate(language, "startDate")}`} language={language} name="funnel_start" value={funnelCustomStart} onChange={(event) => setFunnelCustomStart(event.target.value)} required /></Field><Field label={translate(language, "endDate")} className="min-w-0 text-xs font-medium"><DayDateSelector ariaLabel={`${translate(language, "recruitmentPipelineHealth")} ${translate(language, "endDate")}`} language={language} name="funnel_end" value={funnelCustomEnd} onChange={(event) => setFunnelCustomEnd(event.target.value)} required /></Field></> : <Field label={translate(language, "reportMonth")} className="min-w-0 text-xs font-medium"><CommandMonthSelector ariaLabel={`${translate(language, "recruitmentPipelineHealth")} ${translate(language, "reportMonth")}`} monthLabel={(month) => monthPickerMonthLabel(month, language)} previousYearLabel={translate(language, "previousYear")} nextYearLabel={translate(language, "nextYear")} value={funnelMonth} onValueChange={setFunnelMonth} /></Field>}
-              <DashboardMultiFilterPicker id="funnel-level-options" label={translate(language, "level")} language={language} options={localizedFunnelLevelOptions} values={funnelLevelBands} onValuesChange={(values) => setFunnelLevelBands(values as FunnelLevelBand[])} />
-              <DashboardFilterPicker id="funnel-channel-options" label={translate(language, "channel")} options={funnelChannelOptions} value={funnelChannel} onValueChange={setFunnelChannel} />
+              <DashboardMultiFilterPicker label={translate(language, "level")} language={language} options={localizedFunnelLevelOptions} values={funnelLevelBands} onValuesChange={(values) => setFunnelLevelBands(values as FunnelLevelBand[])} />
+              <DashboardFilterPicker label={translate(language, "channel")} options={funnelChannelOptions} value={funnelChannel} onValueChange={setFunnelChannel} />
               <div className="grid min-w-0 gap-1.5 text-xs font-semibold text-slate"><span className="truncate" title={language === "th" ? "คำอธิบายสีช่องทาง" : "Channel legend"}>{language === "th" ? "คำอธิบายสีช่องทาง" : "Channel legend"}</span><span className="flex min-h-10 items-center text-sm text-navy"><button type="button" role="switch" aria-label={language === "th" ? "คำอธิบายสีช่องทาง" : "Channel legend"} aria-checked={funnelLegend} title={language === "th" ? "สลับคำอธิบายสีช่องทาง" : "Toggle channel legend"} onClick={() => setFunnelLegend((value) => !value)} className="ats-square-switch"><span className="ats-square-switch-label" aria-hidden="true">{funnelLegend ? (language === "th" ? "เปิด" : "ON") : (language === "th" ? "ปิด" : "OFF")}</span><span className="ats-square-switch-thumb" aria-hidden="true" /></button></span></div>
             </div>
             {validFunnelRange ? null : <p role="alert" className="text-sm font-medium text-danger">{translate(language, "invalidCustomDateRange")}</p>}
@@ -443,79 +444,26 @@ export function VacancyWaterfallView({
 }
 
 function DashboardFilterPicker({
-  id,
   label,
   options,
   value,
   onValueChange
 }: {
-  id: string;
   label: string;
   options: Array<{ value: string; label: string }>;
   value: string;
   onValueChange: (value: string) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement | null>(null);
-  const selectedLabel = options.find((option) => option.value === value)?.label ?? value;
-
-  useEffect(() => {
-    const close = (event: MouseEvent) => {
-      if (!ref.current?.contains(event.target as Node)) setOpen(false);
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("mousedown", close);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, []);
-
-  return (
-    <div ref={ref} className="relative grid min-w-0 gap-1.5 text-sm font-medium text-navy">
-      <span className="truncate text-xs font-semibold text-slate" title={label}>{label}</span>
-      <button type="button" className="ats-dropdown-trigger flex min-h-10 w-full min-w-0 items-center gap-1 rounded-xl border px-2 text-left text-sm font-semibold text-navy transition" aria-label={`${label}: ${selectedLabel}`} title={`${label}: ${selectedLabel}`} aria-haspopup="listbox" aria-expanded={open} aria-controls={id} onClick={() => setOpen((current) => !current)}>
-        <SlidersHorizontal size={15} className="shrink-0 text-primary" aria-hidden="true" />
-        <span className="min-w-0 flex-1 truncate" title={selectedLabel}>{selectedLabel}</span>
-        <ChevronDown size={16} className={`shrink-0 text-slate transition-transform ${open ? "rotate-180" : ""}`} aria-hidden="true" />
-      </button>
-      {open ? <div id={id} role="listbox" aria-label={label} className="ats-dropdown-menu absolute z-30 mt-[4.45rem] grid max-h-72 w-full min-w-[12rem] max-w-[calc(100vw-2rem)] grid-cols-1 overflow-y-auto rounded-2xl border">
-        {options.map((option) => {
-          const selected = option.value === value;
-          return <button key={option.value} type="button" role="option" aria-selected={selected} className={`ats-dropdown-option relative rounded-xl border text-left text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-primary/30 ${selected ? "border-primary bg-primary text-white shadow-sm" : "border-[#E4E9F2] bg-[#F8FAFD] text-navy hover:border-[#8AAED8] hover:bg-white"}`} onClick={() => { onValueChange(option.value); setOpen(false); }}>
-            <span className="block min-w-0 break-words pr-5" title={option.label}>{option.label}</span>
-            {selected ? <Check size={16} className="absolute right-3 top-1/2 -translate-y-1/2" aria-hidden="true" /> : null}
-          </button>;
-        })}
-      </div> : null}
-    </div>
-  );
+  return <div className="grid min-w-0 gap-1.5 text-sm font-medium text-navy">
+    <span className="truncate text-xs font-semibold text-slate" title={label}>{label}</span>
+    <CommandSelector ariaLabel={label} emptyLabel={label} options={options} value={value} onValueChange={onValueChange} />
+  </div>;
 }
 
-function DashboardMultiFilterPicker({ id, label, language, options, values, onValuesChange }: { id: string; label: string; language: Language; options: Array<{ value: string; label: string }>; values: string[]; onValuesChange: (values: string[]) => void }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement | null>(null);
-  const allSelected = values.length === options.length;
-  const selectedLabel = values.length === 0 ? translate(language, "allLevels") : options.filter((option) => values.includes(option.value)).map((option) => option.label).join(", ");
-
-  useEffect(() => {
-    const close = (event: MouseEvent) => { if (!ref.current?.contains(event.target as Node)) setOpen(false); };
-    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setOpen(false); };
-    document.addEventListener("mousedown", close);
-    document.addEventListener("keydown", closeOnEscape);
-    return () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", closeOnEscape); };
-  }, []);
-
-  return <div ref={ref} className="relative grid min-w-0 gap-1.5 text-sm font-medium text-navy">
+function DashboardMultiFilterPicker({ label, language, options, values, onValuesChange }: { label: string; language: Language; options: Array<{ value: string; label: string }>; values: string[]; onValuesChange: (values: string[]) => void }) {
+  return <div className="grid min-w-0 gap-1.5 text-sm font-medium text-navy">
     <span className="truncate text-xs font-semibold text-slate" title={label}>{label}</span>
-    <button type="button" className="ats-dropdown-trigger flex min-h-10 w-full min-w-0 items-center gap-1 rounded-xl border px-2 text-left text-sm font-semibold text-navy transition" aria-label={`${label}: ${selectedLabel}`} title={`${label}: ${selectedLabel}`} aria-haspopup="listbox" aria-expanded={open} aria-controls={id} onClick={() => setOpen((current) => !current)}><SlidersHorizontal size={15} className="shrink-0 text-primary" aria-hidden="true" /><span className="min-w-0 flex-1 truncate" title={selectedLabel}>{selectedLabel}</span><ChevronDown size={16} className={`shrink-0 text-slate transition-transform ${open ? "rotate-180" : ""}`} aria-hidden="true" /></button>
-    {open ? <div id={id} role="listbox" aria-multiselectable="true" aria-label={label} className="ats-dropdown-menu absolute z-30 mt-[4.45rem] grid max-h-72 w-full min-w-[12rem] max-w-[calc(100vw-2rem)] grid-cols-1 overflow-y-auto rounded-2xl border">
-      <label className="ats-dropdown-option flex items-center gap-2 border-b border-[#E4E9F2] text-sm font-semibold"><input type="checkbox" checked={allSelected} onChange={(event) => onValuesChange(event.target.checked ? options.map((option) => option.value) : [])} />{translate(language, "selectAll")}</label>
-      {options.map((option) => <label key={option.value} role="option" aria-selected={values.includes(option.value)} className="ats-dropdown-option flex items-center gap-2 rounded-lg text-sm font-semibold hover:bg-[#F8FAFD]"><input type="checkbox" checked={values.includes(option.value)} onChange={(event) => onValuesChange(event.target.checked ? [...values, option.value] : values.filter((value) => value !== option.value))} />{option.label}</label>)}
-    </div> : null}
+    <CommandMultiSelector label={label} allLabel={translate(language, "allLevels")} options={options} values={values} onChange={onValuesChange} />
   </div>;
 }
 

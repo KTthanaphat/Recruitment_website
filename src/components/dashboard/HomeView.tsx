@@ -10,6 +10,7 @@ import { RecruitmentCalendar, TodayEventsPanel, type CalendarEvent } from "@/com
 import { EmptyState } from "@/components/ui/EmptyState";
 import { OperationalSummaryStrip } from "@/components/ui/Operations";
 import { Panel, SectionTitle } from "@/components/ui/Panel";
+import { SelectInput } from "@/components/ui/Field";
 import { StageRail } from "@/components/ui/StageRail";
 import { Tag } from "@/components/ui/Tag";
 import { ACTIVE_PIPELINE_STAGES, PIPELINE_JOURNEY_STAGES, SOURCING_CHANNELS, processLabel } from "@/lib/constants";
@@ -325,11 +326,11 @@ function HomeRecordTabs({
             <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 px-1 pb-2 text-xs font-medium">
               <span className="text-slate" data-open-requisition-count="true">{translate(language, "openRequisitionCount", { count: formatNumber(needsAction.length, language), plural: needsAction.length === 1 ? "" : "s" })}</span>
               <label className="flex min-w-0 items-center gap-2 text-slate">{translate(language, "sortBy")}
-                <select aria-label={translate(language, "sortOpenHeadcount")} className="min-h-11 max-w-[11rem] rounded-md border border-[#C9D5E6] bg-white px-1.5 text-xs font-medium text-navy focus:outline-none focus:ring-2 focus:ring-primary/30 md:min-h-9" value={headcountSort} onChange={(event) => setHeadcountSort(event.target.value as typeof headcountSort)}>
+                <SelectInput aria-label={translate(language, "sortOpenHeadcount")} className="max-w-[11rem]" value={headcountSort} onChange={(event) => setHeadcountSort(event.target.value as typeof headcountSort)}>
                   <option value="oldest">{translate(language, "oldestFirst")}</option>
                   <option value="demand">{translate(language, "mostOpenDemand")}</option>
                   <option value="position">{translate(language, "positionAZ")}</option>
-                </select>
+                </SelectInput>
               </label>
             </div>
             <HomeRecordHeader columns={[translate(language, "openRequisition"), translate(language, "remainingVacancyShort"), translate(language, "sourcingLinkReadiness"), translate(language, "ageSla"), translate(language, "owner")]} gridClass={headcountColumns} />
@@ -341,12 +342,12 @@ function HomeRecordTabs({
             <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 px-1 pb-2 text-xs font-medium">
               <span className="text-slate" data-home-candidate-count="true">{translate(language, "candidatePipelineCount", { count: formatNumber(ongoingCandidates.length, language) })}</span>
               <label className="flex min-w-0 items-center gap-2 text-slate">{translate(language, "sortBy")}
-                <select aria-label={translate(language, "sortCandidatePipeline")} className="min-h-11 max-w-[12rem] rounded-md border border-[#C9D5E6] bg-white px-1.5 text-xs font-medium text-navy focus:outline-none focus:ring-2 focus:ring-primary/30 md:min-h-9" value={candidateSort} onChange={(event) => setCandidateSort(event.target.value as typeof candidateSort)}>
+                <SelectInput aria-label={translate(language, "sortCandidatePipeline")} className="max-w-[12rem]" value={candidateSort} onChange={(event) => setCandidateSort(event.target.value as typeof candidateSort)}>
                   <option value="oldest_touch">{translate(language, "oldestTouchFirst")}</option>
                   <option value="newest_touch">{translate(language, "newestTouchFirst")}</option>
                   <option value="name">{translate(language, "candidateAZ")}</option>
                   <option value="progression">{translate(language, "progressionFurthest")}</option>
-                </select>
+                </SelectInput>
               </label>
             </div>
             <div ref={recordListRef} className="min-w-0 md:max-h-[min(62dvh,44rem)] md:overflow-auto md:overscroll-contain" data-home-candidate-scroll="true">
