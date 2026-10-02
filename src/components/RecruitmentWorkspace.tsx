@@ -924,6 +924,12 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       setActiveModal(null);
       setProcessDefaults({});
       setModalDefaults({});
+      const previousDocId = savedAction.modal === "requisition" ? valueAsString(savedAction.payload.previous_doc_id) : "";
+      const nextDocId = savedAction.modal === "requisition" ? valueAsString(result.id ?? savedAction.payload.doc_id) : "";
+      if (previousDocId && nextDocId && previousDocId !== nextDocId) {
+        setDetail((current) => current?.type === "requisition" && current.id === previousDocId ? { ...current, id: nextDocId } : current);
+        setWorkspaceTarget((current) => current.type === "requisition" && current.id === previousDocId ? { ...current, id: nextDocId } : current);
+      }
       const reloadedData = await loadData();
       const handoff = offerPassHandoffFromResult(result, reloadedData ?? data);
       if (handoff) {
@@ -1107,9 +1113,22 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     setStatus(translate(language, "prioritySaved"));
   }, [data.profile, language]);
 
+  const setCandidateRequisitionAssociation = useCallback(async (candidateId: string, docId: string, associate: boolean) => {
+    if (!supabase) throw new Error("Supabase is not configured.");
+    setBusy(true);
+    try {
+      const { data: result, error: rpcError } = await supabase.rpc("app_set_candidate_requisition_association_v1", { payload: { candidate_id: candidateId, doc_id: docId, associate } });
+      if (rpcError || result?.ok !== true) throw new Error(rpcError?.message ?? result?.error ?? "Association could not be saved.");
+      setStatus(language === "th"
+        ? (associate ? "เชื่อมใบขอกับผู้สมัครแล้ว" : "นำการเชื่อมใบขอออกแล้ว")
+        : (associate ? "Requisition associated with candidate." : "Requisition association removed."));
+      await loadData();
+    } finally { setBusy(false); }
+  }, [language, loadData]);
+
   const detailBody = useMemo(
-    () => buildDetailBodyV2(detail, data, language, canWrite, canDeleteRecords, openProcessFromDetail, openCurrentStageEdit, openDetailOffer, (offer) => { setProcessDefaults({ offer_id: offer.offer_id, offer_expected_updated_at: offer.updated_at, offer_start_confirmation: offer.start_confirmation }); setActiveModal("start_confirmation"); }, navigationContext, openDetailRequisitionChange, openDetailCandidateChange, openCandidateReference, openCandidateReferenceStatus, openCandidateReferenceCheck, prepareDestructiveRpcAction, openRejectionLetter, toggleRequisitionPriority),
-    [canDeleteRecords, canWrite, detail, data, language, navigationContext, openCandidateReference, openCandidateReferenceCheck, openCandidateReferenceStatus, openDetailCandidateChange, openDetailRequisitionChange, openDetailOffer, openCurrentStageEdit, openProcessFromDetail, prepareDestructiveRpcAction, openRejectionLetter, toggleRequisitionPriority]
+    () => buildDetailBodyV2(detail, data, language, canWrite, canDeleteRecords, openProcessFromDetail, openCurrentStageEdit, openDetailOffer, (offer) => { setProcessDefaults({ offer_id: offer.offer_id, offer_expected_updated_at: offer.updated_at, offer_start_confirmation: offer.start_confirmation }); setActiveModal("start_confirmation"); }, navigationContext, openDetailRequisitionChange, openDetailCandidateChange, openCandidateReference, openCandidateReferenceStatus, openCandidateReferenceCheck, prepareDestructiveRpcAction, openRejectionLetter, toggleRequisitionPriority, setCandidateRequisitionAssociation),
+    [canDeleteRecords, canWrite, detail, data, language, navigationContext, openCandidateReference, openCandidateReferenceCheck, openCandidateReferenceStatus, openDetailCandidateChange, openDetailRequisitionChange, openDetailOffer, openCurrentStageEdit, openProcessFromDetail, prepareDestructiveRpcAction, openRejectionLetter, setCandidateRequisitionAssociation, toggleRequisitionPriority]
   );
 
   if (!hasSupabaseConfig) {
@@ -1431,6 +1450,7 @@ function buildPayload(modal: Exclude<ModalName, null>, formData: FormData) {
     const payload = {
       mode: String(formData.get("mode") ?? "new"),
       doc_id: emptyToNull(formData.get("doc_id")),
+      previous_doc_id: emptyToNull(formData.get("previous_doc_id")),
       pr_approved_date: emptyToNull(formData.get("pr_approved_date")),
       site: emptyToNull(formData.get("site")),
       position: emptyToNull(formData.get("position")),
@@ -2018,6 +2038,7 @@ function RequisitionFields({
   const siteValue = forceAssignedScope ? assignedSite : selected?.site;
   const ownerValue = forceAssignedScope ? nickname : selected?.person_in_charge;
   const initialSiteValue = siteValue ?? "";
+  const [docId, setDocId] = useState(selected?.doc_id ?? "");
   const [requestType, setRequestType] = useState<RequisitionRequestType>(selected?.request_type ?? "New");
   const [headCount, setHeadCount] = useState(Math.max(1, selected?.head_count ?? 1));
   const [replacementNames, setReplacementNames] = useState(() => replacementNamesForHeadcount(splitReplacementNames(selected?.replacement_names), selected?.head_count ?? 1));
@@ -2040,6 +2061,7 @@ function RequisitionFields({
     setHeadCount(nextHeadCount);
     setReplacementNames(replacementNamesForHeadcount(splitReplacementNames(selected?.replacement_names), nextHeadCount));
     setSelectedSite(initialSiteValue);
+    setDocId(selected?.doc_id ?? "");
     setDepartmentValue(selected?.department ?? "");
     setSectionValue(selected?.section ?? "");
   }, [initialSiteValue, selected?.department, selected?.doc_id, selected?.head_count, selected?.replacement_names, selected?.request_type, selected?.section]);
@@ -2078,16 +2100,21 @@ function RequisitionFields({
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      <Field label={translate(language, "docId")}>
-        {mode === "change" ? (
-          <SelectInput name="doc_id" required value={selectedId} onChange={(event) => onSelect(event.target.value)}>
+      {mode === "change" ? (
+        <>
+          <Field label={translate(language, "selectRequisitionOption")}>
+          <SelectInput required value={selectedId} onChange={(event) => onSelect(event.target.value)}>
             <option value="">{translate(language, "selectRequisitionOption")}</option>
             {data.requisitions.map((row) => <option key={row.doc_id} value={row.doc_id}>{requisitionOptionLabel(row)}</option>)}
           </SelectInput>
-        ) : (
-          <TextInput name="doc_id" list="doc-id-options" required placeholder={translate(language, "requisitionDocIdPlaceholder")} />
-        )}
-      </Field>
+          </Field>
+          <Field label={translate(language, "docId")}>
+          <TextInput name="doc_id" required value={docId} disabled={!selected} onChange={(event) => setDocId(event.target.value)} />
+          {selected ? <input type="hidden" name="previous_doc_id" value={selected.doc_id} /> : null}
+          <p className="mt-1 text-xs font-normal text-slate-600">{translate(language, "requisitionDocIdEditHint")}</p>
+          </Field>
+        </>
+      ) : <Field label={translate(language, "docId")}><TextInput name="doc_id" list="doc-id-options" required placeholder={translate(language, "requisitionDocIdPlaceholder")} /></Field>}
       <Field label={translate(language, "prApprovedDate")}><DayDateSelector ariaLabel={translate(language, "prApprovedDate")} language={language} name="pr_approved_date" nextMonthLabel={translate(language, "nextMonth")} previousMonthLabel={translate(language, "previousMonth")} defaultValue={selected?.pr_approved_date ?? ""} /></Field>
       <Field label={translate(language, "requestType")}>
         <CreateSelectInput name="request_type" value={requestType} onChange={(event) => changeRequestType(event.target.value as RequisitionRequestType)}>
@@ -3415,7 +3442,8 @@ function buildDetailBodyV2(
   onSaveReferenceCheck: (candidateId: string, referenceId: string) => void,
   onDeleteRecord: (endpoint: string, payload: Record<string, unknown>, summary: string) => void,
   onCreateRejectionLetter: (candidate: EnrichedCandidate, retryDraftId?: string) => void,
-  onTogglePriority: (requisition: Requisition) => Promise<void>
+  onTogglePriority: (requisition: Requisition) => Promise<void>,
+  onSetCandidateRequisitionAssociation: (candidateId: string, docId: string, associate: boolean) => Promise<void>
 ): DetailBodyResult {
   if (!detail) return { title: "Detail", body: null };
   const href = (path: string) => buildContextualHref(path, navigationContext);
@@ -3548,6 +3576,8 @@ function buildDetailBodyV2(
         .some((name) => candidate.person_in_charge?.trim().toLowerCase() === name.trim().toLowerCase()))
   );
   const offers = data.offers.filter((row) => row.candidate_id === candidate.candidate_id);
+  const candidateReqLinks = data.candidate_requisitions.filter((row) => row.candidate_id === candidate.candidate_id);
+  const canManageReq = (req: Requisition) => data.profile?.role === "system_admin" || data.profile?.role === "admin_recruiter" || (data.profile?.role === "site_recruiter" && (req.site === data.profile.site || req.person_in_charge === data.profile.nickname));
   const references = data.candidate_references.filter((row) => row.candidate_id === candidate.candidate_id);
   const referenceChecks = new Map(data.candidate_reference_checks.map((row) => [row.reference_id, row]));
   const availableReferenceCount = references.filter((row) => row.status === "available").length;
@@ -3612,6 +3642,10 @@ function buildDetailBodyV2(
         </section> : null}
         <section className="rounded-xl border border-[#D7DEE8] bg-white p-4 shadow-[0_10px_28px_rgba(11,19,43,0.035)] sm:p-5">
           <SectionHeading className="mb-3" icon={<ContactRound size={19} />} title="Candidate profile" />
+          <div className="mb-4 rounded-lg border border-[#D7DEE8] bg-[#F8FAFD] p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-sm text-navy">{language === "th" ? "ใบขอที่เชื่อมโยง" : "Associated requisitions"}</strong><a className="text-xs font-semibold text-primary underline" href={`/audit?entity=candidate_requisitions&entityId=${candidate.candidate_id}`}>{translate(language, "viewAudit")}</a></div>
+            <div className="mt-2 grid gap-2">{data.requisitions.filter(canManageReq).map((req) => { const linked = candidateReqLinks.some((link) => link.doc_id === req.doc_id); return <div key={req.doc_id} className="flex items-center justify-between gap-2 rounded-md bg-white px-2 py-1.5"><span className="min-w-0 break-words text-xs font-medium text-slate">{req.doc_id} · {req.position}</span><Button type="button" size="sm" variant={linked ? "secondary" : "ghost"} disabled={!canWrite} onClick={() => void onSetCandidateRequisitionAssociation(candidate.candidate_id, req.doc_id, !linked)}>{linked ? (language === "th" ? "นำออก" : "Remove") : (language === "th" ? "เพิ่ม" : "Add")}</Button></div>; })}{data.requisitions.filter(canManageReq).length === 0 ? <p className="text-xs text-slate">{language === "th" ? "ไม่มีใบขอที่จัดการได้" : "No manageable requisitions"}</p> : null}</div>
+          </div>
         <DetailGrid workspace language={language} rows={[
           { label: translate(language, "phoneNo"), value: formatThaiMobilePhone(candidate.phone_no), copyValue: candidate.phone_no, icon: <Phone size={18} /> },
           { label: translate(language, "email"), value: candidate.email ?? "-", copyValue: candidate.email, icon: <Mail size={18} /> },

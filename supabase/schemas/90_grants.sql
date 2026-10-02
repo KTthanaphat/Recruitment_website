@@ -9,6 +9,7 @@ grant select on public.requisition_logs to authenticated;
 grant select on public.position_groups to authenticated;
 grant select on public.document_groups to authenticated;
 grant select on public.candidates to authenticated;
+grant select on public.candidate_requisitions to authenticated;
 grant select on public.candidate_references to authenticated;
 grant select on public.candidate_reference_checks to authenticated;
 grant select on public.recruitment_logs to authenticated;
@@ -60,6 +61,8 @@ revoke all on function public.app_upsert_sourcing_weekly_update(jsonb) from publ
 grant execute on function public.app_upsert_sourcing_weekly_update(jsonb) to authenticated;
 revoke all on function public.app_upsert_candidate(jsonb) from public, anon, authenticated;
 grant execute on function public.app_upsert_candidate(jsonb) to authenticated;
+revoke all on function public.app_set_candidate_requisition_association_v1(jsonb) from public, anon, authenticated;
+grant execute on function public.app_set_candidate_requisition_association_v1(jsonb) to authenticated;
 revoke all on function public.app_upsert_candidate_reference_v1(jsonb) from public, anon, authenticated;
 grant execute on function public.app_upsert_candidate_reference_v1(jsonb) to authenticated;
 revoke all on function public.app_set_candidate_reference_status_v1(jsonb) from public, anon, authenticated;

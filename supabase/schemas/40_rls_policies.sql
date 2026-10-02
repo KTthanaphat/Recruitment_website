@@ -6,6 +6,7 @@ alter table public.requisition_logs enable row level security;
 alter table public.position_groups enable row level security;
 alter table public.document_groups enable row level security;
 alter table public.candidates enable row level security;
+alter table public.candidate_requisitions enable row level security;
 alter table public.recruitment_logs enable row level security;
 alter table public.rejection_reasons enable row level security;
 alter table public.offers enable row level security;
@@ -65,6 +66,11 @@ drop policy if exists candidates_read on public.candidates;
 create policy candidates_read on public.candidates
 for select to authenticated
 using (app_private.can_read_candidate(candidate_id));
+
+drop policy if exists candidate_requisitions_scoped_read on public.candidate_requisitions;
+create policy candidate_requisitions_scoped_read on public.candidate_requisitions
+for select to authenticated
+using (app_private.can_read_requisition(doc_id) and app_private.can_read_candidate(candidate_id));
 
 drop policy if exists recruitment_logs_read on public.recruitment_logs;
 create policy recruitment_logs_read on public.recruitment_logs

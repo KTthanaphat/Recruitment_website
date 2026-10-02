@@ -200,6 +200,11 @@ function createRecruitmentDataset(activeRole: MockUserRole): DashboardData {
       candidate("C-OFFER-NO-OFFER", "Oscar Offer Needed", "DG-HQ-ENG", "Referral", "2026-07-02"),
       candidate("C-NO-ACTIVITY", "Nora No Activity", "DG-KT2-ANL", "Others", "2026-06-28")
     ],
+    candidate_requisitions: [
+      ...["C-PHONE", "C-PHONE-PASS", "C-AGING", "C-HR", "C-OFFER-READY", "C-FAILED", "C-OFFER-NO-OFFER"].map((candidate_id) => ({ candidate_id, doc_id: "REQ-HQ-1", created_by: null, created_at: "2026-07-01T00:00:00.000Z" })),
+      ...["C-LINE", "C-TEST", "C-OFFER-PASS"].map((candidate_id) => ({ candidate_id, doc_id: "REQ-KT1-1", created_by: null, created_at: "2026-07-01T00:00:00.000Z" })),
+      ...["C-REF", "C-OFFER", "C-NO-ACTIVITY"].map((candidate_id) => ({ candidate_id, doc_id: "REQ-KT2-1", created_by: null, created_at: "2026-07-01T00:00:00.000Z" }))
+    ],
     candidate_references: [
       {
         reference_id: "10000000-0000-4000-8000-000000000001",
@@ -331,6 +336,11 @@ function applyRpcMutation(data: DashboardData, endpoint: string, payload: Record
         ? match.doc_group_id !== docGroupId
         : !(match.doc_id === docId && match.group_id === groupId)
     ));
+  }
+  if (endpoint === "app_set_candidate_requisition_association_v1") {
+    const candidateId = String(payload.candidate_id ?? ""), docId = String(payload.doc_id ?? "");
+    if (payload.associate === true) { if (!data.candidate_requisitions.some(link => link.candidate_id === candidateId && link.doc_id === docId)) data.candidate_requisitions.push({ candidate_id: candidateId, doc_id: docId, created_by: "qa-admin", created_at: "2026-07-24T05:00:00.000Z" }); }
+    else data.candidate_requisitions = data.candidate_requisitions.filter(link => !(link.candidate_id === candidateId && link.doc_id === docId));
   }
   if (endpoint === "app_confirm_offer_start_v1") {
     const current = data.offers.find((row) => row.offer_id === Number(payload.offer_id));
@@ -499,6 +509,7 @@ function tableRows(data: DashboardData, table: string) {
     position_groups: data.position_groups,
     document_groups: data.document_groups,
     candidates: data.candidates,
+    candidate_requisitions: data.candidate_requisitions,
     candidate_references: data.candidate_references,
     candidate_reference_checks: data.candidate_reference_checks,
     recruitment_logs: data.recruitment_logs,

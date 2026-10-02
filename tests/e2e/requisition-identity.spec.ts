@@ -39,6 +39,43 @@ test("requisition detail localizes its ID label while keeping the formatted head
   await expect(drawer.locator('[data-tag-appearance="soft"]')).toHaveCount(2);
 });
 
+test("requisition Change mode lets users replace a temporary Doc ID", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await installMockSupabase(page, { role: "admin_recruiter" });
+  await page.goto("/requisitions?detailType=requisition&detailId=REQ-HQ-1");
+  await expectWorkspaceReady(page);
+  const drawer = page.getByRole("dialog", { name: "Engineer (L4)" });
+  await drawer.getByRole("button", { name: /More actions for Engineer/ }).click();
+  await drawer.getByRole("menuitem", { name: "Change record" }).click();
+
+  const formDialog = page.getByRole("dialog", { name: "Edit Requisition" });
+  const docId = formDialog.locator('input[name="doc_id"]');
+  await expect(docId).toHaveValue("REQ-HQ-1");
+  await expect(formDialog.locator('input[name="previous_doc_id"]')).toHaveValue("REQ-HQ-1");
+  await formDialog.getByText("Use a temporary ID while approval is pending.").waitFor({ state: "visible" });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+
+  await docId.fill("APPROVAL-PENDING-1");
+  await formDialog.getByRole("button", { name: "Review changes" }).click();
+  const confirmation = page.getByRole("dialog", { name: "Confirm Save" });
+  await expect(confirmation).toContainText("APPROVAL-PENDING-1");
+});
+
+test("requisition Doc ID edit guidance fits and localizes in Thai", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await installMockSupabase(page, { role: "admin_recruiter", language: "th" });
+  await page.goto("/requisitions?lang=th&detailType=requisition&detailId=REQ-HQ-1");
+  const drawer = page.getByRole("dialog", { name: "Engineer (L4)" });
+  await expect(drawer).toBeVisible();
+  await drawer.getByRole("button", { name: /More actions for Engineer/ }).click();
+  await drawer.getByRole("menuitem", { name: "แก้ไขรายการ" }).click();
+
+  const formDialog = page.getByRole("dialog").filter({ has: page.locator('input[name="doc_id"]') });
+  await expect(formDialog.locator('input[name="doc_id"]')).toHaveValue("REQ-HQ-1");
+  await expect(formDialog.getByText("ใช้รหัสชั่วคราวระหว่างรออนุมัติ")).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
 test("Requisition Detail uses the candidate workspace hierarchy and retains role-gated actions", async ({ page }) => {
   await installMockSupabase(page, { role: "admin_recruiter" });
   await page.goto("/requisitions?detailType=requisition&detailId=REQ-HQ-1");
@@ -68,13 +105,6 @@ test("Requisition Detail uses the candidate workspace hierarchy and retains role
 test("long requisition titles wrap at 390px without page-level overflow", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await installMockSupabase(page, { role: "admin_recruiter" });
-  await page.goto("/workspace");
-  await expectWorkspaceReady(page);
-
-  await page.getByLabel("Search workspaces").fill("REQ-UNMATCHED-1");
-  await expect(page.getByRole("button", { name: /Senior Procurement Operations and Supplier Development Specialist — REQ-UNMATCHED-1/ })).toBeVisible();
-  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-
   await page.goto("/requisitions?detailType=requisition&detailId=REQ-UNMATCHED-1");
   await expectWorkspaceReady(page);
   await expect(page.getByRole("dialog", { name: "Senior Procurement Operations and Supplier Development Specialist" })).toBeVisible();

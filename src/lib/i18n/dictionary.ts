@@ -1148,6 +1148,9 @@ Object.assign(th, {
 
 export const dictionaries = { en, th };
 
+Object.assign(en, { requisitionDocIdEditHint: "Use a temporary ID while approval is pending. When you replace it, linked records and history follow the new ID." });
+Object.assign(th, { requisitionDocIdEditHint: "ใช้รหัสชั่วคราวระหว่างรออนุมัติ เมื่อเปลี่ยนรหัส รายการที่เชื่อมโยงและประวัติจะใช้รหัสใหม่" });
+
 export function translate(language: Language, key: string, params?: TranslateParams) {
   const template = dictionaries[language][key] ?? dictionaries.en[key] ?? key;
   if (!params) return template;

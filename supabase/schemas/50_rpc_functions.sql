@@ -8,7 +8,8 @@ set search_path = public
 as $$
 declare
   v_mode text := coalesce(payload ->> 'mode', 'new');
-  v_doc_id text := nullif(payload ->> 'doc_id', '');
+  v_doc_id text := nullif(btrim(payload ->> 'doc_id'), '');
+  v_previous_doc_id text := nullif(btrim(payload ->> 'previous_doc_id'), '');
   v_exists boolean;
   v_status text := coalesce(nullif(payload ->> 'status', ''), 'ongoing');
   v_role text := app_private.current_app_role();
@@ -22,6 +23,7 @@ begin
   perform app_private.assert_recruitment_writer();
   if v_doc_id is null then raise exception 'Doc ID is required.'; end if;
   if v_mode not in ('new', 'change') then raise exception 'mode must be new or change'; end if;
+  if v_mode = 'change' then v_previous_doc_id := coalesce(v_previous_doc_id, v_doc_id); end if;
   if v_status not in ('ongoing', 'cancel') then raise exception 'Requisition status can only be ongoing or cancel. Filled is automatic.'; end if;
   if v_request_type not in ('New', 'Replacement') then raise exception 'Request type must be New or Replacement.'; end if;
   if v_request_type = 'Replacement' and v_replacement_names is null then raise exception 'Replacement names are required for replacement requisitions.'; end if;
@@ -37,12 +39,15 @@ begin
 
   select exists(select 1 from public.requisitions where doc_id = v_doc_id) into v_exists;
   if v_mode = 'new' and v_exists then raise exception 'Requisition Doc ID already exists. Switch to Change mode to edit it.'; end if;
-  if v_mode = 'change' and not v_exists then raise exception 'Requisition Doc ID does not exist. Switch to New mode to create it.'; end if;
-  if v_mode = 'change' and not app_private.can_manage_requisition(v_doc_id) then raise exception 'You can edit only requisitions where you are the person in charge or assigned to the site.'; end if;
+  if v_mode = 'change' then
+    if not exists(select 1 from public.requisitions where doc_id = v_previous_doc_id) then raise exception 'Requisition Doc ID does not exist. Switch to New mode to create it.'; end if;
+    if not app_private.can_manage_requisition(v_previous_doc_id) then raise exception 'You can edit only requisitions where you are the person in charge or assigned to the site.'; end if;
+    if v_doc_id <> v_previous_doc_id and v_exists then raise exception 'Requisition Doc ID already exists. Choose a unique ID.'; end if;
+  end if;
 
   if v_role = 'site_recruiter' and v_mode = 'change' then
     select site, person_in_charge into v_site, v_person_in_charge
-    from public.requisitions where doc_id = v_doc_id;
+    from public.requisitions where doc_id = v_previous_doc_id;
   end if;
 
   select d.department_th, coalesce(d.section_th, v_section) into v_department, v_section
@@ -54,38 +59,43 @@ begin
 
   perform set_config('app.action', 'requisition:' || v_mode, true);
 
-  insert into public.requisitions (
-    doc_id, pr_approved_date, site, position, department, section, level,
-    head_count, person_in_charge, line_manager, request_type, replacement_names, status
-  )
-  values (
-    v_doc_id,
-    nullif(payload ->> 'pr_approved_date', '')::date,
-    v_site,
-    nullif(payload ->> 'position', ''),
-    v_department,
-    v_section,
-    nullif(payload ->> 'level', ''),
-    coalesce(nullif(payload ->> 'head_count', '')::integer, 1),
-    v_person_in_charge,
-    nullif(payload ->> 'line_manager', ''),
-    v_request_type,
-    v_replacement_names,
-    v_status
-  )
-  on conflict (doc_id) do update set
-    pr_approved_date = excluded.pr_approved_date,
-    site = excluded.site,
-    position = excluded.position,
-    department = excluded.department,
-    section = excluded.section,
-    level = excluded.level,
-    head_count = excluded.head_count,
-    person_in_charge = excluded.person_in_charge,
-    line_manager = excluded.line_manager,
-    request_type = excluded.request_type,
-    replacement_names = excluded.replacement_names,
-    status = excluded.status;
+  if v_mode = 'change' then
+    update public.requisitions set
+      doc_id = v_doc_id,
+      pr_approved_date = nullif(payload ->> 'pr_approved_date', '')::date,
+      site = v_site,
+      position = nullif(payload ->> 'position', ''),
+      department = v_department,
+      section = v_section,
+      level = nullif(payload ->> 'level', ''),
+      head_count = coalesce(nullif(payload ->> 'head_count', '')::integer, 1),
+      person_in_charge = v_person_in_charge,
+      line_manager = nullif(payload ->> 'line_manager', ''),
+      request_type = v_request_type,
+      replacement_names = v_replacement_names,
+      status = v_status
+    where doc_id = v_previous_doc_id;
+  else
+    insert into public.requisitions (
+      doc_id, pr_approved_date, site, position, department, section, level,
+      head_count, person_in_charge, line_manager, request_type, replacement_names, status
+    )
+    values (
+      v_doc_id,
+      nullif(payload ->> 'pr_approved_date', '')::date,
+      v_site,
+      nullif(payload ->> 'position', ''),
+      v_department,
+      v_section,
+      nullif(payload ->> 'level', ''),
+      coalesce(nullif(payload ->> 'head_count', '')::integer, 1),
+      v_person_in_charge,
+      nullif(payload ->> 'line_manager', ''),
+      v_request_type,
+      v_replacement_names,
+      v_status
+    );
+  end if;
 
   perform set_config('app.action', 'auto-status', true);
   perform app_private.refresh_requisition_status(v_doc_id);
@@ -656,8 +666,13 @@ begin
   select dg.doc_group_id into v_doc_group_id
   from public.document_groups dg
   where dg.group_id = v_group_id
+    and (v_legacy_doc_group_id is null or dg.doc_group_id = v_legacy_doc_group_id)
+    and app_private.can_manage_requisition(dg.doc_id)
   order by dg.doc_group_id
   limit 1;
+  if v_legacy_doc_group_id is not null and v_doc_group_id is null then
+    raise exception 'CANDIDATE_REQUISITION_DENIED: Select a requisition you manage from this sourcing group.';
+  end if;
 
   if v_mode = 'new' then
     v_candidate_id := app_private.next_app_id('candidates', 'CAN');
@@ -696,6 +711,14 @@ begin
     ref_name = excluded.ref_name,
     first_contact_date = excluded.first_contact_date,
     candidate_folder_url = excluded.candidate_folder_url;
+
+  if v_mode = 'new' then
+    insert into public.candidate_requisitions (candidate_id, doc_id, created_by)
+    select v_candidate_id, dg.doc_id, auth.uid()
+    from public.document_groups dg
+    where dg.doc_group_id = v_doc_group_id
+    on conflict (candidate_id, doc_id) do nothing;
+  end if;
 
   for v_reference in select value from jsonb_array_elements(v_references) loop
     if nullif(btrim(coalesce(v_reference ->> 'reference_name', '')), '') is null
@@ -1364,6 +1387,40 @@ begin
     raise exception 'REJECTION_REASON_INVALID: The selected reasons are no longer active or do not belong together.';
   end if;
   return jsonb_build_object('actor', p_actor, 'main_th', v_main.label_th, 'main_en', v_main.label_en, 'detail_th', v_detail.label_th, 'detail_en', v_detail.label_en);
+end;
+$$;
+
+create or replace function public.app_set_candidate_requisition_association_v1(payload jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_candidate_id text := nullif(payload ->> 'candidate_id', '');
+  v_doc_id text := nullif(btrim(payload ->> 'doc_id'), '');
+  v_associate boolean;
+begin
+  perform app_private.assert_recruitment_writer();
+  if jsonb_typeof(payload -> 'associate') is distinct from 'boolean' then
+    raise exception 'CANDIDATE_REQUISITION_INVALID: Association action must be true or false.';
+  end if;
+  v_associate := (payload ->> 'associate')::boolean;
+  if v_candidate_id is null or v_doc_id is null then raise exception 'CANDIDATE_REQUISITION_INVALID: Candidate and requisition are required.'; end if;
+  if not exists (select 1 from public.candidates where candidate_id = v_candidate_id) then raise exception 'CANDIDATE_REQUISITION_INVALID: Candidate does not exist.'; end if;
+  if not exists (select 1 from public.requisitions where doc_id = v_doc_id) then raise exception 'CANDIDATE_REQUISITION_INVALID: Requisition does not exist.'; end if;
+  if not app_private.can_manage_candidate(v_candidate_id) or not app_private.can_manage_requisition(v_doc_id) then
+    raise exception 'CANDIDATE_REQUISITION_DENIED: You can change associations only for candidates and requisitions you manage.';
+  end if;
+  perform set_config('app.action', case when v_associate then 'candidate-requisition:add' else 'candidate-requisition:remove' end, true);
+  if v_associate then
+    insert into public.candidate_requisitions (candidate_id, doc_id, created_by)
+    values (v_candidate_id, v_doc_id, auth.uid())
+    on conflict (candidate_id, doc_id) do nothing;
+  else
+    delete from public.candidate_requisitions where candidate_id = v_candidate_id and doc_id = v_doc_id;
+  end if;
+  return jsonb_build_object('ok', true, 'candidate_id', v_candidate_id, 'doc_id', v_doc_id, 'associated', v_associate);
 end;
 $$;
 

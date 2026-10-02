@@ -9,6 +9,7 @@ create index if not exists idx_document_groups_doc_id on public.document_groups(
 create index if not exists idx_document_groups_group_id on public.document_groups(group_id);
 create index if not exists idx_candidates_group_id on public.candidates(group_id);
 create index if not exists idx_candidate_references_candidate_status on public.candidate_references(candidate_id, status, updated_at desc);
+create index if not exists candidate_requisitions_doc_candidate_idx on public.candidate_requisitions(doc_id, candidate_id);
 create index if not exists idx_candidate_reference_checks_reference on public.candidate_reference_checks(reference_id);
 create index if not exists idx_recruitment_logs_candidate_latest on public.recruitment_logs(candidate_id, log_id desc) where superseded_at is null;
 create index if not exists idx_recruitment_logs_stage_result_date on public.recruitment_logs(recruitment_process, result, coalesce(outcome_date, log_date) desc) where superseded_at is null;

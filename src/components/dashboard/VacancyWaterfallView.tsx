@@ -1222,19 +1222,15 @@ function buildDashboardPipelineFunnelRows(
   );
   const eligibleDocIds = new Set(eligibleRequisitions.map((requisition) => requisition.doc_id));
   const groupIds = new Set<string>();
-  const directDocGroupIds = new Set<string>();
 
   for (const group of data.document_groups) {
     if (!eligibleDocIds.has(group.doc_id)) continue;
-    directDocGroupIds.add(group.doc_group_id);
     if (group.group_id) groupIds.add(group.group_id);
   }
 
-  const linkedDocGroupIds = docGroupIdsForGroupIds(data, groupIds);
-  for (const docGroupId of directDocGroupIds) linkedDocGroupIds.add(docGroupId);
-
   const applicants = applicantCountForGroups(data, groupIds, startDate, endDate, channelFilter);
-  const stages = passedStageActivityCountsForDocGroups(data, linkedDocGroupIds, startDate, endDate, channelFilter);
+  const eligibleCandidateIds = new Set(data.candidate_requisitions.filter((link) => eligibleDocIds.has(link.doc_id)).map((link) => link.candidate_id));
+  const stages = passedStageActivityCountsForCandidateIds(data, eligibleCandidateIds, startDate, endDate, channelFilter);
   const channelKeys = channelFilter === "all" ? SOURCING_CHANNELS.map((channel) => channel.label) : [channelFilter];
   const segments: Record<string, FunnelChannelSegment[]> = { applicants: [] };
   for (const stage of PIPELINE_FUNNEL_STAGES) segments[stage] = [];
@@ -1243,7 +1239,7 @@ function buildDashboardPipelineFunnelRows(
     const color = channel ? SOURCING_CHANNEL_COLORS[channel.enabled] : UNKNOWN_SOURCING_CHANNEL_COLOR;
     const key = channel?.enabled ?? "unknown";
     segments.applicants.push({ key, label, color, count: applicantCountForGroups(data, groupIds, startDate, endDate, label) });
-    const byStage = passedStageActivityCountsForDocGroups(data, linkedDocGroupIds, startDate, endDate, label);
+    const byStage = passedStageActivityCountsForCandidateIds(data, eligibleCandidateIds, startDate, endDate, label);
     for (const stage of PIPELINE_FUNNEL_STAGES) segments[stage].push({ key, label, color, count: byStage[stage] });
   }
   if (channelFilter === "all") {
@@ -1270,28 +1266,29 @@ function buildSourceEffectivenessRows(
   const eligible = requisitions.filter((row) => isReportEligible(row, data, startDate, endDate, reportView) && levelMatchesBands(row.level, levelBands));
   const docIds = new Set(eligible.map((row) => row.doc_id));
   const groupIds = new Set(data.document_groups.filter((row) => docIds.has(row.doc_id) && row.group_id).map((row) => row.group_id as string));
-  const docGroupIds = docGroupIdsForGroupIds(data, groupIds);
   const candidateById = new Map(data.candidates.map((candidate) => [candidate.candidate_id, candidate]));
+  const linkedCandidateIds = new Set(data.candidate_requisitions.filter((link) => docIds.has(link.doc_id)).map((link) => link.candidate_id));
   const hiredByChannel = new Map<string, Set<string>>();
   for (const offer of candidateOffers) {
     const acceptedDate = validDateOnly(offer.accepted_date);
     if (!acceptedDate || acceptedDate < startDate || acceptedDate > endDate || !docIds.has(offer.doc_id)) continue;
     const candidate = candidateById.get(offer.candidate_id);
-    if (!candidate || !(candidate.group_id && groupIds.has(candidate.group_id)) && !(candidate.doc_group_id && docGroupIds.has(candidate.doc_group_id))) continue;
+    if (!candidate || !linkedCandidateIds.has(candidate.candidate_id)) continue;
     const key = candidate.channel?.trim() || "";
     const ids = hiredByChannel.get(key) ?? new Set<string>();
     ids.add(candidate.candidate_id);
     hiredByChannel.set(key, ids);
   }
-  const totalPhone = passedStageActivityCountsForDocGroups(data, docGroupIds, startDate, endDate)["Phone Screen"];
-  const knownPhone = SOURCING_CHANNELS.reduce((sum, channel) => sum + passedStageActivityCountsForDocGroups(data, docGroupIds, startDate, endDate, channel.label)["Phone Screen"], 0);
+  const phoneIds = new Set(data.candidate_requisitions.filter((link) => docIds.has(link.doc_id)).map((link) => link.candidate_id));
+  const totalPhone = passedStageActivityCountsForCandidateIds(data, phoneIds, startDate, endDate)["Phone Screen"];
+  const knownPhone = SOURCING_CHANNELS.reduce((sum, channel) => sum + passedStageActivityCountsForCandidateIds(data, phoneIds, startDate, endDate, channel.label)["Phone Screen"], 0);
   const knownHired = SOURCING_CHANNELS.reduce((sum, channel) => sum + (hiredByChannel.get(channel.label)?.size ?? 0), 0);
   const knownRows: SourceEffectivenessRow[] = SOURCING_CHANNELS.map((channel) => ({
     key: channel.enabled,
     label: channel.label,
     color: SOURCING_CHANNEL_COLORS[channel.enabled],
     applicants: applicantCountForGroups(data, groupIds, startDate, endDate, channel.label),
-    phone: passedStageActivityCountsForDocGroups(data, docGroupIds, startDate, endDate, channel.label)["Phone Screen"],
+    phone: passedStageActivityCountsForCandidateIds(data, phoneIds, startDate, endDate, channel.label)["Phone Screen"],
     hired: hiredByChannel.get(channel.label)?.size ?? 0
   }));
   const unknown: SourceEffectivenessRow = {
@@ -1303,7 +1300,7 @@ function buildSourceEffectivenessRows(
   if (channelFilter !== "all" && rows.length === 0) rows.push({
     key: "unknown", label: channelFilter, color: UNKNOWN_SOURCING_CHANNEL_COLOR,
     applicants: 0,
-    phone: passedStageActivityCountsForDocGroups(data, docGroupIds, startDate, endDate, channelFilter)["Phone Screen"],
+    phone: passedStageActivityCountsForCandidateIds(data, phoneIds, startDate, endDate, channelFilter)["Phone Screen"],
     hired: hiredByChannel.get(channelFilter)?.size ?? 0
   });
   return rows.filter((row) => row.applicants + row.phone + row.hired > 0)
@@ -1397,6 +1394,21 @@ function passedStageActivityCountsForDocGroups(data: DashboardData, docGroupIds:
     if (result === 1) stageCandidates[log.recruitment_process].add(log.candidate_id);
   }
 
+  return Object.fromEntries(PIPELINE_FUNNEL_STAGES.map((stage) => [stage, stageCandidates[stage].size])) as FunnelStageCounts;
+}
+
+function passedStageActivityCountsForCandidateIds(data: DashboardData, candidateIds: Set<string>, startDate: string, endDate: string, channelFilter: FunnelChannelFilter = "all") {
+  const stageCandidates = emptyFunnelCandidateSets();
+  for (const log of data.recruitment_logs) {
+    const result = log.result;
+    const logDate = dateOnly(result === 1 ? (log.outcome_date ?? log.log_date) : log.log_date);
+    if (!logDate || logDate < startDate || logDate > endDate) continue;
+    if (!candidateIds.has(log.candidate_id) || !detailStages.includes(log.recruitment_process)) continue;
+    const candidate = data.candidates.find((row) => row.candidate_id === log.candidate_id);
+    if (!candidate || !channelMatchesFilter(candidate.channel, channelFilter)) continue;
+    if (log.recruitment_process === "Phone Screen") stageCandidates["Resume Screening"].add(log.candidate_id);
+    if (result === 1) stageCandidates[log.recruitment_process].add(log.candidate_id);
+  }
   return Object.fromEntries(PIPELINE_FUNNEL_STAGES.map((stage) => [stage, stageCandidates[stage].size])) as FunnelStageCounts;
 }
 

@@ -131,6 +131,29 @@ test("Pipeline Health channel segments match row totals and Workspace Sourcing c
   expect(totals.every((row) => row.count === row.segmentTotal)).toBe(true);
 });
 
+test("shared group candidate stages stay with explicitly associated requisitions", async ({ page }) => {
+  const { data } = await installMockSupabase(page, { role: "admin_recruiter" });
+  // REQ-HQ-1 and REQ-HQ-2 share GRP-ENG. C-OFFER-NO-OFFER is associated
+  // only with REQ-HQ-1, so it must not contribute stages to REQ-HQ-2.
+  for (const requisition of data.requisitions) requisition.level = "3";
+  data.requisitions.find((row) => row.doc_id === "REQ-HQ-2")!.level = "4";
+  await page.goto("/dashboard?funnel=open&funnelView=pim&funnelMonth=2026-07");
+  await expectWorkspaceReady(page);
+
+  await page.getByRole("button", { name: /Level:/ }).click();
+  await page.getByRole("option", { name: "L4-L6" }).locator("input").check();
+
+  const funnel = page.locator(".pipeline-funnel").first();
+  const rows = funnel.locator("div.contents");
+  const labels = await rows.locator(":scope > div:nth-child(2) span").allTextContents();
+  const offerIndex = labels.findIndex((label) => label.trim() === "Offer");
+  expect(offerIndex).toBeGreaterThan(-1);
+  const applicantCount = Number((await rows.nth(0).locator(":scope > div").nth(2).innerText()).replaceAll(",", ""));
+  const offerCount = Number((await rows.nth(offerIndex).locator(":scope > div").nth(2).innerText()).replaceAll(",", ""));
+  expect(applicantCount).toBeGreaterThan(0);
+  expect(offerCount).toBe(0);
+});
+
 test("Pipeline report controls, legend toggle and Source effectiveness share one eligible period", async ({ page }) => {
   const { data } = await installMockSupabase(page, { role: "admin_recruiter" });
   data.candidates.find((row) => row.candidate_id === "C-PHONE-PASS")!.channel = "Unexpected channel";
