@@ -19,6 +19,8 @@ declare
   v_replacement_names text := nullif(payload ->> 'replacement_names', '');
   v_department text := nullif(payload ->> 'department', '');
   v_section text := nullif(payload ->> 'section', '');
+  v_canonical_department text;
+  v_canonical_section text;
 begin
   perform app_private.assert_recruitment_writer();
   if v_doc_id is null then raise exception 'Doc ID is required.'; end if;
@@ -50,12 +52,22 @@ begin
     from public.requisitions where doc_id = v_previous_doc_id;
   end if;
 
-  select d.department_th, coalesce(d.section_th, v_section) into v_department, v_section
-  from public.department_section_directory d
-  where d.site = v_site
-    and (v_department = d.department_th or v_department = d.department_en)
-    and (v_section is null or v_section = d.section_th or v_section = d.section_en)
-  limit 1;
+  -- The directory is optional in deployed databases. Resolve labels only when
+  -- it exists, and preserve the submitted values when there is no match.
+  if to_regclass('public.department_section_directory') is not null then
+    execute 'select d.department_th, coalesce(d.section_th, $3)
+      from public.department_section_directory d
+      where d.site = $1
+        and ($2 = d.department_th or $2 = d.department_en)
+        and ($3 is null or $3 = d.section_th or $3 = d.section_en)
+      limit 1'
+      into v_canonical_department, v_canonical_section
+      using v_site, v_department, v_section;
+    if v_canonical_department is not null then
+      v_department := v_canonical_department;
+      v_section := v_canonical_section;
+    end if;
+  end if;
 
   perform set_config('app.action', 'requisition:' || v_mode, true);
 
