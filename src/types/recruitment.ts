@@ -313,8 +313,6 @@ export type RejectionLetterDraft = {
   finalized_at: string | null;
 };
 
-export type CandidateRequisition = { candidate_id: string; doc_id: string; created_by: string | null; created_at: string };
-
 export type RejectionReason = {
   reason_id: string;
   reason_kind: "main" | "detail";
@@ -359,7 +357,6 @@ export type DashboardData = {
   position_groups: PositionGroup[];
   document_groups: DocumentGroup[];
   candidates: Candidate[];
-  candidate_requisitions: CandidateRequisition[];
   candidate_references: CandidateReference[];
   candidate_reference_checks: CandidateReferenceCheck[];
   recruitment_logs: RecruitmentLog[];

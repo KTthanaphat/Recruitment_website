@@ -131,10 +131,11 @@ test("Pipeline Health channel segments match row totals and Workspace Sourcing c
   expect(totals.every((row) => row.count === row.segmentTotal)).toBe(true);
 });
 
-test("shared group candidate stages stay with explicitly associated requisitions", async ({ page }) => {
+test("shared group candidate stages are visible before an exact offer link exists", async ({ page }) => {
   const { data } = await installMockSupabase(page, { role: "admin_recruiter" });
-  // REQ-HQ-1 and REQ-HQ-2 share GRP-ENG. C-OFFER-NO-OFFER is associated
-  // only with REQ-HQ-1, so it must not contribute stages to REQ-HQ-2.
+  // REQ-HQ-1 and REQ-HQ-2 share GRP-ENG. The candidate has progressed to the
+  // Offer stage but has no formal offer row, so group-level stages remain
+  // visible while no exact requisition association is created yet.
   for (const requisition of data.requisitions) requisition.level = "3";
   data.requisitions.find((row) => row.doc_id === "REQ-HQ-2")!.level = "4";
   await page.goto("/dashboard?funnel=open&funnelView=pim&funnelMonth=2026-07");
@@ -151,7 +152,7 @@ test("shared group candidate stages stay with explicitly associated requisitions
   const applicantCount = Number((await rows.nth(0).locator(":scope > div").nth(2).innerText()).replaceAll(",", ""));
   const offerCount = Number((await rows.nth(offerIndex).locator(":scope > div").nth(2).innerText()).replaceAll(",", ""));
   expect(applicantCount).toBeGreaterThan(0);
-  expect(offerCount).toBe(0);
+  expect(offerCount).toBeGreaterThan(0);
 });
 
 test("Pipeline report controls, legend toggle and Source effectiveness share one eligible period", async ({ page }) => {

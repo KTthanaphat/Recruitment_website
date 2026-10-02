@@ -477,16 +477,16 @@ function DashboardFilterPicker({
   return (
     <div ref={ref} className="relative grid min-w-0 gap-1.5 text-sm font-medium text-navy">
       <span className="truncate text-xs font-semibold text-slate" title={label}>{label}</span>
-      <button type="button" className="flex min-h-10 w-full min-w-0 items-center gap-1 rounded-xl border border-[#B8CCE4] bg-white px-2 text-left text-sm font-semibold text-navy shadow-sm transition hover:border-primary/60 hover:bg-[#FBFDFF] focus:outline-none focus:ring-2 focus:ring-primary/20" aria-label={`${label}: ${selectedLabel}`} title={`${label}: ${selectedLabel}`} aria-haspopup="listbox" aria-expanded={open} aria-controls={id} onClick={() => setOpen((current) => !current)}>
+      <button type="button" className="ats-dropdown-trigger flex min-h-10 w-full min-w-0 items-center gap-1 rounded-xl border px-2 text-left text-sm font-semibold text-navy transition" aria-label={`${label}: ${selectedLabel}`} title={`${label}: ${selectedLabel}`} aria-haspopup="listbox" aria-expanded={open} aria-controls={id} onClick={() => setOpen((current) => !current)}>
         <SlidersHorizontal size={15} className="shrink-0 text-primary" aria-hidden="true" />
         <span className="min-w-0 flex-1 truncate" title={selectedLabel}>{selectedLabel}</span>
         <ChevronDown size={16} className={`shrink-0 text-slate transition-transform ${open ? "rotate-180" : ""}`} aria-hidden="true" />
       </button>
-      {open ? <div id={id} role="listbox" aria-label={label} className="absolute z-30 mt-[4.45rem] grid w-full min-w-[12rem] grid-cols-1 gap-1.5 rounded-2xl border border-[#C9D5E6] bg-white p-2 shadow-[0_18px_40px_rgba(11,19,43,0.18)]">
+      {open ? <div id={id} role="listbox" aria-label={label} className="ats-dropdown-menu absolute z-30 mt-[4.45rem] grid max-h-72 w-full min-w-[12rem] max-w-[calc(100vw-2rem)] grid-cols-1 overflow-y-auto rounded-2xl border">
         {options.map((option) => {
           const selected = option.value === value;
-          return <button key={option.value} type="button" role="option" aria-selected={selected} className={`relative min-h-10 overflow-hidden rounded-xl border px-3 py-2 text-left text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-primary/30 ${selected ? "border-primary bg-primary text-white shadow-sm" : "border-[#E4E9F2] bg-[#F8FAFD] text-navy hover:border-[#8AAED8] hover:bg-white"}`} onClick={() => { onValueChange(option.value); setOpen(false); }}>
-            <span className="block min-w-0 truncate pr-5" title={option.label}>{option.label}</span>
+          return <button key={option.value} type="button" role="option" aria-selected={selected} className={`ats-dropdown-option relative rounded-xl border text-left text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-primary/30 ${selected ? "border-primary bg-primary text-white shadow-sm" : "border-[#E4E9F2] bg-[#F8FAFD] text-navy hover:border-[#8AAED8] hover:bg-white"}`} onClick={() => { onValueChange(option.value); setOpen(false); }}>
+            <span className="block min-w-0 break-words pr-5" title={option.label}>{option.label}</span>
             {selected ? <Check size={16} className="absolute right-3 top-1/2 -translate-y-1/2" aria-hidden="true" /> : null}
           </button>;
         })}
@@ -511,10 +511,10 @@ function DashboardMultiFilterPicker({ id, label, language, options, values, onVa
 
   return <div ref={ref} className="relative grid min-w-0 gap-1.5 text-sm font-medium text-navy">
     <span className="truncate text-xs font-semibold text-slate" title={label}>{label}</span>
-    <button type="button" className="flex min-h-10 w-full min-w-0 items-center gap-1 rounded-xl border border-[#B8CCE4] bg-white px-2 text-left text-sm font-semibold text-navy shadow-sm transition hover:border-primary/60 hover:bg-[#FBFDFF] focus:outline-none focus:ring-2 focus:ring-primary/20" aria-label={`${label}: ${selectedLabel}`} title={`${label}: ${selectedLabel}`} aria-haspopup="listbox" aria-expanded={open} aria-controls={id} onClick={() => setOpen((current) => !current)}><SlidersHorizontal size={15} className="shrink-0 text-primary" aria-hidden="true" /><span className="min-w-0 flex-1 truncate" title={selectedLabel}>{selectedLabel}</span><ChevronDown size={16} className={`shrink-0 text-slate transition-transform ${open ? "rotate-180" : ""}`} aria-hidden="true" /></button>
-    {open ? <div id={id} role="listbox" aria-multiselectable="true" aria-label={label} className="absolute z-30 mt-[4.45rem] grid w-full min-w-[12rem] grid-cols-1 gap-1.5 rounded-2xl border border-[#C9D5E6] bg-white p-2 shadow-[0_18px_40px_rgba(11,19,43,0.18)]">
-      <label className="flex min-h-9 items-center gap-2 border-b border-[#E4E9F2] pb-1.5 text-sm font-semibold"><input type="checkbox" checked={allSelected} onChange={(event) => onValuesChange(event.target.checked ? options.map((option) => option.value) : [])} />{translate(language, "selectAll")}</label>
-      {options.map((option) => <label key={option.value} role="option" aria-selected={values.includes(option.value)} className="flex min-h-9 items-center gap-2 rounded-lg px-1 text-sm font-semibold hover:bg-[#F8FAFD]"><input type="checkbox" checked={values.includes(option.value)} onChange={(event) => onValuesChange(event.target.checked ? [...values, option.value] : values.filter((value) => value !== option.value))} />{option.label}</label>)}
+    <button type="button" className="ats-dropdown-trigger flex min-h-10 w-full min-w-0 items-center gap-1 rounded-xl border px-2 text-left text-sm font-semibold text-navy transition" aria-label={`${label}: ${selectedLabel}`} title={`${label}: ${selectedLabel}`} aria-haspopup="listbox" aria-expanded={open} aria-controls={id} onClick={() => setOpen((current) => !current)}><SlidersHorizontal size={15} className="shrink-0 text-primary" aria-hidden="true" /><span className="min-w-0 flex-1 truncate" title={selectedLabel}>{selectedLabel}</span><ChevronDown size={16} className={`shrink-0 text-slate transition-transform ${open ? "rotate-180" : ""}`} aria-hidden="true" /></button>
+    {open ? <div id={id} role="listbox" aria-multiselectable="true" aria-label={label} className="ats-dropdown-menu absolute z-30 mt-[4.45rem] grid max-h-72 w-full min-w-[12rem] max-w-[calc(100vw-2rem)] grid-cols-1 overflow-y-auto rounded-2xl border">
+      <label className="ats-dropdown-option flex items-center gap-2 border-b border-[#E4E9F2] text-sm font-semibold"><input type="checkbox" checked={allSelected} onChange={(event) => onValuesChange(event.target.checked ? options.map((option) => option.value) : [])} />{translate(language, "selectAll")}</label>
+      {options.map((option) => <label key={option.value} role="option" aria-selected={values.includes(option.value)} className="ats-dropdown-option flex items-center gap-2 rounded-lg text-sm font-semibold hover:bg-[#F8FAFD]"><input type="checkbox" checked={values.includes(option.value)} onChange={(event) => onValuesChange(event.target.checked ? [...values, option.value] : values.filter((value) => value !== option.value))} />{option.label}</label>)}
     </div> : null}
   </div>;
 }
@@ -1205,6 +1205,16 @@ function validDateOnly(value: string | null | undefined) {
   return parsed.getUTCFullYear() === year && parsed.getUTCMonth() === month - 1 && parsed.getUTCDate() === day ? date : null;
 }
 
+function candidateIdsForSourcingGroups(data: DashboardData, groupIds: Set<string>) {
+  const groupByDocGroupId = new Map(data.document_groups.map((row) => [row.doc_group_id, row.group_id]));
+  return new Set(data.candidates
+    .filter((candidate) => {
+      const groupId = candidate.group_id ?? (candidate.doc_group_id ? groupByDocGroupId.get(candidate.doc_group_id) : null);
+      return Boolean(groupId && groupIds.has(groupId));
+    })
+    .map((candidate) => candidate.candidate_id));
+}
+
 function buildDashboardPipelineFunnelRows(
   data: DashboardData,
   requisitions: EnrichedRequisition[],
@@ -1229,7 +1239,7 @@ function buildDashboardPipelineFunnelRows(
   }
 
   const applicants = applicantCountForGroups(data, groupIds, startDate, endDate, channelFilter);
-  const eligibleCandidateIds = new Set(data.candidate_requisitions.filter((link) => eligibleDocIds.has(link.doc_id)).map((link) => link.candidate_id));
+  const eligibleCandidateIds = candidateIdsForSourcingGroups(data, groupIds);
   const stages = passedStageActivityCountsForCandidateIds(data, eligibleCandidateIds, startDate, endDate, channelFilter);
   const channelKeys = channelFilter === "all" ? SOURCING_CHANNELS.map((channel) => channel.label) : [channelFilter];
   const segments: Record<string, FunnelChannelSegment[]> = { applicants: [] };
@@ -1267,19 +1277,18 @@ function buildSourceEffectivenessRows(
   const docIds = new Set(eligible.map((row) => row.doc_id));
   const groupIds = new Set(data.document_groups.filter((row) => docIds.has(row.doc_id) && row.group_id).map((row) => row.group_id as string));
   const candidateById = new Map(data.candidates.map((candidate) => [candidate.candidate_id, candidate]));
-  const linkedCandidateIds = new Set(data.candidate_requisitions.filter((link) => docIds.has(link.doc_id)).map((link) => link.candidate_id));
   const hiredByChannel = new Map<string, Set<string>>();
   for (const offer of candidateOffers) {
     const acceptedDate = validDateOnly(offer.accepted_date);
     if (!acceptedDate || acceptedDate < startDate || acceptedDate > endDate || !docIds.has(offer.doc_id)) continue;
     const candidate = candidateById.get(offer.candidate_id);
-    if (!candidate || !linkedCandidateIds.has(candidate.candidate_id)) continue;
+    if (!candidate) continue;
     const key = candidate.channel?.trim() || "";
     const ids = hiredByChannel.get(key) ?? new Set<string>();
     ids.add(candidate.candidate_id);
     hiredByChannel.set(key, ids);
   }
-  const phoneIds = new Set(data.candidate_requisitions.filter((link) => docIds.has(link.doc_id)).map((link) => link.candidate_id));
+  const phoneIds = candidateIdsForSourcingGroups(data, groupIds);
   const totalPhone = passedStageActivityCountsForCandidateIds(data, phoneIds, startDate, endDate)["Phone Screen"];
   const knownPhone = SOURCING_CHANNELS.reduce((sum, channel) => sum + passedStageActivityCountsForCandidateIds(data, phoneIds, startDate, endDate, channel.label)["Phone Screen"], 0);
   const knownHired = SOURCING_CHANNELS.reduce((sum, channel) => sum + (hiredByChannel.get(channel.label)?.size ?? 0), 0);

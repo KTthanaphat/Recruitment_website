@@ -1,6 +1,6 @@
--- Transaction-scoped regression for candidate/requisition association.
--- Run with psql against a disposable database migrated through
--- 202610020001_candidate_requisition_associations.sql.
+-- Transaction-scoped regression for offer-backed candidate/requisition links.
+-- Run with psql against a disposable database migrated through the current
+-- offer-association synchronization migration.
 \set ON_ERROR_STOP on
 
 begin;
@@ -27,79 +27,94 @@ values
   ('__assoc_doc_group_b', '__assoc_req_b', '__assoc_group', 'Shared role'),
   ('__assoc_doc_group_c', '__assoc_req_c', '__assoc_group', 'Shared role');
 
--- A candidate anchored to requisition A must not fan out to B merely because
--- both requisitions share the same sourcing group.
 insert into public.candidates (candidate_id, name, doc_group_id, group_id)
-values ('__assoc_candidate_shared', 'Shared group candidate', '__assoc_doc_group_a', '__assoc_group');
-select pg_temp.assert_true(
-  (select count(*) = 1 and bool_and(doc_id = '__assoc_req_a')
-   from public.candidate_requisitions where candidate_id = '__assoc_candidate_shared'),
-  'document-group anchor must create only its own requisition association'
-);
+values
+  ('__assoc_candidate_a', 'Pre-offer candidate A', '__assoc_doc_group_a', '__assoc_group'),
+  ('__assoc_candidate_b', 'Pre-offer candidate B', '__assoc_doc_group_b', '__assoc_group');
+
 select pg_temp.assert_true(
   not exists (select 1 from public.candidate_requisitions
-              where candidate_id = '__assoc_candidate_shared' and doc_id = '__assoc_req_b'),
-  'shared group membership must not associate the candidate with another requisition'
+              where candidate_id in ('__assoc_candidate_a', '__assoc_candidate_b')),
+  'candidate creation must not create a premature exact-requisition link'
 );
 
--- Recruiter selection is a durable explicit association. The shared group is
--- unchanged, while the candidate becomes eligible for both selected requisitions.
+-- Model the cleanup of links created by the previous behavior. Any pair with
+-- a formal offer survives; an unbacked pre-offer link is removed.
 insert into public.candidate_requisitions (candidate_id, doc_id)
-values ('__assoc_candidate_shared', '__assoc_req_b');
+values ('__assoc_candidate_a', '__assoc_req_a');
+delete from public.candidate_requisitions cr
+where cr.candidate_id in ('__assoc_candidate_a', '__assoc_candidate_b')
+  and not exists (
+    select 1 from public.offers o
+    where o.candidate_id = cr.candidate_id and o.doc_id = cr.doc_id
+  );
 select pg_temp.assert_true(
-  (select count(*) = 2 from public.candidate_requisitions
-   where candidate_id = '__assoc_candidate_shared'),
-  'a candidate can be explicitly associated with multiple requisitions once each'
+  not exists (select 1 from public.candidate_requisitions
+              where candidate_id = '__assoc_candidate_a' and doc_id = '__assoc_req_a'),
+  'cleanup must remove a candidate link without an offer'
 );
 
-insert into public.candidates (candidate_id, name, doc_group_id, group_id)
-values ('__assoc_candidate_offer', 'Offer-linked candidate', '__assoc_doc_group_a', '__assoc_group');
+-- A formal offer creates the exact link, even while the offer is pending.
+insert into public.offers (candidate_id, doc_id)
+values ('__assoc_candidate_a', '__assoc_req_b');
+select pg_temp.assert_true(
+  exists (select 1 from public.candidate_requisitions
+          where candidate_id = '__assoc_candidate_a' and doc_id = '__assoc_req_b'),
+  'an offer must create its exact candidate/requisition link'
+);
 
--- A direct offer is explicit requisition evidence and must be associated for
--- new writes as well as the migration backfill.
-insert into public.offers (candidate_id, doc_id, accepted_date)
-values ('__assoc_candidate_offer', '__assoc_req_b', null);
-
--- Replay the migration's direct-evidence backfill for this fixture after
--- clearing its trigger-created links. Repeating it must not duplicate rows or
--- fan out to the third requisition in the shared group.
-delete from public.candidate_requisitions where candidate_id = '__assoc_candidate_offer';
-insert into public.candidate_requisitions(candidate_id, doc_id, created_by)
-select c.candidate_id, dg.doc_id, null
-from public.candidates c
-join public.document_groups dg on dg.doc_group_id = c.doc_group_id
-where c.candidate_id = '__assoc_candidate_offer'
-on conflict (candidate_id, doc_id) do nothing;
-insert into public.candidate_requisitions(candidate_id, doc_id, created_by)
+-- Backfill restores a missing link when the offer already exists.
+delete from public.candidate_requisitions
+where candidate_id = '__assoc_candidate_a' and doc_id = '__assoc_req_b';
+insert into public.candidate_requisitions (candidate_id, doc_id, created_by)
 select o.candidate_id, o.doc_id, null
 from public.offers o
-where o.candidate_id = '__assoc_candidate_offer'
-on conflict (candidate_id, doc_id) do nothing;
-insert into public.candidate_requisitions(candidate_id, doc_id, created_by)
-select c.candidate_id, dg.doc_id, null
-from public.candidates c
-join public.document_groups dg on dg.doc_group_id = c.doc_group_id
-where c.candidate_id = '__assoc_candidate_offer'
-on conflict (candidate_id, doc_id) do nothing;
-insert into public.candidate_requisitions(candidate_id, doc_id, created_by)
-select o.candidate_id, o.doc_id, null
-from public.offers o
-where o.candidate_id = '__assoc_candidate_offer'
+where o.candidate_id = '__assoc_candidate_a'
 on conflict (candidate_id, doc_id) do nothing;
 select pg_temp.assert_true(
-  (select count(*) = 2 from public.candidate_requisitions
-   where candidate_id = '__assoc_candidate_offer'
-     and doc_id in ('__assoc_req_a', '__assoc_req_b'))
-  and not exists (select 1 from public.candidate_requisitions
-                  where candidate_id = '__assoc_candidate_offer' and doc_id = '__assoc_req_c'),
-  'an offer for requisition B must associate the candidate with B'
+  exists (select 1 from public.candidate_requisitions
+          where candidate_id = '__assoc_candidate_a' and doc_id = '__assoc_req_b'),
+  'backfill must restore an exact link for every existing offer'
+);
+
+-- Moving an offer removes the old exact link and creates the new one.
+update public.offers
+set doc_id = '__assoc_req_c'
+where candidate_id = '__assoc_candidate_a' and doc_id = '__assoc_req_b';
+select pg_temp.assert_true(
+  not exists (select 1 from public.candidate_requisitions
+              where candidate_id = '__assoc_candidate_a' and doc_id = '__assoc_req_b')
+  and exists (select 1 from public.candidate_requisitions
+              where candidate_id = '__assoc_candidate_a' and doc_id = '__assoc_req_c'),
+  'updating an offer must move its exact candidate/requisition link'
+);
+
+-- The second candidate's link remains independent when the first offer is
+-- deleted, and is removed only when its own offer is deleted.
+insert into public.offers (candidate_id, doc_id)
+values ('__assoc_candidate_b', '__assoc_req_c');
+delete from public.offers
+where candidate_id = '__assoc_candidate_a' and doc_id = '__assoc_req_c';
+select pg_temp.assert_true(
+  not exists (select 1 from public.candidate_requisitions
+              where candidate_id = '__assoc_candidate_a' and doc_id = '__assoc_req_c')
+  and exists (select 1 from public.candidate_requisitions
+              where candidate_id = '__assoc_candidate_b' and doc_id = '__assoc_req_c'),
+  'deleting an offer must remove only that candidate/requisition link'
+);
+delete from public.offers
+where candidate_id = '__assoc_candidate_b' and doc_id = '__assoc_req_c';
+select pg_temp.assert_true(
+  not exists (select 1 from public.candidate_requisitions
+              where candidate_id = '__assoc_candidate_b' and doc_id = '__assoc_req_c'),
+  'deleting the last offer must remove its exact link'
 );
 
 select pg_temp.assert_true(
   (select group_id = '__assoc_group' from public.candidates
-   where candidate_id = '__assoc_candidate_shared')
+   where candidate_id = '__assoc_candidate_a')
   and (select count(*) = 1 from public.position_groups where group_id = '__assoc_group'),
-  'association changes must not alter shared sourcing-group identity'
+  'offer-link changes must preserve shared sourcing-group identity'
 );
 
 rollback;

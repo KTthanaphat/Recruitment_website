@@ -724,14 +724,6 @@ begin
     first_contact_date = excluded.first_contact_date,
     candidate_folder_url = excluded.candidate_folder_url;
 
-  if v_mode = 'new' then
-    insert into public.candidate_requisitions (candidate_id, doc_id, created_by)
-    select v_candidate_id, dg.doc_id, auth.uid()
-    from public.document_groups dg
-    where dg.doc_group_id = v_doc_group_id
-    on conflict (candidate_id, doc_id) do nothing;
-  end if;
-
   for v_reference in select value from jsonb_array_elements(v_references) loop
     if nullif(btrim(coalesce(v_reference ->> 'reference_name', '')), '') is null
       or nullif(btrim(coalesce(v_reference ->> 'relationship', '')), '') is null
@@ -1399,40 +1391,6 @@ begin
     raise exception 'REJECTION_REASON_INVALID: The selected reasons are no longer active or do not belong together.';
   end if;
   return jsonb_build_object('actor', p_actor, 'main_th', v_main.label_th, 'main_en', v_main.label_en, 'detail_th', v_detail.label_th, 'detail_en', v_detail.label_en);
-end;
-$$;
-
-create or replace function public.app_set_candidate_requisition_association_v1(payload jsonb)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_candidate_id text := nullif(payload ->> 'candidate_id', '');
-  v_doc_id text := nullif(btrim(payload ->> 'doc_id'), '');
-  v_associate boolean;
-begin
-  perform app_private.assert_recruitment_writer();
-  if jsonb_typeof(payload -> 'associate') is distinct from 'boolean' then
-    raise exception 'CANDIDATE_REQUISITION_INVALID: Association action must be true or false.';
-  end if;
-  v_associate := (payload ->> 'associate')::boolean;
-  if v_candidate_id is null or v_doc_id is null then raise exception 'CANDIDATE_REQUISITION_INVALID: Candidate and requisition are required.'; end if;
-  if not exists (select 1 from public.candidates where candidate_id = v_candidate_id) then raise exception 'CANDIDATE_REQUISITION_INVALID: Candidate does not exist.'; end if;
-  if not exists (select 1 from public.requisitions where doc_id = v_doc_id) then raise exception 'CANDIDATE_REQUISITION_INVALID: Requisition does not exist.'; end if;
-  if not app_private.can_manage_candidate(v_candidate_id) or not app_private.can_manage_requisition(v_doc_id) then
-    raise exception 'CANDIDATE_REQUISITION_DENIED: You can change associations only for candidates and requisitions you manage.';
-  end if;
-  perform set_config('app.action', case when v_associate then 'candidate-requisition:add' else 'candidate-requisition:remove' end, true);
-  if v_associate then
-    insert into public.candidate_requisitions (candidate_id, doc_id, created_by)
-    values (v_candidate_id, v_doc_id, auth.uid())
-    on conflict (candidate_id, doc_id) do nothing;
-  else
-    delete from public.candidate_requisitions where candidate_id = v_candidate_id and doc_id = v_doc_id;
-  end if;
-  return jsonb_build_object('ok', true, 'candidate_id', v_candidate_id, 'doc_id', v_doc_id, 'associated', v_associate);
 end;
 $$;
 

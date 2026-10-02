@@ -73,27 +73,23 @@ test("candidate email is optional, shown in detail, and validated when supplied"
   await expect(page.getByText("Enter a valid email address.")).toBeVisible();
 });
 
-test("candidate detail can add and remove an explicit requisition association", async ({ page }) => {
-  const { data } = await installMockSupabase(page, { role: "admin_recruiter" });
+test("candidate detail omits pre-offer requisition association controls", async ({ page }) => {
+  await installMockSupabase(page, { role: "admin_recruiter" });
   await page.goto("/candidates?detailType=candidate&detailId=C-HR");
   await expectWorkspaceReady(page);
   const dialog = page.getByRole("dialog", { name: /C-HR/ });
-  const reqRow = dialog.locator("div.flex.items-center.justify-between").filter({ hasText: "REQ-HQ-2" });
-  await reqRow.getByRole("button", { name: "Add" }).click();
-  await expect.poll(() => data.candidate_requisitions.some((link) => link.candidate_id === "C-HR" && link.doc_id === "REQ-HQ-2")).toBe(true);
-  await reqRow.getByRole("button", { name: "Remove" }).click();
-  await expect.poll(() => data.candidate_requisitions.some((link) => link.candidate_id === "C-HR" && link.doc_id === "REQ-HQ-2")).toBe(false);
+  await expect(dialog.getByText("Associated requisitions", { exact: true })).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: "Add", exact: true })).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: "Remove", exact: true })).toHaveCount(0);
 });
 
-test("candidate requisition associations render in Thai", async ({ page }) => {
+test("candidate detail omits pre-offer requisition association controls in Thai", async ({ page }) => {
   await installMockSupabase(page, { role: "admin_recruiter", language: "th" });
   await page.goto("/candidates?detailType=candidate&detailId=C-HR");
   const dialog = page.getByRole("dialog", { name: /C-HR/ });
   await expect(dialog).toBeVisible();
-  await expect(dialog).toContainText("ใบขอที่เชื่อมโยง");
-  const reqRow = dialog.locator("div.flex.items-center.justify-between").filter({ hasText: "REQ-HQ-2" });
-  await expect(reqRow.getByRole("button", { name: "เพิ่ม" })).toBeVisible();
-  await expect(dialog.getByRole("link", { name: /ดูประวัติแก้ไข|View audit/ })).toBeVisible();
+  await expect(dialog.getByText("ใบขอที่เชื่อมโยง", { exact: true })).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: "เพิ่ม", exact: true })).toHaveCount(0);
 });
 
 test("candidate reference name is required only for Referral channel", async ({ page }) => {

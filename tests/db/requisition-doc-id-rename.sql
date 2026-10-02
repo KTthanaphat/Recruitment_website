@@ -25,10 +25,7 @@ values ('__rename_doc_group', '__rename_old', '__rename_group', 'Rename fixture'
 insert into public.candidates (candidate_id, name, doc_group_id, group_id)
 values ('__rename_candidate', 'Rename fixture', '__rename_doc_group', '__rename_group');
 
-insert into public.candidate_requisitions (candidate_id, doc_id)
-values ('__rename_candidate', '__rename_old')
-on conflict (candidate_id, doc_id) do nothing;
-
+-- The offer creates its exact candidate/requisition link automatically.
 insert into public.offers (candidate_id, doc_id)
 values ('__rename_candidate', '__rename_old');
 

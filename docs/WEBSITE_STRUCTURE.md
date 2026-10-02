@@ -389,7 +389,7 @@ Important newer fields:
 - `recruitment_logs.stage_instance_id`, Outcome detail fields, Pending edit metadata, record origin/migration note, and supersession metadata.
 - sourcing channel flags and applicant counts for LinkedIn, Walk-in, Referral, and Others.
 
-Candidates store direct `group_id`; `doc_group_id` is optional requisition-match context. Group-level sourcing and weekly applicant totals remain available after a requisition is unmatched. `candidate_requisitions` stores explicit candidate-to-requisition associations for stage and Source Effectiveness measures; candidates can be associated with more than one requisition. Its migration backfills only the candidate's current `doc_group_id` and existing offer Doc IDs, never every requisition in the shared group. New candidate anchors and offer writes create direct associations, while recruiters can add or remove associations from Candidate Detail. Association reads are scoped by candidate and requisition access; writes use an audited, permission-checked RPC.
+Candidates store direct `group_id`; `doc_group_id` is optional requisition-match context. Group-level sourcing and weekly applicant totals remain available after a requisition is unmatched. Before a formal offer exists, Pipeline Funnel stages and Source Effectiveness Phone counts use candidate group membership; Hired counts use the offer's exact `doc_id`. `candidate_requisitions` is an offer-backed, audited association projection: candidate creation does not create requisition links, and offer insert/update/delete keeps exact links synchronized. Candidate Detail does not manually edit these links.
 
 New group-scope migration:
 
@@ -408,7 +408,6 @@ Protected RPC functions handle all recruitment writes:
 - `app_delete_recruitment_record`
 - `app_upsert_sourcing_weekly_update`
 - `app_upsert_candidate`
-- `app_set_candidate_requisition_association_v1`
 - `app_start_pipeline_stage_v2`
 - `app_update_pipeline_pending_v2`
 - `app_complete_pipeline_stage_v2`

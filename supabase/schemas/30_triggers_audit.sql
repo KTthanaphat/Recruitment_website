@@ -675,39 +675,33 @@ drop trigger if exists audit_candidate_requisitions on public.candidate_requisit
 create trigger audit_candidate_requisitions after insert or update or delete on public.candidate_requisitions
 for each row execute function app_private.audit_row_change();
 
-create or replace function app_private.associate_candidate_with_anchor_requisition()
-returns trigger language plpgsql security definer set search_path = public as $$
-begin
-  if new.doc_group_id is not null then
-    insert into public.candidate_requisitions(candidate_id, doc_id, created_by)
-    select new.candidate_id, dg.doc_id, auth.uid()
-    from public.document_groups dg
-    where dg.doc_group_id = new.doc_group_id
-    on conflict (candidate_id, doc_id) do nothing;
-  end if;
-  return new;
-end;
-$$;
 drop trigger if exists associate_candidate_with_anchor_requisition on public.candidates;
-create trigger associate_candidate_with_anchor_requisition after insert on public.candidates
-for each row execute function app_private.associate_candidate_with_anchor_requisition();
+drop function if exists app_private.associate_candidate_with_anchor_requisition();
 
 create or replace function app_private.associate_candidate_with_offer_requisition()
 returns trigger language plpgsql security definer set search_path = public as $$
 begin
-  -- The requisition primary-key cascade moves the candidate link itself.
-  -- Avoid inserting a duplicate link while dependent rows are cascading.
-  if tg_op = 'UPDATE' and current_setting('app.action', true) = 'requisition:change' then
-    return new;
+  if tg_op in ('UPDATE', 'DELETE') then
+    delete from public.candidate_requisitions cr
+    where cr.candidate_id = old.candidate_id
+      and cr.doc_id = old.doc_id
+      and not exists (
+        select 1 from public.offers o
+        where o.candidate_id = old.candidate_id and o.doc_id = old.doc_id
+      );
   end if;
-  insert into public.candidate_requisitions(candidate_id, doc_id, created_by)
-  values (new.candidate_id, new.doc_id, auth.uid())
-  on conflict (candidate_id, doc_id) do nothing;
-  return new;
+
+  if tg_op in ('INSERT', 'UPDATE') then
+    insert into public.candidate_requisitions(candidate_id, doc_id, created_by)
+    values (new.candidate_id, new.doc_id, auth.uid())
+    on conflict (candidate_id, doc_id) do nothing;
+  end if;
+  return null;
 end;
 $$;
 drop trigger if exists associate_candidate_with_offer_requisition on public.offers;
-create trigger associate_candidate_with_offer_requisition after insert or update of candidate_id, doc_id on public.offers
+create trigger associate_candidate_with_offer_requisition
+after insert or update of candidate_id, doc_id or delete on public.offers
 for each row execute function app_private.associate_candidate_with_offer_requisition();
 
 drop trigger if exists audit_candidate_references on public.candidate_references;
