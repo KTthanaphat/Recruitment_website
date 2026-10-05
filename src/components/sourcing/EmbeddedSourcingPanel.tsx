@@ -7,6 +7,7 @@ import { Tag } from "@/components/ui/Tag";
 import { SOURCING_CHANNELS } from "@/lib/constants";
 import { formatDate, formatSourcingWeekRange } from "@/lib/format";
 import { translate } from "@/lib/i18n/dictionary";
+import { sourcingDatabaseWeekStart } from "@/lib/dates";
 import { SOURCING_CHANNEL_COLORS } from "@/lib/sourcing-colors";
 import type { EnrichedSourcingGroup, Language, Profile, SourcingLifecycleRow, SourcingWeeklyUpdate } from "@/types/recruitment";
 
@@ -63,7 +64,9 @@ function SourcingDraftForm({ language, row, previousUpdate, previousApplicants, 
 }) {
   const channels = SOURCING_CHANNELS.filter((channel) => Boolean(row.update?.[channel.enabled] ?? row.group[channel.enabled]));
   const enabled = new Set<Channel["enabled"]>(channels.map((channel) => channel.enabled));
-  const editable = canWrite && (profile?.role === "system_admin" || profile?.role === "admin_recruiter" || (profile?.role === "site_recruiter" && (row.group.owners.includes(profile.nickname ?? "") || row.group.sites.includes(profile.site ?? ""))));
+  const editable = canWrite
+    && (Boolean(row.update) || row.group.open_headcount > 0)
+    && (profile?.role === "system_admin" || profile?.role === "admin_recruiter" || (profile?.role === "site_recruiter" && (row.group.owners.includes(profile.nickname ?? "") || row.group.sites.includes(profile.site ?? ""))));
   const [draft, setDraft] = useState<Record<string, string>>(() => Object.fromEntries(channels.map((channel) => [channel.count, String(row.update?.[channel.count] ?? "")])));
   const countFor = (channel: Channel) => { const raw = draft[channel.count]?.trim() ?? ""; return raw !== "" && Number.isInteger(Number(raw)) && Number(raw) >= 0 ? Number(raw) : null; };
   const values = channels.map(countFor);
@@ -76,7 +79,7 @@ function SourcingDraftForm({ language, row, previousUpdate, previousApplicants, 
     if (invalid) { window.alert(translate(language, "applicantCountsWholeNumbers")); return; }
     const payload: Record<string, unknown> = {
       group_id: row.group.group_id,
-      week_start: row.week_start,
+      week_start: sourcingDatabaseWeekStart(row.week_start),
       ...Object.fromEntries(SOURCING_CHANNELS.map((channel) => [channel.enabled, enabled.has(channel.enabled)])),
       ...Object.fromEntries(SOURCING_CHANNELS.map((channel) => [channel.count, enabled.has(channel.enabled) ? draft[channel.count]?.trim() ?? "" : null]))
     };

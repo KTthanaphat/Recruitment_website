@@ -31,6 +31,13 @@ export function sourcingCycleSaturday(value: string) {
   return date.toISOString().slice(0, 10);
 }
 
+export function sourcingDatabaseWeekStart(cycleSaturday: string) {
+  if (!cycleSaturday) return "";
+  const date = new Date(`${cycleSaturday.slice(0, 10)}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + 2);
+  return date.toISOString().slice(0, 10);
+}
+
 export function currentLocalSourcingCycleSaturday(date: Date = new Date()) {
   return sourcingCycleSaturday(formatLocalDateInput(date));
 }

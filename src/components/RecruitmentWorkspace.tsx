@@ -1345,7 +1345,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
           sourcingSlot={(
             <EmbeddedSourcingEditor
               canManageSetup={canManageSetup && !historicalWorkspace}
-              canWrite={canWrite && !historicalWorkspace}
+              canWrite={canWrite}
               data={priorityData}
               docIds={workspaceScope.requisitions.map((row) => row.doc_id)}
               groupIds={workspaceScope.groupIds}
@@ -2438,10 +2438,11 @@ function CandidatePrefillFields({
       <Field label={translate(language, "phoneNo")}><TextInput name="phone_no" type="tel" inputMode="numeric" maxLength={10} pattern="0[0-9]{9}" required={mode === "change"} placeholder={translate(language, "candidatePhonePlaceholder")} defaultValue={selected?.phone_no ?? ""} /></Field>
       <Field label={translate(language, "email")}><TextInput name="email" type="text" inputMode="email" autoComplete="email" placeholder={translate(language, "candidateEmailPlaceholder")} defaultValue={selected?.email ?? ""} /></Field>
       <Field label={translate(language, "groupId")}>
-        <CreateSelectInput name="group_id" required value={selectedGroupId} disabled={mode === "new" && (defaults.lock_group_id || eligibleGroups.length === 0)} onChange={(event) => setSelectedGroupId(event.target.value)}>
+        <CreateSelectInput name={mode === "new" && defaults.lock_group_id ? undefined : "group_id"} required value={selectedGroupId} disabled={mode === "new" && (defaults.lock_group_id || eligibleGroups.length === 0)} onChange={(event) => setSelectedGroupId(event.target.value)}>
           <option value="">{eligibleGroups.length === 0 ? translate(language, "noEligibleGroups") : translate(language, "selectGroup")}</option>
           {eligibleGroups.map((row) => <option key={row.group_id} value={row.group_id}>{positionGroupOptionLabel(row)}</option>)}
         </CreateSelectInput>
+        {mode === "new" && defaults.lock_group_id ? <input type="hidden" name="group_id" value={selectedGroupId} /> : null}
         {mode === "new" && defaults.lock_group_id ? <span className="text-xs font-medium text-slate">{translate(language, "groupLockedToWorkspace")}</span> : null}
       </Field>
       <Field label={translate(language, "channel")}>

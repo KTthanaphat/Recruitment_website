@@ -1,6 +1,51 @@
 import { expect, test } from "@playwright/test";
 import { expectWorkspaceReady, installMockSupabase } from "./support/mock-supabase";
 
+test("workspace Pipeline submits the locked group ID when creating a candidate", async ({ page }) => {
+  const mock = await installMockSupabase(page, { role: "admin_recruiter" });
+  await page.goto("/workspace?type=group&id=GRP-TECH&section=pipeline");
+  await expectWorkspaceReady(page);
+
+  await page.getByRole("button", { name: "New Candidate", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Create Candidate" });
+  await dialog.getByRole("textbox", { name: "Name", exact: true }).fill("Workspace Candidate");
+  await dialog.getByRole("button", { name: "Channel" }).click();
+  await page.getByRole("option", { name: "Facebook", exact: true }).click();
+  await dialog.getByRole("button", { name: "Review changes" }).click();
+
+  const confirmation = page.getByRole("dialog", { name: "Confirm Save" });
+  await expect(confirmation.locator("pre")).toContainText('"group_id": "GRP-TECH"');
+  await confirmation.getByRole("button", { name: "Save changes" }).click();
+  expect(mock.rpcCalls.at(-1)).toMatchObject({ endpoint: "app_upsert_candidate", payload: { group_id: "GRP-TECH" } });
+});
+
+test("filled workspace allows correcting its final saved sourcing week", async ({ page }) => {
+  const mock = await installMockSupabase(page, { role: "admin_recruiter" });
+  const groupMatches = mock.data.document_groups.filter((row) => row.group_id === "GRP-ENG");
+  const docIds = new Set(groupMatches.map((row) => row.doc_id));
+  mock.data.requisitions.filter((row) => docIds.has(row.doc_id)).forEach((row) => {
+    row.status = "filled";
+    row.updated_at = "2026-07-06T05:00:00.000Z";
+  });
+
+  await page.goto("/workspace?type=group&id=GRP-ENG&section=sourcing&sourcingWeek=2026-07-04");
+  await expectWorkspaceReady(page);
+  const layout = page.getByTestId("workspace-sourcing-layout");
+  const input = layout.locator('input[name="applicants_fb"]');
+  await expect(input).toBeEnabled();
+  await input.fill("9");
+  await layout.getByRole("button", { name: "Save record" }).click();
+
+  const confirmation = page.getByRole("dialog", { name: "Confirm Save" });
+  await expect(confirmation.locator("pre")).toContainText('"week_start": "2026-07-06"');
+  await expect(confirmation.locator("pre")).toContainText('"applicants_fb": "9"');
+  await confirmation.getByRole("button", { name: "Save changes" }).click();
+  expect(mock.rpcCalls.at(-1)).toMatchObject({
+    endpoint: "app_upsert_sourcing_weekly_update",
+    payload: { group_id: "GRP-ENG", week_start: "2026-07-06", applicants_fb: "9", expected_updated_at: "2026-07-06T00:00:00" }
+  });
+});
+
 test("legacy requisition link resolves to group with underline tabs and overview priorities", async ({ page }) => {
   await installMockSupabase(page, { role: "admin_recruiter" });
   await page.goto("/workspace?type=requisition&id=REQ-HQ-1&sourcingWeek=2026-07-06");
