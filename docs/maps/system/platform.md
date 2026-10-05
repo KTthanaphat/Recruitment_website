@@ -15,12 +15,17 @@ Read this node for this feature only. It indexes ownership; product rules remain
 
 ### F05: Records sidebar dropdown
 
+Dashboard-only inline header filters placement variant (shared dark sidebar and profile theme): [AppShell](../../../src/components/layout/AppShell.tsx) `variant="dashboard"`, `headerScopeSummary`; [globals.css](../../../src/app/globals.css) scoped `[data-shell-variant]`; visual owner [Dashboard portal](../../design/dashboard-portal.md), report callers [Reporting subviews](reporting.md#risk-and-bottleneck-subviews). Default shell callers retain their styling.
+
 - Owner/search: [src/components/layout/AppShell.tsx](../../../src/components/layout/AppShell.tsx).
 - Related symbols: `ViewId`, contextual navigation helper.
 - Entry: Existing `/requisitions`, `/sourcing`, `/candidates`, `/pipeline`, `/offers` routes.
 - Existing check/search: [tests/e2e/wave-4.spec.ts](../../../tests/e2e/wave-4.spec.ts).
 
 ### F06: Phone-first recruiter operations
+
+- Layout/loading: [responsive-layout.ts](../../../src/lib/responsive-layout.ts) `LayoutMode`, `useLayoutMode`, `isViewAvailable`; [RecruitmentWorkspace](../../../src/components/RecruitmentWorkspace.tsx) `loadScope`, `loadGeneration`; [notice](../../../src/components/layout/DesktopRequiredNotice.tsx); [interaction locks](../../../src/components/layout/DesktopInteractionContext.tsx).
+- Contract/checks: [Mobile navigation](../../design/mobile-navigation.md), [Stage/mobile checks](../../../tests/e2e/stage-mobile-refinement.spec.ts), [review](../../work-items/mobile-shell/review.md).
 
 - Owner/search: [src/components/layout/AppShell.tsx](../../../src/components/layout/AppShell.tsx), [src/components/ui/MobileBottomSheet.tsx](../../../src/components/ui/MobileBottomSheet.tsx), [src/components/ui/Modal.tsx](../../../src/components/ui/Modal.tsx), [src/components/sourcing/SourcingView.tsx](../../../src/components/sourcing/SourcingView.tsx), [src/components/pipeline/PipelineBoardView.tsx](../../../src/components/pipeline/PipelineBoardView.tsx).
 - Related symbols: shared bottom-sheet focus/scroll lock; canonical behavior: [docs/WEBSITE_STRUCTURE.md](../../WEBSITE_STRUCTURE.md); interaction rules: [docs/design.md](../../design.md).
@@ -36,9 +41,9 @@ Read this node for this feature only. It indexes ownership; product rules remain
 
 ### F12: Header command filters and selectors
 
-- Owner/search: [src/components/ui/CommandSelector.tsx](../../../src/components/ui/CommandSelector.tsx), [src/components/ui/CommandMultiSelector.tsx](../../../src/components/ui/CommandMultiSelector.tsx), [src/components/ui/Field.tsx](../../../src/components/ui/Field.tsx), [src/components/ui/TableControls.tsx](../../../src/components/ui/TableControls.tsx), [src/components/dashboard/VacancyWaterfallView.tsx](../../../src/components/dashboard/VacancyWaterfallView.tsx), [src/app/globals.css](../../../src/app/globals.css).
-- Related symbols: Shared `site`/`pic` state and selector shell; canonical interaction rules: [docs/WEBSITE_STRUCTURE.md](../../WEBSITE_STRUCTURE.md).
-- Entry: Authenticated routes, Dashboard, create forms.
+- Owner/search: [src/components/ui/OnOffSwitch.tsx](../../../src/components/ui/OnOffSwitch.tsx), [src/components/ui/CommandSelector.tsx](../../../src/components/ui/CommandSelector.tsx), [src/components/ui/CommandMultiSelector.tsx](../../../src/components/ui/CommandMultiSelector.tsx), [src/components/ui/Field.tsx](../../../src/components/ui/Field.tsx), [src/components/ui/TableControls.tsx](../../../src/components/ui/TableControls.tsx), [src/components/dashboard/VacancyWaterfallView.tsx](../../../src/components/dashboard/VacancyWaterfallView.tsx), [src/app/globals.css](../../../src/app/globals.css).
+- Related symbols: Controlled `OnOffSwitch` and `--ats-square-switch-*` tokens (Dashboard legend, Configuration drafts and saved Active controls); shared `site`/`pic` state and selector shell, opt-in `typography` for normal dashboard filter values; canonical interaction rules: [docs/WEBSITE_STRUCTURE.md](../../WEBSITE_STRUCTURE.md).
+- Entry: Authenticated routes, Dashboard, create forms. Dashboard-specific coordination belongs to [Reporting](reporting.md#common-dashboard-portal).
 - Verification: [exact scenarios and coverage boundaries](../../workflows/TEST_ENVIRONMENTS.md#exact-source-leads) and [Recruitment Performance browser tests](../../../tests/e2e/recruitment-performance.spec.ts). Inspect shared-control callers after token changes.
 
 ### F15: Frozen desktop record headers
@@ -80,3 +85,10 @@ This is a shared dependency. A local primitive repair does not require reading a
 High-degree owners: [Field.tsx](../../../src/components/ui/Field.tsx) (date/field) → forms and reporting; [CommandSelector.tsx](../../../src/components/ui/CommandSelector.tsx) → header/form/month controls; [Operations.tsx](../../../src/components/ui/Operations.tsx) → Home summaries and record actions; [site-theme.ts](../../../src/lib/site-theme.ts) / [globals.css](../../../src/app/globals.css) → all routes, including Login fallback. Read the relevant symbol, then search its import/callers with `rg`; verify affected states without automatically scanning every page.
 
 If the task changes schema, environment or release state, cross to [Setup](../SETUP_MAP.md). For visual-only work remain in this system node and its design contract. Coverage names are search leads inherited from the feature index, not evidence that checks passed or that every named scenario has a dedicated file.
+
+## Compact Dashboard presentation
+
+- Shared owners: [Button](../../../src/components/ui/Button.tsx) toolbar/icon-toolbar sizes; [AppShell](../../../src/components/layout/AppShell.tsx) header/site theme; [globals.css](../../../src/app/globals.css) `.dashboard-compact-controls`; [Modal](../../../src/components/ui/Modal.tsx) `compactControls`. Report callers: [Reporting](reporting.md#compact-dashboard-presentation).
+- Contracts: [Controls](../../design/controls.md#fields-buttons-and-overlays), [portal](../../design/dashboard-portal.md#compact-system-presentation), [new reports](../../design/dashboard-risk-bottlenecks.md). Checks: [compact geometry/theme/layout](../../../tests/e2e/dashboard-compact.spec.ts); [review](../../work-items/dashboard-risk-bottlenecks/review.md).
+
+Dashboard inline header filters and comparison-date owner: AppShell / [format.ts](../../../src/lib/format.ts) `formatCompactDateRange`; consumers/checks: [Reporting refinement](reporting.md#dashboard-navigation-and-summary-refinement).

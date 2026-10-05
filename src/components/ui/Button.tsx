@@ -2,7 +2,7 @@ import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: "primary" | "secondary" | "ghost" | "danger";
-  size?: "sm" | "md" | "icon-sm";
+  size?: "sm" | "md" | "icon-sm" | "toolbar" | "icon-toolbar";
   icon?: ReactNode;
 };
 
@@ -16,7 +16,9 @@ const variants = {
 const sizes = {
   sm: "min-h-9 px-3 text-sm",
   md: "min-h-10 px-4 text-sm",
-  "icon-sm": "h-9 w-9 shrink-0 p-0"
+  "icon-sm": "h-9 w-9 shrink-0 p-0",
+  toolbar: "ats-toolbar-button px-2 text-xs",
+  "icon-toolbar": "ats-toolbar-button ats-toolbar-icon shrink-0 p-0"
 };
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button({ variant = "primary", size = "md", icon, className = "", children, ...props }, ref) {

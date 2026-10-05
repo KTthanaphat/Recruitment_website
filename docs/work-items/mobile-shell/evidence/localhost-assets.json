@@ -1,0 +1,32 @@
+[
+  {
+    "route": "/login",
+    "status": 200,
+    "assets": 6,
+    "allAssets200": true
+  },
+  {
+    "route": "/home",
+    "status": 200,
+    "assets": 7,
+    "allAssets200": true
+  },
+  {
+    "route": "/workspace",
+    "status": 200,
+    "assets": 7,
+    "allAssets200": true
+  },
+  {
+    "route": "/requisitions",
+    "status": 200,
+    "assets": 7,
+    "allAssets200": true
+  },
+  {
+    "route": "/dashboard?dashboardTab=pipeline&pipelineSubview=bottlenecks",
+    "status": 200,
+    "assets": 7,
+    "allAssets200": true
+  }
+]

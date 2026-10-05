@@ -1,0 +1,2506 @@
+{
+  "project": "mppnlkldlctvketcsald",
+  "date": "2026-10-04",
+  "scenarios": [
+    {
+      "id": "aug-mtd",
+      "performance": {
+        "matrix": [
+          {
+            "band": "Executive",
+            "filled": 0,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "Executive",
+            "filled": 0,
+            "open": 0,
+            "site": "KT1"
+          },
+          {
+            "band": "Executive",
+            "filled": 0,
+            "open": 0,
+            "site": "KT2"
+          },
+          {
+            "band": "Executive",
+            "filled": 0,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "SML",
+            "filled": 0,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "SML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT1"
+          },
+          {
+            "band": "SML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT2"
+          },
+          {
+            "band": "SML",
+            "filled": 0,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "MML",
+            "filled": 0,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "MML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT1"
+          },
+          {
+            "band": "MML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT2"
+          },
+          {
+            "band": "MML",
+            "filled": 0,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "FML",
+            "filled": 1,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "FML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT1"
+          },
+          {
+            "band": "FML",
+            "filled": 1,
+            "open": 0,
+            "site": "KT2"
+          },
+          {
+            "band": "FML",
+            "filled": 2,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "NML",
+            "filled": 0,
+            "open": 5,
+            "site": "HQ"
+          },
+          {
+            "band": "NML",
+            "filled": 2,
+            "open": 0,
+            "site": "KT1"
+          },
+          {
+            "band": "NML",
+            "filled": 0,
+            "open": 1,
+            "site": "KT2"
+          },
+          {
+            "band": "NML",
+            "filled": 2,
+            "open": 6,
+            "site": "Total"
+          }
+        ],
+        "metrics": {
+          "avgTimeToFill": "13.8d",
+          "filled": "4",
+          "filledPct": "40%",
+          "slaPct": "75%",
+          "vacancies": "10"
+        },
+        "sla": {
+          "late": 1,
+          "on_time": 3
+        },
+        "composition": [
+          {
+            "band": "NML",
+            "label": "NML: 4 New, 4 Replacement; 80% Cumulative vacancy share"
+          },
+          {
+            "band": "FML",
+            "label": "FML: 0 New, 2 Replacement; 100% Cumulative vacancy share"
+          },
+          {
+            "band": "MML",
+            "label": "MML: 0 New, 0 Replacement; 100% Cumulative vacancy share"
+          },
+          {
+            "band": "SML",
+            "label": "SML: 0 New, 0 Replacement; 100% Cumulative vacancy share"
+          },
+          {
+            "band": "Executive",
+            "label": "EXEC: 0 New, 0 Replacement; 100% Cumulative vacancy share"
+          }
+        ]
+      },
+      "vacancy": {
+        "requisitions": 8,
+        "total": [
+          "Total",
+          "3",
+          "+8",
+          "-5",
+          "80%",
+          "+3",
+          "6"
+        ]
+      },
+      "pipeline": {
+        "counts": {
+          "Applicants": 30,
+          "HR Interview": 8,
+          "Line Interview": 7,
+          "Offer": 5,
+          "Phone Screening": 8,
+          "Reference Check": 5,
+          "Resume Screening": 8,
+          "Test": 6
+        },
+        "source": [
+          {
+            "label": "Facebook",
+            "values": [
+              {
+                "count": 20,
+                "measure": "applicants"
+              },
+              {
+                "count": 2,
+                "measure": "phone"
+              },
+              {
+                "count": 2,
+                "measure": "hired"
+              }
+            ]
+          },
+          {
+            "label": "JobThai",
+            "values": [
+              {
+                "count": 10,
+                "measure": "applicants"
+              },
+              {
+                "count": 2,
+                "measure": "phone"
+              },
+              {
+                "count": 1,
+                "measure": "hired"
+              }
+            ]
+          },
+          {
+            "label": "JobsDB",
+            "values": [
+              {
+                "count": 0,
+                "measure": "applicants"
+              },
+              {
+                "count": 1,
+                "measure": "phone"
+              },
+              {
+                "count": 1,
+                "measure": "hired"
+              }
+            ]
+          },
+          {
+            "label": "Referral",
+            "values": [
+              {
+                "count": 0,
+                "measure": "applicants"
+              },
+              {
+                "count": 3,
+                "measure": "phone"
+              },
+              {
+                "count": 1,
+                "measure": "hired"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "aug-ytd",
+      "performance": {
+        "matrix": [
+          {
+            "band": "Executive",
+            "filled": 0,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "Executive",
+            "filled": 0,
+            "open": 0,
+            "site": "KT1"
+          },
+          {
+            "band": "Executive",
+            "filled": 0,
+            "open": 0,
+            "site": "KT2"
+          },
+          {
+            "band": "Executive",
+            "filled": 0,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "SML",
+            "filled": 0,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "SML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT1"
+          },
+          {
+            "band": "SML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT2"
+          },
+          {
+            "band": "SML",
+            "filled": 0,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "MML",
+            "filled": 0,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "MML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT1"
+          },
+          {
+            "band": "MML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT2"
+          },
+          {
+            "band": "MML",
+            "filled": 0,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "FML",
+            "filled": 1,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "FML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT1"
+          },
+          {
+            "band": "FML",
+            "filled": 1,
+            "open": 0,
+            "site": "KT2"
+          },
+          {
+            "band": "FML",
+            "filled": 2,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "NML",
+            "filled": 0,
+            "open": 7,
+            "site": "HQ"
+          },
+          {
+            "band": "NML",
+            "filled": 2,
+            "open": 0,
+            "site": "KT1"
+          },
+          {
+            "band": "NML",
+            "filled": 1,
+            "open": 1,
+            "site": "KT2"
+          },
+          {
+            "band": "NML",
+            "filled": 3,
+            "open": 8,
+            "site": "Total"
+          }
+        ],
+        "metrics": {
+          "avgTimeToFill": "14.2d",
+          "filled": "5",
+          "filledPct": "38%",
+          "slaPct": "80%",
+          "vacancies": "13"
+        },
+        "sla": {
+          "late": 1,
+          "on_time": 4
+        },
+        "composition": [
+          {
+            "band": "NML",
+            "label": "NML: 4 New, 7 Replacement; 84.6% Cumulative vacancy share"
+          },
+          {
+            "band": "FML",
+            "label": "FML: 0 New, 2 Replacement; 100% Cumulative vacancy share"
+          },
+          {
+            "band": "MML",
+            "label": "MML: 0 New, 0 Replacement; 100% Cumulative vacancy share"
+          },
+          {
+            "band": "SML",
+            "label": "SML: 0 New, 0 Replacement; 100% Cumulative vacancy share"
+          },
+          {
+            "band": "Executive",
+            "label": "EXEC: 0 New, 0 Replacement; 100% Cumulative vacancy share"
+          }
+        ]
+      },
+      "vacancy": {
+        "requisitions": 10,
+        "total": [
+          "Total",
+          "0",
+          "+14",
+          "-6",
+          "83%",
+          "+8",
+          "8"
+        ]
+      },
+      "pipeline": {
+        "counts": {
+          "Applicants": 30,
+          "HR Interview": 12,
+          "Line Interview": 8,
+          "Offer": 6,
+          "Phone Screening": 12,
+          "Reference Check": 6,
+          "Resume Screening": 12,
+          "Test": 7
+        },
+        "source": [
+          {
+            "label": "Facebook",
+            "values": [
+              {
+                "count": 20,
+                "measure": "applicants"
+              },
+              {
+                "count": 5,
+                "measure": "phone"
+              },
+              {
+                "count": 2,
+                "measure": "hired"
+              }
+            ]
+          },
+          {
+            "label": "JobThai",
+            "values": [
+              {
+                "count": 10,
+                "measure": "applicants"
+              },
+              {
+                "count": 2,
+                "measure": "phone"
+              },
+              {
+                "count": 1,
+                "measure": "hired"
+              }
+            ]
+          },
+          {
+            "label": "JobsDB",
+            "values": [
+              {
+                "count": 0,
+                "measure": "applicants"
+              },
+              {
+                "count": 1,
+                "measure": "phone"
+              },
+              {
+                "count": 1,
+                "measure": "hired"
+              }
+            ]
+          },
+          {
+            "label": "Referral",
+            "values": [
+              {
+                "count": 0,
+                "measure": "applicants"
+              },
+              {
+                "count": 4,
+                "measure": "phone"
+              },
+              {
+                "count": 2,
+                "measure": "hired"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "jul-pim",
+      "performance": {
+        "matrix": [
+          {
+            "band": "Executive",
+            "filled": 0,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "Executive",
+            "filled": 0,
+            "open": 0,
+            "site": "KT1"
+          },
+          {
+            "band": "Executive",
+            "filled": 0,
+            "open": 0,
+            "site": "KT2"
+          },
+          {
+            "band": "Executive",
+            "filled": 0,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "SML",
+            "filled": 0,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "SML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT1"
+          },
+          {
+            "band": "SML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT2"
+          },
+          {
+            "band": "SML",
+            "filled": 0,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "MML",
+            "filled": 0,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "MML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT1"
+          },
+          {
+            "band": "MML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT2"
+          },
+          {
+            "band": "MML",
+            "filled": 0,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "FML",
+            "filled": 0,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "FML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT1"
+          },
+          {
+            "band": "FML",
+            "filled": 0,
+            "open": 1,
+            "site": "KT2"
+          },
+          {
+            "band": "FML",
+            "filled": 0,
+            "open": 1,
+            "site": "Total"
+          },
+          {
+            "band": "NML",
+            "filled": 0,
+            "open": 4,
+            "site": "HQ"
+          },
+          {
+            "band": "NML",
+            "filled": 0,
+            "open": 1,
+            "site": "KT1"
+          },
+          {
+            "band": "NML",
+            "filled": 1,
+            "open": 0,
+            "site": "KT2"
+          },
+          {
+            "band": "NML",
+            "filled": 1,
+            "open": 5,
+            "site": "Total"
+          }
+        ],
+        "metrics": {
+          "avgTimeToFill": "16d",
+          "filled": "1",
+          "filledPct": "14%",
+          "slaPct": "100%",
+          "vacancies": "7"
+        },
+        "sla": {
+          "late": 0,
+          "on_time": 1
+        },
+        "composition": [
+          {
+            "band": "NML",
+            "label": "NML: 2 New, 4 Replacement; 85.7% Cumulative vacancy share"
+          },
+          {
+            "band": "FML",
+            "label": "FML: 0 New, 1 Replacement; 100% Cumulative vacancy share"
+          },
+          {
+            "band": "MML",
+            "label": "MML: 0 New, 0 Replacement; 100% Cumulative vacancy share"
+          },
+          {
+            "band": "SML",
+            "label": "SML: 0 New, 0 Replacement; 100% Cumulative vacancy share"
+          },
+          {
+            "band": "Executive",
+            "label": "EXEC: 0 New, 0 Replacement; 100% Cumulative vacancy share"
+          }
+        ]
+      },
+      "vacancy": {
+        "requisitions": 6,
+        "total": [
+          "Total",
+          "3",
+          "+4",
+          "-1",
+          "100%",
+          "+3",
+          "6"
+        ]
+      },
+      "pipeline": {
+        "counts": {
+          "Applicants": 0,
+          "HR Interview": 7,
+          "Line Interview": 2,
+          "Offer": 1,
+          "Phone Screening": 5,
+          "Reference Check": 1,
+          "Resume Screening": 5,
+          "Test": 1
+        },
+        "source": [
+          {
+            "label": "Facebook",
+            "values": [
+              {
+                "count": 0,
+                "measure": "applicants"
+              },
+              {
+                "count": 3,
+                "measure": "phone"
+              },
+              {
+                "count": 0,
+                "measure": "hired"
+              }
+            ]
+          },
+          {
+            "label": "JobTopGun",
+            "values": [
+              {
+                "count": 0,
+                "measure": "applicants"
+              },
+              {
+                "count": 1,
+                "measure": "phone"
+              },
+              {
+                "count": 0,
+                "measure": "hired"
+              }
+            ]
+          },
+          {
+            "label": "Referral",
+            "values": [
+              {
+                "count": 0,
+                "measure": "applicants"
+              },
+              {
+                "count": 1,
+                "measure": "phone"
+              },
+              {
+                "count": 1,
+                "measure": "hired"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "sep-pim",
+      "performance": {
+        "matrix": [
+          {
+            "band": "Executive",
+            "filled": 0,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "Executive",
+            "filled": 0,
+            "open": 0,
+            "site": "KT1"
+          },
+          {
+            "band": "Executive",
+            "filled": 0,
+            "open": 0,
+            "site": "KT2"
+          },
+          {
+            "band": "Executive",
+            "filled": 0,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "SML",
+            "filled": 0,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "SML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT1"
+          },
+          {
+            "band": "SML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT2"
+          },
+          {
+            "band": "SML",
+            "filled": 0,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "MML",
+            "filled": 0,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "MML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT1"
+          },
+          {
+            "band": "MML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT2"
+          },
+          {
+            "band": "MML",
+            "filled": 0,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "FML",
+            "filled": 0,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "FML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT1"
+          },
+          {
+            "band": "FML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT2"
+          },
+          {
+            "band": "FML",
+            "filled": 0,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "NML",
+            "filled": 0,
+            "open": 8,
+            "site": "HQ"
+          },
+          {
+            "band": "NML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT1"
+          },
+          {
+            "band": "NML",
+            "filled": 0,
+            "open": 1,
+            "site": "KT2"
+          },
+          {
+            "band": "NML",
+            "filled": 0,
+            "open": 9,
+            "site": "Total"
+          }
+        ],
+        "metrics": {
+          "avgTimeToFill": "—",
+          "filled": "0",
+          "filledPct": "0%",
+          "slaPct": "—",
+          "vacancies": "9"
+        },
+        "sla": {
+          "late": 0,
+          "on_time": 0
+        },
+        "composition": [
+          {
+            "band": "NML",
+            "label": "NML: 4 New, 5 Replacement; 100% Cumulative vacancy share"
+          },
+          {
+            "band": "FML",
+            "label": "FML: 0 New, 0 Replacement; 100% Cumulative vacancy share"
+          },
+          {
+            "band": "MML",
+            "label": "MML: 0 New, 0 Replacement; 100% Cumulative vacancy share"
+          },
+          {
+            "band": "SML",
+            "label": "SML: 0 New, 0 Replacement; 100% Cumulative vacancy share"
+          },
+          {
+            "band": "Executive",
+            "label": "EXEC: 0 New, 0 Replacement; 100% Cumulative vacancy share"
+          }
+        ]
+      },
+      "vacancy": {
+        "requisitions": 6,
+        "total": [
+          "Total",
+          "9",
+          "0",
+          "0",
+          "—",
+          "0",
+          "9"
+        ]
+      },
+      "pipeline": {
+        "counts": {
+          "Applicants": 117,
+          "HR Interview": 2,
+          "Line Interview": 2,
+          "Offer": 0,
+          "Phone Screening": 2,
+          "Reference Check": 0,
+          "Resume Screening": 2,
+          "Test": 0
+        },
+        "source": [
+          {
+            "label": "Others",
+            "values": [
+              {
+                "count": 37,
+                "measure": "applicants"
+              },
+              {
+                "count": 0,
+                "measure": "phone"
+              },
+              {
+                "count": 0,
+                "measure": "hired"
+              }
+            ]
+          },
+          {
+            "label": "JobBKK",
+            "values": [
+              {
+                "count": 28,
+                "measure": "applicants"
+              },
+              {
+                "count": 1,
+                "measure": "phone"
+              },
+              {
+                "count": 0,
+                "measure": "hired"
+              }
+            ]
+          },
+          {
+            "label": "JobsDB",
+            "values": [
+              {
+                "count": 27,
+                "measure": "applicants"
+              },
+              {
+                "count": 0,
+                "measure": "phone"
+              },
+              {
+                "count": 0,
+                "measure": "hired"
+              }
+            ]
+          },
+          {
+            "label": "JobThai",
+            "values": [
+              {
+                "count": 25,
+                "measure": "applicants"
+              },
+              {
+                "count": 1,
+                "measure": "phone"
+              },
+              {
+                "count": 0,
+                "measure": "hired"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "oct-mtd",
+      "performance": {
+        "matrix": [
+          {
+            "band": "Executive",
+            "filled": 0,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "Executive",
+            "filled": 0,
+            "open": 0,
+            "site": "KT1"
+          },
+          {
+            "band": "Executive",
+            "filled": 0,
+            "open": 0,
+            "site": "KT2"
+          },
+          {
+            "band": "Executive",
+            "filled": 0,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "SML",
+            "filled": 0,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "SML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT1"
+          },
+          {
+            "band": "SML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT2"
+          },
+          {
+            "band": "SML",
+            "filled": 0,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "MML",
+            "filled": 0,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "MML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT1"
+          },
+          {
+            "band": "MML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT2"
+          },
+          {
+            "band": "MML",
+            "filled": 0,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "FML",
+            "filled": 0,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "FML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT1"
+          },
+          {
+            "band": "FML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT2"
+          },
+          {
+            "band": "FML",
+            "filled": 0,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "NML",
+            "filled": 0,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "NML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT1"
+          },
+          {
+            "band": "NML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT2"
+          },
+          {
+            "band": "NML",
+            "filled": 0,
+            "open": 0,
+            "site": "Total"
+          }
+        ],
+        "metrics": {
+          "avgTimeToFill": "—",
+          "filled": "0",
+          "filledPct": "—",
+          "slaPct": "—",
+          "vacancies": "0"
+        },
+        "sla": {
+          "late": 0,
+          "on_time": 0
+        },
+        "composition": [
+          {
+            "band": "NML",
+            "label": "NML: 0 New, 0 Replacement; 0% Cumulative vacancy share"
+          },
+          {
+            "band": "FML",
+            "label": "FML: 0 New, 0 Replacement; 0% Cumulative vacancy share"
+          },
+          {
+            "band": "MML",
+            "label": "MML: 0 New, 0 Replacement; 0% Cumulative vacancy share"
+          },
+          {
+            "band": "SML",
+            "label": "SML: 0 New, 0 Replacement; 0% Cumulative vacancy share"
+          },
+          {
+            "band": "Executive",
+            "label": "EXEC: 0 New, 0 Replacement; 0% Cumulative vacancy share"
+          }
+        ]
+      },
+      "vacancy": {
+        "requisitions": 0,
+        "total": [
+          "Total",
+          "0",
+          "0",
+          "0",
+          "—",
+          "0",
+          "0"
+        ]
+      },
+      "pipeline": {
+        "counts": {
+          "Applicants": 0,
+          "HR Interview": 0,
+          "Line Interview": 0,
+          "Offer": 0,
+          "Phone Screening": 0,
+          "Reference Check": 0,
+          "Resume Screening": 0,
+          "Test": 0
+        },
+        "source": []
+      }
+    },
+    {
+      "id": "aug-hq",
+      "performance": {
+        "matrix": [
+          {
+            "band": "Executive",
+            "filled": 0,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "Executive",
+            "filled": 0,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "SML",
+            "filled": 0,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "SML",
+            "filled": 0,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "MML",
+            "filled": 0,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "MML",
+            "filled": 0,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "FML",
+            "filled": 1,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "FML",
+            "filled": 1,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "NML",
+            "filled": 0,
+            "open": 8,
+            "site": "HQ"
+          },
+          {
+            "band": "NML",
+            "filled": 0,
+            "open": 8,
+            "site": "Total"
+          }
+        ],
+        "metrics": {
+          "avgTimeToFill": "1d",
+          "filled": "1",
+          "filledPct": "11%",
+          "slaPct": "100%",
+          "vacancies": "9"
+        },
+        "sla": {
+          "late": 0,
+          "on_time": 1
+        },
+        "composition": [
+          {
+            "band": "NML",
+            "label": "NML: 3 New, 5 Replacement; 88.9% Cumulative vacancy share"
+          },
+          {
+            "band": "FML",
+            "label": "FML: 0 New, 1 Replacement; 100% Cumulative vacancy share"
+          },
+          {
+            "band": "MML",
+            "label": "MML: 0 New, 0 Replacement; 100% Cumulative vacancy share"
+          },
+          {
+            "band": "SML",
+            "label": "SML: 0 New, 0 Replacement; 100% Cumulative vacancy share"
+          },
+          {
+            "band": "Executive",
+            "label": "EXEC: 0 New, 0 Replacement; 100% Cumulative vacancy share"
+          }
+        ]
+      },
+      "vacancy": {
+        "requisitions": 6,
+        "total": [
+          "Total",
+          "4",
+          "+6",
+          "-2",
+          "100%",
+          "+4",
+          "8"
+        ]
+      },
+      "pipeline": {
+        "counts": {
+          "Applicants": 30,
+          "HR Interview": 3,
+          "Line Interview": 2,
+          "Offer": 2,
+          "Phone Screening": 3,
+          "Reference Check": 3,
+          "Resume Screening": 3,
+          "Test": 3
+        },
+        "source": [
+          {
+            "label": "Facebook",
+            "values": [
+              {
+                "count": 20,
+                "measure": "applicants"
+              },
+              {
+                "count": 1,
+                "measure": "phone"
+              },
+              {
+                "count": 1,
+                "measure": "hired"
+              }
+            ]
+          },
+          {
+            "label": "JobThai",
+            "values": [
+              {
+                "count": 10,
+                "measure": "applicants"
+              },
+              {
+                "count": 1,
+                "measure": "phone"
+              },
+              {
+                "count": 0,
+                "measure": "hired"
+              }
+            ]
+          },
+          {
+            "label": "JobsDB",
+            "values": [
+              {
+                "count": 0,
+                "measure": "applicants"
+              },
+              {
+                "count": 1,
+                "measure": "phone"
+              },
+              {
+                "count": 1,
+                "measure": "hired"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "aug-department",
+      "performance": {
+        "matrix": [
+          {
+            "band": "Executive",
+            "filled": 0,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "Executive",
+            "filled": 0,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "SML",
+            "filled": 0,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "SML",
+            "filled": 0,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "MML",
+            "filled": 0,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "MML",
+            "filled": 0,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "FML",
+            "filled": 1,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "FML",
+            "filled": 1,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "NML",
+            "filled": 0,
+            "open": 2,
+            "site": "HQ"
+          },
+          {
+            "band": "NML",
+            "filled": 0,
+            "open": 2,
+            "site": "Total"
+          }
+        ],
+        "metrics": {
+          "avgTimeToFill": "1d",
+          "filled": "1",
+          "filledPct": "33%",
+          "slaPct": "100%",
+          "vacancies": "3"
+        },
+        "sla": {
+          "late": 0,
+          "on_time": 1
+        },
+        "composition": [
+          {
+            "band": "NML",
+            "label": "NML: 0 New, 2 Replacement; 66.7% Cumulative vacancy share"
+          },
+          {
+            "band": "FML",
+            "label": "FML: 0 New, 1 Replacement; 100% Cumulative vacancy share"
+          },
+          {
+            "band": "MML",
+            "label": "MML: 0 New, 0 Replacement; 100% Cumulative vacancy share"
+          },
+          {
+            "band": "SML",
+            "label": "SML: 0 New, 0 Replacement; 100% Cumulative vacancy share"
+          },
+          {
+            "band": "Executive",
+            "label": "EXEC: 0 New, 0 Replacement; 100% Cumulative vacancy share"
+          }
+        ]
+      },
+      "vacancy": {
+        "requisitions": 2,
+        "total": [
+          "Total",
+          "2",
+          "+1",
+          "-1",
+          "100%",
+          "0",
+          "2"
+        ]
+      },
+      "pipeline": {
+        "counts": {
+          "Applicants": 0,
+          "HR Interview": 2,
+          "Line Interview": 1,
+          "Offer": 1,
+          "Phone Screening": 2,
+          "Reference Check": 1,
+          "Resume Screening": 2,
+          "Test": 1
+        },
+        "source": [
+          {
+            "label": "JobThai",
+            "values": [
+              {
+                "count": 0,
+                "measure": "applicants"
+              },
+              {
+                "count": 1,
+                "measure": "phone"
+              },
+              {
+                "count": 0,
+                "measure": "hired"
+              }
+            ]
+          },
+          {
+            "label": "JobsDB",
+            "values": [
+              {
+                "count": 0,
+                "measure": "applicants"
+              },
+              {
+                "count": 1,
+                "measure": "phone"
+              },
+              {
+                "count": 1,
+                "measure": "hired"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "aug-level",
+      "performance": {
+        "matrix": [
+          {
+            "band": "Executive",
+            "filled": 0,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "Executive",
+            "filled": 0,
+            "open": 0,
+            "site": "KT2"
+          },
+          {
+            "band": "Executive",
+            "filled": 0,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "SML",
+            "filled": 0,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "SML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT2"
+          },
+          {
+            "band": "SML",
+            "filled": 0,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "MML",
+            "filled": 0,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "MML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT2"
+          },
+          {
+            "band": "MML",
+            "filled": 0,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "FML",
+            "filled": 1,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "FML",
+            "filled": 1,
+            "open": 0,
+            "site": "KT2"
+          },
+          {
+            "band": "FML",
+            "filled": 2,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "NML",
+            "filled": 0,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "NML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT2"
+          },
+          {
+            "band": "NML",
+            "filled": 0,
+            "open": 0,
+            "site": "Total"
+          }
+        ],
+        "metrics": {
+          "avgTimeToFill": "19.5d",
+          "filled": "2",
+          "filledPct": "100%",
+          "slaPct": "50%",
+          "vacancies": "2"
+        },
+        "sla": {
+          "late": 1,
+          "on_time": 1
+        },
+        "composition": [
+          {
+            "band": "NML",
+            "label": "NML: 0 New, 0 Replacement; 0% Cumulative vacancy share"
+          },
+          {
+            "band": "FML",
+            "label": "FML: 0 New, 2 Replacement; 100% Cumulative vacancy share"
+          },
+          {
+            "band": "MML",
+            "label": "MML: 0 New, 0 Replacement; 100% Cumulative vacancy share"
+          },
+          {
+            "band": "SML",
+            "label": "SML: 0 New, 0 Replacement; 100% Cumulative vacancy share"
+          },
+          {
+            "band": "Executive",
+            "label": "EXEC: 0 New, 0 Replacement; 100% Cumulative vacancy share"
+          }
+        ]
+      },
+      "vacancy": {
+        "requisitions": 2,
+        "total": [
+          "Total",
+          "1",
+          "+1",
+          "-2",
+          "50%",
+          "-1",
+          "0"
+        ]
+      },
+      "pipeline": {
+        "counts": {
+          "Applicants": 0,
+          "HR Interview": 2,
+          "Line Interview": 2,
+          "Offer": 2,
+          "Phone Screening": 2,
+          "Reference Check": 2,
+          "Resume Screening": 2,
+          "Test": 2
+        },
+        "source": [
+          {
+            "label": "JobThai",
+            "values": [
+              {
+                "count": 0,
+                "measure": "applicants"
+              },
+              {
+                "count": 1,
+                "measure": "phone"
+              },
+              {
+                "count": 1,
+                "measure": "hired"
+              }
+            ]
+          },
+          {
+            "label": "JobsDB",
+            "values": [
+              {
+                "count": 0,
+                "measure": "applicants"
+              },
+              {
+                "count": 1,
+                "measure": "phone"
+              },
+              {
+                "count": 1,
+                "measure": "hired"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "aug-pic",
+      "performance": {
+        "matrix": [
+          {
+            "band": "Executive",
+            "filled": 0,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "Executive",
+            "filled": 0,
+            "open": 0,
+            "site": "KT2"
+          },
+          {
+            "band": "Executive",
+            "filled": 0,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "SML",
+            "filled": 0,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "SML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT2"
+          },
+          {
+            "band": "SML",
+            "filled": 0,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "MML",
+            "filled": 0,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "MML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT2"
+          },
+          {
+            "band": "MML",
+            "filled": 0,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "FML",
+            "filled": 1,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "FML",
+            "filled": 1,
+            "open": 0,
+            "site": "KT2"
+          },
+          {
+            "band": "FML",
+            "filled": 2,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "NML",
+            "filled": 0,
+            "open": 2,
+            "site": "HQ"
+          },
+          {
+            "band": "NML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT2"
+          },
+          {
+            "band": "NML",
+            "filled": 0,
+            "open": 2,
+            "site": "Total"
+          }
+        ],
+        "metrics": {
+          "avgTimeToFill": "19.5d",
+          "filled": "2",
+          "filledPct": "50%",
+          "slaPct": "50%",
+          "vacancies": "4"
+        },
+        "sla": {
+          "late": 1,
+          "on_time": 1
+        },
+        "composition": [
+          {
+            "band": "NML",
+            "label": "NML: 2 New, 0 Replacement; 50% Cumulative vacancy share"
+          },
+          {
+            "band": "FML",
+            "label": "FML: 0 New, 2 Replacement; 100% Cumulative vacancy share"
+          },
+          {
+            "band": "MML",
+            "label": "MML: 0 New, 0 Replacement; 100% Cumulative vacancy share"
+          },
+          {
+            "band": "SML",
+            "label": "SML: 0 New, 0 Replacement; 100% Cumulative vacancy share"
+          },
+          {
+            "band": "Executive",
+            "label": "EXEC: 0 New, 0 Replacement; 100% Cumulative vacancy share"
+          }
+        ]
+      },
+      "vacancy": {
+        "requisitions": 4,
+        "total": [
+          "Total",
+          "2",
+          "+3",
+          "-3",
+          "67%",
+          "0",
+          "2"
+        ]
+      },
+      "pipeline": {
+        "counts": {
+          "Applicants": 30,
+          "HR Interview": 3,
+          "Line Interview": 3,
+          "Offer": 3,
+          "Phone Screening": 3,
+          "Reference Check": 3,
+          "Resume Screening": 3,
+          "Test": 3
+        },
+        "source": [
+          {
+            "label": "Facebook",
+            "values": [
+              {
+                "count": 20,
+                "measure": "applicants"
+              },
+              {
+                "count": 1,
+                "measure": "phone"
+              },
+              {
+                "count": 1,
+                "measure": "hired"
+              }
+            ]
+          },
+          {
+            "label": "JobThai",
+            "values": [
+              {
+                "count": 10,
+                "measure": "applicants"
+              },
+              {
+                "count": 1,
+                "measure": "phone"
+              },
+              {
+                "count": 1,
+                "measure": "hired"
+              }
+            ]
+          },
+          {
+            "label": "JobsDB",
+            "values": [
+              {
+                "count": 0,
+                "measure": "applicants"
+              },
+              {
+                "count": 1,
+                "measure": "phone"
+              },
+              {
+                "count": 1,
+                "measure": "hired"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "aug-priority",
+      "performance": {
+        "matrix": [
+          {
+            "band": "Executive",
+            "filled": 0,
+            "open": 0,
+            "site": "KT2"
+          },
+          {
+            "band": "Executive",
+            "filled": 0,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "SML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT2"
+          },
+          {
+            "band": "SML",
+            "filled": 0,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "MML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT2"
+          },
+          {
+            "band": "MML",
+            "filled": 0,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "FML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT2"
+          },
+          {
+            "band": "FML",
+            "filled": 0,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "NML",
+            "filled": 0,
+            "open": 1,
+            "site": "KT2"
+          },
+          {
+            "band": "NML",
+            "filled": 0,
+            "open": 1,
+            "site": "Total"
+          }
+        ],
+        "metrics": {
+          "avgTimeToFill": "—",
+          "filled": "0",
+          "filledPct": "0%",
+          "slaPct": "—",
+          "vacancies": "1"
+        },
+        "sla": {
+          "late": 0,
+          "on_time": 0
+        },
+        "composition": [
+          {
+            "band": "NML",
+            "label": "NML: 1 New, 0 Replacement; 100% Cumulative vacancy share"
+          },
+          {
+            "band": "FML",
+            "label": "FML: 0 New, 0 Replacement; 100% Cumulative vacancy share"
+          },
+          {
+            "band": "MML",
+            "label": "MML: 0 New, 0 Replacement; 100% Cumulative vacancy share"
+          },
+          {
+            "band": "SML",
+            "label": "SML: 0 New, 0 Replacement; 100% Cumulative vacancy share"
+          },
+          {
+            "band": "Executive",
+            "label": "EXEC: 0 New, 0 Replacement; 100% Cumulative vacancy share"
+          }
+        ]
+      },
+      "vacancy": {
+        "requisitions": 1,
+        "total": [
+          "Total",
+          "0",
+          "+1",
+          "0",
+          "—",
+          "+1",
+          "1"
+        ]
+      },
+      "pipeline": {
+        "counts": {
+          "Applicants": 0,
+          "HR Interview": 0,
+          "Line Interview": 0,
+          "Offer": 0,
+          "Phone Screening": 0,
+          "Reference Check": 0,
+          "Resume Screening": 0,
+          "Test": 0
+        },
+        "source": []
+      }
+    },
+    {
+      "id": "aug-facebook",
+      "performance": {
+        "matrix": [
+          {
+            "band": "Executive",
+            "filled": 0,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "Executive",
+            "filled": 0,
+            "open": 0,
+            "site": "KT1"
+          },
+          {
+            "band": "Executive",
+            "filled": 0,
+            "open": 0,
+            "site": "KT2"
+          },
+          {
+            "band": "Executive",
+            "filled": 0,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "SML",
+            "filled": 0,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "SML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT1"
+          },
+          {
+            "band": "SML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT2"
+          },
+          {
+            "band": "SML",
+            "filled": 0,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "MML",
+            "filled": 0,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "MML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT1"
+          },
+          {
+            "band": "MML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT2"
+          },
+          {
+            "band": "MML",
+            "filled": 0,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "FML",
+            "filled": 1,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "FML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT1"
+          },
+          {
+            "band": "FML",
+            "filled": 1,
+            "open": 0,
+            "site": "KT2"
+          },
+          {
+            "band": "FML",
+            "filled": 2,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "NML",
+            "filled": 0,
+            "open": 8,
+            "site": "HQ"
+          },
+          {
+            "band": "NML",
+            "filled": 2,
+            "open": 0,
+            "site": "KT1"
+          },
+          {
+            "band": "NML",
+            "filled": 0,
+            "open": 1,
+            "site": "KT2"
+          },
+          {
+            "band": "NML",
+            "filled": 2,
+            "open": 9,
+            "site": "Total"
+          }
+        ],
+        "metrics": {
+          "avgTimeToFill": "13.8d",
+          "filled": "4",
+          "filledPct": "31%",
+          "slaPct": "75%",
+          "vacancies": "13"
+        },
+        "sla": {
+          "late": 1,
+          "on_time": 3
+        },
+        "composition": [
+          {
+            "band": "NML",
+            "label": "NML: 5 New, 6 Replacement; 84.6% Cumulative vacancy share"
+          },
+          {
+            "band": "FML",
+            "label": "FML: 0 New, 2 Replacement; 100% Cumulative vacancy share"
+          },
+          {
+            "band": "MML",
+            "label": "MML: 0 New, 0 Replacement; 100% Cumulative vacancy share"
+          },
+          {
+            "band": "SML",
+            "label": "SML: 0 New, 0 Replacement; 100% Cumulative vacancy share"
+          },
+          {
+            "band": "Executive",
+            "label": "EXEC: 0 New, 0 Replacement; 100% Cumulative vacancy share"
+          }
+        ]
+      },
+      "vacancy": {
+        "requisitions": 10,
+        "total": [
+          "Total",
+          "6",
+          "+8",
+          "-5",
+          "80%",
+          "+3",
+          "9"
+        ]
+      },
+      "pipeline": {
+        "counts": {
+          "Applicants": 20,
+          "HR Interview": 2,
+          "Line Interview": 2,
+          "Offer": 2,
+          "Phone Screening": 2,
+          "Reference Check": 2,
+          "Resume Screening": 2,
+          "Test": 2
+        },
+        "source": [
+          {
+            "label": "Facebook",
+            "values": [
+              {
+                "count": 20,
+                "measure": "applicants"
+              },
+              {
+                "count": 2,
+                "measure": "phone"
+              },
+              {
+                "count": 2,
+                "measure": "hired"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "aug-pim",
+      "performance": {
+        "matrix": [
+          {
+            "band": "Executive",
+            "filled": 0,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "Executive",
+            "filled": 0,
+            "open": 0,
+            "site": "KT1"
+          },
+          {
+            "band": "Executive",
+            "filled": 0,
+            "open": 0,
+            "site": "KT2"
+          },
+          {
+            "band": "Executive",
+            "filled": 0,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "SML",
+            "filled": 0,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "SML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT1"
+          },
+          {
+            "band": "SML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT2"
+          },
+          {
+            "band": "SML",
+            "filled": 0,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "MML",
+            "filled": 0,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "MML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT1"
+          },
+          {
+            "band": "MML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT2"
+          },
+          {
+            "band": "MML",
+            "filled": 0,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "FML",
+            "filled": 1,
+            "open": 0,
+            "site": "HQ"
+          },
+          {
+            "band": "FML",
+            "filled": 0,
+            "open": 0,
+            "site": "KT1"
+          },
+          {
+            "band": "FML",
+            "filled": 1,
+            "open": 0,
+            "site": "KT2"
+          },
+          {
+            "band": "FML",
+            "filled": 2,
+            "open": 0,
+            "site": "Total"
+          },
+          {
+            "band": "NML",
+            "filled": 0,
+            "open": 8,
+            "site": "HQ"
+          },
+          {
+            "band": "NML",
+            "filled": 2,
+            "open": 0,
+            "site": "KT1"
+          },
+          {
+            "band": "NML",
+            "filled": 0,
+            "open": 1,
+            "site": "KT2"
+          },
+          {
+            "band": "NML",
+            "filled": 2,
+            "open": 9,
+            "site": "Total"
+          }
+        ],
+        "metrics": {
+          "avgTimeToFill": "13.8d",
+          "filled": "4",
+          "filledPct": "31%",
+          "slaPct": "75%",
+          "vacancies": "13"
+        },
+        "sla": {
+          "late": 1,
+          "on_time": 3
+        },
+        "composition": [
+          {
+            "band": "NML",
+            "label": "NML: 5 New, 6 Replacement; 84.6% Cumulative vacancy share"
+          },
+          {
+            "band": "FML",
+            "label": "FML: 0 New, 2 Replacement; 100% Cumulative vacancy share"
+          },
+          {
+            "band": "MML",
+            "label": "MML: 0 New, 0 Replacement; 100% Cumulative vacancy share"
+          },
+          {
+            "band": "SML",
+            "label": "SML: 0 New, 0 Replacement; 100% Cumulative vacancy share"
+          },
+          {
+            "band": "Executive",
+            "label": "EXEC: 0 New, 0 Replacement; 100% Cumulative vacancy share"
+          }
+        ]
+      },
+      "vacancy": {
+        "requisitions": 10,
+        "total": [
+          "Total",
+          "6",
+          "+8",
+          "-5",
+          "80%",
+          "+3",
+          "9"
+        ]
+      },
+      "pipeline": {
+        "counts": {
+          "Applicants": 30,
+          "HR Interview": 8,
+          "Line Interview": 7,
+          "Offer": 5,
+          "Phone Screening": 8,
+          "Reference Check": 6,
+          "Resume Screening": 8,
+          "Test": 7
+        },
+        "source": [
+          {
+            "label": "Facebook",
+            "values": [
+              {
+                "count": 20,
+                "measure": "applicants"
+              },
+              {
+                "count": 2,
+                "measure": "phone"
+              },
+              {
+                "count": 2,
+                "measure": "hired"
+              }
+            ]
+          },
+          {
+            "label": "JobThai",
+            "values": [
+              {
+                "count": 10,
+                "measure": "applicants"
+              },
+              {
+                "count": 2,
+                "measure": "phone"
+              },
+              {
+                "count": 1,
+                "measure": "hired"
+              }
+            ]
+          },
+          {
+            "label": "JobsDB",
+            "values": [
+              {
+                "count": 0,
+                "measure": "applicants"
+              },
+              {
+                "count": 1,
+                "measure": "phone"
+              },
+              {
+                "count": 1,
+                "measure": "hired"
+              }
+            ]
+          },
+          {
+            "label": "Referral",
+            "values": [
+              {
+                "count": 0,
+                "measure": "applicants"
+              },
+              {
+                "count": 3,
+                "measure": "phone"
+              },
+              {
+                "count": 1,
+                "measure": "hired"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

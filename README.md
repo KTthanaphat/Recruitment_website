@@ -42,7 +42,8 @@ The Playwright browser install is needed only once per machine.
 ## Product Areas
 
 - Home: responsible summary, candidate pipeline preview, stale weekly sourcing updates, needs action, and role-scoped new-hire start confirmations.
-- Dashboard: Vacancy Waterfall report with chart PDF, requisition detail PDF, and requisition detail XLSX export.
+- Dashboard: common filters and report tabs for Performance, Vacancy/Requisitions and Pipeline/Sources, with complete PNG and requisition XLSX exports.
+- Configuration: folder navigation for reason hierarchies and Thai/English template catalogs.
 - Requisitions: new/replacement requests, replacement names, headcount tracking, and guided sourcing flow after new requisition creation.
 - Sourcing: position groups, requisition matches, and weekly updates for marked channels.
 - Candidates and Pipeline: group-based candidate context, candidate folder links, pipeline journey, and validated stage updates.

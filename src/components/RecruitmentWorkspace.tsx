@@ -1,16 +1,17 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import type { Requisition } from "@/types/recruitment";
 import { Activity, AlertTriangle, Bookmark, BriefcaseBusiness, Building2, CalendarDays, CalendarPlus, CheckCircle2, ContactRound, Copy, CopyCheck, Factory, EyeOff, Files, Hash, Info, LampDesk, Layers3, Mail, Network, Pencil, Phone, Plus, RefreshCw, Send, UserRound, UsersRound, X } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { AdminView } from "@/components/admin/AdminView";
-import { AuditView } from "@/components/audit/AuditView";
 import { CandidatesView } from "@/components/candidates/CandidatesView";
-import { ConfigurationView } from "@/components/configuration/ConfigurationView";
 import { HomeView } from "@/components/dashboard/HomeView";
-import { VacancyWaterfallView } from "@/components/dashboard/VacancyWaterfallView";
-import { RecruitmentPerformanceOverview } from "@/components/dashboard/RecruitmentPerformanceOverview";
+import { clearDashboardReportCache, hydrateReportCandidate, readReportPages } from "@/lib/dashboard-report-loader";
+import { DASHBOARD_SESSION_PREFIX } from "@/lib/dashboard-filters";
+import { DesktopInteractionContext } from "@/components/layout/DesktopInteractionContext";
+import { DesktopRequiredNotice } from "@/components/layout/DesktopRequiredNotice";
+import { isDesktopOnlyView, isViewAvailable, useLayoutMode, type LayoutMode } from "@/lib/responsive-layout";
 import { AppShell } from "@/components/layout/AppShell";
 import { OffersView } from "@/components/offers/OffersView";
 import { PipelineBoardView } from "@/components/pipeline/PipelineBoardView";
@@ -100,6 +101,11 @@ import type {
   ViewId,
   WorkspaceActionRequest
 } from "@/types/recruitment";
+
+const AdminView = dynamic(() => import("@/components/admin/AdminView").then(module => module.AdminView));
+const AuditView = dynamic(() => import("@/components/audit/AuditView").then(module => module.AuditView));
+const ConfigurationView = dynamic(() => import("@/components/configuration/ConfigurationView").then(module => module.ConfigurationView));
+const DashboardPortal = dynamic(() => import("@/components/dashboard/DashboardPortal").then(module => module.DashboardPortal));
 
 type ModalName =
   | "requisition"
@@ -278,9 +284,11 @@ const rpcByModal: Record<Exclude<ModalName, null | "user">, string> = {
 
 export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const router = useRouter();
+  const layoutMode = useLayoutMode();
   const workspaceUrlState = useWorkspaceUrlState();
   const [language, setLanguage] = useState<Language>("th");
   const [data, setData] = useState<DashboardData>(emptyDashboardData);
+  const [reportRefreshKey, setReportRefreshKey] = useState(0);
   const [companyDashboardReport, setCompanyDashboardReport] = useState<DashboardReportData | null>(null);
   const [workspaceLoadState, setWorkspaceLoadState] = useState<WorkspaceLoadState>("checking_session");
   const [loading, setLoading] = useState(true);
@@ -307,12 +315,35 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const [busy, setBusy] = useState(false);
   const [urlStateReady, setUrlStateReady] = useState(false);
 
+  const [desktopLocks, setDesktopLocks] = useState<Record<string, boolean>>({});
+  const registerDesktopLock = useCallback((id: string, active: boolean) => {
+    setDesktopLocks(current => {
+      if (Boolean(current[id]) === active) return current;
+      const next = { ...current }; if (active) next[id] = true; else delete next[id]; return next;
+    });
+  }, []);
+  const loadedScopeRef = useRef<"profile" | "mobile" | "desktop" | null>(null);
+  const loadGeneration = useRef(0);
+  const fullDataLoaded = loadedScopeRef.current === "desktop" || loadedScopeRef.current === "mobile";
+  const protectedInteraction = fullDataLoaded && (busy || Boolean(activeModal || pendingAction || destructiveAction || detail || currentStageActionCandidateId || rejectionLetterCandidateId) || Object.keys(desktopLocks).length > 0);
+  const previousLayout = useRef<LayoutMode>("unknown"), resizeGrace = useRef(false);
+  if (previousLayout.current !== layoutMode) {
+    resizeGrace.current = previousLayout.current === "desktop" && layoutMode === "mobile" && protectedInteraction;
+    previousLayout.current = layoutMode;
+  }
+  if (!protectedInteraction) resizeGrace.current = false;
+  const desktopRequired = layoutMode === "mobile" && !isViewAvailable(initialView, layoutMode) && !resizeGrace.current;
+  const loadScope = desktopRequired ? "profile" : layoutMode === "mobile" && !isDesktopOnlyView(initialView) ? "mobile" : "desktop";
+
   function showUpdateDenial(reason: string) {
     setStatus("Recruitment records loaded.");
     setUpdateDenial(reason);
   }
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (refreshReports = true) => {
+    if (layoutMode === "unknown") return null;
+    const generation = ++loadGeneration.current;
+    const currentRequest = () => generation === loadGeneration.current;
     if (!supabase) {
       setLoading(false);
       setWorkspaceLoadState("error");
@@ -330,6 +361,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
         "Session verification timed out. Your saved session was cleared; please sign in again."
       );
     } catch (sessionError) {
+      if (!currentRequest()) return null;
       clearStoredSupabaseSession();
       setLoading(false);
       setWorkspaceLoadState("redirecting_to_login");
@@ -337,6 +369,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       window.location.replace("/login?reason=session-timeout");
       return null;
     }
+    if (!currentRequest()) return null;
     if (!session.data.session) {
       setLoading(false);
       setWorkspaceLoadState("redirecting_to_login");
@@ -347,20 +380,48 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
 
     setWorkspaceLoadState("loading_data");
     try {
-      const [loaded, dashboardReport] = await Promise.all([loadDashboardData(supabase), loadCompanyDashboardReport(supabase)]);
+      if (loadScope === "profile") {
+        const user = await supabase.auth.getUser();
+        if (user.error) throw user.error;
+        if (!user.data.user) throw new Error("Could not verify the signed-in user.");
+        const result = await supabase.from("profiles").select("*").eq("id", user.data.user.id).limit(1);
+        if (result.error) throw result.error;
+        if (!currentRequest()) return null;
+        const profile = (result.data ?? []).find(row => row.id === user.data.user!.id) as Profile | undefined;
+        if (!profile) throw new Error("Could not load the signed-in profile.");
+        const minimal = { ...emptyDashboardData, profile, profiles: [profile] };
+        loadedScopeRef.current = "profile";
+        setData(minimal); setWorkspaceLoadState("ready"); setStatus("Recruitment records loaded.");
+        return minimal;
+      }
+      const [loaded, dashboardReport] = await Promise.all([loadDashboardData(supabase), loadScope === "mobile" ? Promise.resolve(null) : loadCompanyDashboardReport(supabase)]);
+      if (!currentRequest()) return null;
+      loadedScopeRef.current = loadScope;
+      if (refreshReports) clearDashboardReportCache();
       setData(loaded);
+      setReportRefreshKey(value => value + 1);
       setCompanyDashboardReport(dashboardReport);
       setStatus("Recruitment records loaded.");
       setWorkspaceLoadState("ready");
       return loaded;
     } catch (loadError) {
+      if (!currentRequest()) return null;
       setError(loadError instanceof Error ? loadError.message : "Could not load recruitment data.");
       setWorkspaceLoadState("error");
       return null;
     } finally {
-      setLoading(false);
+      if (currentRequest()) setLoading(false);
     }
-  }, [router]);
+  }, [layoutMode, loadScope]);
+
+  useEffect(() => {
+    if (layoutMode === "unknown") return;
+    const loaded = loadedScopeRef.current;
+    loadGeneration.current += 1;
+    if (loaded === "desktop" || loaded === "mobile" || loaded === loadScope) { setLoading(false); setWorkspaceLoadState("ready"); return; }
+    void loadData(false);
+    return () => { loadGeneration.current += 1; };
+  }, [layoutMode, loadScope, loadData]);
 
   const refreshRejectionReasons = useCallback(async () => {
     if (!supabase) throw new Error("Supabase is not configured.");
@@ -369,8 +430,18 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     setData((current) => ({ ...current, rejection_reasons: (reasons ?? []) as RejectionReason[] }));
   }, []);
 
+  const refreshConfigurationTemplates = useCallback(async () => {
+    if (!supabase) throw new Error("Supabase is not configured.");
+    const [letters, invitations] = await Promise.all([
+      supabase.from("rejection_letter_templates").select("*"),
+      supabase.from("interview_invitation_templates").select("*")
+    ]);
+    if (letters.error) throw letters.error;
+    if (invitations.error) throw invitations.error;
+    setData(current => ({ ...current, rejection_letter_templates: (letters.data ?? []) as DashboardData["rejection_letter_templates"], interview_invitation_templates: (invitations.data ?? []) as DashboardData["interview_invitation_templates"] }));
+  }, []);
+
   useEffect(() => {
-    loadData();
     const urlState = parseWorkspaceUrlState();
     const savedLanguage = localStorage.getItem("recruitment_lang") as Language | null;
     const savedFilters = localStorage.getItem("recruitment_filters");
@@ -387,7 +458,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     if (urlState.detailType && urlState.detailId) setDetail({ type: urlState.detailType, id: urlState.detailId });
     setWorkspaceTarget({ type: urlState.workspaceType, id: urlState.workspaceId });
     setUrlStateReady(true);
-  }, [loadData]);
+  }, []);
 
   useEffect(() => {
     function syncNavigationState() {
@@ -420,9 +491,10 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   }, []);
 
   useEffect(() => {
-    if (!urlStateReady) return;
+    if (!urlStateReady || layoutMode === "unknown") return;
     localStorage.setItem("recruitment_lang", language);
     localStorage.setItem("recruitment_filters", JSON.stringify(filters));
+    if (desktopRequired) return;
     updateWorkspaceUrlState({
       lang: language,
       site: filters.site,
@@ -436,7 +508,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       detailType: detail?.type,
       detailId: detail?.id
     });
-  }, [detail, filters, initialView, language, sourcingWeek, urlStateReady, workspaceTarget]);
+  }, [detail, filters, initialView, language, sourcingWeek, urlStateReady, workspaceTarget, layoutMode, desktopRequired]);
 
   const role = data.profile?.role ?? "viewer";
   const canWrite = canWriteRole(role);
@@ -569,6 +641,8 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   }, [data.profile, initialView, loading]);
 
   async function signOut() {
+    clearDashboardReportCache();
+    try { for (const key of Object.keys(sessionStorage)) if (key.startsWith(DASHBOARD_SESSION_PREFIX)) sessionStorage.removeItem(key); } catch { /* Optional preferences storage. */ }
     if (supabase) await supabase.auth.signOut();
     router.replace("/login");
   }
@@ -1129,7 +1203,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     );
   }
 
-  if (workspaceLoadState !== "ready") {
+  if (layoutMode === "unknown" || workspaceLoadState !== "ready") {
     const stateMessages: Record<WorkspaceLoadState, { title: string; message: string }> = {
       checking_session: {
         title: translate(language, "checkingSession"),
@@ -1168,14 +1242,17 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const showOperationalStatus = !loading && !busy && !error && status !== "Recruitment records loaded." && status !== loadedStatus;
 
   return (
-    <AppShell
+    <DesktopInteractionContext.Provider value={registerDesktopLock}><AppShell
+      layoutMode={layoutMode}
       activeView={initialView}
-      headerControls={(
+      variant={initialView === "dashboard" ? "dashboard" : undefined}
+      headerScopeSummary={!desktopRequired && initialView === "dashboard" ? `${translate(language, "site")}: ${filters.site || translate(language, "allSites")} · ${translate(language, "personInCharge")}: ${filters.owner || translate(language, "allOwners")}${filters.priorityOnly ? ` · ${translate(language, "priorityRequisitions")}` : ""}` : undefined}
+      headerControls={desktopRequired ? undefined : (
         <>
           <CommandSelector ariaLabel={translate(language, "site")} density="compact" emptyLabel={translate(language, "allSites")} options={[{ value: "", label: translate(language, "allSites") }, ...siteOptions.map((value) => ({ value, label: value }))]} value={filters.site} onValueChange={(value) => setFilters((old) => ({ ...old, site: value }))} className="w-full min-w-[8.5rem] sm:w-36" />
           <CommandSelector ariaLabel={translate(language, "personInCharge")} density="compact" emptyLabel={translate(language, "allOwners")} options={[{ value: "", label: translate(language, "allOwners") }, ...ownerOptions.map((value) => ({ value, label: value }))]} value={filters.owner} onValueChange={(value) => setFilters((old) => ({ ...old, owner: value }))} className="w-full min-w-[11rem] sm:w-48" />
-          <Button type="button" size="icon-sm" variant="secondary" className={filters.priorityOnly ? "min-h-11 min-w-11 !bg-[#E8F0FF] !text-[#0A3CDC] !ring-[#9FBFFF] sm:min-h-9 sm:min-w-9" : "min-h-11 min-w-11 !text-[#0A3CDC] sm:min-h-9 sm:min-w-9"}
-            icon={<Bookmark size={18} fill={filters.priorityOnly ? "currentColor" : "none"} aria-hidden="true" />}
+          <Button type="button" size={initialView === "dashboard" ? "icon-toolbar" : "icon-sm"} variant="secondary" className={initialView === "dashboard" ? filters.priorityOnly ? "!bg-[#E8F0FF] !text-[#0A3CDC] !ring-[#9FBFFF]" : "!text-[#0A3CDC]" : filters.priorityOnly ? "min-h-11 min-w-11 !bg-[#E8F0FF] !text-[#0A3CDC] !ring-[#9FBFFF] sm:min-h-9 sm:min-w-9" : "min-h-11 min-w-11 !text-[#0A3CDC] sm:min-h-9 sm:min-w-9"}
+            icon={<Bookmark size={initialView === "dashboard" ? 16 : 18} fill={filters.priorityOnly ? "currentColor" : "none"} aria-hidden="true" />}
             aria-label={translate(language, "priorityRequisitionFilter")} aria-pressed={filters.priorityOnly}
             title={translate(language, filters.priorityOnly ? "priorityRequisitions" : "allRequisitions")}
             onClick={() => setFilters(current => ({ ...current, priorityOnly: !current.priorityOnly }))} />
@@ -1185,9 +1262,10 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       navigationContext={navigationContext}
       profile={data.profile}
       onLanguageChange={() => setLanguage((current) => (current === "en" ? "th" : "en"))}
-      onRefresh={loadData}
+      onRefresh={desktopRequired ? undefined : () => { clearDashboardReportCache(); void loadData(); }}
       onSignOut={signOut}
     >
+      {desktopRequired ? <DesktopRequiredNotice view={initialView} language={language} navigationContext={navigationContext} /> : <>
       {loading || busy || error || showOperationalStatus ? (
         <StatusBanner
           busy={loading || busy}
@@ -1202,14 +1280,15 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
 
       {initialView === "dashboard" ? (
         <div className="grid min-w-0 gap-6">
-          <RecruitmentPerformanceOverview language={language} data={dashboardReportData} requisitions={dashboardRequisitions} offers={dashboardOffers} globalSite={filters.site} globalOwner={filters.owner} globalPriorityOnly={filters.priorityOnly} />
-          <VacancyWaterfallView
-            language={language}
-            data={dashboardReportData}
-            requisitions={dashboardRequisitions}
-            offers={dashboardOffers}
-            candidateOffers={priorityData.offers}
-          />
+          <DashboardPortal language={language} data={dashboardReportData} requisitions={dashboardRequisitions} offers={dashboardOffers} candidateOffers={priorityData.offers} globalSite={filters.site} globalOwner={filters.owner} globalPriorityOnly={filters.priorityOnly}
+            refreshKey={reportRefreshKey}
+            onOpenCandidate={id => { if (!supabase) return; setBusy(true); setError(null); hydrateReportCandidate(supabase, id, data).then(hydrated => { setData(hydrated); openCandidateDetail(id); }).catch(() => setError(language === "th" ? "โหลดรายละเอียดผู้สมัครไม่สำเร็จ โปรดลองใหม่" : "Could not load candidate details. Please retry.")).finally(() => setBusy(false)); }}
+            onOpenRequisition={async row => { if (!supabase) return false; setBusy(true); setError(null); try {
+              const authorized = await readReportPages<DashboardData["requisitions"][number]>(supabase, "requisitions", "doc_id", "*", ["doc_id", row.doc_id]);
+              if (!authorized.length) return false;
+              const [logs, offers] = await Promise.all([readReportPages<DashboardData["requisition_logs"][number]>(supabase, "requisition_logs", "log_id", "*", ["doc_id", row.doc_id]), readReportPages<DashboardData["offers"][number]>(supabase, "offers", "offer_id", "*", ["doc_id", row.doc_id])]);
+              setData(current => ({ ...current, requisitions: [...current.requisitions.filter(req => req.doc_id !== row.doc_id), ...authorized], requisition_logs: [...current.requisition_logs.filter(log => log.doc_id !== row.doc_id), ...logs], offers: [...current.offers.filter(offer => offer.doc_id !== row.doc_id), ...offers] })); setDetail({ type: "requisition", id: row.doc_id }); return true;
+            } catch { setError(language === "th" ? "โหลดรายละเอียดใบขออัตราไม่สำเร็จ โปรดลองใหม่" : "Could not load requisition details. Please retry."); return true; } finally { setBusy(false); } }} />
         </div>
       ) : null}
 
@@ -1331,7 +1410,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
         />
       ) : null}
 
-      {initialView === "configuration" ? <ConfigurationView language={language} data={data} canManageRejectionTemplates={canManageRejectionTemplates} onTemplatesChanged={loadData} onReasonsChanged={refreshRejectionReasons} /> : null}
+      {initialView === "configuration" ? <ConfigurationView language={language} data={data} canManageRejectionTemplates={canManageRejectionTemplates} onTemplatesChanged={refreshConfigurationTemplates} onReasonsChanged={refreshRejectionReasons} /> : null}
 
       {initialView === "admin" ? <AdminView language={language} data={data} canManageUsers={canManageUsers} onInvite={() => setActiveModal("user")} /> : null}
 
@@ -1428,7 +1507,8 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       </Drawer>
       <RejectionLetterComposer open={Boolean(rejectionLetterCandidateId)} candidate={enrichCandidates(data).find((candidate) => candidate.candidate_id === rejectionLetterCandidateId) ?? null} failedLog={data.recruitment_logs.find((log) => log.candidate_id === rejectionLetterCandidateId && log.result === 0 && !log.superseded_at) ?? null} language={language} templates={data.rejection_letter_templates} drafts={data.rejection_letter_drafts} retryOf={data.rejection_letter_drafts.find((draft) => draft.draft_id === rejectionLetterRetryDraftId) ?? null} recruiterName={data.profile?.nickname ?? data.profile?.full_name ?? data.profile?.email ?? "Recruitment"} busy={busy} onClose={() => { setRejectionLetterCandidateId(null); setRejectionLetterRetryDraftId(null); }} onCreate={createRejectionLetterDraft} />
       <CurrentStageEditModal candidate={enrichCandidates(data).find((candidate) => candidate.candidate_id === currentStageActionCandidateId) ?? null} stage={data.recruitment_logs.find((log) => log.candidate_id === currentStageActionCandidateId && log.result === null && !log.superseded_at) ?? null} meeting={data.interview_meetings.find((meeting) => meeting.candidate_id === currentStageActionCandidateId && meeting.status !== "cancelled") ?? null} templates={data.interview_invitation_templates} profiles={data.profiles} language={language} recruiterName={data.profile?.nickname ?? data.profile?.full_name ?? data.profile?.email ?? "Recruitment"} busy={busy} onClose={() => setCurrentStageActionCandidateId(null)} onSaveEstimate={saveCurrentStageEstimate} onSaveTeams={saveTeamsInterview} />
-    </AppShell>
+      </>}
+    </AppShell></DesktopInteractionContext.Provider>
   );
 }
 

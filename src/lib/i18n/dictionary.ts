@@ -13,6 +13,8 @@ type TranslateParams = Record<string, string | number | null | undefined>;
 
 const en: Dictionary = {
   home: "Home",
+  desktopRequiredTitle: "{page} — desktop layout required",
+  desktopRequiredMessage: "This page is available in the desktop layout. Use a window at least 1024px wide to continue.",
   homeRecords: "Recruitment Records",
   homeRecordTabs: "Recruitment record categories",
   dashboard: "Dashboard",
@@ -512,6 +514,8 @@ const th: Dictionary = {
   selectAll: "เลือกทั้งหมด",
   filterSelected: "เลือก {count} รายการ",
   more: "เพิ่มเติม",
+  desktopRequiredTitle: "{page} — ใช้งานในรูปแบบเดสก์ท็อป",
+  desktopRequiredMessage: "หน้านี้ใช้งานได้ในรูปแบบเดสก์ท็อป กรุณาใช้หน้าต่างที่มีความกว้างอย่างน้อย 1024 พิกเซลเพื่อดำเนินการต่อ",
   home: "หน้าแรก",
   homeRecords: "รายการสรรหา",
   homeRecordTabs: "หมวดหมู่รายการสรรหา",

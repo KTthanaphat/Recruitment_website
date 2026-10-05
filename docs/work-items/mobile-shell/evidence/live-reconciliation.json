@@ -1,0 +1,41 @@
+{
+  "verifiedAt": "2026-10-05T03:19:31.496Z",
+  "project": "mppnlkldlctvketcsald",
+  "role": "Authenticated system administrator Phat",
+  "scope": "All common/header filters; Channel all; October MTD 1–5 and August PIM",
+  "observations": [
+    {
+      "prefix": "stage-bottlenecks-2026-10-01-to-2026-10-05",
+      "waiting": 3,
+      "overdue": 1,
+      "longest": 47,
+      "median": null,
+      "unavailable": 0,
+      "sheets": 2,
+      "reconciled": true
+    },
+    {
+      "prefix": "stage-bottlenecks-2026-08-01-to-2026-08-31",
+      "waiting": 2,
+      "overdue": 0,
+      "longest": 12,
+      "median": 0,
+      "unavailable": 2,
+      "sheets": 2,
+      "reconciled": true
+    }
+  ],
+  "image": {
+    "width": 2880,
+    "height": 1974,
+    "bytes": 557763,
+    "generationNonblankValidation": true
+  },
+  "screenCards": 0,
+  "pngCards": 4,
+  "screenBanner": {
+    "background": "#FFFFFF",
+    "border": "#FF8A00"
+  },
+  "limitations": "August has two unrecoverable historical deadlines; current October has no valid completed-stage duration."
+}

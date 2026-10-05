@@ -1,0 +1,61 @@
+{
+  "project": "mppnlkldlctvketcsald",
+  "verifiedAt": "2026-10-04T11:27:46.085Z",
+  "role": "Authenticated system administrator (Phat)",
+  "scope": "All header Site/PIC/Priority; all common Site/Department/Level; Channel All; August PIM and October MTD",
+  "observations": [
+    {
+      "scenario": "vacancy-risk-2026-08-31",
+      "observed": {
+        "Open headcount": 9,
+        "On track": 5,
+        "Approaching SLA": 1,
+        "Overdue": 3,
+        "Unknown SLA": 0,
+        "Priority at risk": 0,
+        "Risk exposure": 0.4444444444444444
+      },
+      "sheets": 2,
+      "reconciled": true
+    },
+    {
+      "scenario": "vacancy-risk-2026-10-04",
+      "observed": {
+        "Open headcount": 9,
+        "On track": 0,
+        "Approaching SLA": 0,
+        "Overdue": 9,
+        "Unknown SLA": 0,
+        "Priority at risk": 1,
+        "Risk exposure": 1
+      },
+      "sheets": 2,
+      "reconciled": true
+    },
+    {
+      "scenario": "stage-bottlenecks-2026-08-01-to-2026-08-31",
+      "observed": {
+        "Candidates waiting": 2,
+        "Median stage time": 0,
+        "Overdue": 0,
+        "Longest current wait": 12,
+        "Historical date unavailable": 2
+      },
+      "sheets": 2,
+      "reconciled": true
+    },
+    {
+      "scenario": "stage-bottlenecks-2026-10-01-to-2026-10-04",
+      "observed": {
+        "Candidates waiting": 3,
+        "Median stage time": null,
+        "Overdue": 1,
+        "Longest current wait": 46,
+        "Historical date unavailable": 0
+      },
+      "sheets": 2,
+      "reconciled": true
+    }
+  ],
+  "limitation": "August has two unrecoverable historical deadlines. October has no completed stages. Edge-case and restricted-role evidence is synthetic."
+}

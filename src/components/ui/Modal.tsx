@@ -8,18 +8,22 @@ import { useOverlayScrollLock } from "@/components/ui/overlay-scroll-lock";
 
 export function Modal({
   open,
+  closeDisabled = false,
   title,
   children,
   closeLabel = "Close",
   onClose,
-  width = "max-w-3xl"
+  width = "max-w-3xl",
+  compactControls = false
 }: {
   open: boolean;
+  closeDisabled?: boolean;
   title: string;
   children: ReactNode;
   closeLabel?: string;
   onClose: () => void;
   width?: string;
+  compactControls?: boolean;
 }) {
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
@@ -38,14 +42,15 @@ export function Modal({
         aria-labelledby={titleId}
         tabIndex={-1}
         onKeyDown={(event) => trapDialogTabKey(event, panelRef.current)}
-        className={`max-h-screen min-w-0 w-full overflow-x-hidden overflow-y-auto overscroll-contain bg-white shadow-2xl outline-none sm:max-h-[92vh] sm:rounded-lg ${width}`}
+        className={`max-h-screen min-w-0 w-full overflow-x-hidden overflow-y-auto overscroll-contain bg-white shadow-2xl outline-none sm:max-h-[92vh] sm:rounded-lg ${width} ${compactControls ? "dashboard-compact-controls" : ""}`}
       >
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[#D7DEE8] bg-white px-5 py-4">
           <h3 id={titleId} className="text-lg font-semibold text-navy">{title}</h3>
           <Button
             type="button"
             variant="ghost"
-            size="icon-sm"
+            size={compactControls ? "icon-toolbar" : "icon-sm"}
+            disabled={closeDisabled}
             onClick={onClose}
             title={closeLabel}
             aria-label={closeLabel}

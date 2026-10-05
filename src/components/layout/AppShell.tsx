@@ -16,8 +16,7 @@ import {
   ShieldCheck,
   Settings,
   Home,
-  UsersRound,
-  MoreHorizontal
+  UsersRound
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
@@ -27,6 +26,7 @@ import { MobileBottomSheet } from "@/components/ui/MobileBottomSheet";
 import { roleLabel, translate, viewLabel } from "@/lib/i18n/dictionary";
 import { siteAccentStyle } from "@/lib/site-theme";
 import { buildContextualHref, type WorkspaceNavigationContext } from "@/lib/workspace-url-state";
+import type { LayoutMode } from "@/lib/responsive-layout";
 import type { Language, Profile, ViewId } from "@/types/recruitment";
 
 const icons: Record<ViewId, ReactNode> = {
@@ -81,17 +81,22 @@ export function AppShell({
   onRefresh,
   onSignOut,
   profile,
-  activeView
+  activeView,
+  layoutMode,
+  variant,
+  headerScopeSummary
 }: {
   children: ReactNode;
   headerControls?: ReactNode;
   language: Language;
   navigationContext?: WorkspaceNavigationContext;
   onLanguageChange: () => void;
-  onRefresh: () => void;
+  onRefresh?: () => void;
   onSignOut: () => void;
   profile: Profile | null;
   activeView: ViewId;
+  layoutMode: LayoutMode;
+  variant?: "dashboard"; headerScopeSummary?: string;
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -107,7 +112,7 @@ export function AppShell({
   const [recordsOpen, setRecordsOpen] = useState(isRecordsActive);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarPreferenceLoaded, setSidebarPreferenceLoaded] = useState(false);
-  const [moreOpen, setMoreOpen] = useState(false);
+  const [mobileRecordsOpen, setMobileRecordsOpen] = useState(false);
 
   useEffect(() => {
     setSidebarCollapsed(localStorage.getItem("recruitment_sidebar_collapsed") === "true");
@@ -125,6 +130,9 @@ export function AppShell({
     }
   }, [isRecordsActive]);
 
+  useEffect(() => { if (layoutMode === "desktop") setMobileRecordsOpen(false); }, [layoutMode]);
+  useEffect(() => { setMobileRecordsOpen(false); }, [pathname]);
+
   const renderNavLink = (view: ViewId, options?: { child?: boolean }) => {
     const active = pathname === paths[view] || activeView === view;
     const child = options?.child;
@@ -134,6 +142,7 @@ export function AppShell({
         key={view}
         href={buildContextualHref(paths[view], contextualNavigation)}
         aria-label={viewLabel(language, view)}
+        aria-current={active ? "page" : undefined}
         title={viewLabel(language, view)}
         data-records-child={child ? view : undefined}
         className={`group flex min-h-10 min-w-max items-center gap-2 rounded-xl px-2 text-sm transition focus:outline-none focus:ring-2 focus:ring-white/70 sm:min-h-11 sm:gap-3 sm:px-3 lg:min-w-0 lg:w-full ${
@@ -167,6 +176,7 @@ export function AppShell({
 
   return (
     <main
+      data-shell-variant={variant}
       className={`grid min-h-screen grid-cols-1 bg-offwhite ${sidebarCollapsed ? "lg:grid-cols-[72px_minmax(0,1fr)]" : "lg:grid-cols-[248px_minmax(0,1fr)]"}`}
       style={siteAccentStyle(profile?.site)}
     >
@@ -257,18 +267,14 @@ export function AppShell({
           <h2 className="min-w-0 text-2xl font-semibold leading-8 tracking-normal text-navy sm:text-[28px] sm:leading-9">
             {viewLabel(language, activeView)}
           </h2>
-          <div className="flex min-w-0 flex-wrap items-center gap-2 lg:max-w-[min(76vw,72rem)] lg:justify-end" data-app-header-actions>
-            {headerControls ? (
-              <div className="contents" data-app-header-filters>
-                {headerControls}
-              </div>
-            ) : null}
-            <Button type="button" size="sm" variant="secondary" className="min-w-9 px-3" onClick={onLanguageChange}>
+          <div className={`flex min-w-0 flex-wrap items-center gap-2 lg:max-w-[min(76vw,72rem)] lg:justify-end ${variant === "dashboard" ? "dashboard-compact-controls" : ""}`} data-app-header-actions>
+            {headerControls ? <div className="contents" data-app-header-filters>{headerControls}</div> : null}
+            <Button type="button" size={variant === "dashboard" ? "toolbar" : "sm"} variant="secondary" className={variant === "dashboard" ? "min-w-8" : "min-w-9 px-3"} onClick={onLanguageChange}>
               {translate(language, "language")}
             </Button>
-            <Button
+            {onRefresh ? <Button
               type="button"
-              size="icon-sm"
+              size={variant === "dashboard" ? "icon-toolbar" : "icon-sm"}
               variant="secondary"
               icon={<RefreshCw size={16} />}
               aria-label={translate(language, "refresh")}
@@ -276,7 +282,7 @@ export function AppShell({
               onClick={onRefresh}
             >
               <span className="sr-only">{translate(language, "refresh")}</span>
-            </Button>
+            </Button> : null}
             <details className="group relative min-w-0">
               <summary
                 className="ats-dropdown-trigger flex min-h-9 max-w-[220px] cursor-pointer list-none items-center rounded-lg px-3 text-sm font-semibold text-navy transition [&::-webkit-details-marker]:hidden"
@@ -308,23 +314,24 @@ export function AppShell({
           </div>
         </header>
 
+        {variant === "dashboard" && headerScopeSummary ? <p className="mb-3 break-words text-xs text-slate" data-header-scope-summary>{headerScopeSummary}</p> : null}
+
         {children}
       </section>
-      <nav aria-label={translate(language, "mainNavigation")} className="fixed inset-x-0 bottom-0 z-50 grid grid-cols-5 border-t border-[#D7DEE8] bg-white/95 px-1 pb-[max(0.35rem,env(safe-area-inset-bottom))] pt-1 shadow-[0_-5px_18px_rgba(11,19,43,0.10)] backdrop-blur lg:hidden">
-        {(["home", "workspace", "pipeline", "candidates"] as ViewId[]).map((view) => {
+      <nav aria-label={translate(language, "mainNavigation")} className="fixed inset-x-0 bottom-0 z-50 grid grid-cols-3 border-t border-[#D7DEE8] bg-white/95 px-1 pb-[max(0.35rem,env(safe-area-inset-bottom))] pt-1 shadow-[0_-5px_18px_rgba(11,19,43,0.10)] backdrop-blur lg:hidden">
+        {(["home", "workspace"] as ViewId[]).map((view) => {
           const active = pathname === paths[view] || activeView === view;
           return <Link key={view} href={buildContextualHref(paths[view], contextualNavigation)} aria-current={active ? "page" : undefined} className={`flex min-h-11 min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg px-1 text-[11px] font-semibold focus:outline-none focus:ring-2 focus:ring-primary/30 ${active ? "text-primary" : "text-slate"}`}>
             <span aria-hidden="true">{icons[view]}</span><span className="truncate">{viewLabel(language, view)}</span>
           </Link>;
         })}
-        <button type="button" onClick={() => setMoreOpen(true)} aria-expanded={moreOpen} aria-haspopup="dialog" className={`flex min-h-11 min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg px-1 text-[11px] font-semibold focus:outline-none focus:ring-2 focus:ring-primary/30 ${moreOpen ? "text-primary" : "text-slate"}`}>
-          <MoreHorizontal size={18} aria-hidden="true" /><span>{translate(language, "more")}</span>
+        <button type="button" data-mobile-records-toggle onClick={() => setMobileRecordsOpen(true)} aria-expanded={mobileRecordsOpen} aria-current={isRecordsActive ? "page" : undefined} aria-haspopup="dialog" className={`flex min-h-11 min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg px-1 text-[11px] font-semibold focus:outline-none focus:ring-2 focus:ring-primary/30 ${isRecordsActive || mobileRecordsOpen ? "text-primary" : "text-slate"}`}>
+          <Pencil size={18} aria-hidden="true" /><span>{translate(language, "navRecords")}</span>
         </button>
       </nav>
-      <MobileBottomSheet open={moreOpen} title={translate(language, "more")} closeLabel={translate(language, "close")} onClose={() => setMoreOpen(false)}>
+      <MobileBottomSheet breakpoint="lg" open={mobileRecordsOpen} title={translate(language, "navRecords")} closeLabel={translate(language, "close")} onClose={() => setMobileRecordsOpen(false)}>
         <div className="grid gap-2">
-          {(["requisitions", "sourcing", "offers", "dashboard", "configuration", "audit"] as ViewId[]).map((view) => <Link key={view} onClick={() => setMoreOpen(false)} href={buildContextualHref(paths[view], contextualNavigation)} className="flex min-h-11 items-center gap-3 rounded-xl border border-[#E4E9F2] px-3 text-sm font-semibold text-navy transition hover:bg-[#F8FAFD] focus:outline-none focus:ring-2 focus:ring-primary/30"><span className="text-primary" aria-hidden="true">{icons[view]}</span>{viewLabel(language, view)}</Link>)}
-          {profile?.role === "system_admin" ? <Link onClick={() => setMoreOpen(false)} href={buildContextualHref(paths.admin, contextualNavigation)} className="flex min-h-11 items-center gap-3 rounded-xl border border-[#E4E9F2] px-3 text-sm font-semibold text-navy transition hover:bg-[#F8FAFD] focus:outline-none focus:ring-2 focus:ring-primary/30"><span className="text-primary" aria-hidden="true">{icons.admin}</span>{viewLabel(language, "admin")}</Link> : null}
+          {recordsViews.map(view => <Link key={view} aria-current={activeView === view ? "page" : undefined} onClick={() => { if (activeView === view) setMobileRecordsOpen(false); }} href={buildContextualHref(paths[view], contextualNavigation)} className={`flex min-h-11 items-center gap-3 rounded-xl border px-3 text-sm font-semibold text-navy transition hover:bg-[#F8FAFD] focus:outline-none focus:ring-2 focus:ring-primary/30 ${activeView === view ? "border-primary bg-[#F8FAFD]" : "border-[#E4E9F2]"}`}><span className="text-primary" aria-hidden="true">{icons[view]}</span>{viewLabel(language, view)}</Link>)}
         </div>
       </MobileBottomSheet>
     </main>

@@ -54,7 +54,7 @@ export function Drawer({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-navy/45">
+    <div className="fixed inset-0 z-[55] flex justify-end bg-navy/45">
       <aside
         ref={panelRef}
         role="dialog"

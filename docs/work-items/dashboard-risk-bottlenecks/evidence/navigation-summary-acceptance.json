@@ -1,0 +1,28 @@
+{
+  "affectedTests": 114,
+  "passed": 114,
+  "suites": {
+    "dashboard-compact.spec.ts": 6,
+    "dashboard-data-export.spec.ts": 9,
+    "dashboard-portal.spec.ts": 8,
+    "dashboard-refinement.spec.ts": 8,
+    "dashboard-registry.spec.ts": 6,
+    "dashboard-reports.spec.ts": 22,
+    "dashboard-risk-bottlenecks.spec.ts": 18,
+    "pipeline-actions.spec.ts": 15,
+    "recruitment-performance.spec.ts": 11,
+    "rejection-reason-admin.spec.ts": 11
+  },
+  "typecheck": "passed",
+  "productionBuild": "passed; 22 pages",
+  "documentationChecker": "passed",
+  "diffCheck": "passed",
+  "broaderUxSuite": {
+    "passed": 35,
+    "failed": 6,
+    "area": "Existing Home controls/calendar/welcome assertions; no Home implementation changed"
+  },
+  "localhostPort": 3000,
+  "sqlChanges": false,
+  "pushed": false
+}

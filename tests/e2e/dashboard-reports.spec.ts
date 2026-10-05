@@ -25,25 +25,25 @@ test("custom range defaults to sourcing dates and preserves shared selections", 
   await installMockSupabase(page);
   await page.goto("/dashboard?reportView=pim&reportMonth=2026-06");
   await expectWorkspaceReady(page);
-  const metric = page.getByRole("button", { name: "Metric view", exact: true });
+  const metric = page.getByRole("button", { name: "Period", exact: true });
   await metric.click();
-  await page.getByRole("option", { name: "Custom range", exact: true }).click();
-  await expect(page).toHaveURL(/start=2026-07-11/);
-  await expect(page).toHaveURL(/end=2026-07-17/);
+  await page.getByRole("option", { name: "Custom", exact: true }).click();
+  await expect(page).toHaveURL(/dashboardStart=2026-07-11/);
+  await expect(page).toHaveURL(/dashboardEnd=2026-07-17/);
 
   await page.goto("/dashboard?reportView=custom&start=2026-07-14&end=2026-07-20");
   await expectWorkspaceReady(page);
   await metric.click();
-  await page.getByRole("option", { name: "Month to Date", exact: true }).click();
+  await page.getByRole("option", { name: "MTD", exact: true }).click();
   await metric.click();
-  await page.getByRole("option", { name: "Custom range", exact: true }).click();
-  await expect(page).toHaveURL(/start=2026-07-14/);
-  await expect(page).toHaveURL(/end=2026-07-20/);
+  await page.getByRole("option", { name: "Custom", exact: true }).click();
+  await expect(page).toHaveURL(/dashboardStart=2026-07-14/);
+  await expect(page).toHaveURL(/dashboardEnd=2026-07-20/);
 
   await page.goto("/dashboard?reportView=custom");
   await expectWorkspaceReady(page);
-  await expect(page).toHaveURL(/start=2026-07-11/);
-  await expect(page).toHaveURL(/end=2026-07-17/);
+  await expect(page).toHaveURL(/dashboardStart=2026-07-14/);
+  await expect(page).toHaveURL(/dashboardEnd=2026-07-20/);
 });
 
 test("waterfall keeps only populated columns in the chart and PNG surface", async ({ page }, testInfo) => {
@@ -67,36 +67,37 @@ test("waterfall keeps only populated columns in the chart and PNG surface", asyn
     await expect(bars.locator(":scope > text")).toHaveText(["5", "2", "(1)", "6"]);
   }
   await page.screenshot({ path: testInfo.outputPath("waterfall-desktop.png"), fullPage: true });
-  await page.setViewportSize({ width: 390, height: 844 });
+  await page.setViewportSize({ width: 1024, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath("waterfall-phone.png"), fullPage: true });
 });
 
-test("dashboard report uses calendar views, persists its month, and keeps expandable sections", async ({ page }) => {
+test("dashboard report uses calendar views, persists its month, and ignores legacy collapse flags", async ({ page }) => {
   await installMockSupabase(page, { role: "admin_recruiter" });
   await page.goto("/dashboard?reportView=pim&reportMonth=2026-07&details=open&funnel=open&funnelMonth=2026-07");
   await expectWorkspaceReady(page);
 
   await expect(page.getByRole("heading", { name: "Vacancy Waterfall" })).toBeVisible();
-  const combinedReport = page.getByRole("button", { name: /Vacancy Waterfall & Requisitions Active in Selected Period/ });
-  await expect(combinedReport).toHaveAttribute("aria-expanded", "true");
+  const combinedReport = page.getByRole("heading", { name: /Vacancy Waterfall & Requisitions Active in Selected Period/ });
+  await expect(combinedReport).toBeVisible();
   await expect(page.getByRole("heading", { name: "Requisitions Active in Selected Period", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Recruitment Pipeline Health in Selected Range/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Metric view", exact: true })).toContainText("Performance in Month");
+  await expect(page.getByRole("tab", { name: "Pipeline & Sources", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Period", exact: true })).toContainText("PIM");
   await expect(page.getByRole("button", { name: "Report month", exact: true })).toContainText("Jul 2026");
-  await expect(page.getByRole("heading", { name: "Recruitment Pipeline Health" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Export Vacancy Waterfall PNG" })).toBeEnabled();
-  await expect(page.getByRole("button", { name: "Export Recruitment Pipeline Health PNG" })).toHaveCount(1);
+  await page.getByRole("tab", { name: "Pipeline & Sources", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Recruitment Pipeline Health", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Export Pipeline & Sources", exact: true })).toHaveCount(1);
   await expect(page.getByLabel("Recruitment channel colors").first()).toContainText("Facebook");
-  await combinedReport.click();
-  await expect(combinedReport).toHaveAttribute("aria-expanded", "false");
-  await expect(page.getByRole("heading", { name: "Requisitions Active in Selected Period", exact: true })).toBeHidden();
+  await page.getByRole("tab", { name: "Recruitment Performance", exact: true }).click(); await page.getByRole("tab", { name: "Vacancy & Requisitions", exact: true }).click();
+  await expect(combinedReport).not.toHaveAttribute("aria-expanded");
+  await expect(page.getByRole("heading", { name: "Requisitions Active in Selected Period", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Export Vacancy Waterfall PNG" })).toBeEnabled();
-  await combinedReport.click();
-  await page.setViewportSize({ width: 390, height: 844 });
+  await page.setViewportSize({ width: 1024, height: 844 });
   await expect(combinedReport).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await expect(page.getByRole("button", { name: "Export PDF" })).toHaveCount(0);
+  await page.getByRole("tab", { name: "Recruitment Performance", exact: true }).click(); await page.getByRole("tab", { name: "Vacancy & Requisitions", exact: true }).click();
   await page.getByRole("button", { name: "Export Requisitions Active in Selected Period", exact: true }).click();
   await expect(page.getByRole("dialog").getByRole("button", { name: "Export Requisitions Active in Selected Period XLSX" })).toBeVisible();
 });
@@ -141,8 +142,9 @@ test("shared group candidate stages are visible before an exact offer link exist
   await page.goto("/dashboard?funnel=open&funnelView=pim&funnelMonth=2026-07");
   await expectWorkspaceReady(page);
 
-  await page.getByRole("button", { name: /Level:/ }).click();
-  await page.getByRole("option", { name: "L4-L6" }).locator("input").check();
+  await page.locator("[data-dashboard-filters]").getByRole("button", { name: "Job Level", exact: true }).click();
+  await page.getByRole("option", { name: "L4–L6", exact: true }).click();
+  await page.keyboard.press("Escape");
 
   const funnel = page.locator(".pipeline-funnel").first();
   const rows = funnel.locator("div.contents");
@@ -167,7 +169,7 @@ test("Pipeline report controls, legend toggle and Source effectiveness share one
   const funnel = page.locator(".pipeline-funnel").first();
   const source = page.getByTestId("source-effectiveness").first();
   await expect(funnel.getByTestId("pipeline-total-summary")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Recruitment Pipeline Health Metric view" })).toContainText("Performance in Month");
+  await expect(page.getByRole("button", { name: "Period", exact: true })).toContainText("PIM");
   await expect(source.getByRole("heading", { name: "Source effectiveness" })).toBeVisible();
   const referral = source.locator('.source-detail-wide tr[data-channel="channel_referral"]');
   await expect(referral.locator("td").nth(2)).toContainText("(33%)");
@@ -192,8 +194,25 @@ test("Pipeline report controls, legend toggle and Source effectiveness share one
   const legendSwitch = page.getByRole("switch", { name: "Channel legend" });
   await expect(legendSwitch).toHaveCSS("width", "64px");
   await expect(legendSwitch).toHaveCSS("height", "32px");
-  await expect(legendSwitch).toHaveCSS("background-color", "rgb(50, 153, 214)");
+  await expect(legendSwitch).toHaveCSS("background-color", "rgb(10, 60, 220)");
   await expect(legendSwitch.locator(".ats-square-switch-label")).toHaveText("ON");
+  const channelControl = page.getByTestId("pipeline-filters").getByRole("button", { name: "Channel", exact: true });
+  await expect(channelControl).toHaveCSS("height", "32px");
+  const controlCenters = await page.getByTestId("pipeline-filters").evaluate(element => Array.from(element.querySelectorAll("button")).map(button => { const rect = button.getBoundingClientRect(); return rect.y + rect.height / 2; }));
+  expect(Math.max(...controlCenters) - Math.min(...controlCenters)).toBeLessThan(1);
+  for (const site of ["KT1", "KT2"]) {
+
+    await page.locator("[data-app-header-filters]").getByRole("button", { name: "Site", exact: true }).click();
+    await page.getByRole("option", { name: site, exact: true }).click();
+
+    await page.mouse.move(0, 0);
+    await expect(legendSwitch).toHaveCSS("background-color", "rgb(10, 60, 220)");
+  }
+
+  await page.locator("[data-app-header-filters]").getByRole("button", { name: "Site", exact: true }).click();
+  await page.getByRole("option", { name: "All sites", exact: true }).click();
+
+
   expect(await legendSwitch.evaluate((element) => element.querySelector(".ats-square-switch-thumb")!.getBoundingClientRect().x > element.querySelector(".ats-square-switch-label")!.getBoundingClientRect().x)).toBe(true);
   expect(await legendSwitch.evaluate((element) => getComputedStyle(element, "::before").content)).toBe("none");
   await legendSwitch.click();
@@ -208,11 +227,11 @@ test("Pipeline report controls, legend toggle and Source effectiveness share one
   await page.getByRole("switch", { name: "Channel legend" }).focus();
   await page.keyboard.press("Space");
   await expect(page.getByRole("switch", { name: "Channel legend" })).toBeChecked();
-  await page.getByRole("button", { name: "Recruitment Pipeline Health Metric view" }).click();
-  await page.getByRole("option", { name: "Year to Date" }).click();
-  await expect(page).toHaveURL(/funnelView=ytd/);
-  await expect(page.getByRole("button", { name: "Metric view", exact: true })).toContainText("Month to Date");
-  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "Period", exact: true }).click();
+  await page.getByRole("option", { name: "YTD", exact: true }).click();
+  await expect(page).toHaveURL(/dashboardPeriod=ytd/);
+  await expect(page.getByRole("button", { name: "Period", exact: true })).toContainText("YTD");
+  await page.setViewportSize({ width: 1024, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
@@ -225,14 +244,14 @@ test("Pipeline MTD eligibility differs from PIM and legacy dates restore Custom"
   await expectWorkspaceReady(page);
   const applicants = page.locator(".pipeline-funnel").first().locator("div.contents").first().locator(":scope > div").nth(2);
   const mtd = Number((await applicants.innerText()).replaceAll(",", ""));
-  await page.getByRole("button", { name: "Recruitment Pipeline Health Metric view" }).click();
-  await page.getByRole("option", { name: "Performance in Month" }).click();
+  await page.getByRole("button", { name: "Period", exact: true }).click();
+  await page.getByRole("option", { name: "PIM · Performance in Month", exact: true }).click();
   const pim = Number((await applicants.innerText()).replaceAll(",", ""));
   expect(pim - mtd).toBe(3);
   await page.goto("/dashboard?funnel=open&funnelStart=2026-07-01&funnelEnd=2026-07-31");
   await expectWorkspaceReady(page);
-  await expect(page.getByRole("button", { name: "Recruitment Pipeline Health Metric view" })).toContainText("Custom range");
-  await expect(page).toHaveURL(/funnelView=custom/);
+  await expect(page.getByRole("button", { name: "Period", exact: true })).toContainText("Custom");
+  await expect(page).toHaveURL(/dashboardPeriod=custom/);
 });
 
 test("Pipeline panels and compact filters fit from 1080px, while Source bars retain readable labels", async ({ page }, testInfo) => {
@@ -246,6 +265,7 @@ test("Pipeline panels and compact filters fit from 1080px, while Source bars ret
   const layout = page.getByTestId("pipeline-source-layout");
   const funnel = layout.locator(".pipeline-funnel");
   const source = layout.getByTestId("source-effectiveness");
+  await expect(layout).toBeVisible();
   const positions = await layout.locator(":scope > *").evaluateAll((elements) => elements.map((element) => ({ x: element.getBoundingClientRect().x, y: element.getBoundingClientRect().y })));
   expect(positions[1].x).toBeGreaterThan(positions[0].x);
   expect(positions[1].y).toBe(positions[0].y);
@@ -375,6 +395,7 @@ test("Pipeline panels and compact filters fit from 1080px, while Source bars ret
   await page.getByRole("switch", { name: "Channel legend" }).click();
   await expect(exportSurface.getByLabel("Recruitment channel colors")).toHaveCount(0);
   const desktopPngPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export Pipeline & Sources", exact: true }).click();
   await page.getByRole("button", { name: "Export Recruitment Pipeline Health PNG" }).click();
   const desktopDownload = await desktopPngPromise;
   await desktopDownload.saveAs(testInfo.outputPath("pipeline-presentation.png"));
@@ -383,11 +404,12 @@ test("Pipeline panels and compact filters fit from 1080px, while Source bars ret
   await page.setViewportSize({ width: 1079, height: 900 });
   const stacked = await layout.locator(":scope > *").evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().y));
   expect(stacked[1]).toBeGreaterThan(stacked[0]);
-  await page.setViewportSize({ width: 390, height: 844 });
+  await page.setViewportSize({ width: 1024, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await expect(page.getByRole("switch", { name: "Channel legend" })).toHaveCSS("width", "64px");
-  await expect(page.getByRole("switch", { name: "Channel legend" })).toHaveCSS("height", "44px");
-  await expect(source.locator(".source-detail-compact")).toBeVisible();
+  await expect(page.getByRole("switch", { name: "Channel legend" })).toHaveCSS("height", "32px");
+  await expect(source.locator(".source-detail-wide")).toBeVisible();
+  await expect(source.locator(".source-detail-compact")).toBeHidden();
   await expect(exportSource.locator(".source-detail-wide")).toBeVisible();
   await expect(exportSource.locator(".source-detail-compact")).toBeHidden();
   expect(await exportSurface.evaluate((surface) => {
@@ -396,6 +418,7 @@ test("Pipeline panels and compact filters fit from 1080px, while Source bars ret
     return surface.scrollWidth <= surface.clientWidth + 1 && surface.scrollHeight <= surface.clientHeight + 1 && funnelWrapper.scrollWidth <= funnelWrapper.clientWidth + 1 && funnelWrapper.scrollHeight <= funnelWrapper.clientHeight + 1 && sourceTable.scrollWidth <= sourceTable.clientWidth + 1 && sourceTable.scrollHeight <= sourceTable.clientHeight + 1;
   })).toBe(true);
   const pngPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export Pipeline & Sources", exact: true }).click();
   await page.getByRole("button", { name: "Export Recruitment Pipeline Health PNG" }).click();
   const phoneDownload = await pngPromise;
   await phoneDownload.saveAs(testInfo.outputPath("pipeline-presentation-phone.png"));
@@ -412,6 +435,7 @@ test("Pipeline panels and compact filters fit from 1080px, while Source bars ret
   expect(await funnel.locator(".grid div.contents span[title]").evaluateAll((elements) => elements.every((element) => getComputedStyle(element).textOverflow !== "ellipsis" && element.scrollWidth <= element.clientWidth + 1))).toBe(true);
   expect(await exportSurface.evaluate((surface) => surface.scrollWidth <= surface.clientWidth + 1 && surface.scrollHeight <= surface.clientHeight + 1 && Array.from(surface.querySelectorAll<HTMLElement>(".pipeline-funnel, .source-effectiveness")).every((card) => card.scrollWidth <= card.clientWidth + 1 && card.scrollHeight <= card.clientHeight + 1))).toBe(true);
   const thaiPngPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "ส่งออก กระบวนการและช่องทางสรรหา", exact: true }).click();
   await page.getByRole("button", { name: "ส่งออก สุขภาพ Pipeline สรรหา PNG" }).click();
   const thaiDownload = await thaiPngPromise;
   await thaiDownload.saveAs(testInfo.outputPath("pipeline-presentation-thai.png"));
@@ -451,6 +475,7 @@ test("Requisitions export offers all channel counts and preserves shared-group n
   for (const [index, count] of ["applicants_fb", "applicants_jobthai", "applicants_jobtopgun", "applicants_jobdb", "applicants_jobbkk", "applicants_linkedin", "applicants_walkin", "applicants_referral", "applicants_others"].entries()) (update as unknown as Record<string, number>)[count] = index + 1;
   await page.goto("/dashboard?reportView=pim&reportMonth=2026-07");
   await expectWorkspaceReady(page);
+  await page.getByRole("tab", { name: "Recruitment Performance", exact: true }).click(); await page.getByRole("tab", { name: "Vacancy & Requisitions", exact: true }).click();
   await page.getByRole("button", { name: "Export Requisitions Active in Selected Period", exact: true }).click();
   const modal = page.getByRole("dialog");
   const labels = ["Facebook", "JobThai", "JobTopGun", "JobsDB", "JobBKK", "LinkedIn", "Walk-in", "Referral", "Others"];
@@ -492,7 +517,7 @@ test("dashboard PNG exports download visible non-blank reports", async ({ page }
   await expectWorkspaceReady(page);
 
   const directExportButtons = page.getByRole("button", { name: /Export Vacancy Waterfall PNG|Export Recruitment Pipeline Health PNG/ });
-  await expect(directExportButtons).toHaveCount(2);
+  await expect(directExportButtons).toHaveCount(1);
   const waterfallExportSurface = page.locator(".export-report-surface").filter({ has: page.locator(".vacancy-waterfall-svg") });
   await expect(waterfallExportSurface.locator("h3")).toContainText("Recruitment Performance in Selected Period");
   await expect(waterfallExportSurface).toContainText("During the selected period, total vacancies");
@@ -502,9 +527,11 @@ test("dashboard PNG exports download visible non-blank reports", async ({ page }
     "vacancy-waterfall-2026-07-01-to-2026-07-31.png",
     "pipeline-funnel-2026-07-01-to-2026-07-31.png"
   ].entries()) {
-    await expect(directExportButtons.nth(index)).toBeEnabled();
+    await page.getByRole("tab", { name: index === 0 ? "Vacancy & Requisitions" : "Pipeline & Sources", exact: true }).click();
+    if (index === 1) await page.getByRole("button", { name: "Export Pipeline & Sources", exact: true }).click();
+    await expect(directExportButtons.first()).toBeEnabled();
     const downloadPromise = page.waitForEvent("download");
-    await directExportButtons.nth(index).click();
+    await directExportButtons.first().click();
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toMatch(filename);
     const png = await inspectPng(await download.createReadStream());
@@ -512,6 +539,7 @@ test("dashboard PNG exports download visible non-blank reports", async ({ page }
     if (index === 0) expect(png.height / png.width).toBeGreaterThan(0.62);
   }
 
+  await page.getByRole("tab", { name: "Recruitment Performance", exact: true }).click(); await page.getByRole("tab", { name: "Vacancy & Requisitions", exact: true }).click();
   await page.getByRole("button", { name: "Export Requisitions Active in Selected Period", exact: true }).click();
   const modal = page.getByRole("dialog");
   const modalPngExport = modal.getByRole("button", { name: "Export Requisitions Active in Selected Period PNG" });
@@ -694,7 +722,7 @@ test("waterfall counts fills only from requisitions active in the selected perio
 });
 
 test("dashboard active-period labels localize and fit at 390px", async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
+  await page.setViewportSize({ width: 1024, height: 844 });
   await installMockSupabase(page, { role: "admin_recruiter", language: "th" });
   await page.goto("/dashboard?reportView=mtd&reportMonth=2026-06");
   await expect(page.locator("[data-app-header-actions]")).toBeVisible();
@@ -738,7 +766,7 @@ test("executive table keeps site order, breakdown and mobile containment", async
   await expect(summary.locator("..")).toHaveAttribute("open", "");
   await expect(page.locator(".export-report-surface details").first()).toHaveAttribute("open", "");
   await page.screenshot({ path: "test-results/executive-desktop.png", fullPage: true });
-  await page.setViewportSize({ width: 390, height: 844 });
+  await page.setViewportSize({ width: 1024, height: 844 });
   await expect(region).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: "test-results/executive-mobile.png", fullPage: true });
@@ -752,4 +780,25 @@ test("executive table supports Thai and zero-activity periods", async ({ page })
   await expect(region.locator("thead th").nth(4)).toHaveText("บรรจุใน SLA");
   await expect(region.locator("tbody th")).toHaveText(["HQ", "KT1", "KT2", "รวม"]);
   await expect(region.locator("tbody tr").first().locator("td")).toHaveText(["0", "0", "0", "—", "0", "0"]);
+});
+
+
+test("no-show Waterfall preserves acceptance and reopening movements across ranges", async ({ page }) => {
+  const { data } = await installMockSupabase(page);
+  const req = data.requisitions[0], offer = data.offers[0];
+  data.requisitions.splice(0, data.requisitions.length, { ...req, doc_id: "WF-NOSHOW", site: "HQ", status: "ongoing", head_count: 1, pr_approved_date: "2026-07-01" });
+  data.offers.splice(0, data.offers.length, { ...offer, offer_id: 9981, doc_id: "WF-NOSHOW", accepted_date: "2026-07-05", start_confirmation: "did_not_start", start_confirmed_at: "2026-07-15T05:00:00Z" });
+  data.requisition_logs.splice(0, data.requisition_logs.length);
+  for (const [start, end, counts] of [
+    ["2026-07-01", "2026-07-10", ["0", "+1", "-1", "0", "0"]],
+    ["2026-07-01", "2026-07-31", ["0", "+2", "-1", "+1", "1"]],
+    ["2026-07-11", "2026-07-31", ["0", "+1", "0", "+1", "1"]]
+  ] as const) {
+    await page.goto(`/dashboard?dashboardTab=vacancy&dashboardPeriod=custom&dashboardStart=${start}&dashboardEnd=${end}`);
+    await expectWorkspaceReady(page);
+    const cells = page.locator(".waterfall-executive-table").first().locator("tbody tr").filter({ has: page.getByRole("rowheader", { name: "Total", exact: true }) }).locator("td");
+    await expect(cells).toHaveCount(6);
+    const values = await cells.allTextContents();
+    expect([values[0], values[1], values[2], values[4], values[5]]).toEqual(counts);
+  }
 });

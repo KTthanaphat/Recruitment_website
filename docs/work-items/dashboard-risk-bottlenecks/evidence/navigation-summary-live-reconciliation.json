@@ -1,0 +1,70 @@
+{
+  "project": "mppnlkldlctvketcsald",
+  "verifiedAt": "2026-10-04T14:44:44.794Z",
+  "role": "Authenticated system administrator (Phat)",
+  "scope": "All header/common filters, Priority all, Channel all; October MTD and August PIM",
+  "observations": [
+    {
+      "report": "risk",
+      "prefix": "vacancy-risk-2026-10-04",
+      "open": 10,
+      "overdue": 9,
+      "near": 0,
+      "priority": 1,
+      "priorityOpen": 1,
+      "reconciled": true,
+      "sheets": 2
+    },
+    {
+      "report": "risk",
+      "prefix": "vacancy-risk-2026-08-31",
+      "open": 9,
+      "overdue": 3,
+      "near": 1,
+      "priority": 0,
+      "priorityOpen": 1,
+      "reconciled": true,
+      "sheets": 2
+    },
+    {
+      "report": "bottlenecks",
+      "prefix": "stage-bottlenecks-2026-10-01-to-2026-10-04",
+      "waiting": 3,
+      "median": null,
+      "overdue": 1,
+      "longest": 46,
+      "unavailable": 0,
+      "reconciled": true,
+      "sheets": 2
+    },
+    {
+      "report": "bottlenecks",
+      "prefix": "stage-bottlenecks-2026-08-01-to-2026-08-31",
+      "waiting": 2,
+      "median": 0,
+      "overdue": 0,
+      "longest": 12,
+      "unavailable": 2,
+      "reconciled": true,
+      "sheets": 2
+    }
+  ],
+  "performanceAvgRetained": true,
+  "images": [
+    {
+      "report": "vacancy-risk-2026-10-04",
+      "width": 2880,
+      "height": 1972,
+      "bytes": 625840,
+      "generationNonblankValidation": true
+    },
+    {
+      "report": "stage-bottlenecks-2026-10-01-to-2026-10-04",
+      "width": 2880,
+      "height": 1974,
+      "bytes": 557483,
+      "generationNonblankValidation": true
+    }
+  ],
+  "limitation": "Two August deadlines are historically unavailable; October has no completed-stage duration. Fresh current open headcount is 10; earlier acceptance evidence used 9 before the live population changed."
+}

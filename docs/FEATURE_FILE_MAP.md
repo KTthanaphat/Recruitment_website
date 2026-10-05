@@ -1,6 +1,6 @@
 # Task-to-document map
 
-Updated: 2026-09-14. Start with the row closest to the task; read one feature node and follow only relevant edges.
+Updated: 2026-10-04. Start with the row closest to the task; read one feature node and follow only relevant edges.
 
 | Task | Entry |
 | --- | --- |
@@ -15,6 +15,14 @@ Updated: 2026-09-14. Start with the row closest to the task; read one feature no
 | Requisition Detail drawer | [SYS-RECORDS](maps/system/records.md) → [Requisition Detail design](design/requisition-detail.md) |
 | Candidate profile, journey or stage activity | [SYS-PIPELINE](maps/system/pipeline.md) → [Candidate design](design/candidate-detail.md) |
 | Fail Candidate reasons, Configuration catalog controls or refresh | [SYS-PIPELINE F22](maps/system/pipeline.md#f22-candidate-pipeline-boardrecord-register) → [Pipeline behavior](WEBSITE_STRUCTURE.md#recruitment-workflows) → [catalog test](../tests/e2e/rejection-reason-admin.spec.ts) |
+| Performance/Pipeline Excel export, compact summary/source sheets or format chooser | [SYS-REPORTING exports](maps/system/reporting.md#dashboard-data-exports) → [export contract](design/dashboard-data-export.md) → [workbook checks](../tests/e2e/dashboard-data-export.spec.ts) |
+| Compact Dashboard buttons/sidebar/report density | [SYS-REPORTING compact presentation](maps/system/reporting.md#compact-dashboard-presentation) → [portal](design/dashboard-portal.md#compact-system-presentation) / [Controls](design/controls.md#fields-buttons-and-overlays) → [compact checks](../tests/e2e/dashboard-compact.spec.ts) |
+| Dashboard navigation, square bars, summary fractions, SLA restart annotations | [SYS-REPORTING refinement](maps/system/reporting.md#dashboard-navigation-and-summary-refinement) → [portal](design/dashboard-portal.md) / [Risk summaries](design/dashboard-risk-bottlenecks.md#summary-refinement) → [refinement checks](../tests/e2e/dashboard-refinement.spec.ts) |
+| Dashboard common filters, tabs, URL/session state | [SYS-REPORTING](maps/system/reporting.md#common-dashboard-portal) → [portal design](design/dashboard-portal.md) → [portal checks](../tests/e2e/dashboard-portal.spec.ts) |
+| Vacancy Risk / Aging, Stage Bottlenecks, historical deadlines, normalized attempts or their exports | [SYS-REPORTING subviews](maps/system/reporting.md#risk-and-bottleneck-subviews) → [design](design/dashboard-risk-bottlenecks.md) → [workbooks](design/dashboard-data-export.md#risk-and-bottleneck-workbooks) → [focused checks](../tests/e2e/dashboard-risk-bottlenecks.spec.ts) |
+| Stage screen-only KPI removal / white warning banner | [Reporting](maps/system/reporting.md#stage-screen-and-png-refinement) → [Stage layout](design/dashboard-risk-bottlenecks.md#stage-layout) → [checks](../tests/e2e/stage-mobile-refinement.spec.ts) |
+| Mobile three-item navigation, Records sheet/tablet breakpoint, desktop-required pages | [Platform F06](maps/system/platform.md#f06-phone-first-recruiter-operations) → [Mobile contract](design/mobile-navigation.md) → [checks](../tests/e2e/mobile-operations.spec.ts) |
+| Configuration folders, search, contextual reason/template editors | [SYS-PIPELINE](maps/system/pipeline.md#configuration-browser) → [folder design](design/configuration.md) → [catalog checks](../tests/e2e/rejection-reason-admin.spec.ts) |
 | Waterfall/requisition export, Pipeline Health layout, Source details or PNG | [SYS-REPORTING F04](maps/system/reporting.md#f04-dashboard-report-views-exports-and-xlsx) → [Dashboard behavior](WEBSITE_STRUCTURE.md#dashboard-page) → [dashboard test](../tests/e2e/dashboard-reports.spec.ts) |
 | Date selector or dropdown | [Control contract](design/controls.md) → [SYS-PLATFORM](maps/system/platform.md) |
 | Shared type/color hierarchy | [Foundations](design/foundations.md) → affected system node |

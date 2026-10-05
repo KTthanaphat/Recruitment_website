@@ -84,7 +84,7 @@ export async function installMockSupabase(page: Page, options: MockSupabaseOptio
       await json(route, {
         requisitions: data.requisitions,
         requisition_logs: data.requisition_logs,
-        offers: data.offers.filter((offer) => offer.accepted_date !== null)
+        offers: data.offers.filter((offer) => offer.accepted_date !== null).map(offer => ({ ...offer, candidate_id: null, remark: null, start_confirmed_by: null, start_confirmation_reason: null }))
       });
       return;
     }
@@ -120,6 +120,14 @@ export async function installMockSupabase(page: Page, options: MockSupabaseOptio
       await json(route, []); return;
     }
     const rows = tableRows(data, table);
+    if (route.request().headers().prefer?.includes("count=exact")) {
+      let filtered = rows;
+      for (const [key, value] of url.searchParams) if (value.startsWith("eq.")) filtered = filtered.filter(row => String((row as Record<string, unknown>)[key]) === value.slice(3));
+      const sort = url.searchParams.get("order")?.split(".")[0];
+      if (sort) filtered = [...filtered].sort((a, b) => String((a as Record<string, unknown>)[sort]).localeCompare(String((b as Record<string, unknown>)[sort]), "en", { numeric: true }));
+      const start = Number(url.searchParams.get("offset") ?? 0), limit = Number(url.searchParams.get("limit") ?? 500), pageRows = filtered.slice(start, start + limit);
+      await route.fulfill({ contentType: "application/json", headers: { "access-control-allow-origin": "*", "access-control-expose-headers": "content-range", "content-range": `${start}-${start + pageRows.length - 1}/${filtered.length}` }, body: JSON.stringify(pageRows), status: 200 }); return;
+    }
     await json(route, applyRestQuery(rows, url));
   });
 
@@ -128,10 +136,11 @@ export async function installMockSupabase(page: Page, options: MockSupabaseOptio
 
 export async function expectWorkspaceReady(page: Page) {
   const header = page.locator("[data-app-header-actions]");
-  await expect(page.getByRole("button", { name: "Refresh" })).toBeVisible();
-  await expect(header.getByLabel("Site", { exact: true })).toBeVisible();
-  await expect(header.getByLabel("Person in Charge", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^(Refresh|รีเฟรช)$/ })).toBeVisible();
+  await expect(header.getByLabel(/^(Site|พื้นที่)$/)).toBeVisible();
+  await expect(header.getByLabel(/^(Person in Charge|ผู้รับผิดชอบ)$/)).toBeVisible();
   await expect(page.getByText("Loading recruitment records...")).toHaveCount(0);
+  if (new URL(page.url()).pathname === "/dashboard") await expect(page.locator("[data-dashboard-filters]")).toBeVisible();
 }
 
 export function seedCrossSiteMatchScenario(data: DashboardData) {
@@ -516,6 +525,7 @@ function tableRows(data: DashboardData, table: string) {
 }
 
 function applyRestQuery(rows: unknown[], url: URL) {
+  for (const [key, value] of url.searchParams) if (value.startsWith("eq.")) rows = rows.filter(row => String((row as Record<string, unknown>)[key]) === value.slice(3));
   const limit = Number(url.searchParams.get("limit") ?? rows.length);
   return rows.slice(0, Number.isFinite(limit) ? limit : rows.length);
 }

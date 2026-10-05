@@ -7,12 +7,13 @@ export type CommandOption = { value: string; label: string; disabled?: boolean }
 
 export function CommandSelector({
   ariaLabel, ariaLabelledBy, className = "", density = "regular", disabled = false, emptyLabel, emptyOptionsLabel = "No options available", icon, name, required = false,
-  onValueChange, options, value
+  onValueChange, options, value, typography = "emphasized"
 }: {
   ariaLabel: string;
   ariaLabelledBy?: string;
   className?: string;
   density?: "compact" | "regular";
+  typography?: "normal" | "emphasized";
   disabled?: boolean;
   emptyLabel: string;
   emptyOptionsLabel?: string;
@@ -78,7 +79,7 @@ export function CommandSelector({
       {options.map((option) => <option key={option.value || "empty"} value={option.value} disabled={option.disabled}>{option.label}</option>)}
     </select> : null}
     <button ref={triggerRef} type="button" disabled={disabled} onClick={() => open ? setOpen(false) : openAt()} onKeyDown={onKeyDown}
-      className={`ats-dropdown-trigger flex ${height} w-full items-center gap-2 rounded-xl border px-3 text-left text-sm font-semibold text-navy transition disabled:cursor-not-allowed`}
+      className={`ats-dropdown-trigger flex ${height} w-full items-center gap-2 rounded-xl border px-3 text-left text-sm ${typography === "normal" ? "font-normal" : "font-semibold"} text-navy transition disabled:cursor-not-allowed`}
       aria-label={ariaLabelledBy ? undefined : ariaLabel} aria-labelledby={ariaLabelledBy} aria-haspopup="listbox" aria-expanded={open} aria-controls={`${id}-options`} aria-activedescendant={open && options[activeIndex] ? `${id}-option-${activeIndex}` : undefined}>
       {icon ? <span className="shrink-0 text-primary" aria-hidden="true">{icon}</span> : null}
       <span className="min-w-0 flex-1 truncate" title={selected?.label ?? emptyLabel}>{selected?.label ?? emptyLabel}</span>
@@ -88,7 +89,7 @@ export function CommandSelector({
       {options.length === 0 ? <div role="option" aria-disabled="true" aria-selected="false" className="ats-dropdown-option text-sm text-slate">{emptyOptionsLabel}</div> : options.map((option, index) => {
         const selected = option.value === value;
         return <button id={`${id}-option-${index}`} key={option.value || "empty"} type="button" role="option" aria-selected={selected} tabIndex={-1} disabled={option.disabled} onMouseEnter={() => { if (!option.disabled) setActiveIndex(index); }} onClick={() => choose(option)}
-          className={`ats-dropdown-option flex items-center gap-2 text-left text-sm font-semibold text-navy ${selected ? "is-selected" : ""} ${activeIndex === index ? "is-active" : ""}`}>
+          className={`ats-dropdown-option flex items-center gap-2 text-left text-sm ${typography === "normal" ? "font-normal" : "font-semibold"} text-navy ${selected ? "is-selected" : ""} ${activeIndex === index ? "is-active" : ""}`}>
           <span className={`ats-dropdown-checkbox ${selected ? "is-checked" : ""}`} aria-hidden="true" />
           <span className="block min-w-0 break-words" title={option.label}>{option.label}</span>
         </button>;
@@ -97,7 +98,7 @@ export function CommandSelector({
   </div>;
 }
 
-export function CommandMonthSelector({ ariaLabel, monthLabel, nextYearLabel, onValueChange, previousYearLabel, value }: { ariaLabel: string; monthLabel: (month: number) => string; nextYearLabel: string; onValueChange: (value: string) => void; previousYearLabel: string; value: string }) {
+export function CommandMonthSelector({ ariaLabel, monthLabel, nextYearLabel, onValueChange, previousYearLabel, value, typography = "emphasized" }: { typography?: "normal" | "emphasized"; ariaLabel: string; monthLabel: (month: number) => string; nextYearLabel: string; onValueChange: (value: string) => void; previousYearLabel: string; value: string }) {
   const [open, setOpen] = useState(false);
   const [year, setYear] = useState(() => Number(value.slice(0, 4)) || new Date().getFullYear());
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -121,12 +122,12 @@ export function CommandMonthSelector({ ariaLabel, monthLabel, nextYearLabel, onV
     monthButtons.current[next]?.focus();
   }
   return <div ref={rootRef} className="relative">
-    <button ref={triggerRef} type="button" onClick={() => open ? close() : openAtSelectedMonth()} onKeyDown={(event) => { if (event.key === "Escape" && open) { event.preventDefault(); close(); } if (["Enter", " ", "ArrowDown", "ArrowUp"].includes(event.key) && !open) { event.preventDefault(); openAtSelectedMonth(); } }} className="ats-dropdown-trigger flex min-h-11 w-full items-center gap-2 rounded-xl border px-3 text-left text-sm font-semibold text-navy transition" aria-label={ariaLabel} aria-haspopup="dialog" aria-expanded={open} aria-controls={`${id}-months`}>
+    <button ref={triggerRef} type="button" onClick={() => open ? close() : openAtSelectedMonth()} onKeyDown={(event) => { if (event.key === "Escape" && open) { event.preventDefault(); close(); } if (["Enter", " ", "ArrowDown", "ArrowUp"].includes(event.key) && !open) { event.preventDefault(); openAtSelectedMonth(); } }} className={`ats-dropdown-trigger flex min-h-11 w-full items-center gap-2 rounded-xl border px-3 text-left text-sm ${typography === "normal" ? "font-normal" : "font-semibold"} text-navy transition`} aria-label={ariaLabel} aria-haspopup="dialog" aria-expanded={open} aria-controls={`${id}-months`}>
       <CalendarDays size={16} className="shrink-0 text-primary" aria-hidden="true" /><span className="min-w-0 flex-1 truncate tabular-nums" title={value ? `${monthLabel(Number(value.slice(5, 7)))} ${value.slice(0, 4)}` : ariaLabel}>{value ? `${monthLabel(Number(value.slice(5, 7)))} ${value.slice(0, 4)}` : ariaLabel}</span><ChevronDown size={17} className={`shrink-0 text-slate transition-transform ${open ? "rotate-180" : ""}`} aria-hidden="true" />
     </button>
     {open ? <div id={`${id}-months`} role="dialog" aria-label={ariaLabel} className="ats-dropdown-menu absolute z-50 mt-2 max-h-72 w-[19rem] max-w-[calc(100vw-2rem)] rounded-2xl border" onKeyDown={handleMonthMenuKeyDown}>
       <div className="mb-3 flex items-center justify-between rounded-xl bg-[#F8FAFD] p-1"><button type="button" className="grid size-8 place-items-center rounded-lg text-slate hover:bg-white hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary/20" aria-label={previousYearLabel} onClick={() => setYear((current) => current - 1)}><ChevronLeft size={17} /></button><span className="text-sm font-semibold tabular-nums text-navy">{year}</span><button type="button" className="grid size-8 place-items-center rounded-lg text-slate hover:bg-white hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary/20" aria-label={nextYearLabel} onClick={() => setYear((current) => current + 1)}><ChevronRight size={17} /></button></div>
-      <div className="grid grid-cols-3 gap-1">{Array.from({ length: 12 }, (_, index) => index + 1).map((month) => { const next = `${year}-${String(month).padStart(2, "0")}`; const selected = next === value; return <button ref={(node) => { monthButtons.current[month - 1] = node; }} key={month} type="button" tabIndex={selected ? 0 : -1} aria-pressed={selected} className="ats-dropdown-option flex items-center justify-center gap-1 text-xs font-semibold text-navy" onClick={() => { onValueChange(next); close(); }}><span className={`ats-dropdown-checkbox ${selected ? "is-checked" : ""}`} aria-hidden="true" />{monthLabel(month)}</button>; })}</div>
+      <div className="grid grid-cols-3 gap-1">{Array.from({ length: 12 }, (_, index) => index + 1).map((month) => { const next = `${year}-${String(month).padStart(2, "0")}`; const selected = next === value; return <button ref={(node) => { monthButtons.current[month - 1] = node; }} key={month} type="button" tabIndex={selected ? 0 : -1} aria-pressed={selected} className={`ats-dropdown-option flex items-center justify-center gap-1 ${typography === "normal" ? "text-sm font-normal" : "text-xs font-semibold"} text-navy`} onClick={() => { onValueChange(next); close(); }}><span className={`ats-dropdown-checkbox ${selected ? "is-checked" : ""}`} aria-hidden="true" />{monthLabel(month)}</button>; })}</div>
     </div> : null}
   </div>;
 }

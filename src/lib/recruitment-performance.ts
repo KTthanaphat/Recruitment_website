@@ -2,13 +2,15 @@ import { filledSlaAtAcceptance } from "@/lib/vacancy-executive";
 import { getSlaDays } from "@/lib/sla";
 import type { DashboardData, EnrichedOffer, EnrichedRequisition, RequisitionRequestType } from "@/types/recruitment";
 
-export type PerformancePeriod = "mtd" | "ytd" | "pim";
+export type PerformancePeriod = "mtd" | "ytd" | "pim" | "custom";
 export type PerformanceBand = "NML" | "FML" | "MML" | "SML" | "Executive" | "Unknown";
 export const PERFORMANCE_BANDS: PerformanceBand[] = ["NML", "FML", "MML", "SML", "Executive", "Unknown"];
 export type PerformanceRange = { start: string; end: string };
 export type PerformanceCell = { site: string; band: PerformanceBand; vacancies: number; filled: number; open: number; onTime: number; late: number; unknownSla: number; newVacancies: number; replacementVacancies: number };
 export type PerformanceMetrics = { vacancies: number; filled: number; open: number; filledPct: number | null; slaPct: number | null; avgTimeToFill: number | null; onTime: number; late: number; unknownSla: number };
-export type PerformanceReport = { range: PerformanceRange; metrics: PerformanceMetrics; cells: PerformanceCell[]; sites: string[] };
+export type PerformanceRequisitionContribution = { requisition: EnrichedRequisition; status: string; band: PerformanceBand; vacancies: number; filled: number; open: number; onTime: number; late: number; unknownSla: number; timeTotal: number; timeCount: number };
+export type PerformanceAcceptanceContribution = { requisition: EnrichedRequisition; offer: EnrichedOffer; withinRange: boolean; effective: boolean; counted: number; sla: boolean | null; days: number | null; timeCount: number; reason: "counted" | "outside" | "no-show" | "cap" };
+export type PerformanceReport = { requisitionContributions: PerformanceRequisitionContribution[]; acceptanceContributions: PerformanceAcceptanceContribution[]; range: PerformanceRange; metrics: PerformanceMetrics; cells: PerformanceCell[]; sites: string[] };
 
 const DAY = 86_400_000;
 const validDate = (value: string | null | undefined) => {
@@ -69,13 +71,14 @@ function eligible(data: DashboardData, requisition: EnrichedRequisition, offers:
   const filledLogs = data.requisition_logs.filter((row) => row.doc_id === requisition.doc_id && row.status === "filled" && validDate(row.log_date) && row.log_date.slice(0, 10) < range.start);
   const reopenedInRange = related.some((offer) => offer.start_confirmation === "did_not_start" && validDate(offer.start_confirmed_at) && offer.start_confirmed_at!.slice(0, 10) >= range.start && offer.start_confirmed_at!.slice(0, 10) <= range.end);
   if ((acceptedByStart >= requisition.head_count || (related.length === 0 && filledLogs.length > 0)) && !reopenedInRange) return false;
-  if (period === "pim") return true;
+  if (period === "pim" || period === "custom") return true;
   const slaDays = getSlaDays(requisition.level);
   return slaDays !== null && shiftDays(pr, slaDays) >= range.start;
 }
 
 export function buildPerformanceReport(data: DashboardData, requisitions: EnrichedRequisition[], offers: EnrichedOffer[], range: PerformanceRange, period: PerformancePeriod, site = "", department = ""): PerformanceReport {
   const cells = new Map<string, PerformanceCell>();
+  const requisitionContributions: PerformanceRequisitionContribution[] = [], acceptanceContributions: PerformanceAcceptanceContribution[] = [];
   let timeTotal = 0;
   let timeCount = 0;
   const scoped = requisitions.filter((row) => (!site || row.site === site) && (!department || row.department === department));
@@ -94,16 +97,25 @@ export function buildPerformanceReport(data: DashboardData, requisitions: Enrich
       const accepted = validDate(offer.accepted_date);
       return accepted && accepted >= range.start && accepted <= range.end && offerEffectiveAt(offer, range.end);
     }).sort((a, b) => (a.accepted_date ?? "").localeCompare(b.accepted_date ?? "") || a.offer_id - b.offer_id).slice(0, capacity);
-    for (const offer of counted) {
-      cell.filled += 1;
+    const countedIds = new Set(counted.map(offer => offer.offer_id));
+    const contribution: PerformanceRequisitionContribution = { requisition, status: statusAt(data, requisition, range.end), band, vacancies: capacity, filled: 0, open: capacity, onTime: 0, late: 0, unknownSla: 0, timeTotal: 0, timeCount: 0 };
+    for (const offer of related.filter(offer => Boolean(validDate(offer.accepted_date)))) {
       const accepted = validDate(offer.accepted_date)!;
-      const sla = filledSlaAtAcceptance(requisition, accepted, related.filter((row) => row.start_confirmation === "did_not_start").map((row) => row.start_confirmed_at));
-      if (sla === true) cell.onTime += 1;
-      else if (sla === false) cell.late += 1;
-      else cell.unknownSla += 1;
+      const withinRange = accepted >= range.start && accepted <= range.end;
+      const effective = offerEffectiveAt(offer, range.end);
+      const isCounted = countedIds.has(offer.offer_id);
+      const sla = filledSlaAtAcceptance(requisition, accepted, related.filter(row => row.start_confirmation === "did_not_start").map(row => row.start_confirmed_at));
       const pr = validDate(requisition.pr_approved_date);
-      if (pr && accepted >= pr) { timeTotal += daysBetween(pr, accepted); timeCount += 1; }
+      const days = pr && accepted >= pr ? daysBetween(pr, accepted) : null;
+      acceptanceContributions.push({ requisition, offer, withinRange, effective, counted: Number(isCounted), sla, days, timeCount: Number(isCounted && days !== null), reason: isCounted ? "counted" : !withinRange ? "outside" : !effective ? "no-show" : "cap" });
+      if (!isCounted) continue;
+      cell.filled++; contribution.filled++;
+      const category = sla === true ? "onTime" : sla === false ? "late" : "unknownSla";
+      cell[category]++; contribution[category]++;
+      if (days !== null) { timeTotal += days; timeCount++; contribution.timeTotal += days; contribution.timeCount++; }
     }
+    contribution.open = Math.max(0, capacity - contribution.filled);
+    requisitionContributions.push(contribution);
     cell.open = Math.max(0, cell.vacancies - cell.filled);
     cells.set(key, cell);
   }
@@ -113,5 +125,5 @@ export function buildPerformanceReport(data: DashboardData, requisitions: Enrich
   const onTime = values.reduce((sum, row) => sum + row.onTime, 0);
   const late = values.reduce((sum, row) => sum + row.late, 0);
   const unknownSla = values.reduce((sum, row) => sum + row.unknownSla, 0);
-  return { range, cells: values, sites: [...new Set(values.map((row) => row.site))], metrics: { vacancies, filled, open: Math.max(0, vacancies - filled), filledPct: vacancies ? filled / vacancies * 100 : null, slaPct: onTime + late ? onTime / (onTime + late) * 100 : null, avgTimeToFill: timeCount ? timeTotal / timeCount : null, onTime, late, unknownSla } };
+  return { requisitionContributions, acceptanceContributions, range, cells: values, sites: [...new Set(values.map((row) => row.site))], metrics: { vacancies, filled, open: Math.max(0, vacancies - filled), filledPct: vacancies ? filled / vacancies * 100 : null, slaPct: onTime + late ? onTime / (onTime + late) * 100 : null, avgTimeToFill: timeCount ? timeTotal / timeCount : null, onTime, late, unknownSla } };
 }

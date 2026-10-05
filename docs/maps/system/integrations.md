@@ -10,14 +10,14 @@ Read this node for this feature only. It indexes ownership; product rules remain
 
 - Owner/search: [PipelineBoardView.tsx](../../../src/components/pipeline/PipelineBoardView.tsx), [RecruitmentWorkspace.tsx](../../../src/components/RecruitmentWorkspace.tsx), `rejection-letters/*`, `api/rejection-letters/*`.
 - Related symbols: `rejection-letters`, `/api/rejection-letters/draft`; the endpoint name is historical. Current contract sends approved content; consult it before reasoning about side effects.
-- Entry: Pipeline failed cards; Candidate Detail; Admin.
+- Entry: Pipeline failed cards; Candidate Detail; Configuration template folders. Editor ownership: [Configuration browser](pipeline.md#configuration-browser).
 - Verification: [rejection-letter-ui.spec.ts](../../../tests/e2e/rejection-letter-ui.spec.ts) for composer state and [rejection-letter-format.spec.ts](../../../tests/e2e/rejection-letter-format.spec.ts) for formatting. See [environment boundaries](../../workflows/TEST_ENVIRONMENTS.md#unmocked-database-and-external-checks) before delivery tests.
 
 ### Teams meeting lifecycle
 
 - Owner/search: `CurrentStageEditModal` in [src/components/RecruitmentWorkspace.tsx](../../../src/components/RecruitmentWorkspace.tsx); search `src/app/api` for `interview-meetings` and `src/lib` for `teams` / `interview` helpers.
 - Contract owns create/reschedule/cancel payloads and external effects.
-- Configuration path: [SETUP-INTEGRATIONS](../SETUP_MAP.md#setup-integrations).
+- Template Configuration UI: [folder browser](pipeline.md#configuration-browser) → [design](../../design/configuration.md); setup/external effects: [SETUP-INTEGRATIONS](../SETUP_MAP.md#setup-integrations).
 
 ## Dependency edges
 

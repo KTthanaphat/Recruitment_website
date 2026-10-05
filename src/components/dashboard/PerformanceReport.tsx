@@ -34,20 +34,20 @@ export function PerformanceReport({ report, previous, language, sites, period = 
   const comparisonLabel = language === "th" ? `เทียบ ${period.toUpperCase()} ก่อนหน้า` : `vs prior ${period.toUpperCase()}`;
   return <div className={`${styles.body} ${exportMode ? styles.exportBody : ""}`} data-performance-report>
     <div className={styles.kpis}>
-      {(["vacancies", "filled", "filledPct", "slaPct", "avgTimeToFill"] as const).map(key => {
-        const label = key === "avgTimeToFill" ? t.time : t[key];
+      {(["vacancies", "filled", "filledPct", "slaPct"] as const).map(key => {
+        const label = t[key];
         const value = report.metrics[key], prior = previous.metrics[key];
         const delta = value !== null && prior !== null ? value - prior : null;
         const percentage = key === "filledPct" || key === "slaPct";
-        const good = delta !== null && (key === "vacancies" || key === "avgTimeToFill" ? delta < 0 : delta > 0);
+        const good = delta !== null && (key === "vacancies" ? delta < 0 : delta > 0);
         const direction = delta === null ? "" : delta > 0 ? t.increased : delta < 0 ? t.decreased : t.unchanged;
-        const suffix = percentage ? "%" : key === "avgTimeToFill" ? t.day : "";
+        const suffix = percentage ? "%" : "";
         const compared = `${comparisonLabel}: ${formatDate(previous.range.start, language)} – ${formatDate(previous.range.end, language)}`;
         const relative = delta !== null && prior !== null && prior !== 0 ? ` (${Math.abs(rounded(delta / prior * 100))}%)` : "";
         return <article key={key} className={styles.kpi} data-metric={key} aria-label={label} aria-describedby={`${descriptionId}-${key}`}>
           <span id={`${descriptionId}-${key}`} className="sr-only">{metricHelp(key, language)}</span>
           <h3>{label}</h3><p className={styles.kpiHelper}>{comparisonLabel}</p>
-          <p className={styles.value} data-metric-value>{value === null ? "—" : `${formatNumber(rounded(value, key === "avgTimeToFill" ? 1 : 0), language)}${suffix}`}</p>
+          <p className={styles.value} data-metric-value>{value === null ? "—" : `${formatNumber(rounded(value), language)}${suffix}`}</p>
           <span className={styles.delta} tabIndex={0} title={compared} aria-label={`${direction} ${delta === null ? t.noComparison : Math.abs(rounded(delta, 1))} ${percentage ? t.pp : suffix}. ${compared}`} style={{ color: delta === null || delta === 0 ? "#64748B" : good ? "#358C0B" : RED }}>
             {delta === null ? language === "th" ? "ไม่มีค่าก่อนหน้า" : "No prior value" : <>{delta > 0 ? "+" : ""}{formatNumber(rounded(delta, 1), language)}{percentage ? ` ${t.pp}` : suffix}{relative}<span aria-hidden="true"> {delta > 0 ? "▲" : delta < 0 ? "▼" : "—"}</span></>}
           </span>

@@ -1,0 +1,875 @@
+{
+  "project": "mppnlkldlctvketcsald",
+  "date": "2026-10-04",
+  "scenarios": [
+    {
+      "end": "2026-08-31",
+      "start": "2026-08-01",
+      "period": "pim",
+      "source": [
+        {
+          "hired": 1,
+          "label": "JobsDB",
+          "phone": 1,
+          "applicants": 0
+        },
+        {
+          "hired": 0,
+          "label": "JobThai",
+          "phone": 1,
+          "applicants": 0
+        }
+      ],
+      "pipeline": {
+        "Test": 1,
+        "Offer": 1,
+        "HR Interview": 2,
+        "Phone Screen": 2,
+        "Line Interview": 1,
+        "Reference Check": 1
+      },
+      "scenario": "aug-department",
+      "waterfall": {
+        "opening": 2,
+        "new_open": 1,
+        "reopened": 0,
+        "requisitions": 2,
+        "actual_closing": 2,
+        "effective_fills": 1,
+        "acceptance_movements": 1
+      },
+      "performance": {
+        "late": 0,
+        "cells": [
+          {
+            "new": 0,
+            "band": "FML",
+            "site": "HQ",
+            "filled": 1,
+            "vacancies": 1,
+            "replacement": 1
+          },
+          {
+            "new": 0,
+            "band": "NML",
+            "site": "HQ",
+            "filled": 0,
+            "vacancies": 2,
+            "replacement": 2
+          }
+        ],
+        "filled": 1,
+        "avg_ttf": 1,
+        "on_time": 1,
+        "vacancies": 3
+      },
+      "resume_screening": 2
+    },
+    {
+      "end": "2026-08-31",
+      "start": "2026-08-01",
+      "period": "pim",
+      "source": [
+        {
+          "hired": 2,
+          "label": "Facebook",
+          "phone": 2,
+          "applicants": 20
+        }
+      ],
+      "pipeline": {
+        "Test": 2,
+        "Offer": 2,
+        "HR Interview": 2,
+        "Phone Screen": 2,
+        "Line Interview": 2,
+        "Reference Check": 2
+      },
+      "scenario": "aug-facebook",
+      "waterfall": {
+        "opening": 6,
+        "new_open": 7,
+        "reopened": 1,
+        "requisitions": 10,
+        "actual_closing": 9,
+        "effective_fills": 4,
+        "acceptance_movements": 5
+      },
+      "performance": {
+        "late": 1,
+        "cells": [
+          {
+            "new": 0,
+            "band": "FML",
+            "site": "HQ",
+            "filled": 1,
+            "vacancies": 1,
+            "replacement": 1
+          },
+          {
+            "new": 3,
+            "band": "NML",
+            "site": "HQ",
+            "filled": 0,
+            "vacancies": 8,
+            "replacement": 5
+          },
+          {
+            "new": 1,
+            "band": "NML",
+            "site": "KT1",
+            "filled": 2,
+            "vacancies": 2,
+            "replacement": 1
+          },
+          {
+            "new": 0,
+            "band": "FML",
+            "site": "KT2",
+            "filled": 1,
+            "vacancies": 1,
+            "replacement": 1
+          },
+          {
+            "new": 1,
+            "band": "NML",
+            "site": "KT2",
+            "filled": 0,
+            "vacancies": 1,
+            "replacement": 0
+          }
+        ],
+        "filled": 4,
+        "avg_ttf": 13.75,
+        "on_time": 3,
+        "vacancies": 13
+      },
+      "resume_screening": 2
+    },
+    {
+      "end": "2026-08-31",
+      "start": "2026-08-01",
+      "period": "pim",
+      "source": [
+        {
+          "hired": 1,
+          "label": "Facebook",
+          "phone": 1,
+          "applicants": 20
+        },
+        {
+          "hired": 1,
+          "label": "JobsDB",
+          "phone": 1,
+          "applicants": 0
+        },
+        {
+          "hired": 0,
+          "label": "JobThai",
+          "phone": 1,
+          "applicants": 10
+        }
+      ],
+      "pipeline": {
+        "Test": 3,
+        "Offer": 2,
+        "HR Interview": 3,
+        "Phone Screen": 3,
+        "Line Interview": 2,
+        "Reference Check": 3
+      },
+      "scenario": "aug-hq",
+      "waterfall": {
+        "opening": 4,
+        "new_open": 5,
+        "reopened": 1,
+        "requisitions": 6,
+        "actual_closing": 8,
+        "effective_fills": 1,
+        "acceptance_movements": 2
+      },
+      "performance": {
+        "late": 0,
+        "cells": [
+          {
+            "new": 0,
+            "band": "FML",
+            "site": "HQ",
+            "filled": 1,
+            "vacancies": 1,
+            "replacement": 1
+          },
+          {
+            "new": 3,
+            "band": "NML",
+            "site": "HQ",
+            "filled": 0,
+            "vacancies": 8,
+            "replacement": 5
+          }
+        ],
+        "filled": 1,
+        "avg_ttf": 1,
+        "on_time": 1,
+        "vacancies": 9
+      },
+      "resume_screening": 3
+    },
+    {
+      "end": "2026-08-31",
+      "start": "2026-08-01",
+      "period": "pim",
+      "source": [
+        {
+          "hired": 1,
+          "label": "JobsDB",
+          "phone": 1,
+          "applicants": 0
+        },
+        {
+          "hired": 1,
+          "label": "JobThai",
+          "phone": 1,
+          "applicants": 0
+        }
+      ],
+      "pipeline": {
+        "Test": 2,
+        "Offer": 2,
+        "HR Interview": 2,
+        "Phone Screen": 2,
+        "Line Interview": 2,
+        "Reference Check": 2
+      },
+      "scenario": "aug-level",
+      "waterfall": {
+        "opening": 1,
+        "new_open": 1,
+        "reopened": 0,
+        "requisitions": 2,
+        "actual_closing": 0,
+        "effective_fills": 2,
+        "acceptance_movements": 2
+      },
+      "performance": {
+        "late": 1,
+        "cells": [
+          {
+            "new": 0,
+            "band": "FML",
+            "site": "HQ",
+            "filled": 1,
+            "vacancies": 1,
+            "replacement": 1
+          },
+          {
+            "new": 0,
+            "band": "FML",
+            "site": "KT2",
+            "filled": 1,
+            "vacancies": 1,
+            "replacement": 1
+          }
+        ],
+        "filled": 2,
+        "avg_ttf": 19.5,
+        "on_time": 1,
+        "vacancies": 2
+      },
+      "resume_screening": 2
+    },
+    {
+      "end": "2026-08-31",
+      "start": "2026-08-01",
+      "period": "mtd",
+      "source": [
+        {
+          "hired": 2,
+          "label": "Facebook",
+          "phone": 2,
+          "applicants": 20
+        },
+        {
+          "hired": 1,
+          "label": "JobsDB",
+          "phone": 1,
+          "applicants": 0
+        },
+        {
+          "hired": 1,
+          "label": "JobThai",
+          "phone": 2,
+          "applicants": 10
+        },
+        {
+          "hired": 1,
+          "label": "Referral",
+          "phone": 3,
+          "applicants": 0
+        }
+      ],
+      "pipeline": {
+        "Test": 6,
+        "Offer": 5,
+        "HR Interview": 8,
+        "Phone Screen": 8,
+        "Line Interview": 7,
+        "Reference Check": 5
+      },
+      "scenario": "aug-mtd",
+      "waterfall": {
+        "opening": 3,
+        "new_open": 7,
+        "reopened": 1,
+        "requisitions": 8,
+        "actual_closing": 6,
+        "effective_fills": 4,
+        "acceptance_movements": 5
+      },
+      "performance": {
+        "late": 1,
+        "cells": [
+          {
+            "new": 0,
+            "band": "FML",
+            "site": "HQ",
+            "filled": 1,
+            "vacancies": 1,
+            "replacement": 1
+          },
+          {
+            "new": 2,
+            "band": "NML",
+            "site": "HQ",
+            "filled": 0,
+            "vacancies": 5,
+            "replacement": 3
+          },
+          {
+            "new": 1,
+            "band": "NML",
+            "site": "KT1",
+            "filled": 2,
+            "vacancies": 2,
+            "replacement": 1
+          },
+          {
+            "new": 0,
+            "band": "FML",
+            "site": "KT2",
+            "filled": 1,
+            "vacancies": 1,
+            "replacement": 1
+          },
+          {
+            "new": 1,
+            "band": "NML",
+            "site": "KT2",
+            "filled": 0,
+            "vacancies": 1,
+            "replacement": 0
+          }
+        ],
+        "filled": 4,
+        "avg_ttf": 13.75,
+        "on_time": 3,
+        "vacancies": 10
+      },
+      "resume_screening": 8
+    },
+    {
+      "end": "2026-08-31",
+      "start": "2026-08-01",
+      "period": "pim",
+      "source": [
+        {
+          "hired": 1,
+          "label": "Facebook",
+          "phone": 1,
+          "applicants": 20
+        },
+        {
+          "hired": 1,
+          "label": "JobsDB",
+          "phone": 1,
+          "applicants": 0
+        },
+        {
+          "hired": 1,
+          "label": "JobThai",
+          "phone": 1,
+          "applicants": 10
+        }
+      ],
+      "pipeline": {
+        "Test": 3,
+        "Offer": 3,
+        "HR Interview": 3,
+        "Phone Screen": 3,
+        "Line Interview": 3,
+        "Reference Check": 3
+      },
+      "scenario": "aug-pic",
+      "waterfall": {
+        "opening": 2,
+        "new_open": 2,
+        "reopened": 1,
+        "requisitions": 4,
+        "actual_closing": 2,
+        "effective_fills": 2,
+        "acceptance_movements": 3
+      },
+      "performance": {
+        "late": 1,
+        "cells": [
+          {
+            "new": 0,
+            "band": "FML",
+            "site": "HQ",
+            "filled": 1,
+            "vacancies": 1,
+            "replacement": 1
+          },
+          {
+            "new": 2,
+            "band": "NML",
+            "site": "HQ",
+            "filled": 0,
+            "vacancies": 2,
+            "replacement": 0
+          },
+          {
+            "new": 0,
+            "band": "FML",
+            "site": "KT2",
+            "filled": 1,
+            "vacancies": 1,
+            "replacement": 1
+          }
+        ],
+        "filled": 2,
+        "avg_ttf": 19.5,
+        "on_time": 1,
+        "vacancies": 4
+      },
+      "resume_screening": 3
+    },
+    {
+      "end": "2026-08-31",
+      "start": "2026-08-01",
+      "period": "pim",
+      "source": [
+        {
+          "hired": 2,
+          "label": "Facebook",
+          "phone": 2,
+          "applicants": 20
+        },
+        {
+          "hired": 1,
+          "label": "JobsDB",
+          "phone": 1,
+          "applicants": 0
+        },
+        {
+          "hired": 1,
+          "label": "JobThai",
+          "phone": 2,
+          "applicants": 10
+        },
+        {
+          "hired": 1,
+          "label": "Referral",
+          "phone": 3,
+          "applicants": 0
+        }
+      ],
+      "pipeline": {
+        "Test": 7,
+        "Offer": 5,
+        "HR Interview": 8,
+        "Phone Screen": 8,
+        "Line Interview": 7,
+        "Reference Check": 6
+      },
+      "scenario": "aug-pim",
+      "waterfall": {
+        "opening": 6,
+        "new_open": 7,
+        "reopened": 1,
+        "requisitions": 10,
+        "actual_closing": 9,
+        "effective_fills": 4,
+        "acceptance_movements": 5
+      },
+      "performance": {
+        "late": 1,
+        "cells": [
+          {
+            "new": 0,
+            "band": "FML",
+            "site": "HQ",
+            "filled": 1,
+            "vacancies": 1,
+            "replacement": 1
+          },
+          {
+            "new": 3,
+            "band": "NML",
+            "site": "HQ",
+            "filled": 0,
+            "vacancies": 8,
+            "replacement": 5
+          },
+          {
+            "new": 1,
+            "band": "NML",
+            "site": "KT1",
+            "filled": 2,
+            "vacancies": 2,
+            "replacement": 1
+          },
+          {
+            "new": 0,
+            "band": "FML",
+            "site": "KT2",
+            "filled": 1,
+            "vacancies": 1,
+            "replacement": 1
+          },
+          {
+            "new": 1,
+            "band": "NML",
+            "site": "KT2",
+            "filled": 0,
+            "vacancies": 1,
+            "replacement": 0
+          }
+        ],
+        "filled": 4,
+        "avg_ttf": 13.75,
+        "on_time": 3,
+        "vacancies": 13
+      },
+      "resume_screening": 8
+    },
+    {
+      "end": "2026-08-31",
+      "start": "2026-08-01",
+      "period": "pim",
+      "source": [],
+      "pipeline": {},
+      "scenario": "aug-priority",
+      "waterfall": {
+        "opening": 0,
+        "new_open": 1,
+        "reopened": 0,
+        "requisitions": 1,
+        "actual_closing": 1,
+        "effective_fills": 0,
+        "acceptance_movements": 0
+      },
+      "performance": {
+        "late": 0,
+        "cells": [
+          {
+            "new": 1,
+            "band": "NML",
+            "site": "KT2",
+            "filled": 0,
+            "vacancies": 1,
+            "replacement": 0
+          }
+        ],
+        "filled": 0,
+        "avg_ttf": null,
+        "on_time": 0,
+        "vacancies": 1
+      },
+      "resume_screening": 0
+    },
+    {
+      "end": "2026-08-31",
+      "start": "2026-01-01",
+      "period": "ytd",
+      "source": [
+        {
+          "hired": 2,
+          "label": "Facebook",
+          "phone": 5,
+          "applicants": 20
+        },
+        {
+          "hired": 1,
+          "label": "JobsDB",
+          "phone": 1,
+          "applicants": 0
+        },
+        {
+          "hired": 1,
+          "label": "JobThai",
+          "phone": 2,
+          "applicants": 10
+        },
+        {
+          "hired": 2,
+          "label": "Referral",
+          "phone": 4,
+          "applicants": 0
+        }
+      ],
+      "pipeline": {
+        "Test": 7,
+        "Offer": 6,
+        "HR Interview": 12,
+        "Phone Screen": 12,
+        "Line Interview": 8,
+        "Reference Check": 6
+      },
+      "scenario": "aug-ytd",
+      "waterfall": {
+        "opening": 0,
+        "new_open": 13,
+        "reopened": 1,
+        "requisitions": 10,
+        "actual_closing": 8,
+        "effective_fills": 5,
+        "acceptance_movements": 6
+      },
+      "performance": {
+        "late": 1,
+        "cells": [
+          {
+            "new": 0,
+            "band": "FML",
+            "site": "HQ",
+            "filled": 1,
+            "vacancies": 1,
+            "replacement": 1
+          },
+          {
+            "new": 2,
+            "band": "NML",
+            "site": "HQ",
+            "filled": 0,
+            "vacancies": 7,
+            "replacement": 5
+          },
+          {
+            "new": 1,
+            "band": "NML",
+            "site": "KT1",
+            "filled": 2,
+            "vacancies": 2,
+            "replacement": 1
+          },
+          {
+            "new": 0,
+            "band": "FML",
+            "site": "KT2",
+            "filled": 1,
+            "vacancies": 1,
+            "replacement": 1
+          },
+          {
+            "new": 1,
+            "band": "NML",
+            "site": "KT2",
+            "filled": 1,
+            "vacancies": 2,
+            "replacement": 1
+          }
+        ],
+        "filled": 5,
+        "avg_ttf": 14.2,
+        "on_time": 4,
+        "vacancies": 13
+      },
+      "resume_screening": 12
+    },
+    {
+      "end": "2026-07-31",
+      "start": "2026-07-01",
+      "period": "pim",
+      "source": [
+        {
+          "hired": 0,
+          "label": "Facebook",
+          "phone": 3,
+          "applicants": 0
+        },
+        {
+          "hired": 0,
+          "label": "JobTopGun",
+          "phone": 1,
+          "applicants": 0
+        },
+        {
+          "hired": 1,
+          "label": "Referral",
+          "phone": 1,
+          "applicants": 0
+        }
+      ],
+      "pipeline": {
+        "Test": 1,
+        "Offer": 1,
+        "HR Interview": 7,
+        "Phone Screen": 5,
+        "Line Interview": 2,
+        "Reference Check": 1
+      },
+      "scenario": "jul-pim",
+      "waterfall": {
+        "opening": 3,
+        "new_open": 4,
+        "reopened": 0,
+        "requisitions": 6,
+        "actual_closing": 6,
+        "effective_fills": 1,
+        "acceptance_movements": 1
+      },
+      "performance": {
+        "late": 0,
+        "cells": [
+          {
+            "new": 2,
+            "band": "NML",
+            "site": "HQ",
+            "filled": 0,
+            "vacancies": 4,
+            "replacement": 2
+          },
+          {
+            "new": 0,
+            "band": "NML",
+            "site": "KT1",
+            "filled": 0,
+            "vacancies": 1,
+            "replacement": 1
+          },
+          {
+            "new": 0,
+            "band": "FML",
+            "site": "KT2",
+            "filled": 0,
+            "vacancies": 1,
+            "replacement": 1
+          },
+          {
+            "new": 0,
+            "band": "NML",
+            "site": "KT2",
+            "filled": 1,
+            "vacancies": 1,
+            "replacement": 1
+          }
+        ],
+        "filled": 1,
+        "avg_ttf": 16,
+        "on_time": 1,
+        "vacancies": 7
+      },
+      "resume_screening": 5
+    },
+    {
+      "end": "2026-10-04",
+      "start": "2026-10-01",
+      "period": "mtd",
+      "source": [],
+      "pipeline": {},
+      "scenario": "oct-mtd",
+      "waterfall": {
+        "opening": 0,
+        "new_open": 0,
+        "reopened": 0,
+        "requisitions": 0,
+        "actual_closing": 0,
+        "effective_fills": 0,
+        "acceptance_movements": 0
+      },
+      "performance": {
+        "late": 0,
+        "cells": null,
+        "filled": 0,
+        "avg_ttf": null,
+        "on_time": 0,
+        "vacancies": 0
+      },
+      "resume_screening": 0
+    },
+    {
+      "end": "2026-09-30",
+      "start": "2026-09-01",
+      "period": "pim",
+      "source": [
+        {
+          "hired": 0,
+          "label": "JobBKK",
+          "phone": 1,
+          "applicants": 28
+        },
+        {
+          "hired": 0,
+          "label": "JobsDB",
+          "phone": 0,
+          "applicants": 27
+        },
+        {
+          "hired": 0,
+          "label": "JobThai",
+          "phone": 1,
+          "applicants": 25
+        },
+        {
+          "hired": 0,
+          "label": "Others",
+          "phone": 0,
+          "applicants": 37
+        }
+      ],
+      "pipeline": {
+        "Test": 0,
+        "HR Interview": 2,
+        "Phone Screen": 2,
+        "Line Interview": 2
+      },
+      "scenario": "sep-pim",
+      "waterfall": {
+        "opening": 9,
+        "new_open": 0,
+        "reopened": 0,
+        "requisitions": 6,
+        "actual_closing": 9,
+        "effective_fills": 0,
+        "acceptance_movements": 0
+      },
+      "performance": {
+        "late": 0,
+        "cells": [
+          {
+            "new": 3,
+            "band": "NML",
+            "site": "HQ",
+            "filled": 0,
+            "vacancies": 8,
+            "replacement": 5
+          },
+          {
+            "new": 1,
+            "band": "NML",
+            "site": "KT2",
+            "filled": 0,
+            "vacancies": 1,
+            "replacement": 0
+          }
+        ],
+        "filled": 0,
+        "avg_ttf": null,
+        "on_time": 0,
+        "vacancies": 9
+      },
+      "resume_screening": 2
+    }
+  ]
+}

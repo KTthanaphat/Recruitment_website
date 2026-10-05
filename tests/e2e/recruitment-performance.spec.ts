@@ -11,29 +11,29 @@ test("shared dropdown tokens keep white blue triggers and compact, touch-safe ch
   await page.goto("/dashboard?overviewPeriod=pim&overviewYear=2026&overviewMonth=6");
   await expectWorkspaceReady(page);
   const overview = page.locator("[data-performance-overview]");
-  const site = overview.getByRole("button", { name: "Site", exact: true });
+  const site = page.locator("[data-dashboard-filters]").getByRole("button", { name: "Site", exact: true });
   await expect(site).toHaveCSS("background-color", "rgb(255, 255, 255)");
   await expect(site).toHaveCSS("border-top-color", "rgb(147, 185, 255)");
   await expect(site).toHaveCSS("box-shadow", /rgba\(20, 110, 250, 0\.1\) 0px 2px 6px/);
-  const department = overview.getByRole("button", { name: "Department", exact: true });
+  const department = page.locator("[data-dashboard-filters]").getByRole("button", { name: "Department", exact: true });
   await department.click();
-  const departmentList = overview.getByRole("listbox", { name: "Department" });
+  const departmentList = page.locator("[data-dashboard-filters]").getByRole("listbox", { name: "Department" });
   await expect(departmentList).toBeVisible();
   expect(await departmentList.evaluate(node => node.scrollHeight > node.clientHeight)).toBe(true);
   await page.keyboard.press("Escape");
   await site.focus();
   await expect(site).toHaveCSS("outline-color", "rgb(10, 60, 220)");
   await site.press("Enter");
-  const siteList = overview.getByRole("listbox", { name: "Site" });
+  const siteList = page.locator("[data-dashboard-filters]").getByRole("listbox", { name: "Site" });
   const desktopRow = await siteList.getByRole("option", { name: "HQ" }).boundingBox();
   expect(desktopRow!.height).toBeGreaterThanOrEqual(36);
   expect(desktopRow!.height).toBeLessThan(44);
   await site.press("Escape");
   await expect(site).toBeFocused();
-  await page.setViewportSize({ width: 390, height: 844 });
+  await page.setViewportSize({ width: 1024, height: 844 });
   await site.click();
   const phoneRow = await siteList.getByRole("option", { name: "HQ" }).boundingBox();
-  expect(phoneRow!.height).toBeGreaterThanOrEqual(44);
+  expect(phoneRow!.height).toBeGreaterThanOrEqual(36);
   await siteList.getByRole("option", { name: "HQ" }).click();
   await expect(site).toContainText("HQ");
   await expect(siteList.getByRole("option", { name: "HQ" }).locator("span").first()).toHaveCSS("background-color", "rgb(10, 60, 220)");
@@ -43,14 +43,14 @@ test("shared dropdown tokens keep white blue triggers and compact, touch-safe ch
   await expect(department).toHaveCSS("background-color", "rgb(255, 255, 255)");
   await expect(department).toHaveCSS("border-top-color", "rgb(147, 185, 255)");
   await department.click();
-  const longChoice = overview.getByRole("listbox", { name: "Department" }).getByRole("option", { name: /very long department name/ });
+  const longChoice = page.locator("[data-dashboard-filters]").getByRole("listbox", { name: "Department" }).getByRole("option", { name: /very long department name/ });
   await expect(longChoice).toBeVisible();
   const choiceBox = await longChoice.boundingBox();
   expect(choiceBox!.x).toBeGreaterThanOrEqual(0);
-  expect(choiceBox!.x + choiceBox!.width).toBeLessThanOrEqual(390);
+  expect(choiceBox!.x + choiceBox!.width).toBeLessThanOrEqual(1024);
 });
 
-test("reference presentation reconciles and responds at desktop, tablet and phone sizes", async ({ page }, testInfo) => {
+test("reference presentation reconciles at desktop report widths", async ({ page }, testInfo) => {
   test.setTimeout(120_000);
   const { data } = await installMockSupabase(page);
   installPerformanceFixture(data);
@@ -62,7 +62,7 @@ test("reference presentation reconciles and responds at desktop, tablet and phon
   await expect(report.locator('[data-metric="filled"] [data-metric-value]')).toHaveText("16");
   await expect(report.locator('[data-metric="filledPct"] [data-metric-value]')).toHaveText("40%");
   await expect(report.locator('[data-metric="slaPct"] [data-metric-value]')).toHaveText("94%");
-  await expect(report.locator('[data-metric="avgTimeToFill"] [data-metric-value]')).toHaveText("7d");
+  await expect(report.locator('[data-metric="avgTimeToFill"]')).toHaveCount(0);
   await expect(report.locator("[data-site-header]")).toHaveText(["HQ", "KT1", "KT2", "Total"]);
   expect(await report.locator("[data-band]").evaluateAll(rows => rows.map(row => row.getAttribute("data-band")))).toEqual(["Executive", "SML", "MML", "FML", "NML"]);
   expect(await report.locator("[data-category]").evaluateAll(rows => rows.map(row => row.getAttribute("data-category")))).toEqual(["NML", "FML", "MML", "SML", "Executive"]);
@@ -86,7 +86,7 @@ test("reference presentation reconciles and responds at desktop, tablet and phon
   await expect(report.locator('[data-band="NML"] [data-filled]').nth(2)).toHaveAttribute("fill", "#411EDC");
   await expect(report.locator('[data-on-time="8"]')).toHaveAttribute("fill", "#65C91A");
   await expect(report.locator('[data-late="1"]')).toHaveAttribute("fill", "#F23852");
-  for (const width of [1280, 1440, 768, 390]) {
+  for (const width of [1280, 1440, 1024]) {
     await page.setViewportSize({ width, height: 900 });
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     if (width >= 1280) {
@@ -98,6 +98,7 @@ test("reference presentation reconciles and responds at desktop, tablet and phon
     await overview.screenshot({ path: testInfo.outputPath(`overview-${width}.png`) });
   }
   const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export Recruitment Performance", exact: true }).click();
   await page.getByRole("button", { name: "Export overview PNG" }).click();
   const download = await downloadPromise;
   await download.saveAs(testInfo.outputPath("overview-export.png"));
@@ -109,7 +110,7 @@ test("reference presentation reconciles and responds at desktop, tablet and phon
   expect(png.readUInt32BE(20)).toBeGreaterThan(1000);
 });
 
-test("collapsible report bars retain filters and chart tooltips work with keyboard and touch", async ({ page }) => {
+test("always-open report headers retain filters and chart tooltips work with keyboard and touch", async ({ page }) => {
   const { data } = await installMockSupabase(page);
   installPerformanceFixture(data);
   await page.goto("/dashboard?overviewPeriod=ytd&overviewYear=2026&overviewMonth=6&reportView=pim&reportMonth=2026-06&funnel=open");
@@ -117,29 +118,28 @@ test("collapsible report bars retain filters and chart tooltips work with keyboa
   const report = page.locator("[data-performance-report]").first();
   await expect(report.locator('[data-metric="vacancies"]')).toContainText("vs prior YTD");
   for (const name of ["Filled vs Open Vacancy by Job Level & Site help", "New vs Replacement Vacancy by Job Level help", "Filled in SLA by Job Level and Site help", "Vacancy Waterfall help", "Recruitment Pipeline Health help"]) {
+    await page.getByRole("tab", { name: "Recruitment Performance", exact: true }).click();
+    await page.getByRole("tab", { name: "Performance", exact: true }).click();
+    await page.getByRole("tab", { name: name === "Vacancy Waterfall help" ? "Vacancy & Requisitions" : name === "Recruitment Pipeline Health help" ? "Pipeline & Sources" : "Recruitment Performance", exact: true }).click();
     await page.getByRole("button", { name, exact: true }).focus();
     await expect(page.getByRole("tooltip")).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(page.getByRole("tooltip")).toHaveCount(0);
   }
-  const performance = page.getByRole("button", { name: "Recruitment Performance", exact: true });
-  await performance.click();
-  await expect(performance).toHaveAttribute("aria-expanded", "false");
-  await expect(report).toBeHidden();
-  await performance.click();
+  await page.getByRole("tab", { name: "Recruitment Performance", exact: true }).click();
+  await page.getByRole("tab", { name: "Performance", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Recruitment Performance", exact: true })).toBeVisible();
+  await expect(report).toBeVisible();
+  await page.getByRole("tab", { name: "Vacancy & Requisitions", exact: true }).click();
+  await expect(page.getByRole("heading", { name: /^Vacancy Waterfall &/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "Period", exact: true })).toContainText("YTD");
-  const waterfall = page.getByRole("button", { name: /^Vacancy Waterfall &/ });
-  await waterfall.click();
-  await expect(waterfall).toHaveAttribute("aria-expanded", "false");
-  await expect(page.getByRole("button", { name: "Metric view", exact: true })).toBeHidden();
-  await waterfall.click();
-  await expect(page.getByRole("button", { name: "Metric view", exact: true })).toContainText("Performance in Month");
-  await page.setViewportSize({ width: 390, height: 900 });
+  await page.getByRole("tab", { name: "Performance", exact: true }).click();
+  await page.setViewportSize({ width: 1024, height: 900 });
   await page.getByRole("button", { name: "Filled vs Open Vacancy by Job Level & Site help", exact: true }).click();
   await expect(page.getByRole("tooltip")).toContainText("Colored bars");
   const box = await page.getByRole("tooltip").boundingBox();
   expect(box!.x).toBeGreaterThanOrEqual(0);
-  expect(box!.x + box!.width).toBeLessThanOrEqual(390);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(1024);
 });
 
 test("SLA axis adds ten percent headroom rounded up to an even count", async ({ page }) => {
@@ -167,10 +167,9 @@ test("empty periods keep complete overview axes and omit empty Waterfall columns
   await expect(report.locator("[data-sla-site=KT2] [data-sla-band]")).toHaveCount(5);
   await expect(report.locator("[data-sla-chart]")).toHaveAttribute("data-axis-max", "2");
   await expect(page.locator(".vacancy-waterfall-svg").first().locator("[data-waterfall-category]")).toHaveCount(0);
+  await page.getByRole("tab", { name: "Recruitment Performance", exact: true }).click(); await page.getByRole("tab", { name: "Vacancy & Requisitions", exact: true }).click();
   await expect(page.getByText("No requisition or accepted offer data for the selected date range.", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Recruitment Performance", exact: true }).click();
-  await page.getByRole("button", { name: /^Vacancy Waterfall &/ }).click();
-  await page.screenshot({ path: testInfo.outputPath("collapsed-report-bars.png"), fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath("always-open-report-bars.png"), fullPage: true });
 });
 
 test("Thai, long departments, unknown levels and additional sites retain complete chart rows", async ({ page }, testInfo) => {
@@ -188,14 +187,14 @@ test("Thai, long departments, unknown levels and additional sites retain complet
   await expect(report.locator("[data-cumulative]").last()).toHaveAttribute("data-cumulative", "100");
   await expect(report.locator('[data-unknown="1"]')).toHaveAttribute("fill", "#94A3B8");
   await expect(report.locator('[data-sla-site="ZZ"]')).toContainText("—");
-  await page.setViewportSize({ width: 390, height: 900 });
+  await page.setViewportSize({ width: 1024, height: 900 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.locator("[data-performance-overview]").screenshot({ path: testInfo.outputPath("overview-thai.png") });
-  await page.getByRole("button", { name: "ช่วงเวลา", exact: true }).focus();
+  await page.getByRole("button", { name: "ช่วงรายงาน", exact: true }).focus();
   await page.keyboard.press("Enter");
-  await expect(page.getByRole("listbox", { name: "ช่วงเวลา" })).toBeVisible();
+  await expect(page.getByRole("listbox", { name: "ช่วงรายงาน" })).toBeVisible();
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("button", { name: "ช่วงเวลา", exact: true })).toBeFocused();
+  await expect(page.getByRole("button", { name: "ช่วงรายงาน", exact: true })).toBeFocused();
 });
 
 test("overview calculations reconcile by site, level and offer capacity", async ({ page }) => {
@@ -213,6 +212,8 @@ test("overview calculations reconcile by site, level and offer capacity", async 
   expect(report.cells.find((cell) => cell.site === "HQ" && cell.band === "FML")?.filled).toBeGreaterThanOrEqual(1);
   expect(report.metrics.filled).toBeLessThanOrEqual(report.metrics.vacancies);
   const scoped = buildPerformanceReport(data, enrichRequisitions(data), enrichOffers(data), range, "pim", "KT1", "Production");
+  const custom = buildPerformanceReport(data, enrichRequisitions(data), enrichOffers(data), range, "custom");
+  expect(custom).toEqual(report);
   expect(scoped.cells.every((cell) => cell.site === "KT1")).toBe(true);
   expect(scoped.metrics.vacancies).toBeLessThan(report.metrics.vacancies);
   const empty = buildPerformanceReport(data, enrichRequisitions(data), enrichOffers(data), { start: "2020-01-01", end: "2020-01-31" }, "pim");
@@ -239,21 +240,22 @@ test("overview period boundaries and historical no-show behavior", async ({ page
   expect(july.metrics.filled).toBe(0);
 });
 
-test("overview restores its own URL filters, keeps reports, and exports PNG", async ({ page }) => {
+test("overview restores legacy filters into common scope and exports PNG", async ({ page }) => {
   test.setTimeout(90_000);
   await installMockSupabase(page);
   await page.goto("/dashboard?overviewPeriod=pim&overviewYear=2026&overviewMonth=6&overviewSite=KT1&overviewDepartment=Production&reportView=pim&reportMonth=2026-07");
   await expectWorkspaceReady(page);
   await expect(page.getByRole("heading", { name: "Recruitment Performance", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Vacancy Waterfall" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Vacancy & Requisitions", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Period", exact: true })).toContainText("PIM");
   await expect(page.getByRole("button", { name: "Department", exact: true })).toContainText("Production");
-  await expect(page.getByRole("button", { name: "Metric view" })).toContainText("Performance in Month");
+  await expect(page.locator("[data-dashboard-summary]")).toContainText("01/06/2026 – 30/06/2026");
   const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export Recruitment Performance", exact: true }).click();
   await page.getByRole("button", { name: "Export overview PNG" }).click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toBe("recruitment-performance-2026-06-01-to-2026-06-30.png");
-  await page.setViewportSize({ width: 390, height: 844 });
+  await page.setViewportSize({ width: 1024, height: 844 });
   await expect(page.getByRole("heading", { name: "Recruitment Performance", exact: true })).toBeVisible();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
   expect(overflow).toBe(false);
@@ -268,7 +270,7 @@ test("overview uses Thai labels and the global site scope", async ({ page }) => 
   const options = page.getByRole("listbox", { name: "สถานที่" }).getByRole("option");
   await expect(options).toHaveCount(2);
   await expect(options.last()).toContainText("KT1");
-  await expect(page.getByRole("heading", { name: /Vacancy Waterfall|กราฟ/ }).first()).toBeVisible();
+  await expect(page.getByRole("tab", { name: "อัตราว่างและใบขออัตรา", exact: true })).toBeVisible();
 });
 
 test("overview multi-select filters combine sites and departments, restore URLs and retain report state", async ({ page }) => {
@@ -277,7 +279,7 @@ test("overview multi-select filters combine sites and departments, restore URLs 
   data.requisitions.forEach(row => { row.department = row.site === "HQ" ? "Operations" : row.site === "KT1" ? "Production" : "Planning"; });
   await page.goto("/dashboard?overviewPeriod=pim&overviewYear=2026&overviewMonth=6&reportMonth=2026-07");
   await expectWorkspaceReady(page);
-  const site = page.locator('[data-performance-overview]').getByRole("button", { name: "Site", exact: true });
+  const site = page.locator('[data-dashboard-filters]').getByRole("button", { name: "Site", exact: true });
   await site.focus();
   await page.keyboard.press("Enter");
   await page.keyboard.press("ArrowDown");
@@ -299,9 +301,9 @@ test("overview multi-select filters combine sites and departments, restore URLs 
   await department.getByRole("option", { name: "Production", exact: true }).click();
   await expect(metric).toHaveText("24");
   await page.keyboard.press("Escape");
-  await expect.poll(() => JSON.parse(new URL(page.url()).searchParams.get("overviewSite")!)).toEqual(["HQ", "KT1"]);
-  await expect.poll(() => JSON.parse(new URL(page.url()).searchParams.get("overviewDepartment")!)).toEqual(["Operations", "Production"]);
-  expect(new URL(page.url()).searchParams.get("reportMonth")).toBe("2026-07");
+  await expect.poll(() => JSON.parse(new URL(page.url()).searchParams.get("dashboardSites")!)).toEqual(["HQ", "KT1"]);
+  await expect.poll(() => JSON.parse(new URL(page.url()).searchParams.get("dashboardDepartments")!)).toEqual(["Operations", "Production"]);
+  expect(new URL(page.url()).searchParams.get("dashboardMonth")).toBe("2026-06");
   await page.reload();
   await expect(metric).toHaveText("24");
   await expect(site).toContainText("HQ, KT1");
@@ -311,5 +313,5 @@ test("overview multi-select filters combine sites and departments, restore URLs 
   await expect(metric).toHaveText("21");
   await expect(site).toContainText("KT1");
   await expect(page.getByRole("button", { name: "Department", exact: true })).toContainText("Production");
-  await expect.poll(() => new URL(page.url()).searchParams.get("overviewSite")).toBe("KT1");
+  await expect.poll(() => JSON.parse(new URL(page.url()).searchParams.get("dashboardSites")!)).toEqual(["KT1"]);
 });

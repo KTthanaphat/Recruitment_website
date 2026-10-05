@@ -1,0 +1,168 @@
+{
+  "project": "mppnlkldlctvketcsald",
+  "date": "2026-10-04",
+  "scenario": "aug-pim",
+  "role": "authenticated system administrator",
+  "scope": "August 2026 PIM; header All Site/PIC/Priority; common All Site/Department/Level; Channel All",
+  "checks": 20,
+  "results": [
+    {
+      "field": "Performance vacancies",
+      "actual": 13,
+      "expected": 13
+    },
+    {
+      "field": "Performance fills",
+      "actual": 4,
+      "expected": 4
+    },
+    {
+      "field": "Acceptance contributions",
+      "actual": 4,
+      "expected": 4
+    },
+    {
+      "field": "Performance on-time",
+      "actual": 3,
+      "expected": 3
+    },
+    {
+      "field": "Performance late",
+      "actual": 1,
+      "expected": 1
+    },
+    {
+      "field": "Average time-to-fill",
+      "actual": 13.75,
+      "expected": 13.75
+    },
+    {
+      "field": "KPI vacancies",
+      "actual": 13,
+      "expected": 13
+    },
+    {
+      "field": "KPI fills",
+      "actual": 4,
+      "expected": 4
+    },
+    {
+      "field": "Pipeline Applicants",
+      "actual": 30,
+      "expected": 30
+    },
+    {
+      "field": "Pipeline Resume Screening",
+      "actual": 8,
+      "expected": 8
+    },
+    {
+      "field": "Pipeline Phone Screening",
+      "actual": 8,
+      "expected": 8
+    },
+    {
+      "field": "Pipeline HR Interview",
+      "actual": 8,
+      "expected": 8
+    },
+    {
+      "field": "Pipeline Line Interview",
+      "actual": 7,
+      "expected": 7
+    },
+    {
+      "field": "Pipeline Test",
+      "actual": 7,
+      "expected": 7
+    },
+    {
+      "field": "Pipeline Reference Check",
+      "actual": 6,
+      "expected": 6
+    },
+    {
+      "field": "Pipeline Offer",
+      "actual": 5,
+      "expected": 5
+    },
+    {
+      "field": "Source per channel",
+      "actual": [
+        {
+          "label": "Facebook",
+          "applicants": 20,
+          "phone": 2,
+          "hired": 2
+        },
+        {
+          "label": "JobsDB",
+          "applicants": 0,
+          "phone": 1,
+          "hired": 1
+        },
+        {
+          "label": "JobThai",
+          "applicants": 10,
+          "phone": 2,
+          "hired": 1
+        },
+        {
+          "label": "Referral",
+          "applicants": 0,
+          "phone": 3,
+          "hired": 1
+        }
+      ],
+      "expected": [
+        {
+          "label": "Facebook",
+          "applicants": 20,
+          "phone": 2,
+          "hired": 2
+        },
+        {
+          "label": "JobsDB",
+          "applicants": 0,
+          "phone": 1,
+          "hired": 1
+        },
+        {
+          "label": "JobThai",
+          "applicants": 10,
+          "phone": 2,
+          "hired": 1
+        },
+        {
+          "label": "Referral",
+          "applicants": 0,
+          "phone": 3,
+          "hired": 1
+        }
+      ]
+    },
+    {
+      "field": "Sourcing contributions",
+      "actual": 30,
+      "expected": 30
+    },
+    {
+      "field": "Phone contributions",
+      "actual": 8,
+      "expected": 8
+    },
+    {
+      "field": "Hire contributions",
+      "actual": 5,
+      "expected": 5
+    }
+  ],
+  "performanceSheets": [
+    "Summary Data",
+    "Source Data"
+  ],
+  "pipelineSheets": [
+    "Summary Data",
+    "Source Data"
+  ]
+}

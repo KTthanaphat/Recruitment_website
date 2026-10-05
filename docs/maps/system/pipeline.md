@@ -8,6 +8,8 @@ Read this node for this feature only. It indexes ownership; product rules remain
 
 ### F19: Record detail drawers and candidate journey/profile
 
+Dashboard Stage Bottleneck detail entry: [report loader](../../../src/lib/dashboard-report-loader.ts) `hydrateReportCandidate` → [RecruitmentWorkspace](../../../src/components/RecruitmentWorkspace.tsx) existing current-record drawer; report owners/tests are indexed under [Reporting subviews](reporting.md#risk-and-bottleneck-subviews). History normalization and unavailable-deadline contract are owned by [Dashboard behavior](../../WEBSITE_STRUCTURE.md#risk-and-bottleneck-subviews).
+
 - Owner/search: [RecruitmentWorkspace.tsx](../../../src/components/RecruitmentWorkspace.tsx), `ui/Drawer.tsx`, `ui/Operations.tsx`, `ui/StageRail.tsx`.
 - Related symbols: URL detail state; action popup, profile copy, disclosure/timeline surfaces.
 - Entry: `/requisitions`, `/candidates`, `/offers`.
@@ -17,7 +19,7 @@ Read this node for this feature only. It indexes ownership; product rules remain
 
 - Owner/search: [src/components/pipeline/PipelineBoardView.tsx](../../../src/components/pipeline/PipelineBoardView.tsx), [src/components/RecruitmentWorkspace.tsx](../../../src/components/RecruitmentWorkspace.tsx), [supabase/schemas/50_rpc_functions.sql](../../../supabase/schemas/50_rpc_functions.sql).
 - Related symbols: derived `log_date`, optional estimate, audit history, correction.
-- Rejection reasons and targeted Configuration catalog refresh: [FailureReasonFields.tsx](../../../src/components/rejection-reasons/FailureReasonFields.tsx), [RejectionReasonAdmin.tsx](../../../src/components/rejection-reasons/RejectionReasonAdmin.tsx), [ConfigurationView.tsx](../../../src/components/configuration/ConfigurationView.tsx), [reason helpers](../../../src/lib/rejection-reasons.ts), and [seed](../../../supabase/schemas/15_rejection_reason_seed.sql); contract: [Candidate Pipeline](../../WEBSITE_STRUCTURE.md#recruitment-workflows); checks: [pipeline actions](../../../tests/e2e/pipeline-actions.spec.ts) and [catalog controls](../../../tests/e2e/rejection-reason-admin.spec.ts).
+- Rejection reasons and targeted Configuration catalog refresh: [FailureReasonFields.tsx](../../../src/components/rejection-reasons/FailureReasonFields.tsx), [ConfigurationItemEditor.tsx](../../../src/components/configuration/ConfigurationItemEditor.tsx), [ConfigurationView.tsx](../../../src/components/configuration/ConfigurationView.tsx), [reason helpers](../../../src/lib/rejection-reasons.ts), and [seed](../../../supabase/schemas/15_rejection_reason_seed.sql); contract: [Candidate Pipeline](../../WEBSITE_STRUCTURE.md#recruitment-workflows); checks: [pipeline actions](../../../tests/e2e/pipeline-actions.spec.ts) and [catalog controls](../../../tests/e2e/rejection-reason-admin.spec.ts).
 - Entry: `/pipeline`.
 - Existing check/search: [tests/e2e/pipeline-actions.spec.ts](../../../tests/e2e/pipeline-actions.spec.ts), [tests/e2e/pipeline-board.spec.ts](../../../tests/e2e/pipeline-board.spec.ts), [tests/db/candidate-pipeline-paired-status.sql](../../../tests/db/candidate-pipeline-paired-status.sql).
 
@@ -27,6 +29,10 @@ Read this node for this feature only. It indexes ownership; product rules remain
 - Related symbols: Line Interview/Test consecutive canonical rounds; Activity/Status/Accum membership; grouped Waterfall site braces.
 - Entry: `/home`, `/pipeline`, `/dashboard`.
 - Existing check/search: pipeline, dashboard, bilingual, and DB pipeline coverage.
+
+### Configuration browser
+
+[ConfigurationView.tsx](../../../src/components/configuration/ConfigurationView.tsx) owns tree, contents, breadcrumbs, catalog refresh and navigation. [configuration-folders.ts](../../../src/lib/configuration-folders.ts) derives folders, search and paths; [ConfigurationItemEditor.tsx](../../../src/components/configuration/ConfigurationItemEditor.tsx) owns drafts/writes/refresh-only retries. Contract: [Configuration behavior](../../WEBSITE_STRUCTURE.md#configuration-page), [folder design](../../design/configuration.md). Checks: [catalog/browser](../../../tests/e2e/rejection-reason-admin.spec.ts). Template consumers: [Integrations](integrations.md). Shared draft/list/header Active presentation: [OnOffSwitch.tsx](../../../src/components/ui/OnOffSwitch.tsx), [switch contract](../../design/controls.md#shared-onoff-switch).
 
 ## Dependency edges
 

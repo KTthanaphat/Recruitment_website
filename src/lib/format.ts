@@ -112,3 +112,11 @@ export function emptyToNull(value: FormDataEntryValue | null) {
 export function boolFromForm(value: FormDataEntryValue | null) {
   return value === "on" || value === "1" || value === "true";
 }
+
+/** Gregorian display only; stored ISO dates and comparison boundaries are unchanged. */
+export function formatCompactDateRange(range: { start: string; end: string }) {
+  const dayMonth = (date: string) => `${date.slice(8, 10)}/${date.slice(5, 7)}`;
+  const full = (date: string) => `${dayMonth(date)}/${date.slice(0, 4)}`;
+  if (range.start === range.end) return full(range.start);
+  return `${range.start.slice(0, 4) === range.end.slice(0, 4) ? dayMonth(range.start) : full(range.start)} – ${full(range.end)}`;
+}
