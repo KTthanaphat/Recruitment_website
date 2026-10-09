@@ -2236,7 +2236,8 @@ function RequisitionFields({
       <Field label={translate(language, "levelL")}>
         <CreateSelectInput name="level" defaultValue={selected?.level ?? ""}>
           <option value="">{translate(language, "selectLevel")}</option>
-          {Array.from({ length: 15 }, (_, level) => <option key={level} value={String(level)}>{level}</option>)}
+          {selected?.level && !/^(0|[1-9]|1[0-4])$/.test(selected.level) ? <option value={selected.level}>{selected.level}</option> : null}
+          {Array.from({ length: 15 }, (_, level) => <option key={level} value={String(level)}>{`L${level}`}</option>)}
         </CreateSelectInput>
       </Field>
       <Field label={translate(language, "headCount")}><TextInput name="head_count" type="number" min={1} value={headCount} onChange={(event) => changeHeadCount(event.target.value)} required /></Field>
@@ -3584,7 +3585,14 @@ function buildDetailBodyV2(
             { label: translate(language, "requisitionId"), value: requisition.doc_id, copyValue: requisition.doc_id, icon: <Hash size={18} /> },
             { label: translate(language, "prApprovedDate"), value: formatDate(requisition.pr_approved_date, language), icon: <CalendarDays size={18} /> },
             { label: translate(language, "position"), value: requisition.position, icon: <BriefcaseBusiness size={18} /> },
-            { label: translate(language, "jobLevel"), value: requisition.level ?? "—", icon: <Layers3 size={18} /> },
+            {
+              label: translate(language, "jobLevel"),
+              value: requisition.level ? (/^(0|[1-9]|1[0-4])$/.test(requisition.level) ? `L${requisition.level}` : requisition.level) : "—",
+              icon: <Layers3 size={18} />,
+              action: canWrite && canManageRequisitionPriority(data.profile, requisition)
+                ? <Button type="button" size="icon-sm" variant="ghost" className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9" icon={<Pencil size={16} aria-hidden="true" />} aria-label={translate(language, "editJobLevel")} title={translate(language, "editJobLevel")} onClick={() => onChangeRequisition(requisition.doc_id)} />
+                : null
+            },
             { label: translate(language, "site"), value: requisition.site || "—", icon: requisition.site === "HQ" ? <Building2 size={18} /> : <Factory size={18} /> },
             { label: translate(language, "department"), value: requisition.department || "—", icon: <Building2 size={18} /> },
             { label: translate(language, "section"), value: requisition.section ?? "—", icon: <Network size={18} /> },
@@ -4143,7 +4151,7 @@ function buildPipelineFunnelRows(applicantTotal: number, stageCounts: PipelineFu
   });
 }
 
-type DetailGridRow = [string, string] | { label: string; value: string; copyValue?: string | null; icon?: ReactNode };
+type DetailGridRow = [string, string] | { label: string; value: string; copyValue?: string | null; icon?: ReactNode; action?: ReactNode };
 
 function DetailGrid({ rows, workspace = false, language = "en" }: { rows: DetailGridRow[]; workspace?: boolean; language?: Language }) {
   const [copiedLabel, setCopiedLabel] = useState<string | null>(null);
@@ -4177,6 +4185,7 @@ function DetailGrid({ rows, workspace = false, language = "en" }: { rows: Detail
           {workspace ? <span className="grid size-9 place-items-center rounded-lg bg-[#F1F6FC] text-primary" aria-hidden="true">{item.icon ?? detailFieldGlyph(index)}</span> : null}
           <div className="min-w-0"><dt className="text-[11px] font-medium uppercase tracking-normal leading-tight text-slate">{item.label}</dt>
           <dd className="mt-px break-words text-sm font-semibold leading-tight text-navy">{item.value}</dd></div>
+          {workspace ? item.action : null}
           {workspace && copyValueText ? <Button type="button" size="icon-sm" variant="ghost" className="text-slate hover:text-primary" icon={copied ? <CopyCheck size={16} aria-hidden="true" /> : <Copy size={16} aria-hidden="true" />} aria-label={copied ? translate(language, "copied") : translate(language, "copyValue", { label: item.label })} title={copied ? translate(language, "copied") : translate(language, "copyValue", { label: item.label })} onClick={() => void copyValue(copyValueText, item.label)} /> : null}
         </div>
       })}
