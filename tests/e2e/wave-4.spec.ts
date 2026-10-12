@@ -328,7 +328,7 @@ test("group details use compact checkbox-style channel controls, Save, and icon-
     group_id: "GRP-ENG",
     channel: "fb",
     enabled: false,
-    effective_week: "2026-07-06",
+    effective_week: "2026-07-04",
     expected_updated_at: "2026-07-01T00:00:00"
   });
 
