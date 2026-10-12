@@ -9,6 +9,7 @@ type MockUserRole = Role;
 type MockSupabaseOptions = {
   language?: Language | null;
   role?: MockUserRole;
+  now?: Date;
 };
 
 export type MockRpcCall = {
@@ -40,7 +41,7 @@ export async function installMockSupabase(page: Page, options: MockSupabaseOptio
   const userId = roleUserIds[role];
   const userEmail = `${role.replace("_", ".")}@qa.example.com`;
 
-  await page.clock.setFixedTime(fixtureNow);
+  await page.clock.setFixedTime(options.now ?? fixtureNow);
 
   await page.addInitScript(
     ({ key, id, email, language: savedLanguage }) => {

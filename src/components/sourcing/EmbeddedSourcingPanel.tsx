@@ -7,7 +7,6 @@ import { Tag } from "@/components/ui/Tag";
 import { SOURCING_CHANNELS } from "@/lib/constants";
 import { formatDate, formatSourcingWeekRange } from "@/lib/format";
 import { translate } from "@/lib/i18n/dictionary";
-import { sourcingDatabaseWeekStart } from "@/lib/dates";
 import { SOURCING_CHANNEL_COLORS } from "@/lib/sourcing-colors";
 import type { EnrichedSourcingGroup, Language, Profile, SourcingLifecycleRow, SourcingWeeklyUpdate } from "@/types/recruitment";
 
@@ -79,7 +78,7 @@ function SourcingDraftForm({ language, row, previousUpdate, previousApplicants, 
     if (invalid) { window.alert(translate(language, "applicantCountsWholeNumbers")); return; }
     const payload: Record<string, unknown> = {
       group_id: row.group.group_id,
-      week_start: sourcingDatabaseWeekStart(row.week_start),
+      week_start: row.week_start,
       ...Object.fromEntries(SOURCING_CHANNELS.map((channel) => [channel.enabled, enabled.has(channel.enabled)])),
       ...Object.fromEntries(SOURCING_CHANNELS.map((channel) => [channel.count, enabled.has(channel.enabled) ? draft[channel.count]?.trim() ?? "" : null]))
     };

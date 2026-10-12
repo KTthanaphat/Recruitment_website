@@ -31,6 +31,7 @@ export function sourcingCycleSaturday(value: string) {
   return date.toISOString().slice(0, 10);
 }
 
+// Legacy Monday-key lookup only. Production sourcing writes use the Saturday date.
 export function sourcingDatabaseWeekStart(cycleSaturday: string) {
   if (!cycleSaturday) return "";
   const date = new Date(`${cycleSaturday.slice(0, 10)}T00:00:00Z`);

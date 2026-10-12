@@ -297,6 +297,9 @@ Open requisition
 
 Sourcing:
 
+- Production sourcing writes use the selected Saturday reporting date unchanged for `week_start` and channel `effective_week`; do not shift it to Monday. Monday-key lookups remain a read compatibility fallback for older datasets.
+- Sourcing help and applicant-entry descriptions show the selected reporting period from the preceding Saturday through Friday in English and Thai.
+
 - Supported channels: Facebook, JobThai, JobTopGun, JobsDB, JobBKK, LinkedIn, Walk-in, Referral, Others.
 - Workspace > Sourcing shows every expected group update week in a bounded date list beside one selected-week applicant editor from 1024px; smaller widths stack them. Selecting a date synchronizes the week picker and `sourcingWeek` context. An unsaved applicant draft requires confirmation before switching weeks. Existing save, validation, and role rules remain.
 - A `group_id` can span sites when System Admin or Admin Recruiter adds a match. Site Recruiters may add requisitions only from a site already represented in the group; their normal assigned-site or matching-nickname/PIC permission still applies. Empty groups may take their first link as before. Admin-created mixed-site groups expose all represented sites throughout sourcing views. New Group remains limited to one site.
