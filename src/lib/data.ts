@@ -1,3 +1,4 @@
+import { loadRecruitmentHistory } from "@/lib/recruitment-history-loader";
 import { PROCESS_STAGES, SOURCING_CHANNELS } from "@/lib/constants";
 import { formatCandidateName } from "@/lib/format";
 import { countsTowardHeadcount } from "@/lib/offer-headcount";
@@ -48,12 +49,15 @@ export const emptyDashboardData: DashboardData = {
   interview_meetings: []
 };
 
+type SupabaseRows = PromiseLike<{ data: unknown; error: { message: string } | null; count?: number | null }>;
+type SupabaseOrderedRows = SupabaseRows & { range: (from: number, to: number) => SupabaseRows };
+
 type SupabaseLike = {
   from: (table: string) => {
-    select: (columns?: string) => {
-      order: (column: string, options?: { ascending?: boolean }) => PromiseLike<{ data: unknown; error: { message: string } | null }>;
+    select: (columns?: string, options?: { count: "exact" }) => {
+      order: (column: string, options?: { ascending?: boolean }) => SupabaseOrderedRows;
       limit: (count: number) => {
-        order: (column: string, options?: { ascending?: boolean }) => PromiseLike<{ data: unknown; error: { message: string } | null }>;
+        order: (column: string, options?: { ascending?: boolean }) => SupabaseRows;
       };
     };
   };
@@ -117,7 +121,7 @@ export async function loadDashboardData(client: SupabaseLike): Promise<Dashboard
     selectAll<Candidate>(client, "candidates", "updated_at"),
     selectAll<CandidateReference>(client, "candidate_references", "updated_at"),
     selectAll<CandidateReferenceCheck>(client, "candidate_reference_checks", "updated_at"),
-    selectLimited<RecruitmentLog>(client, "recruitment_logs", "created_at", 1000),
+    loadRecruitmentHistory(client),
     selectOptionalAll<RejectionReason>(client, "rejection_reasons", "sort_order"),
     selectAll<Offer>(client, "offers", "updated_at"),
     selectAll<SourcingWeeklyUpdate>(client, "sourcing_weekly_updates", "updated_at"),

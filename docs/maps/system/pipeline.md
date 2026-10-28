@@ -17,6 +17,8 @@ Dashboard Stage Bottleneck detail entry: [report loader](../../../src/lib/dashbo
 
 ### F22: Candidate Pipeline board/record register
 
+- Complete stage-history reads: [history loader](../../../src/lib/recruitment-history-loader.ts) pages by unique log_id with exact counts, so imported records cannot hide older candidates. No candidate re-upload is involved. Regression: [loader checks](../../../tests/unit/recruitment-history.test.cjs) and [candidate drawer](../../../tests/e2e/recruitment-history-loading.spec.ts).
+
 - Owner/search: [src/components/pipeline/PipelineBoardView.tsx](../../../src/components/pipeline/PipelineBoardView.tsx), [src/components/RecruitmentWorkspace.tsx](../../../src/components/RecruitmentWorkspace.tsx), [supabase/schemas/50_rpc_functions.sql](../../../supabase/schemas/50_rpc_functions.sql).
 - Related symbols: derived `log_date`, optional estimate, audit history, correction.
 - Rejection reasons and targeted Configuration catalog refresh: [FailureReasonFields.tsx](../../../src/components/rejection-reasons/FailureReasonFields.tsx), [ConfigurationItemEditor.tsx](../../../src/components/configuration/ConfigurationItemEditor.tsx), [ConfigurationView.tsx](../../../src/components/configuration/ConfigurationView.tsx), [reason helpers](../../../src/lib/rejection-reasons.ts), and [seed](../../../supabase/schemas/15_rejection_reason_seed.sql); contract: [Candidate Pipeline](../../WEBSITE_STRUCTURE.md#recruitment-workflows); checks: [pipeline actions](../../../tests/e2e/pipeline-actions.spec.ts) and [catalog controls](../../../tests/e2e/rejection-reason-admin.spec.ts).
