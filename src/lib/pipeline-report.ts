@@ -1,3 +1,4 @@
+import { assignmentGroup, reassignmentCounts } from "@/lib/applications";
 import { ACTIVE_PIPELINE_STAGES, PIPELINE_FUNNEL_STAGES, SOURCING_CHANNELS, pipelineDisplayLabel } from "@/lib/constants";
 import { SOURCING_CHANNEL_COLORS, UNKNOWN_SOURCING_CHANNEL_COLOR } from "@/lib/sourcing-colors";
 import { translate } from "@/lib/i18n/dictionary";
@@ -8,6 +9,7 @@ import type { SourceEffectivenessRow } from "@/components/dashboard/SourceEffect
 import type { PerformancePeriod } from "@/lib/recruitment-performance";
 import { dashboardLevelMatches, type DashboardLevel } from "@/lib/dashboard-filters";
 export type PipelineStageRecord = {
+    applicationId?: string;
     logId: number;
     candidateId: string;
     name: string;
@@ -47,6 +49,7 @@ export type PipelineSourcingRecord = {
     applicants: number;
 };
 export type PipelineReport = {
+    reassignments: { in: number; out: number };
     funnelRows: PipelineFunnelRow[];
     sourceRows: SourceEffectivenessRow[];
     requisitions: EnrichedRequisition[];
@@ -77,7 +80,7 @@ export function buildPipelineReport(data: DashboardData, candidateOffers: Offer[
     const resumeSeen = new Set<string>(), passedSeen = new Set<string>();
     const logs = data.recruitment_logs.filter(row => !row.superseded_at).map(log => ({ log, activity: dateOnly(log.result === 1 ? log.outcome_date ?? log.log_date : log.log_date) })).sort((a, b) => (a.activity ?? "").localeCompare(b.activity ?? "") || a.log.log_id - b.log.log_id);
     for (const { log, activity } of logs) {
-        const candidate = candidates.get(log.candidate_id), groupId = candidateGroup(log.candidate_id);
+        const candidate = candidates.get(log.candidate_id), groupId = assignmentGroup(data, log.result === null ? log.entry_assignment_id : log.outcome_assignment_id) ?? candidateGroup(log.candidate_id);
         if (!candidate || !groupId || !groupDocs[groupId] || !matches(candidate.channel) || !activity || activity < range.start || activity > range.end || !ACTIVE_PIPELINE_STAGES.includes(log.recruitment_process))
             continue;
         const resume = Number(log.recruitment_process === "Phone Screen" && !resumeSeen.has(candidate.candidate_id));
@@ -88,7 +91,7 @@ export function buildPipelineReport(data: DashboardData, candidateOffers: Offer[
         if (passed)
             passedSeen.add(key);
         const rawChannel = candidate.channel?.trim() ?? "";
-        stageRecords.push({ logId: log.log_id, candidateId: candidate.candidate_id, name: candidate.name, rawChannel, channel: display(rawChannel), groupId, docIds: groupDocs[groupId].join(", "), stage: log.recruitment_process, round: log.round, entry: log.log_date, outcome: log.outcome_date ?? null, activity, result: log.result, resume, passed, phone: Number(passed === 1 && log.recruitment_process === "Phone Screen") });
+        stageRecords.push({ applicationId: log.application_id, logId: log.log_id, candidateId: candidate.candidate_id, name: candidate.name, rawChannel, channel: display(rawChannel), groupId, docIds: groupDocs[groupId].join(", "), stage: log.recruitment_process, round: log.round, entry: log.log_date, outcome: log.outcome_date ?? null, activity, result: log.result, resume, passed, phone: Number(passed === 1 && log.recruitment_process === "Phone Screen") });
     }
     const hireSeen = new Set<string>();
     for (const offer of [...candidateOffers].sort((a, b) => (a.accepted_date ?? "").localeCompare(b.accepted_date ?? "") || a.offer_id - b.offer_id)) {
@@ -117,5 +120,5 @@ export function buildPipelineReport(data: DashboardData, candidateOffers: Offer[
     const stages = ["applicants", ...PIPELINE_FUNNEL_STAGES];
     const countStage = (key: string, channel?: string) => key === "applicants" ? sourcingRecords.filter(row => !channel || row.channel === channel).reduce((n, row) => n + row.applicants, 0) : stageRecords.filter(row => !channel || row.channel === channel).reduce((n, row) => n + (key === "Resume Screening" ? row.resume : row.stage === key ? row.passed : 0), 0);
     const funnelRows: PipelineFunnelRow[] = stages.map((key, index) => { const count = countStage(key), previous = index ? countStage(stages[index - 1]) : null; return { key, label: key === "applicants" ? translate(language, "applicants") : pipelineDisplayLabel(key as typeof PIPELINE_FUNNEL_STAGES[number], language), count, conversionRate: previous ? count / previous : null, yieldRate: applicants ? count / applicants : null, barRatio: applicants ? Math.min(count / applicants, 1) : null, segments: channels.map(label => ({ ...channelRow(label), count: countStage(key, label) })) }; });
-    return { funnelRows, sourceRows, requisitions: eligible, groupDocs, stageRecords, hireRecords, sourcingRecords };
+    return { reassignments: reassignmentCounts(data, Object.keys(groupDocs), range.start, range.end), funnelRows, sourceRows, requisitions: eligible, groupDocs, stageRecords, hireRecords, sourcingRecords };
 }

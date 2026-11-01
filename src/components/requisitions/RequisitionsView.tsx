@@ -14,6 +14,8 @@ import { bulkActionDisabledReason, requisitionSourcingLinkReadiness, type BulkAc
 import { getRequisitionSlaState } from "@/lib/sla";
 import { readTableUrlState, writeTableUrlValues } from "@/lib/table-url-state";
 import { updateWorkspaceUrlState } from "@/lib/workspace-url-state";
+import { useRecruitmentList } from "@/lib/recruitment-list";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { EnrichedCandidate, EnrichedRequisition, Language, Profile } from "@/types/recruitment";
 
 export function RequisitionsView({
@@ -24,7 +26,10 @@ export function RequisitionsView({
   profile,
   onNew,
   onStatus,
-  onOpen
+  onOpen,
+  client,
+  accessScope,
+  listScope = {}
 }: {
   language: Language;
   rows: EnrichedRequisition[];
@@ -34,12 +39,16 @@ export function RequisitionsView({
   onNew: () => void;
   onStatus: () => void;
   onOpen: (docId: string) => void;
+  client: SupabaseClient | null;
+  accessScope: string;
+  listScope?: Record<string, unknown>;
 }) {
   const initialTableState = useMemo(() => readTableUrlState("req"), []);
   const [page, setPage] = useState(initialTableState.page);
   const [pageSize, setPageSize] = useState<number>((PAGE_SIZE_OPTIONS as readonly number[]).includes(initialTableState.pageSize) ? initialTableState.pageSize : PAGE_SIZE_OPTIONS[0]);
   const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(Object.keys(initialTableState.filters ?? {}).length > 0);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectedRowCache, setSelectedRowCache] = useState<Record<string, EnrichedRequisition>>({});
   const [bulkReviewOpen, setBulkReviewOpen] = useState(false);
   const [bulkResult, setBulkResult] = useState<BulkActionResult | null>(null);
   const tableInitialized = useRef(false);
@@ -62,9 +71,10 @@ export function RequisitionsView({
     { key: "updated_at", label: translate(language, "updated"), value: (row) => formatDate(row.updated_at, language), sortValue: (row) => row.updated_at }
   ];
   const table = useTableControls(rows, columns, initialTableState);
-  const paginated = paginateRows(table.controlledRows, page, pageSize);
-  const visibleRows = paginated.rows;
-  const selectedRows = rows.filter((row) => selectedIds.includes(row.doc_id));
+  const list = useRecruitmentList<EnrichedRequisition>({ client, accessScope, entity: "requisitions", filters: { ...listScope, ...table.filters }, sort: table.sortKey ?? "updated_at", direction: table.sortDirection ?? "desc", initialPageSize: (pageSize === 25 || pageSize === 50 || pageSize === 100 ? pageSize : 50), enabled: Boolean(client && accessScope), searchInput: { value: table.search, setValue: table.setSearch } });
+  const paginated = { page: list.page };
+  const visibleRows = client && accessScope ? list.items : paginateRows(table.controlledRows, page, pageSize).rows;
+  const selectedRows = selectedIds.map(id => selectedRowCache[id] ?? [...rows, ...list.items].find(row => row.doc_id === id)).filter((row): row is EnrichedRequisition => Boolean(row));
   const bulkDisabledReason = bulkActionDisabledReason({ entity: "requisition", ids: selectedIds }, "update requisition status", profile);
 
   useEffect(() => {
@@ -78,17 +88,18 @@ export function RequisitionsView({
   useEffect(() => {
     updateWorkspaceUrlState(writeTableUrlValues("req", {
       filters: table.filters,
-      page: paginated.page,
-      pageSize,
-      search: table.search,
+      page: list.page,
+      pageSize: list.pageSize,
+      search: list.search,
       sortDirection: table.sortDirection,
       sortKey: table.sortKey
     }));
-  }, [pageSize, paginated.page, table.filters, table.search, table.sortDirection, table.sortKey]);
+  }, [list.page, list.pageSize, list.search, table.filters, table.sortDirection, table.sortKey]);
 
   return (
     <Panel>
-      {rows.length === 0 ? (
+      {list.error ? <div role="alert" className="mb-3 flex items-center gap-3 text-sm text-scarlet"><span>Could not load requisitions.</span><Button type="button" variant="secondary" onClick={list.retry}>Retry</Button></div> : null}
+      {list.loading && client ? <p role="status" className="py-4 text-sm text-slate">Loading requisitions…</p> : !client && rows.length === 0 ? (
         <>{canWrite ? <div className="mb-4 flex flex-wrap items-center justify-end gap-2"><Button type="button" size="sm" icon={<Plus size={17} />} onClick={onNew}>{translate(language, "newRequisition")}</Button><Button type="button" size="sm" variant="secondary" icon={<RotateCw size={16} />} onClick={onStatus}>{translate(language, "status")}</Button></div> : null}<EmptyState message={translate(language, "noData")} /></>
       ) : (
         <>
@@ -96,12 +107,13 @@ export function RequisitionsView({
           advancedFiltersOpen={advancedFiltersOpen}
           language={language}
           onAdvancedFiltersToggle={() => setAdvancedFiltersOpen((open) => !open)}
-          onSearch={table.setSearch}
-          resultCount={table.controlledRows.length}
-          searchValue={table.search}
+          onSearch={list.setSearch}
+          resultCount={client ? list.totalCount : table.controlledRows.length}
+          searchValue={list.search}
           trailingActions={canWrite ? <><Button type="button" size="sm" icon={<Plus size={17} />} onClick={onNew}>{translate(language, "newRequisition")}</Button><Button type="button" size="sm" variant="secondary" icon={<RotateCw size={16} />} onClick={onStatus}>{translate(language, "status")}</Button></> : null}
-          totalCount={rows.length}
+          totalCount={client ? list.totalCount : rows.length}
         />
+        {client && list.totalCount === 0 ? <EmptyState variant="quiet" message={translate(language, "noData")} /> : null}
         <div className="grid gap-3 md:hidden">
           {visibleRows.map((row) => (
             <article key={row.doc_id} className="ats-card p-3 text-left">
@@ -138,7 +150,7 @@ export function RequisitionsView({
                     aria-label={translate(language, "selectVisibleRequisitions")}
                     type="checkbox"
                     checked={visibleRows.length > 0 && visibleRows.every((row) => selectedIds.includes(row.doc_id))}
-                    onChange={(event) => setSelectedIds(event.target.checked ? Array.from(new Set([...selectedIds, ...visibleRows.map((row) => row.doc_id)])) : selectedIds.filter((id) => !visibleRows.some((row) => row.doc_id === id)))}
+                    onChange={(event) => { setSelectedIds(event.target.checked ? Array.from(new Set([...selectedIds, ...visibleRows.map((row) => row.doc_id)])) : selectedIds.filter((id) => !visibleRows.some((row) => row.doc_id === id))); setSelectedRowCache(current => { const next={...current}; for(const row of visibleRows){if(event.target.checked)next[row.doc_id]=row;else delete next[row.doc_id];} return next; }); }}
                   />
                 </th>
                 {columns.map((column) => (
@@ -168,7 +180,7 @@ export function RequisitionsView({
                       aria-label={translate(language, "selectRequisition", { id: row.doc_id })}
                       type="checkbox"
                       checked={selectedIds.includes(row.doc_id)}
-                      onChange={(event) => setSelectedIds((current) => event.target.checked ? [...current, row.doc_id] : current.filter((id) => id !== row.doc_id))}
+                      onChange={(event) => { setSelectedIds((current) => event.target.checked ? [...new Set([...current,row.doc_id])] : current.filter((id) => id !== row.doc_id)); setSelectedRowCache(current=>{const next={...current};if(event.target.checked)next[row.doc_id]=row;else delete next[row.doc_id];return next;}); }}
                     />
                   </td>
                   <td className="px-3 py-3">
@@ -201,7 +213,7 @@ export function RequisitionsView({
             </tbody>
           </table>
         </div>
-        <Pagination language={language} page={paginated.page} pageSize={pageSize} totalRows={table.controlledRows.length} onPageChange={setPage} onPageSizeChange={setPageSize} />
+        {client ? <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-[#D7DEE8] pt-3 text-sm"><span>Page {list.page} · {list.countLabel} requisitions{list.countError?<Button type="button" size="sm" variant="secondary" onClick={list.retryCount}>Retry count</Button>:null}</span><div className="flex gap-2"><Button type="button" variant="secondary" disabled={!list.canPrevious} onClick={list.goPrevious}>Previous</Button><Button type="button" variant="secondary" disabled={!list.canNext} onClick={list.goNext}>Next</Button><select aria-label="Rows per page" value={list.pageSize} onChange={event=>list.setPageSize(Number(event.target.value))} className="min-h-10 rounded-md border border-[#C9D5E6] bg-white px-2">{PAGE_SIZE_OPTIONS.map(size=><option key={size} value={size}>{size}</option>)}</select></div></div> : <Pagination language={language} page={paginated.page} pageSize={pageSize} totalRows={table.controlledRows.length} onPageChange={setPage} onPageSizeChange={setPageSize} />}
         <BulkActionToolbar
           disabledReason={bulkDisabledReason}
           entityLabel={translate(language, "requisitionsUnit")}
@@ -209,6 +221,7 @@ export function RequisitionsView({
           selectedCount={selectedIds.length}
           onClear={() => {
             setSelectedIds([]);
+            setSelectedRowCache({});
             setBulkResult(null);
           }}
           onExport={() => exportRequisitions(selectedRows)}

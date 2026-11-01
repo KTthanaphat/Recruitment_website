@@ -9,7 +9,7 @@ import { Tag } from "@/components/ui/Tag";
 import { RecordQuickActions, type RecordQuickAction } from "@/components/ui/Operations";
 import { BulkActionToolbar, BulkReviewModal } from "@/components/ui/Workflow";
 import { processLabel } from "@/lib/constants";
-import { formatCandidateName, resultText, statusTone } from "@/lib/format";
+import { formatCandidateName, formatRecruitmentId, resultText, statusTone } from "@/lib/format";
 import { translate } from "@/lib/i18n/dictionary";
 import { bulkActionDisabledReason, candidateTouchAgeDays, isCandidateAging, type BulkActionResult } from "@/lib/operations";
 import { readTableUrlState, writeTableUrlValues } from "@/lib/table-url-state";
@@ -118,7 +118,7 @@ export function CandidatesView({
               </div>
               <p className="text-sm font-medium text-slate">{processLabel(row.latest_process, language)} · {row.site ?? "-"}</p>
               <dl className="mt-2 grid gap-1.5 text-xs">
-                <div className="flex min-w-0 gap-2"><dt className="shrink-0 font-medium text-slate">{translate(language, "candidateId")}</dt><dd className="min-w-0 break-words font-semibold text-navy">{row.candidate_id}</dd></div>
+                <div className="flex min-w-0 gap-2"><dt className="shrink-0 font-medium text-slate">{translate(language, "candidateId")}</dt><dd className="min-w-0 break-words font-semibold text-navy">{formatRecruitmentId(row.candidate_id)}</dd></div>
                 <div className="flex min-w-0 gap-2"><dt className="shrink-0 font-medium text-slate">{translate(language, "group")}</dt><dd className="min-w-0 break-words font-semibold text-navy">{row.group_position ?? "-"}</dd></div>
                 <div className="flex min-w-0 gap-2"><dt className="shrink-0 font-medium text-slate">{translate(language, "owner")}</dt><dd className="min-w-0 break-words font-semibold text-navy">{row.person_in_charge ?? "-"}</dd></div>
                 <div className="flex min-w-0 gap-2"><dt className="shrink-0 font-medium text-slate">{translate(language, "lastTouch")}</dt><dd className="min-w-0 break-words font-semibold text-navy">{ageLabel(row)}</dd></div>
@@ -165,13 +165,13 @@ export function CandidatesView({
                 <tr key={row.candidate_id} className="border-b border-[#D7DEE8] last:border-0">
                   <td className="px-3 py-3">
                     <input
-                      aria-label={translate(language, "selectCandidate", { id: row.candidate_id })}
+                      aria-label={translate(language, "selectCandidate", { id: formatRecruitmentId(row.candidate_id) })}
                       type="checkbox"
                       checked={selectedIds.includes(row.candidate_id)}
                       onChange={(event) => setSelectedIds((current) => event.target.checked ? [...current, row.candidate_id] : current.filter((id) => id !== row.candidate_id))}
                     />
                   </td>
-                  <td className="px-3 py-3 font-semibold text-navy">{row.candidate_id}</td>
+                  <td className="px-3 py-3 font-semibold text-navy">{formatRecruitmentId(row.candidate_id)}</td>
                   <td className="px-3 py-3">
                     <TruncatedTableText value={formatCandidateName(row)} className="font-bold text-navy" />
                   </td>

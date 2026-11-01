@@ -25,10 +25,10 @@ export function deriveSourcingStageChannels(data: DashboardData, groupId: string
   const counts = new Map<ProcessStage, Map<StageChannelKey, number>>(ACTIVE_PIPELINE_STAGES.map((stage) => [stage, new Map()]));
 
   for (const candidate of data.candidates) {
-    if (candidate.group_id !== groupId && !(candidate.doc_group_id && matchIds.has(candidate.doc_group_id))) continue;
+    if (!data.candidate_applications && candidate.group_id !== groupId && !(candidate.doc_group_id && matchIds.has(candidate.doc_group_id))) continue;
     const firstContact = candidate.first_contact_date?.slice(0, 10) ?? candidate.created_at.slice(0, 10);
     if (firstContact > cutoff) continue;
-    const logs = data.recruitment_logs.filter((log) => log.candidate_id === candidate.candidate_id && !log.superseded_at && !log.superseded_by_stage_instance_id);
+    const logs = data.recruitment_logs.filter((log) => log.candidate_id === candidate.candidate_id && !log.superseded_at && !log.superseded_by_stage_instance_id && (!data.candidate_applications || data.candidate_application_assignments?.some(assignment => assignment.assignment_id === log.entry_assignment_id && assignment.group_id === groupId)));
     const reached = new Set(pipelineStageRecords(logs).filter((record) => record.pending.openedDate.slice(0, 10) <= cutoff).map((record) => record.stage));
     const channel = channelKey(candidate.channel);
     for (const stage of reached) {

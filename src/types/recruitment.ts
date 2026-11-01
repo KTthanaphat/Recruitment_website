@@ -93,6 +93,12 @@ export type DocumentGroup = {
 };
 
 export type Candidate = {
+  home_site?: string;
+  created_by?: string;
+  responsible_recruiter_id?: string | null;
+  position_interests?: string | null;
+  application_id?: string;
+  application_state?: "active" | "closed";
   candidate_id: string;
   name: string;
   nickname: string | null;
@@ -109,6 +115,44 @@ export type Candidate = {
   updated_at: string;
 };
 
+export type CandidateProfile = Omit<Candidate, "application_id" | "application_state"> & { home_site: string | null };
+export type CandidateApplication = {
+  application_id: string;
+  candidate_id: string;
+  group_id: string;
+  state: "active" | "closed";
+  closure_reason: string | null;
+  closed_at: string | null;
+  created_by: string | null;
+  version: number;
+  created_at: string;
+  updated_at: string;
+};
+export type ApplicationAssignment = {
+  assignment_id: string;
+  application_id: string;
+  group_id: string;
+  from_group_id: string | null;
+  started_at: string;
+  ended_at: string | null;
+  actor_id: string | null;
+  reason: string | null;
+  attribution_inferred: boolean;
+};
+export type MaskedCandidateSummary = { candidate_id: string; position_interests: string | null; created_by: string; creator_label: string; created_at: string };
+export type CandidateProfileCapabilities = { candidate_id: string; creator_label: string; can_edit: boolean; can_read_note: boolean; can_edit_note: boolean; can_add_application: boolean; is_unmatched?: boolean; note_editor_label?: string | null };
+export type ApplicationDestination = { group_id: string; group_position: string; sites: string[]; owners: string[]; doc_ids: string[] };
+export type CandidateNote = {
+  updated_at?: string;
+  updated_by?: string | null;
+  version?: number;
+  note_id: string;
+  candidate_id: string;
+  body: string;
+  created_by: string | null;
+  created_at: string;
+};
+export type EnrichedApplication = EnrichedCandidate & { application_id: string };
 export type CandidateReferenceStatus = "available" | "unavailable" | "archived";
 export type CandidateReferenceChannel = "phone" | "email" | "line" | "other";
 
@@ -131,6 +175,7 @@ export type CandidateReference = {
 
 /** The single final conversation record for one available reference. */
 export type CandidateReferenceCheck = {
+  application_id?: string;
   check_id: string;
   reference_id: string;
   checked_date: string;
@@ -142,6 +187,9 @@ export type CandidateReferenceCheck = {
 };
 
 export type RecruitmentLog = {
+  application_id?: string;
+  entry_assignment_id?: string;
+  outcome_assignment_id?: string | null;
   log_id: number;
   candidate_id: string;
   log_date: string;
@@ -206,6 +254,7 @@ export type PipelineStageRecord = {
 };
 
 export type Offer = {
+  application_id?: string;
   offer_id: number;
   candidate_id: string;
   doc_id: string;
@@ -350,6 +399,12 @@ export type InterviewMeeting = {
 };
 
 export type DashboardData = {
+  masked_candidate_pool?: MaskedCandidateSummary[];
+  candidate_profile_capabilities?: CandidateProfileCapabilities[];
+  application_destinations?: ApplicationDestination[];
+  candidate_applications?: CandidateApplication[];
+  candidate_application_assignments?: ApplicationAssignment[];
+  candidate_notes?: CandidateNote[];
   profile: Profile | null;
   profiles: Profile[];
   requisitions: Requisition[];
@@ -403,6 +458,11 @@ export type EnrichedOffer = Offer & {
   site: string | null;
   person_in_charge: string | null;
   request_type: RequisitionRequestType | null;
+  /** Reduced server-list fields used when the complete offer/requisition ledgers are not loaded. */
+  head_count?: number;
+  accepted_count?: number;
+  status?: string;
+  age_days?: number | null;
 };
 
 /** Read-only, company-wide data intentionally exposed to the Dashboard report only. */
@@ -430,6 +490,13 @@ export type EnrichedSourcingGroup = {
   channel_referral: boolean;
   channel_others: boolean;
   latest_update: SourcingWeeklyUpdate | null;
+  demand_count?: number;
+  filled_count?: number;
+  active_candidate_count?: number;
+  readiness_label?: string | null;
+  readiness_count?: number;
+  readiness_total?: number;
+  latest_saved_at?: string | null;
 };
 
 /** A saved or expected Monday slot within one position group's sourcing lifecycle. */
@@ -472,12 +539,14 @@ export type ViewId =
 export type WorkspaceSection = "overview" | "sourcing" | "pipeline" | "offer" | "activity";
 
 export type OfferDraftDefaults = {
+  applicationId?: string;
   candidateId?: string;
   docId?: string;
   proposedAcceptedDate?: string;
 };
 
 export type OfferPassHandoff = {
+  applicationId?: string;
   candidateId: string;
   docId: string;
   passedDate: string;
@@ -503,6 +572,7 @@ export type WorkspaceActionRequest =
   | { kind: "candidate.create"; docGroupIds: string[] }
   | {
       kind: "candidate.process";
+      applicationId?: string;
       candidateId: string;
       intent: "start" | "advance" | "maintain_test" | "update_offer" | "manual";
       targetStage?: ProcessStage;
@@ -515,6 +585,7 @@ export type RpcResult = {
   id?: string;
   error?: string;
   offer_handoff?: {
+    application_id?: string;
     candidate_id: string;
     passed_date: string;
     group_id?: string | null;

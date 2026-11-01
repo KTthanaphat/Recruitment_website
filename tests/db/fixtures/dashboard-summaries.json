@@ -1,0 +1,8 @@
+{
+  "performance": {
+    "current": { "start": "2026-07-01", "end": "2026-07-31", "expectedVacancies": 2, "expectedFilled": 2, "expectedOpen": 0, "expectedOnTime": 2, "expectedAvgTimeToFill": 14.5 },
+    "prior": { "start": "2026-06-01", "end": "2026-06-30", "expectedVacancies": 1, "expectedFilled": 1, "expectedOpen": 0 }
+  },
+  "calendar": { "start": "2026-07-01", "end": "2026-07-31", "expectedEvents": 2 },
+  "home": { "openRequisitions": 1, "priorityOpen": 0, "pendingCandidates": 2 }
+}

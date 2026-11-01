@@ -1,7 +1,13 @@
 "use client";
 
 import { isReportEligible, validDateOnly, requisitionSnapshotAt, dateOnly } from "@/lib/dashboard-report-eligibility";
+import { applicationCandidates, belongsToApplication, assignmentGroup, applicationKey } from "@/lib/applications";
 import { buildPipelineReport } from "@/lib/pipeline-report";
+import { loadCompletePipelineReportData } from "@/lib/dashboard-report-loader";
+import { loadActiveRequisitionReportPage, loadActiveRequisitionCandidatePage, type ActiveRequisitionReportRow, type ActiveRequisitionReportPage, type ActiveRequisitionCandidatePage, type ActiveRequisitionReportCriteria } from "@/lib/dashboard-summary-client";
+import { enrichRequisitions } from "@/lib/data";
+import { scopeDashboardRequisitions } from "@/lib/dashboard-filters";
+import { supabase } from "@/lib/supabase/client";
 import { DashboardExportChooser } from "./DashboardExportChooser";
 import { buildPipelineExportSnapshot, downloadDashboardWorkbook } from "@/lib/dashboard-workbook";
 import { OnOffSwitch } from "@/components/ui/OnOffSwitch";
@@ -14,7 +20,6 @@ import { Modal } from "@/components/ui/Modal";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { CommandSelector } from "@/components/ui/CommandSelector";
 import { Field } from "@/components/ui/Field";
-import { OperationalSummaryStrip } from "@/components/ui/Operations";
 import { PipelineFunnel, type PipelineFunnelRow } from "@/components/ui/PipelineFunnel";
 import { SourceEffectiveness, type SourceEffectivenessRow } from "./SourceEffectiveness";
 import { SortableFilterHeader, type TableColumn, useTableControls } from "@/components/ui/TableControls";
@@ -24,7 +29,7 @@ import {
   SOURCING_CHANNELS
 } from "@/lib/constants";
 import { filledSlaAtAcceptance, waterfallExecutiveRows } from "@/lib/vacancy-executive";
-import { formatDate, formatNumber } from "@/lib/format";
+import { formatDate, formatNumber, formatRecruitmentId } from "@/lib/format";
 import { organizationLabel, type DepartmentSectionRow } from "@/lib/department-section-data";
 import { processStageLabel, requestTypeLabel, translate } from "@/lib/i18n/dictionary";
 import { getRequisitionSlaState, type RequisitionSlaState, todayDate } from "@/lib/sla";
@@ -85,7 +90,7 @@ type RequisitionDetailRow = {
 };
 type StageCountMode = "status" | "activity" | "accum";
 type ExportColumnKey = "site" | "department" | "department_th" | "section" | "section_th" | "position" | "level" | "vacancy" | "request_type" | "requisition_date" | "person_in_charge" | "status" | "detail" | "applicants" | (typeof SOURCING_CHANNELS)[number]["count"] | ProcessStage | "actual_age" | "sla" | "filled_date";
-type StageCandidateMatch = { candidateId: string; name: string; stage: ProcessStage; pendingDate: string; resultDate: string | null; remark: string | null; result: 0 | 1 | null };
+type StageCandidateMatch = { applicationId?: string; candidateId: string; name: string; stage: ProcessStage; pendingDate: string; resultDate: string | null; remark: string | null; result: 0 | 1 | null };
 type StageCandidateReportDetail = StageCandidateMatch & { personInCharge: string };
 
 export function VacancyWaterfallView({ context, reportGroup }: { context: DashboardReportContext; reportGroup: "vacancy" | "pipeline" }) {
@@ -103,7 +108,16 @@ export function VacancyWaterfallView({ context, reportGroup }: { context: Dashbo
   const exportColumns = preferences.exportColumns as ExportColumnKey[];
   const setExportColumns = (columns: ExportColumnKey[]) => onPreferencesChange({ exportColumns: columns });
   const [organizationRows, setOrganizationRows] = useState<DepartmentSectionRow[]>([]);
-  const [stageDrilldown, setStageDrilldown] = useState<{ row: RequisitionDetailRow; stage: ProcessStage; matches: StageCandidateMatch[] } | null>(null);
+  const [activeReqRows, setActiveReqRows] = useState<RequisitionDetailRow[]>([]);
+  const [activeReqTotal, setActiveReqTotal] = useState(0);
+  const [activeReqCursor, setActiveReqCursor] = useState<ActiveRequisitionReportPage["nextCursor"]>(null);
+  const [activeReqLoading, setActiveReqLoading] = useState(false);
+  const [activeReqError, setActiveReqError] = useState(false);
+  const [activeReqRetry, setActiveReqRetry] = useState(0);
+  const [activeReqCriteria,setActiveReqCriteria]=useState<ActiveRequisitionReportCriteria>({filters:{},search:"",sortKey:null,sortDirection:null});
+  const [activeReqCriteriaDraft,setActiveReqCriteriaDraft]=useState<ActiveRequisitionReportCriteria>({filters:{},search:"",sortKey:null,sortDirection:null});
+  const [requisitionPngRows, setRequisitionPngRows] = useState<RequisitionDetailRow[] | null>(null);
+  const [stageDrilldown, setStageDrilldown] = useState<{ row: RequisitionDetailRow; stage: ProcessStage; matches: StageCandidateMatch[]; total:number; cursor:ActiveRequisitionCandidatePage["nextCursor"]; loading:boolean; error:boolean } | null>(null);
   const [reportCandidate, setReportCandidate] = useState<StageCandidateReportDetail | null>(null);
   const chartExportRef = useRef<HTMLDivElement | null>(null);
   const requisitionExportRef = useRef<HTMLDivElement | null>(null);
@@ -112,21 +126,59 @@ export function VacancyWaterfallView({ context, reportGroup }: { context: Dashbo
   const funnelStartDate = range.start, funnelEndDate = range.end, validFunnelRange = range.valid;
 
   const waterfallRows = useMemo(
-    () => buildLiveWaterfallRows(data, requisitions, offers, startDate, endDate, reportView),
-    [data, endDate, offers, reportView, requisitions, startDate]
+    () => reportGroup === "vacancy" && context.pipelineSummaryStatus === "ready" && context.pipelineSummary
+      ? context.pipelineSummary.waterfallRows.map(row => ({ waterfall_category: row.waterfall_category as VacancyWaterfallCategory, site: row.site, request_type: row.request_type as RequisitionRequestType, vacancy_count: row.vacancy_count, filledInSla: row.filledInSla, filledSlaUnknown: row.filledSlaUnknown }))
+      : [],
+    [context.pipelineSummary, context.pipelineSummaryStatus, reportGroup]
   );
-  const requisitionRows = useMemo(
-    () => buildActiveRequisitionRows(data, requisitions, startDate, endDate, reportView, stageCountMode),
-    [data, endDate, reportView, requisitions, stageCountMode, startDate]
-  );
-  const pipelineReport = useMemo(() => buildPipelineReport(data, candidateOffers, requisitions, { start: range.start, end: range.end, valid: range.valid }, funnelView, funnelLevelBands, funnelChannel, language), [data, candidateOffers, requisitions, range.start, range.end, range.valid, funnelView, funnelLevelBands, funnelChannel, language]);
-  const { funnelRows, sourceRows } = pipelineReport;
+  const activeReqScope = useMemo(() => ({ headerSite: context.headerScope.site, headerPic: context.headerScope.owner, priorityOnly: context.headerScope.priorityOnly,
+    sites: preferences.sites, departments: preferences.departments, levels: preferences.levels }), [context.headerScope, preferences.departments, preferences.levels, preferences.sites]);
+  useEffect(()=>{
+    if(JSON.stringify(activeReqCriteriaDraft)===JSON.stringify(activeReqCriteria))return;
+    setActiveReqError(false);setActiveReqLoading(true);
+    const timer=window.setTimeout(()=>setActiveReqCriteria(activeReqCriteriaDraft),300);
+    return ()=>window.clearTimeout(timer);
+  },[activeReqCriteriaDraft,activeReqCriteria]);
+  const activeReqCriteriaPending=JSON.stringify(activeReqCriteriaDraft)!==JSON.stringify(activeReqCriteria);
+  const activeReqKey = JSON.stringify([startDate,endDate,reportView,stageCountMode,activeReqScope,activeReqCriteria,activeReqRetry,context.data.profile?.id]);
+  const activeReqKeyRef=useRef(activeReqKey); activeReqKeyRef.current=activeReqKey;
+  useEffect(() => {
+    let active = true;
+    setActiveReqRows([]); setActiveReqTotal(0); setActiveReqCursor(null); setActiveReqError(false); setStageDrilldown(null);
+    if (reportGroup !== "vacancy" || !validReportRange || !supabase) { setActiveReqLoading(false); return () => { active = false; }; }
+    setActiveReqLoading(true);
+    void loadActiveRequisitionReportPage(supabase,{start:startDate,end:endDate,period:reportView,stageMode:stageCountMode,scope:activeReqScope,criteria:activeReqCriteria,profileKey:`${context.data.profile?.id??""}:${context.data.profile?.updated_at??""}`,refreshKey:activeReqRetry})
+      .then(page => { if (!active) return; setActiveReqRows(page.rows.map(mapActiveRequisitionRow)); setActiveReqTotal(page.total); setActiveReqCursor(page.nextCursor); })
+      .catch(() => { if (active) setActiveReqError(true); })
+      .finally(() => { if (active) setActiveReqLoading(false); });
+    return () => { active = false; };
+  }, [activeReqKey]);
+  const requisitionRows = activeReqRows;
+  function changeActiveReqCriteria(next:ActiveRequisitionReportCriteria){
+    setActiveReqCriteriaDraft(current=>JSON.stringify(current)===JSON.stringify(next)?current:next);
+  }
+  const pipelineReport = context.pipelineSummary ?? null;
+  const pipelineSummary = context.pipelineSummary ?? null;
+  const funnelRows = pipelineReport?.funnelRows ?? [];
+  const sourceRows = pipelineReport?.sourceRows ?? [];
   const pipelineMetadata = `${summary} · ${translate(language, "channelMeta")}: ${channelFilterLabel(funnelChannel, language)} · ${language === "th" ? "คำอธิบายสีช่องทาง" : "Channel legend"}: ${funnelLegend ? "ON" : "OFF"}`;
-  const [pipelinePngSnapshot, setPipelinePngSnapshot] = useState<{ report: typeof pipelineReport; metadata: string; start: string; end: string; legend: boolean } | null>(null);
-  const pngPipeline = pipelinePngSnapshot ?? { report: pipelineReport, metadata: pipelineMetadata, start: funnelStartDate, end: funnelEndDate, legend: funnelLegend };
-  async function exportPipelineExcel() { const snapshot = buildPipelineExportSnapshot(context, pipelineReport); await downloadDashboardWorkbook(snapshot); }
+  const [pipelinePngSnapshot, setPipelinePngSnapshot] = useState<{ funnelRows: PipelineFunnelRow[]; sourceRows: SourceEffectivenessRow[]; metadata: string; start: string; end: string; legend: boolean } | null>(null);
+  const pngPipeline = pipelinePngSnapshot ?? { funnelRows, sourceRows, metadata: pipelineMetadata, start: funnelStartDate, end: funnelEndDate, legend: funnelLegend };
+  async function exportPipelineExcel() {
+    if (!supabase) throw new Error("Recruitment client is unavailable");
+    const completeData = await loadCompletePipelineReportData(supabase, context.data);
+    const headerRows = enrichRequisitions(completeData).filter(row => (!context.headerScope.site || row.site === context.headerScope.site)
+      && (!context.headerScope.owner || row.person_in_charge?.toLocaleLowerCase() === context.headerScope.owner.toLocaleLowerCase())
+      && (!context.headerScope.priorityOnly || row.is_priority));
+    const scopedRows = scopeDashboardRequisitions(headerRows, context.preferences, ["period", "site", "department", "level"]);
+    const completeReport = buildPipelineReport(completeData, completeData.offers.filter(row => Boolean(row.candidate_id)), scopedRows,
+      { start: range.start, end: range.end, valid: range.valid }, funnelView, funnelLevelBands, funnelChannel, language);
+    const snapshot = buildPipelineExportSnapshot({ ...context, data: completeData, requisitions: scopedRows, candidateOffers: completeData.offers.filter(row => Boolean(row.candidate_id)) }, completeReport);
+    await downloadDashboardWorkbook(snapshot);
+  }
   async function exportPipelinePng() {
-    setPipelinePngSnapshot({ report: pipelineReport, metadata: pipelineMetadata, start: funnelStartDate, end: funnelEndDate, legend: funnelLegend });
+    if (!pipelineSummary) throw new Error("Pipeline summary is unavailable");
+    setPipelinePngSnapshot({ funnelRows: pipelineSummary.funnelRows, sourceRows: pipelineSummary.sourceRows, metadata: pipelineMetadata, start: funnelStartDate, end: funnelEndDate, legend: funnelLegend });
     try { await exportPng(funnelExportRef.current, `pipeline-funnel-${funnelStartDate}-to-${funnelEndDate}.png`, 2, true); } finally { setPipelinePngSnapshot(null); }
   }
   const funnelHelp = language === "th"
@@ -135,9 +187,61 @@ export function VacancyWaterfallView({ context, reportGroup }: { context: Dashbo
   const funnelExportWidth = 1920;
   const funnelExportHeight = 1080;
   const funnelApplicantTotal = funnelRows[0]?.count ?? 0;
-  const funnelChannelOptions = useMemo(() => buildFunnelChannelOptions(data, language), [data, language]);
+  const funnelChannelOptions = useMemo(() => pipelineSummary?.channelOptions.map(value => ({ value, label: value })) ?? [], [pipelineSummary?.channelOptions]);
   const funnelChannelLabel = channelFilterLabel(funnelChannel, language);
-  const reportSummary = useMemo(() => buildReportSummary(requisitionRows, offers, startDate, endDate, language), [endDate, language, offers, requisitionRows, startDate]);
+
+  async function loadMoreActiveRequisitions() {
+    if (!activeReqCursor || activeReqLoading || !supabase) return;
+    const requestKey=activeReqKey;
+    setActiveReqLoading(true); setActiveReqError(false);
+    try {
+      const page = await loadActiveRequisitionReportPage(supabase,{start:startDate,end:endDate,period:reportView,stageMode:stageCountMode,scope:activeReqScope,criteria:activeReqCriteria,cursor:activeReqCursor,profileKey:`${context.data.profile?.id??""}:${context.data.profile?.updated_at??""}`,refreshKey:activeReqRetry});
+      if(activeReqKeyRef.current===requestKey){setActiveReqRows(current => [...current,...page.rows.map(mapActiveRequisitionRow)]); setActiveReqCursor(page.nextCursor);}
+    } catch { if(activeReqKeyRef.current===requestKey)setActiveReqError(true); } finally { if(activeReqKeyRef.current===requestKey)setActiveReqLoading(false); }
+  }
+  async function loadCompleteActiveRequisitionRows() {
+    if (!supabase) throw new Error("Recruitment client is unavailable");
+    const rows: RequisitionDetailRow[] = [];
+    const seen = new Set<string>();
+    let cursor: ActiveRequisitionReportPage["nextCursor"] = null;
+    let expected: number | null = null;
+    for (;;) {
+      const page = await loadActiveRequisitionReportPage(supabase,{start:startDate,end:endDate,period:reportView,stageMode:stageCountMode,scope:activeReqScope,criteria:activeReqCriteria,cursor,profileKey:`${context.data.profile?.id??""}:${context.data.profile?.updated_at??""}`,refreshKey:activeReqRetry});
+      if (expected !== null && page.total !== expected) throw new Error("Requisition report changed during export; retry");
+      expected = page.total;
+      for (const row of page.rows) { if (seen.has(row.doc_id)) throw new Error("Requisition report repeated a row; retry"); seen.add(row.doc_id); rows.push(mapActiveRequisitionRow(row)); }
+      if (!page.hasMore) break;
+      if (!page.nextCursor || page.rows.length === 0 || cursor && (page.nextCursor.value < cursor.value || page.nextCursor.value === cursor.value && page.nextCursor.id <= cursor.id)) throw new Error("Requisition report pagination did not advance");
+      cursor = page.nextCursor;
+    }
+    if (rows.length !== expected) throw new Error("Requisition report export is incomplete; retry");
+    return rows;
+  }
+  async function openStageCandidates(row:RequisitionDetailRow,stage:ProcessStage) {
+    setStageDrilldown({row,stage,matches:[],total:0,cursor:null,loading:true,error:false});
+    if(!supabase) { setStageDrilldown(current=>current?{...current,loading:false,error:true}:current); return; }
+    try {
+      const page=await loadActiveRequisitionCandidatePage(supabase,{docId:row.doc_id,stage,start:startDate,end:endDate,requisitionDate:row.requisition_date,stageMode:stageCountMode,profileKey:`${context.data.profile?.id??""}:${context.data.profile?.updated_at??""}`,refreshKey:activeReqRetry});
+      setStageDrilldown(current=>current?.row.doc_id===row.doc_id&&current.stage===stage?{...current,matches:page.matches as StageCandidateMatch[],total:page.total,cursor:page.nextCursor,loading:false}:current);
+    } catch { setStageDrilldown(current=>current?.row.doc_id===row.doc_id&&current.stage===stage?{...current,loading:false,error:true}:current); }
+  }
+  async function loadMoreStageCandidates() {
+    const current=stageDrilldown;
+    if(!current?.cursor||!supabase||current.loading)return;
+    setStageDrilldown({...current,loading:true,error:false});
+    try {
+      const page=await loadActiveRequisitionCandidatePage(supabase,{docId:current.row.doc_id,stage:current.stage,start:startDate,end:endDate,requisitionDate:current.row.requisition_date,stageMode:stageCountMode,cursor:current.cursor,profileKey:`${context.data.profile?.id??""}:${context.data.profile?.updated_at??""}`,refreshKey:activeReqRetry});
+      setStageDrilldown(value=>value?.row.doc_id===current.row.doc_id&&value.stage===current.stage?{...value,matches:[...value.matches,...page.matches as StageCandidateMatch[]],cursor:page.nextCursor,total:page.total,loading:false}:value);
+    } catch { setStageDrilldown(value=>value?.row.doc_id===current.row.doc_id&&value.stage===current.stage?{...value,loading:false,error:true}:value); }
+  }
+  async function exportRequisitionDetailPng() {
+    setExportPreparing(true);
+    try {
+      setRequisitionPngRows(await loadCompleteActiveRequisitionRows());
+      await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      await exportPng(requisitionExportRef.current, `active-requisitions-${startDate}-to-${endDate}.png`, 2, true);
+    } catch { setExportError(true); } finally { setRequisitionPngRows(null); setExportPreparing(false); }
+  }
 
   useEffect(() => {
     let active = true;
@@ -183,11 +287,12 @@ export function VacancyWaterfallView({ context, reportGroup }: { context: Dashbo
   async function exportRequisitionDetailXlsx(selectedColumns: ExportColumnKey[] = defaultExportColumns()) {
     setExportPreparing(true);
     try {
+      const completeRows = await loadCompleteActiveRequisitionRows();
       const headers = selectedColumns.map((column) => exportColumnLabel(column, language));
       const { Workbook } = await import("exceljs");
       const workbook = new Workbook();
       const worksheet = workbook.addWorksheet(translate(language, "activeRequisitionsSheet"));
-      const rows = requisitionRows.map((row) => selectedColumns.map((column) => exportValue(row, column, language, organizationRows)));
+      const rows = completeRows.map((row) => selectedColumns.map((column) => exportValue(row, column, language, organizationRows)));
       worksheet.views = [{ showGridLines: false }];
       worksheet.getColumn(1).width = 2;
       for (let index = 2; index < headers.length + 2; index += 1) worksheet.getColumn(index).width = 20;
@@ -212,7 +317,7 @@ export function VacancyWaterfallView({ context, reportGroup }: { context: Dashbo
       }
       const metadata = workbook.addWorksheet(translate(language, "exportMetadataSheet"));
       const stageModeLabel = translate(language, stageCountMode === "status" ? "pipelineStatus" : stageCountMode === "activity" ? "pipelineActivity" : "pipelineAccum");
-      metadata.addRows([[translate(language, "generatedAt"), new Date().toISOString()], [translate(language, "generatedBy"), data.profile?.email ?? data.profile?.nickname ?? translate(language, "unknown")], [translate(language, "dateRange"), `${formatDate(startDate, language)} - ${formatDate(endDate, language)}`], [translate(language, "stageCountMode"), stageModeLabel], [translate(language, "rows"), requisitionRows.length], [language === "th" ? "ขอบเขตที่ใช้" : "Applied scope", summary]]);
+      metadata.addRows([[translate(language, "generatedAt"), new Date().toISOString()], [translate(language, "generatedBy"), data.profile?.email ?? data.profile?.nickname ?? translate(language, "unknown")], [translate(language, "dateRange"), `${formatDate(startDate, language)} - ${formatDate(endDate, language)}`], [translate(language, "stageCountMode"), stageModeLabel], [translate(language, "rows"), completeRows.length], [language === "th" ? "ขอบเขตที่ใช้" : "Applied scope", summary]]);
       metadata.eachRow((row) => row.eachCell((cell) => { cell.font = { name: "Sarabun" }; cell.alignment = { vertical: "middle" }; }));
       const bytes = await workbook.xlsx.writeBuffer();
       const objectUrl = URL.createObjectURL(new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
@@ -221,6 +326,8 @@ export function VacancyWaterfallView({ context, reportGroup }: { context: Dashbo
       anchor.download = `active-requisitions-${startDate}-to-${endDate}.xlsx`;
       anchor.click();
       URL.revokeObjectURL(objectUrl);
+    } catch {
+      setExportError(true);
     } finally {
       window.setTimeout(() => setExportPreparing(false), 300);
     }
@@ -230,26 +337,25 @@ export function VacancyWaterfallView({ context, reportGroup }: { context: Dashbo
     <div className="grid min-w-0 max-w-full gap-4 overflow-x-hidden">
       {reportGroup === "vacancy" ? <section className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-[#E4E9F2] bg-[#F8FAFD] shadow-none">
         <div className="flex flex-col gap-3 px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
-          <h2 className="min-w-0 flex-1"><span><strong className="block text-lg font-semibold text-navy">{translate(language, "vacancyWaterfall")} &amp; {translate(language, "activeRequisitionsSelectedRange")}</strong><span className="text-sm font-medium text-slate">{summary} · {translate(language, "activeRequisitionsInRange", { count: formatNumber(requisitionRows.length, language), start: formatDate(startDate, language), end: formatDate(endDate, language) })}</span></span></h2>
+          <h2 className="min-w-0 flex-1"><span><strong className="block text-lg font-semibold text-navy">{translate(language, "vacancyWaterfall")} &amp; {translate(language, "activeRequisitionsSelectedRange")}</strong><span className="text-sm font-medium text-slate">{summary} · {translate(language, "activeRequisitionsInRange", { count: formatNumber(activeReqTotal, language), start: formatDate(startDate, language), end: formatDate(endDate, language) })} · {formatNumber(requisitionRows.length,language)} {language === "th" ? "แถวที่โหลดแล้ว" : "rows loaded"}</span></span></h2>
           <div className="flex flex-wrap items-center gap-2 print:hidden">
           <ReportHelp label={language === "th" ? "คำอธิบายกราฟอัตราว่าง" : "Vacancy Waterfall help"} text={language === "th" ? "แสดงการเปลี่ยนแปลงอัตราว่างจากต้นช่วงถึงปลายช่วง แท่งสีแยกสถานที่และประเภทคำขอ การบรรจุลดอัตราว่าง รายงานนี้ใช้ตัวกรองร่วมของแดชบอร์ด" : "Tracks open vacancies from the start to the end of the selected range. Stacks separate sites and request types; fills reduce open vacancies. The common dashboard filters apply to this report."} />
-          <Button type="button" size="toolbar" variant="secondary" icon={<ImageDown size={16} />} aria-label={`${translate(language, "export")} ${translate(language, "vacancyWaterfall")} PNG`} title={`${translate(language, "export")} ${translate(language, "vacancyWaterfall")} PNG`} disabled={exportPreparing || !validReportRange} onClick={() => exportPng(chartExportRef.current, `vacancy-waterfall-${startDate}-to-${endDate}.png`)}>{translate(language, "export")}</Button>
+          <Button type="button" size="toolbar" variant="secondary" icon={<ImageDown size={16} />} aria-label={`${translate(language, "export")} ${translate(language, "vacancyWaterfall")} PNG`} title={`${translate(language, "export")} ${translate(language, "vacancyWaterfall")} PNG`} disabled={exportPreparing || !validReportRange || context.pipelineSummaryStatus !== "ready"} onClick={() => exportPng(chartExportRef.current, `vacancy-waterfall-${startDate}-to-${endDate}.png`)}>{translate(language, "export")}</Button>
           <Button type="button" size="toolbar" variant="secondary" icon={<Download size={16} />} aria-label={`${translate(language, "export")} ${translate(language, "activeRequisitionsSelectedRange")}`} title={`${translate(language, "export")} ${translate(language, "activeRequisitionsSelectedRange")}`} disabled={exportPreparing || !validReportRange} onClick={() => { if (!exportColumns.length) setExportColumns(defaultExportColumns()); setExportOpen(true); }}>{translate(language, "export")}</Button>
           </div>
         </div>
         <div className="border-t border-[#E4E9F2] bg-white py-4">
-        <div className="mb-5 px-4 sm:px-6 lg:px-8">
-          <OperationalSummaryStrip density="compact" items={reportSummary} />
-        </div>
+        {activeReqError ? <div className="mx-4 mb-4 rounded-xl border border-[#E4E9F2] p-3 sm:mx-6 lg:mx-8"><p role="alert" className="text-sm text-danger">{language === "th" ? "โหลดรายการคำขอไม่สำเร็จ" : "Could not load requisition rows."}</p><Button type="button" className="mt-2" size="toolbar" onClick={() => setActiveReqRetry(value => value + 1)}>{language === "th" ? "ลองอีกครั้ง" : "Retry"}</Button></div> : null}
+        {activeReqLoading && requisitionRows.length === 0 ? <p role="status" className="px-4 pb-4 text-sm text-slate sm:px-6 lg:px-8">{language === "th" ? "กำลังโหลดรายการคำขอ..." : "Loading requisition rows..."}</p> : null}
 
-        {waterfallRows.length === 0 ? (
+        {context.pipelineSummaryStatus === "error" ? <div className="px-4 sm:px-6 lg:px-8"><p role="alert" className="text-sm text-danger">{language === "th" ? "โหลดสรุปอัตราว่างไม่สำเร็จ" : "Could not load the vacancy summary."}</p><Button type="button" className="mt-2" size="toolbar" onClick={context.onRetryPipelineSummary}>{language === "th" ? "ลองอีกครั้ง" : "Retry"}</Button></div> : context.pipelineSummaryStatus !== "ready" ? <p role="status" className="px-4 text-sm text-slate sm:px-6 lg:px-8">{language === "th" ? "กำลังโหลดสรุปอัตราว่าง..." : "Loading vacancy summary..."}</p> : waterfallRows.length === 0 ? (
           <div className="px-4 sm:px-6 lg:px-8">
             <EmptyState variant="quiet" message={translate(language, "noWaterfallData")} />
           </div>
         ) : null}
         {validReportRange ? (
           <div className="bg-white">
-            <VacancyWaterfallChart sites={requisitions.map(row => row.site)} breakdownOpen={executiveBreakdownOpen} onBreakdownChange={setExecutiveBreakdownOpen} language={language} rows={waterfallRows} startDate={startDate} endDate={endDate} />
+            <VacancyWaterfallChart sites={Array.from(new Set(waterfallRows.map(row => row.site)))} breakdownOpen={executiveBreakdownOpen} onBreakdownChange={setExecutiveBreakdownOpen} language={language} rows={waterfallRows} startDate={startDate} endDate={endDate} />
           </div>
         ) : null}
         {exportError ? <p className="mx-4 mb-1 text-sm font-medium text-danger sm:mx-6 lg:mx-8" role="alert">{translate(language, "exportPngFailed")}</p> : null}
@@ -259,7 +365,8 @@ export function VacancyWaterfallView({ context, reportGroup }: { context: Dashbo
               {(["activity", "status", "accum"] as StageCountMode[]).map((mode) => <button key={mode} type="button" className={`rounded-lg px-3 py-2 text-sm font-semibold ${stageCountMode === mode ? "bg-primary text-white shadow-sm" : "text-slate hover:bg-white"}`} aria-pressed={stageCountMode === mode} onClick={() => setStageCountMode(mode)}>{translate(language, mode === "status" ? "pipelineStatus" : mode === "activity" ? "pipelineActivity" : "pipelineAccum")}</button>)}
             </div>
             {stageCountMode === "accum" ? <p className="mb-3 text-sm font-medium text-slate">{translate(language, "pipelineAccumHelp")}</p> : null}
-            <RequisitionDetailTable rows={requisitionRows} language={language} onStageClick={(row, stage) => setStageDrilldown({ row, stage, matches: stageCandidatesForRequisition(data, row.doc_id, stage, stageCountMode, startDate, endDate) })} />
+            {activeReqCriteriaPending ? <p role="status" className="py-3 text-sm text-slate">{language==="th"?"กำลังปรับตัวกรอง...":"Updating report filters..."}</p> : <RequisitionDetailTable rows={requisitionRows} language={language} serverControlled onCriteriaChange={changeActiveReqCriteria} onStageClick={(row, stage) => { void openStageCandidates(row,stage); }} />}
+            {!activeReqCriteriaPending&&activeReqCursor ? <div className="mt-3 flex justify-center"><Button type="button" size="toolbar" variant="secondary" disabled={activeReqLoading} onClick={loadMoreActiveRequisitions}>{activeReqLoading ? (language === "th" ? "กำลังโหลด..." : "Loading...") : (language === "th" ? "โหลดเพิ่มเติม" : "Load more")}</Button></div> : null}
           </div>
         </div>
       </section> : null}
@@ -271,10 +378,11 @@ export function VacancyWaterfallView({ context, reportGroup }: { context: Dashbo
             <span className="text-sm font-medium text-slate">{summary} · {translate(language, "applicantsInRange", { count: formatNumber(funnelApplicantTotal, language), start: formatDate(funnelStartDate, language), end: formatDate(funnelEndDate, language), level: funnelLevelLabel(funnelLevelBands, language), channel: funnelChannelLabel })}</span>
           </h2>
           <div className="flex flex-wrap gap-2 print:hidden">
-            <DashboardExportChooser language={language} title={language === "th" ? "กระบวนการและช่องทางสรรหา" : "Pipeline & Sources"} summary={pipelineMetadata} pngLabel={`${translate(language, "export")} ${translate(language, "recruitmentPipelineHealth")} PNG`} disabled={exportPreparing || !validFunnelRange} onPng={exportPipelinePng} onExcel={exportPipelineExcel} />
+            <DashboardExportChooser language={language} title={language === "th" ? "กระบวนการและช่องทางสรรหา" : "Pipeline & Sources"} summary={pipelineMetadata} pngLabel={`${translate(language, "export")} ${translate(language, "recruitmentPipelineHealth")} PNG`} disabled={exportPreparing || !validFunnelRange || context.pipelineSummaryStatus !== "ready"} onPng={exportPipelinePng} onExcel={exportPipelineExcel} />
           </div>
         </div>
           <div className="grid min-w-0 gap-4 border-t border-[#E4E9F2] bg-white p-4 sm:p-6 lg:p-8">
+            {context.pipelineSummaryStatus === "error" ? <div className="rounded-xl border border-[#E4E9F2] p-4"><p role="alert" className="text-sm text-danger">{language === "th" ? "โหลดสรุปกระบวนการไม่สำเร็จ" : "Could not load the pipeline summary."}</p><Button type="button" className="mt-3" size="toolbar" onClick={context.onRetryPipelineSummary}>{language === "th" ? "ลองอีกครั้ง" : "Retry"}</Button></div> : context.pipelineSummaryStatus !== "ready" ? <p role="status" className="text-sm text-slate">{language === "th" ? "กำลังโหลดสรุปกระบวนการ..." : "Loading pipeline summary..."}</p> : null}
             <div data-testid="pipeline-filters" className="dashboard-filter-toolbar pipeline-filter-toolbar flex min-w-0 flex-wrap items-end gap-3 rounded-xl border border-[#E4E9F2] bg-[#F8FAFD] p-3">
               <DashboardFilterPicker label={translate(language, "channel")} options={funnelChannelOptions} value={funnelChannel} onValueChange={setFunnelChannel} />
               <div className="grid min-w-0 gap-1 text-xs font-medium text-slate"><span>{language === "th" ? "คำอธิบายสีช่องทาง" : "Channel legend"}</span><OnOffSwitch checked={funnelLegend} onCheckedChange={funnelLegend => onPreferencesChange({ funnelLegend })} label={language === "th" ? "คำอธิบายสีช่องทาง" : "Channel legend"} language={language} title={language === "th" ? "สลับคำอธิบายสีช่องทาง" : "Toggle channel legend"} /></div>
@@ -291,7 +399,7 @@ export function VacancyWaterfallView({ context, reportGroup }: { context: Dashbo
               showTotalSummary={false}
               showChannelLegend={funnelLegend}
             />
-            <SourceEffectiveness rows={sourceRows} language={language} />
+            <div><SourceEffectiveness rows={sourceRows} language={language} /><p className="mt-3 text-sm text-slate">{language === "th" ? "ย้ายเข้า" : "Reassigned in"}: {pipelineReport?.reassignments.in ?? 0} · {language === "th" ? "ย้ายออก" : "Reassigned out"}: {pipelineReport?.reassignments.out ?? 0}</p></div>
             </div>
             <p className="text-sm font-medium text-slate">{funnelApplicantTotal === 0 ? translate(language, "noApplicantsMatchFunnelFilters") : translate(language, "topBottleneck", { value: topFunnelBottleneck(funnelRows, language) })}</p>
           </div>
@@ -299,15 +407,15 @@ export function VacancyWaterfallView({ context, reportGroup }: { context: Dashbo
 
       {reportGroup === "vacancy" ? <div ref={requisitionExportRef} className="export-report-surface" aria-hidden="true">
         <ReportHeader exportMode language={language} title={translate(language, "activeRequisitionsSelectedRange")} startDate={startDate} endDate={endDate} meta={`${summary} · ${translate(language, "stageCountModeMeta", { mode: translate(language, stageCountMode === "status" ? "pipelineStatus" : stageCountMode === "activity" ? "pipelineActivity" : "pipelineAccum") })}`} />
-        <RequisitionExportTable rows={requisitionRows} language={language} organizationRows={organizationRows} columns={exportColumns} />
+        <RequisitionExportTable rows={requisitionPngRows ?? requisitionRows} language={language} organizationRows={organizationRows} columns={exportColumns} />
       </div> : null}
-      <ActiveRequisitionExportModal open={exportOpen} language={language} rows={requisitionRows} organizationRows={organizationRows} columns={exportColumns} onClose={() => setExportOpen(false)} onColumnsChange={setExportColumns} onExportXlsx={() => exportRequisitionDetailXlsx(exportColumns)} onExportPng={() => exportPng(requisitionExportRef.current, `active-requisitions-${startDate}-to-${endDate}.png`)} />
-      <StageCandidateModal language={language} drilldown={stageDrilldown} onClose={() => setStageDrilldown(null)} onOpenCandidate={(candidate) => setReportCandidate({ ...candidate, personInCharge: stageDrilldown?.row.person_in_charge ?? "" })} />
+      <ActiveRequisitionExportModal open={exportOpen} language={language} rows={requisitionRows} organizationRows={organizationRows} columns={exportColumns} onClose={() => setExportOpen(false)} onColumnsChange={setExportColumns} onExportXlsx={() => exportRequisitionDetailXlsx(exportColumns)} onExportPng={exportRequisitionDetailPng} />
+      <StageCandidateModal language={language} drilldown={stageDrilldown} onClose={() => setStageDrilldown(null)} onLoadMore={loadMoreStageCandidates} onRetry={() => { if(stageDrilldown) void openStageCandidates(stageDrilldown.row,stageDrilldown.stage); }} onOpenCandidate={(candidate) => setReportCandidate({ ...candidate, personInCharge: stageDrilldown?.row.person_in_charge ?? "" })} />
       <ReportCandidateDetail language={language} candidate={reportCandidate} onClose={() => setReportCandidate(null)} />
 
       {reportGroup === "vacancy" ? <div ref={chartExportRef} className="export-report-surface" aria-hidden="true">
         <p className="px-4 py-2 text-sm text-slate">{summary}</p>
-        <VacancyWaterfallChart sites={requisitions.map(row => row.site)} isExport breakdownOpen={executiveBreakdownOpen} language={language} rows={waterfallRows} startDate={startDate} endDate={endDate} />
+        <VacancyWaterfallChart sites={Array.from(new Set(waterfallRows.map(row => row.site)))} isExport breakdownOpen={executiveBreakdownOpen} language={language} rows={waterfallRows} startDate={startDate} endDate={endDate} />
       </div> : null}
 
       {reportGroup === "pipeline" ? <div ref={funnelExportRef} className="export-report-surface flex flex-col" style={{ width: funnelExportWidth, minWidth: funnelExportWidth, height: funnelExportHeight, minHeight: funnelExportHeight }} aria-hidden="true">
@@ -315,15 +423,15 @@ export function VacancyWaterfallView({ context, reportGroup }: { context: Dashbo
         <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,3fr)_minmax(0,2fr)] items-start gap-3">
         <PipelineFunnel
           language={language}
-          rows={pngPipeline.report.funnelRows}
+          rows={pngPipeline.funnelRows}
           title={translate(language, "recruitmentPipelineHealth")}
           helpText={funnelHelp}
           exportMode
-          totalValue={pngPipeline.report.funnelRows[0]?.count ?? 0}
+          totalValue={pngPipeline.funnelRows[0]?.count ?? 0}
           showTotalSummary={false}
           showChannelLegend={pngPipeline.legend}
         />
-        <SourceEffectiveness rows={pngPipeline.report.sourceRows} language={language} exportMode />
+        <SourceEffectiveness rows={pngPipeline.sourceRows} language={language} exportMode />
         </div>
       </div> : null}
 
@@ -664,16 +772,16 @@ function exportValue(row: RequisitionDetailRow, key: ExportColumnKey, language: 
   return values[key];
 }
 
-function StageCandidateModal({ language, drilldown, onClose, onOpenCandidate }: { language: Language; drilldown: { row: RequisitionDetailRow; stage: ProcessStage; matches: StageCandidateMatch[] } | null; onClose: () => void; onOpenCandidate: (candidate: StageCandidateMatch) => void }) {
+function StageCandidateModal({ language, drilldown, onClose, onLoadMore, onRetry, onOpenCandidate }: { language: Language; drilldown: { row: RequisitionDetailRow; stage: ProcessStage; matches: StageCandidateMatch[]; total:number; cursor:ActiveRequisitionCandidatePage["nextCursor"]; loading:boolean; error:boolean } | null; onClose: () => void; onLoadMore:()=>void; onRetry:()=>void; onOpenCandidate: (candidate: StageCandidateMatch) => void }) {
   const label = drilldown ? `${processStageLabel(language, drilldown.stage)} · ${drilldown.row.doc_id}` : "";
-  return <Modal open={Boolean(drilldown)} title={`Candidates in ${label}`} onClose={onClose} width="max-w-4xl"><div className="grid gap-3"><p className="text-sm text-slate">{drilldown?.matches.length ?? 0} candidates in the selected report context.</p>{drilldown?.matches.length ? <div className="max-h-[55vh] overflow-auto rounded-xl border border-[#D7DEE8]"><table className="min-w-full text-sm"><thead className="sticky top-0 bg-[#F8FAFD] text-left"><tr>{["Candidate", "ID", "Pending Date", "Result Date", "Person in Charge"].map((header) => <th key={header} className="border-b px-3 py-2 font-semibold text-navy">{header}</th>)}</tr></thead><tbody>{drilldown.matches.map((match) => <tr key={match.candidateId} className="hover:bg-[#F8FAFD]"><td className="border-b px-3 py-2"><button type="button" className="font-semibold text-primary underline" onClick={() => onOpenCandidate(match)}>{match.name}</button></td><td className="border-b px-3 py-2">{match.candidateId}</td><td className="border-b px-3 py-2">{formatDate(match.pendingDate, language)}</td><td className="border-b px-3 py-2">{match.resultDate ? formatDate(match.resultDate, language) : "—"}</td><td className="border-b px-3 py-2">{drilldown.row.person_in_charge || "—"}</td></tr>)}</tbody></table></div> : <EmptyState message={translate(language, "noData")} />}</div></Modal>;
+  return <Modal open={Boolean(drilldown)} title={`Candidates in ${label}`} onClose={onClose} width="max-w-4xl"><div className="grid gap-3"><p className="text-sm text-slate">{drilldown?.total ?? 0} candidates in the selected report context.</p>{drilldown?.error ? <div><p role="alert" className="text-sm text-danger">{language==="th"?"โหลดผู้สมัครไม่สำเร็จ":"Could not load candidates."}</p><Button type="button" className="mt-2" size="toolbar" onClick={onRetry}>{language==="th"?"ลองอีกครั้ง":"Retry"}</Button></div> : drilldown?.loading && !drilldown.matches.length ? <p role="status" className="text-sm text-slate">{language==="th"?"กำลังโหลดผู้สมัคร...":"Loading candidates..."}</p> : drilldown?.matches.length ? <><div className="max-h-[55vh] overflow-auto rounded-xl border border-[#D7DEE8]"><table className="min-w-full text-sm"><thead className="sticky top-0 bg-[#F8FAFD] text-left"><tr>{["Candidate", "ID", "Pending Date", "Result Date", "Person in Charge"].map((header) => <th key={header} className="border-b px-3 py-2 font-semibold text-navy">{header}</th>)}</tr></thead><tbody>{drilldown.matches.map((match) => <tr key={match.applicationId ?? match.candidateId} className="hover:bg-[#F8FAFD]"><td className="border-b px-3 py-2"><button type="button" className="font-semibold text-primary underline" onClick={() => onOpenCandidate(match)}>{match.name}</button></td><td aria-label={formatRecruitmentId(match.candidateId)} className="border-b px-3 py-2">{formatRecruitmentId(match.candidateId)}</td><td className="border-b px-3 py-2">{formatDate(match.pendingDate, language)}</td><td className="border-b px-3 py-2">{match.resultDate ? formatDate(match.resultDate, language) : "—"}</td><td className="border-b px-3 py-2">{drilldown.row.person_in_charge || "—"}</td></tr>)}</tbody></table></div>{drilldown.cursor?<div className="flex justify-center"><Button type="button" size="toolbar" variant="secondary" disabled={drilldown.loading} onClick={onLoadMore}>{drilldown.loading?(language==="th"?"กำลังโหลด...":"Loading..."):(language==="th"?"โหลดเพิ่มเติม":"Load more")}</Button></div>:null}</> : <EmptyState message={translate(language, "noData")} />}</div></Modal>;
 }
 
 function ReportCandidateDetail({ language, candidate, onClose }: { language: Language; candidate: StageCandidateReportDetail | null; onClose: () => void }) {
-  return <Modal open={Boolean(candidate)} title="Candidate Report Detail" onClose={onClose} width="max-w-lg"><dl className="grid grid-cols-2 gap-3 text-sm"><dt className="text-slate">Candidate</dt><dd className="font-semibold text-navy">{candidate?.name}</dd><dt className="text-slate">ID</dt><dd>{candidate?.candidateId}</dd><dt className="text-slate">Stage</dt><dd>{candidate ? processStageLabel(language, candidate.stage) : ""}</dd><dt className="text-slate">Pending Date</dt><dd>{candidate ? formatDate(candidate.pendingDate, language) : ""}</dd><dt className="text-slate">Result Date</dt><dd>{candidate?.resultDate ? formatDate(candidate.resultDate, language) : "—"}</dd><dt className="text-slate">Person in Charge</dt><dd>{candidate?.personInCharge || "—"}</dd></dl></Modal>;
+  return <Modal open={Boolean(candidate)} title="Candidate Report Detail" onClose={onClose} width="max-w-lg"><dl className="grid grid-cols-2 gap-3 text-sm"><dt className="text-slate">Candidate</dt><dd className="font-semibold text-navy">{candidate?.name}</dd><dt className="text-slate">ID</dt><dd aria-label={formatRecruitmentId(candidate?.candidateId)}>{candidate?formatRecruitmentId(candidate.candidateId):""}</dd><dt className="text-slate">Stage</dt><dd>{candidate ? processStageLabel(language, candidate.stage) : ""}</dd><dt className="text-slate">Pending Date</dt><dd>{candidate ? formatDate(candidate.pendingDate, language) : ""}</dd><dt className="text-slate">Result Date</dt><dd>{candidate?.resultDate ? formatDate(candidate.resultDate, language) : "—"}</dd><dt className="text-slate">Person in Charge</dt><dd>{candidate?.personInCharge || "—"}</dd></dl></Modal>;
 }
 
-function RequisitionDetailTable({ rows, language, printMode = false, onStageClick }: { rows: RequisitionDetailRow[]; language: Language; printMode?: boolean; onStageClick?: (row: RequisitionDetailRow, stage: ProcessStage) => void }) {
+function RequisitionDetailTable({ rows, language, printMode = false, serverControlled=false, onCriteriaChange, onStageClick }: { rows: RequisitionDetailRow[]; language: Language; printMode?: boolean; serverControlled?:boolean; onCriteriaChange?:(criteria:ActiveRequisitionReportCriteria)=>void; onStageClick?: (row: RequisitionDetailRow, stage: ProcessStage) => void }) {
   const columns: TableColumn<RequisitionDetailRow>[] = [
     { key: "site", label: translate(language, "site"), value: (row) => row.site },
     { key: "department", label: translate(language, "department"), value: (row) => row.department },
@@ -697,11 +805,14 @@ function RequisitionDetailTable({ rows, language, printMode = false, onStageClic
     { key: "filled_date", label: translate(language, "filledDate"), value: (row) => row.filled_date ? formatDate(row.filled_date, language) : "-", sortValue: (row) => row.filled_date ?? "" }
   ];
   const table = useTableControls(rows, columns);
-  const visibleRows = printMode ? rows : table.controlledRows;
+  const criteriaCallback=useRef(onCriteriaChange);criteriaCallback.current=onCriteriaChange;
+  useEffect(()=>{if(serverControlled)criteriaCallback.current?.({filters:table.filters,search:table.search,sortKey:table.sortDirection?table.sortKey:null,sortDirection:table.sortDirection});},[serverControlled,table.filters,table.search,table.sortDirection,table.sortKey]);
+  const visibleRows = printMode || serverControlled ? rows : table.controlledRows;
   if (rows.length === 0) return <EmptyState message={translate(language, "noActiveRequisitionsInRange")} />;
 
   return (
-    <div className={`max-h-[560px] min-w-0 max-w-full overflow-x-auto ${printMode ? "print-detail-scroll" : "dashboard-detail-scroll"}`}>
+    <div className={`min-w-0 max-w-full overflow-x-auto ${printMode ? "print-detail-scroll" : "dashboard-detail-scroll"}`}>
+      {!printMode ? <label className="mb-2 flex max-w-sm items-center gap-2 text-xs font-medium text-slate">{language==="th"?"ค้นหาคำขอ":"Search requisitions"}<input type="search" value={table.search} onChange={event=>table.setSearch(event.target.value)} aria-label={language==="th"?"ค้นหาคำขอ":"Search requisitions"} className="min-w-0 flex-1 rounded-lg border border-[#C9D5E6] bg-white px-3 py-2 text-sm text-navy outline-none focus-visible:ring-2 focus-visible:ring-primary/30" /></label> : null}
       <table data-requisition-detail-table className={`${printMode ? "print-detail-table" : "min-w-max"} table-auto border-collapse text-left text-xs`}>
         <thead>
           <tr className="bg-lightgray text-navy">
@@ -1024,6 +1135,10 @@ function buildActiveRequisitionRows(data: DashboardData, requisitions: EnrichedR
     .sort(compareRequisitionDetailRows);
 }
 
+function mapActiveRequisitionRow(row: ActiveRequisitionReportRow): RequisitionDetailRow {
+  return { ...row, stage_counts: row.stage_counts as Record<ProcessStage, number>, applicant_channels: row.applicant_channels as RequisitionDetailRow["applicant_channels"] };
+}
+
 function groupIdsForRequisition(data: DashboardData, docId: string) {
   return new Set(
     data.document_groups
@@ -1060,14 +1175,12 @@ function stageActivityCountsForDocGroups(data: DashboardData, docGroupIds: Set<s
   if (docGroupIds.size === 0) return emptyStageCounts();
 
   const candidateIds = new Set(
-    data.candidates
-      .filter((candidate) => Boolean(candidate.doc_group_id && docGroupIds.has(candidate.doc_group_id)))
-      .map((candidate) => candidate.candidate_id)
+    candidatesForDocGroups(data,docGroupIds).map(applicationKey)
   );
 
   for (const log of data.recruitment_logs) {
     const activityDate = dateOnly(log.result === 1 ? (log.outcome_date ?? log.log_date) : log.log_date);
-    if (!activityDate || activityDate < startDate || activityDate > endDate || !candidateIds.has(log.candidate_id) || !detailStages.includes(log.recruitment_process)) continue;
+    if (!activityDate || activityDate < startDate || activityDate > endDate || !logBelongsToDocGroups(data,log,docGroupIds,log.result === null ? "entry" : "outcome") || !detailStages.includes(log.recruitment_process)) continue;
     stageCandidates[log.recruitment_process].add(log.candidate_id);
   }
 
@@ -1248,10 +1361,10 @@ function oppositeSnapshotColor(site: string, requestType: RequisitionRequestType
 function stageAccumCountsForDocGroups(data: DashboardData, docGroupIds: Set<string>, requisitionDate: string, endDate: string) {
   const stageCandidates = Object.fromEntries(detailStages.map((stage) => [stage, new Set<string>()])) as Record<ProcessStage, Set<string>>;
   if (!requisitionDate || docGroupIds.size === 0) return emptyStageCounts();
-  const candidateIds = new Set(data.candidates.filter((candidate) => Boolean(candidate.doc_group_id && docGroupIds.has(candidate.doc_group_id))).map((candidate) => candidate.candidate_id));
+  const candidateIds = new Set(candidatesForDocGroups(data,docGroupIds).map(applicationKey));
   for (const log of data.recruitment_logs) {
     const enteredDate = dateOnly(log.log_date);
-    if (log.superseded_at || !enteredDate || enteredDate < requisitionDate || enteredDate > endDate || !candidateIds.has(log.candidate_id) || !detailStages.includes(log.recruitment_process)) continue;
+    if (log.superseded_at || !enteredDate || enteredDate < requisitionDate || enteredDate > endDate || !logBelongsToDocGroups(data,log,docGroupIds,log.result === null ? "entry" : "outcome") || !detailStages.includes(log.recruitment_process)) continue;
     stageCandidates[log.recruitment_process].add(log.candidate_id);
   }
   return Object.fromEntries(detailStages.map((stage) => [stage, stageCandidates[stage].size])) as Record<ProcessStage, number>;
@@ -1260,25 +1373,25 @@ function stageAccumCountsForDocGroups(data: DashboardData, docGroupIds: Set<stri
 function stageCandidatesForRequisition(data: DashboardData, docId: string, stage: ProcessStage, mode: StageCountMode, startDate: string, endDate: string): StageCandidateMatch[] {
   const docGroupIds = docGroupIdsForGroupIds(data, groupIdsForRequisition(data, docId));
   const requisitionDate = validDateOnly(data.requisitions.find((requisition) => requisition.doc_id === docId)?.pr_approved_date);
-  const candidates = data.candidates.filter((candidate) => Boolean(candidate.doc_group_id && docGroupIds.has(candidate.doc_group_id)));
+  const candidates = candidatesForDocGroups(data,docGroupIds);
   return candidates.flatMap((candidate) => {
-    const logs = data.recruitment_logs.filter((log) => log.candidate_id === candidate.candidate_id && log.recruitment_process === stage && !log.superseded_at);
+    const logs = data.recruitment_logs.filter((log) => belongsToApplication(log,candidate) && log.recruitment_process === stage && !log.superseded_at);
     const matching = mode === "activity"
       ? logs.find((log) => { const date = dateOnly(log.result === 1 ? (log.outcome_date ?? log.log_date) : log.log_date); return Boolean(date && date >= startDate && date <= endDate); })
       : mode === "accum"
         ? logs.filter((log) => { const date = dateOnly(log.log_date); return Boolean(requisitionDate && date && date >= requisitionDate && date <= endDate); }).sort((a, b) => a.log_date.localeCompare(b.log_date) || a.log_id - b.log_id)[0]
       : logs.filter((log) => log.log_date <= endDate && (!log.outcome_date || log.outcome_date > endDate || log.result === null)).sort((a, b) => b.log_date.localeCompare(a.log_date) || b.log_id - a.log_id)[0];
     if (!matching) return [];
-    return [{ candidateId: candidate.candidate_id, name: candidate.name, stage, pendingDate: matching.log_date, resultDate: dateOnly(matching.outcome_date), remark: matching.outcome_remark ?? matching.remark, result: matching.result }];
+    return [{ applicationId: candidate.application_id, candidateId: candidate.candidate_id, name: candidate.name, stage, pendingDate: matching.log_date, resultDate: dateOnly(matching.outcome_date), remark: matching.outcome_remark ?? matching.remark, result: matching.result }];
   }).sort((a, b) => a.name.localeCompare(b.name));
 }
 
 function pipelineStatusCountsForDocGroups(data: DashboardData, docGroupIds: Set<string>, endDate: string) {
   const stageCandidates = Object.fromEntries(detailStages.map((stage) => [stage, new Set<string>()])) as Record<ProcessStage, Set<string>>;
-  const candidateIds = new Set(data.candidates.filter((candidate) => Boolean(candidate.doc_group_id && docGroupIds.has(candidate.doc_group_id))).map((candidate) => candidate.candidate_id));
+  const candidateIds = new Set(candidatesForDocGroups(data,docGroupIds).map(applicationKey));
   for (const candidateId of candidateIds) {
     const latest = data.recruitment_logs
-      .filter((log) => log.candidate_id === candidateId && detailStages.includes(log.recruitment_process) && log.log_date <= endDate && (!log.outcome_date || log.outcome_date > endDate || log.result === null))
+      .filter((log) => (log.application_id ?? log.candidate_id) === candidateId && detailStages.includes(log.recruitment_process) && log.log_date <= endDate && (!log.outcome_date || log.outcome_date > endDate || log.result === null))
       .sort((a, b) => b.log_date.localeCompare(a.log_date) || b.log_id - a.log_id)[0];
     if (latest) stageCandidates[latest.recruitment_process].add(candidateId);
   }
@@ -1314,22 +1427,6 @@ async function hasVisiblePngContent(dataUrl: string) {
   return false;
 }
 
-function buildReportSummary(requisitionRows: RequisitionDetailRow[], offers: EnrichedOffer[], startDate: string, endDate: string, language: Language) {
-  const openRequisitions = requisitionRows.filter((row) => row.period_status === "ongoing").length;
-  const activeVacancy = requisitionRows.reduce((sum, row) => sum + row.vacancy, 0);
-  const filled = offers.filter((offer) => {
-    const date = validDateOnly(offer.accepted_date);
-    return Boolean(countsTowardHeadcount(offer) && date && date >= startDate && date <= endDate && requisitionRows.some((row) => row.doc_id === offer.doc_id));
-  }).length;
-  const performance = activeVacancy === 0 ? 0 : Math.floor((filled / activeVacancy) * 100);
-  const overSla = requisitionRows.filter((row) => row.sla_state.isOverdue).length;
-  return [
-    { label: translate(language, "openRequisitions"), value: openRequisitions, tone: "primary" as const, helper: translate(language, "openRequisitionsHelper") },
-    { label: translate(language, "filledVacancyRatio"), value: `${formatNumber(filled, language)}/${formatNumber(activeVacancy, language)} (${performance}%)`, tone: performance > 0 ? "teal" as const : "muted" as const, helper: translate(language, "acceptedOffersInRange") },
-    { label: translate(language, "overSlaLabel"), value: overSla, tone: overSla > 0 ? "danger" as const : "success" as const, helper: translate(language, "needsReview") }
-  ];
-}
-
 function topFunnelBottleneck(rows: PipelineFunnelRow[], language: Language) {
   const candidates = rows
     .slice(1)
@@ -1346,4 +1443,13 @@ function topFunnelBottleneck(rows: PipelineFunnelRow[], language: Language) {
 function calendarDayAge(startDate: string, endDate: string) {
   if (!startDate || !endDate) return null;
   return Math.max(Math.floor((Date.parse(`${endDate}T00:00:00Z`) - Date.parse(`${startDate}T00:00:00Z`)) / 86_400_000), 0);
+}
+
+function candidatesForDocGroups(data: DashboardData, ids: Set<string>) {
+ const groups=new Set(data.document_groups.filter(link=>ids.has(link.doc_group_id)).map(link=>link.group_id));
+ return applicationCandidates(data).filter(candidate=>candidate.group_id ? groups.has(candidate.group_id) : Boolean(candidate.doc_group_id&&ids.has(candidate.doc_group_id)));
+}
+function logBelongsToDocGroups(data: DashboardData,log: DashboardData["recruitment_logs"][number],ids: Set<string>,kind: "entry"|"outcome") {
+ const group=assignmentGroup(data,kind==="entry"?log.entry_assignment_id:log.outcome_assignment_id);
+ return group?data.document_groups.some(link=>ids.has(link.doc_group_id)&&link.group_id===group):candidatesForDocGroups(data,ids).some(candidate=>belongsToApplication(log,candidate));
 }

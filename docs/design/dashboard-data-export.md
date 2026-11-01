@@ -23,6 +23,8 @@ Recruitment Performance and Pipeline & Sources each expose one compact Export ac
 
 Generation captures the selected report and keeps the chooser open/locked: repeated actions, Close and Escape cannot interrupt preparation. Localized PNG/Excel progress uses a live status. Success closes the chooser after initiating download; failure retains it with an inline alert and retry. Invalid ranges suppress report export; valid empty datasets export headers and zero-valued summary frames.
 
+Dashboard report screens consume compact summary DTOs and bounded cursor pages; these do not stand in for complete source data. On an explicit Excel action, the loader freezes scope and retrieves every matching source page/ledger with count and duplicate checks. Risk and Bottleneck PNG capture also exhausts the selected page cursor before rendering. A short nonterminal page, changed total, duplicate row, missing/repeated cursor, or failed source read fails the export visibly; partial downloads are not produced. Company-wide Risk exports use the existing authorized anonymized company-report feed to preserve the same requisition population as the summary without adding candidate identity.
+
 ## Workbook schema
 
 The same chooser also serves independent Vacancy Risk and Stage Bottleneck exports. See [new report layout](dashboard-risk-bottlenecks.md) and [new workbook sections](#risk-and-bottleneck-workbooks). PNG uses a frozen export-only render with all matching action rows, including rows beyond the screen's page.
@@ -83,3 +85,9 @@ Risk metrics retain Current/Prior/Change and add numeric Current denominator/sha
 ### Stage screen and export distinction
 
 Stage Bottlenecks omits the four summary cards from the page; PNG retains counts/durations, trends/comparisons. Both use the white amber-bordered primary banner. Excel keeps all summary/source tables and exactly two sheets. [Visual contract](dashboard-risk-bottlenecks.md#stage-layout); [checks](../../tests/e2e/stage-mobile-refinement.spec.ts).
+
+## Rejection analytics
+
+Rejections uses the shared chooser/frame and filename rejection-analysis-{start}-to-{end}. PNG expands all matching records/reasons across pagination. Excel has exactly Summary Data / Source Data (localized in Thai): metrics, actor counts/shares, main/detailed reason breakdowns, stages, zero-filled trend and counting guide; source grain is one matching failure event, including authorized identity/application, date, saved reasons and matching requisition context. IDs are text, dates typed and shares numeric; empty reports keep headers and zero summaries. No contacts or free-text notes are exported. Summary and source use the same filtered snapshot. [Design](dashboard-rejections.md), [canonical counting](../WEBSITE_STRUCTURE.md#rejection-analytics), [checks](../../tests/e2e/rejection-dashboard.spec.ts).
+
+Rejections PNG follows the active Treemap/Bars view and labels its comparison denominator. Excel retains selected-event tables and adds comparison summary and comparison_events source tables with reason hierarchy, numeric shares and selected-report contribution flags. The guide records the view and Saturday–Friday boundaries. Exactly two worksheets remain; see [canonical populations](../WEBSITE_STRUCTURE.md#reason-treemap-and-comparison-population) and [Rejection design](dashboard-rejections.md).

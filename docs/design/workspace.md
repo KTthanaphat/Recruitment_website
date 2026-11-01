@@ -48,3 +48,9 @@ Make one selected sourcing group faster to scan, with an obvious next action. Co
 - Verify English and Thai at 360px, 390px, 768px, 1024px, and a wide desktop viewport. Check long names, IDs, issues, remarks, empty states, all-results picker behavior, and no page-level horizontal overflow.
 - Check keyboard order, visible focus, tab keyboard navigation, 44px phone primary targets, and screen-reader labels for counts, abbreviated tags, and truncated text.
 - Check picker sorting and tie order, selected-week update status, oldest group SLA, legacy requisition/`doc` URL handling, `section` back/forward/refresh, all role-gated actions, sourcing Save/reopen and draft confirmation, Pipeline actions, and Offer handoff. Update focused Workspace end-to-end assertions when implementing this target.
+
+## Group picker view preference
+
+`WorkspacePicker` in [HiringWorkspaceView](../../src/components/workspace/HiringWorkspaceView.tsx) owns Table/Cards. Both call `groupCells` over one shared filtered/sorted result model. Table default, user-keyed local storage (`recruitment:workspace:view:<user-id>`), invalid/unavailable storage falls back to Table. Labeled buttons use pressed state, focus ring and 44px targets.
+
+Desktop Table uses semantic rows/headers and internal scrolling. Phone Table uses labeled compact rows; Cards uses one/two/three columns at phone/intermediate/wide widths. Show group name/ID, readiness, site/owner, demand, active application/distinct historical person counts, all authorized linked requisitions and latest save. Group opening and linked preview remain separate controls. Switching must retain every result, order, query, scope and sort. Tests: [application/views checks](../../tests/e2e/candidate-applications.spec.ts).

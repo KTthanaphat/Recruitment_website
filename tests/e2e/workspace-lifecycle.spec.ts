@@ -38,7 +38,7 @@ test("embedded sourcing saves through the intercepted RPC and embedded pipeline 
     .getByRole("heading", { name: "No activity", exact: true })
     .locator("xpath=ancestor::section[1]");
   await expect(noActivityLane).toHaveAttribute("data-pipeline-stage", "No activity");
-  const card = page.locator("#pipeline-candidate-C-PHONE");
+  const card = page.locator('[data-candidate-id="C-PHONE"]');
   await card.getByRole("button", { name: "Candidate actions for Pat Phone" }).click();
   const menu = page.getByRole("menu", { name: "Candidate actions for Pat Phone" });
   await expect(menu).toBeVisible();
@@ -98,7 +98,7 @@ test("pipeline no-activity menu opens the start-process modal", async ({ page })
   await expectWorkspaceReady(page);
   await page.getByRole("tab", { name: "Pipeline" }).click();
 
-  const card = page.locator("#pipeline-candidate-C-NO-ACTIVITY");
+  const card = page.locator('[data-candidate-id="C-NO-ACTIVITY"]');
   await card.getByRole("button", { name: "Candidate actions for Nora No Activity" }).click();
   await page.getByRole("menu", { name: "Candidate actions for Nora No Activity" }).getByRole("menuitem", { name: "Start phone screen for Nora No Activity" }).click();
   await expect(page.getByRole("dialog", { name: "Start Phone Screen" })).toBeVisible();
@@ -137,7 +137,7 @@ test("passing Offer hands off to workspace offer creation with proposed accepted
   await page.goto("/pipeline");
   await expectWorkspaceReady(page);
 
-  const card = page.locator("#pipeline-candidate-C-OFFER-READY");
+  const card = page.locator('[data-candidate-id="C-OFFER-READY"]');
   await card.getByRole("button", { name: "Candidate actions for Nina Offer Ready" }).click();
   await page.getByRole("menu", { name: "Candidate actions for Nina Offer Ready" }).getByRole("menuitem", { name: "Pass Offer for Nina Offer Ready" }).click();
   const processDialog = page.getByRole("dialog", { name: "Complete Stage" });
@@ -145,7 +145,7 @@ test("passing Offer hands off to workspace offer creation with proposed accepted
   await processDialog.getByRole("button", { name: "Review changes" }).click();
   await page.getByRole("dialog", { name: "Confirm Save" }).getByRole("button", { name: "Save changes" }).click();
 
-  await expect.poll(() => mock.rpcCalls.at(-1)?.endpoint).toBe("app_complete_pipeline_stage_v2");
+  await expect.poll(() => mock.rpcCalls.some(call => call.endpoint === "app_complete_pipeline_stage_v2")).toBe(true);
   await expect(page.getByRole("dialog", { name: "Offer stage passed" })).toBeVisible();
   await expect(page.getByText(/passed Offer on/)).toBeVisible();
   expect(mock.rpcCalls.some((call) => call.endpoint === "app_upsert_offer")).toBe(false);
@@ -154,8 +154,18 @@ test("passing Offer hands off to workspace offer creation with proposed accepted
   await expect(page).toHaveURL(/\/workspace\?.*section=offer/);
   const offerDialog = page.getByRole("dialog", { name: "Create Offer" });
   await expect(offerDialog).toBeVisible();
-  await expect(offerDialog.getByRole("button", { name: "candidate_id" })).toContainText("C-OFFER-READY");
-  await expect(offerDialog.getByRole("button", { name: "accepted_date" })).toContainText(proposedAcceptedDate.split("-").reverse().join("/"));
+  await expect(offerDialog.getByRole("textbox", { name: "Candidate" })).toHaveValue("C-OFFER-READY");
+  await expect.poll(() => mock.rpcCalls.some(call => call.endpoint === "app_offer_candidates_page_v1" && call.payload.p_search === "C-OFFER-READY")).toBe(true);
+  const offeredApplication = mock.data.candidate_applications?.find(row => row.candidate_id === "C-OFFER-READY");
+  expect(offeredApplication?.state).toBe("active");
+  expect(mock.data.recruitment_logs.find(row => row.application_id === offeredApplication?.application_id && row.recruitment_process === "Offer" && !row.superseded_at)?.result).toBe(1);
+  const offerLookup = mock.rpcCalls.findLast(call => call.endpoint === "app_offer_candidates_page_v1" && call.payload.p_search === "C-OFFER-READY");
+  expect(offerLookup?.response).toMatchObject({ items: [expect.objectContaining({ candidate_id: "C-OFFER-READY", doc_ids: expect.arrayContaining(["REQ-HQ-1"]) })] });
+  await offerDialog.getByRole("button", { name: "Candidate" }).click();
+  await expect(page.getByRole("option", { name: /C-OFFER-READY/ })).toBeVisible();
+  await page.getByRole("option", { name: /C-OFFER-READY/ }).click();
+  await expect(offerDialog.getByRole("button", { name: "Doc ID" })).toContainText("REQ-HQ-1");
+  await expect(offerDialog.getByRole("button", { name: "Accepted Date" })).toContainText(proposedAcceptedDate.split("-").reverse().join("/"));
   expect(mock.rpcCalls.some((call) => call.endpoint === "app_upsert_offer")).toBe(false);
   await offerDialog.getByRole("button", { name: "Review changes" }).click();
   expect(mock.rpcCalls.some((call) => call.endpoint === "app_upsert_offer")).toBe(false);

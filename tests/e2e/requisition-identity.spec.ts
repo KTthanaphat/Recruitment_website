@@ -21,7 +21,7 @@ test("requisition identity is consistent across records, Home, offers, and Pipel
 
   await page.goto("/pipeline");
   await expectWorkspaceReady(page);
-  const candidateCard = page.locator("#pipeline-candidate-C-PHONE");
+  const candidateCard = page.locator('[data-candidate-id="C-PHONE"]');
   await expect(candidateCard).toContainText("Pat Phone");
   await expect(candidateCard).toContainText("HQ · Engineer (Alice)");
   await expect(candidateCard).not.toContainText("REQ-HQ-1");

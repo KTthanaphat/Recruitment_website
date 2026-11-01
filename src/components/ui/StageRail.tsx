@@ -53,7 +53,7 @@ export function StageRail({ logs, currentStage, currentResult, compact = false, 
       {label ? <h4 className={compact ? "text-xs font-semibold text-navy" : "mb-4 font-semibold text-navy"}>{label}</h4> : null}
       <ol
         aria-label={ariaLabel ?? label ?? translate(language, "candidatePipelineJourney")}
-        className={compact ? `relative z-0 grid ${showStageIcons ? "h-8 w-44" : "h-4 w-36"} max-w-full items-center` : `relative z-0 grid min-w-[44rem] gap-4 md:grid-cols-7 md:gap-2 md:justify-items-center ${variant === "candidate-workspace" ? "md:min-w-0" : ""}`}
+        className={compact ? `relative z-0 grid ${showStageIcons ? "h-8 w-44" : "h-4 w-36"} max-w-full items-center` : `relative z-0 grid gap-4 md:grid-cols-7 md:gap-2 md:justify-items-center ${variant === "candidate-workspace" ? "min-w-0" : "min-w-[44rem]"}`}
         style={compact ? { gridTemplateColumns: `repeat(${stageItems.length}, minmax(0, 1fr))` } : undefined}
       >
         {compact && showConnectors ? (

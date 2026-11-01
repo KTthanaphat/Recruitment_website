@@ -15,7 +15,7 @@ test("failed pipeline candidates use the send rejection letter composer without 
   await installMockSupabase(page, { role: "admin_recruiter" });
   await page.goto("/pipeline");
   await expectWorkspaceReady(page);
-  const failedCandidate = page.locator("#pipeline-candidate-C-FAILED");
+  const failedCandidate = page.locator('[data-candidate-id="C-FAILED"]');
   await failedCandidate.getByRole("button", { name: "Send rejection letter" }).click();
   const dialog = page.getByRole("dialog", { name: "Send rejection letter" });
   await expect(dialog).toBeVisible();
@@ -30,5 +30,5 @@ test("sent rejection letters disable a second send from the pipeline", async ({ 
   context.data.rejection_letter_drafts.push({ draft_id: "draft-sent", candidate_id: "C-FAILED", failed_stage_instance_id: failedLog.stage_instance_id, template_id: null, template_version: null, language: "en", recipient_email: "finn@example.com", subject: "Outcome", body: "Thank you", status: "sent", shared_mailbox: "hr@example.com", outlook_draft_id: "delivery-sent", flow_run_id: "run-sent", response_metadata: { ok: true }, failure_summary: null, retry_of_draft_id: null, created_by: "qa-admin", created_at: "2026-07-24T05:00:00.000Z", finalized_at: "2026-07-24T05:00:01.000Z" });
   await page.goto("/pipeline");
   await expectWorkspaceReady(page);
-  await expect(page.locator("#pipeline-candidate-C-FAILED").getByRole("button", { name: "Send rejection letter" })).toBeDisabled();
+  await expect(page.locator('[data-candidate-id="C-FAILED"]').getByRole("button", { name: "Send rejection letter" })).toBeDisabled();
 });

@@ -4,10 +4,22 @@ project_id = "recruitment-tracking"
 schema_paths = [
   "./schemas/00_extensions.sql",
   "./schemas/10_tables.sql",
+  "./schemas/12_candidate_applications.sql",
+  "./schemas/13_candidate_profile_ownership.sql",
   "./schemas/15_rejection_reason_seed.sql",
   "./schemas/20_indexes.sql",
   "./schemas/30_triggers_audit.sql",
+  "./schemas/32_application_context.sql",
   "./schemas/40_rls_policies.sql",
   "./schemas/50_rpc_functions.sql",
+  "./schemas/55_dashboard_report.sql",
+  "./schemas/56_candidate_application_rpc.sql",
+  "./schemas/58_candidate_profile_contract.sql",
+  "./schemas/59_candidate_group_claims.sql",
+  "./schemas/60_recruitment_list.sql",
+  "./schemas/61_dashboard_summaries.sql",
+  "./schemas/62_bottleneck_report.sql",
+  "./schemas/63_operational_lookups.sql",
+  "./schemas/64_home_welcome_summaries.sql",
   "./schemas/90_grants.sql"
 ]

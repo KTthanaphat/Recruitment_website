@@ -1,9 +1,10 @@
 import type { ActiveProcessStage, Candidate, DashboardData, EnrichedRequisition, RecruitmentLog } from "@/types/recruitment";
 import { bangkokDay, calendarDays, historicalVacancy, observationDates } from "./dashboard-history";
 import { addCalendarDays } from "./dashboard-report-eligibility";
+import { applicationCandidates, applicationKey, belongsToApplication, assignmentGroup } from "./applications";
 export const BOTTLENECK_STAGES: ActiveProcessStage[] = ["Phone Screen", "HR Interview", "Line Interview", "Test", "Reference Check", "Offer"];
 export type DeadlineStatus = "overdue" | "today" | "upcoming" | "unscheduled" | "unavailable";
-export type StageInstance = { id: string; logId: number; candidateId: string; stage: ActiveProcessStage; round: number; entry: string | null; outcome: string | null; result: number | null; due: string | null; edited: string | null; unreliable: boolean; invalidDue: boolean; duration: number | null; exclusion: string | null };
+export type StageInstance = { id: string; logId: number; candidateId: string; applicationId?: string; groupId?: string | null; stage: ActiveProcessStage; round: number; entry: string | null; outcome: string | null; result: number | null; due: string | null; edited: string | null; unreliable: boolean; invalidDue: boolean; duration: number | null; exclusion: string | null };
 export type WaitingRecord = { candidate: Candidate; instance: StageInstance; requisitions: EnrichedRequisition[]; wait: number; status: DeadlineStatus; conflict: boolean };
 export function percentile(values: number[], p: number): number | null {
   if (!values.length) return null;
@@ -12,7 +13,7 @@ export function percentile(values: number[], p: number): number | null {
 }
 function instance(log: RecruitmentLog, entry: string | null, outcome: string | null, fabricated = false): StageInstance {
   const exclusion = fabricated ? "Outcome-only legacy record" : /inferred|clamped/i.test(log.migration_note ?? "") ? "Inferred or clamped migration date" : !entry ? "Missing or invalid entry date" : log.result !== null && !outcome ? "Missing or invalid outcome date" : outcome && outcome < entry ? "Outcome precedes entry" : null;
-  return { id: log.stage_instance_id ?? `legacy-${log.log_id}`, logId: log.log_id, candidateId: log.candidate_id, stage: log.recruitment_process as ActiveProcessStage, round: log.round,
+  return { id: log.stage_instance_id ?? `legacy-${log.log_id}`, logId: log.log_id, candidateId: log.candidate_id, applicationId: log.application_id, stage: log.recruitment_process as ActiveProcessStage, round: log.round,
     entry, outcome, result: log.result, due: bangkokDay(log.estimated_action_date), edited: bangkokDay(log.pending_edited_at),
     unreliable: log.record_origin === "migration" && !log.pending_edited_at,
     invalidDue: Boolean(log.estimated_action_date && !bangkokDay(log.estimated_action_date)),
@@ -24,7 +25,7 @@ export function normalizeStageInstances(logs: RecruitmentLog[]): StageInstance[]
   const result = active.filter(log => log.stage_instance_id).map(log => instance(log, bangkokDay(log.log_date), log.result === null ? null : bangkokDay(log.outcome_date), /outcome.only/i.test(log.migration_note ?? "")));
   const buckets = new Map<string, RecruitmentLog[]>();
   for (const log of active.filter(log => !log.stage_instance_id)) {
-    const key = JSON.stringify([log.candidate_id, log.recruitment_process, log.round]);
+    const key = JSON.stringify([log.application_id ?? log.candidate_id, log.recruitment_process, log.round]);
     buckets.set(key, [...(buckets.get(key) ?? []), log]);
   }
   for (const rows of buckets.values()) {
@@ -48,25 +49,34 @@ function relatedRequisitions(candidate: Candidate, data: DashboardData, requisit
   return requisitions.filter(row => ids.has(row.doc_id));
 }
 export function stageSnapshot(data: DashboardData, requisitions: EnrichedRequisition[], instances: StageInstance[], start: string, asOf: string, channel: string, today: string) {
-  const candidates = data.candidates.filter(row => channel === "all" || (row.channel ?? "Others") === channel);
-  const contexts = new Map(candidates.map(candidate => [candidate.candidate_id, relatedRequisitions(candidate, data, requisitions)]));
-  const eligible = instances.filter(row => (contexts.get(row.candidateId)?.length ?? 0) > 0);
+  const candidates = applicationCandidates(data).filter(row => channel === "all" || (row.channel ?? "Others") === channel).map(candidate => {
+    const assignment = data.candidate_application_assignments?.filter(row => row.application_id === candidate.application_id && bangkokDay(row.started_at)! <= asOf && (!row.ended_at || bangkokDay(row.ended_at)! > asOf)).at(-1);
+    return assignment ? { ...candidate, group_id: assignment.group_id } : candidate;
+  });
+  const contexts = new Map(candidates.map(candidate => [applicationKey(candidate), relatedRequisitions(candidate, data, requisitions)]));
+  const eligible = instances.filter(row => {
+    const log = data.recruitment_logs.find(log => log.log_id === row.logId);
+    const group = log ? assignmentGroup(data, row.result === null ? log.entry_assignment_id : log.outcome_assignment_id) : null;
+    if (group) return data.document_groups.some(link => link.group_id === group && requisitions.some(req => req.doc_id === link.doc_id));
+    return (contexts.get(row.applicationId ?? row.candidateId)?.length ?? 0) > 0;
+  });
   const completions = eligible.filter(row => row.result !== null && row.outcome && row.outcome >= start && row.outcome <= asOf);
   const valid = completions.filter(row => row.duration !== null);
   const waiting: WaitingRecord[] = [];
   const openIds = new Set(requisitions.filter(row => historicalVacancy(data, row, asOf).remaining > 0).map(row => row.doc_id));
   for (const candidate of candidates) {
-    const linked = contexts.get(candidate.candidate_id) ?? [];
+    const linked = contexts.get(applicationKey(candidate)) ?? [];
     if (!linked.some(row => openIds.has(row.doc_id))) continue;
-    const logs = data.recruitment_logs.filter(row => row.candidate_id === candidate.candidate_id && !row.superseded_at && !row.superseded_by_stage_instance_id);
+    const logs = data.recruitment_logs.filter(row => belongsToApplication(row, candidate) && !row.superseded_at && !row.superseded_by_stage_instance_id);
     const terminal = logs.some(row => { const explicit = ["Rejected", "Withdrawn"].includes(row.recruitment_process); const day = bangkokDay(explicit || !row.stage_instance_id ? row.log_date : row.outcome_date); return day && day <= asOf && (explicit || row.result === 0); });
-    const accepted = data.offers.some(row => row.candidate_id === candidate.candidate_id && bangkokDay(row.accepted_date) && bangkokDay(row.accepted_date)! <= asOf);
+    const accepted = data.offers.some(row => belongsToApplication(row, candidate) && bangkokDay(row.accepted_date) && bangkokDay(row.accepted_date)! <= asOf && row.start_confirmation !== "did_not_start");
     if (terminal || accepted) continue;
-    const unresolved = eligible.filter(row => row.candidateId === candidate.candidate_id && row.entry && row.entry <= asOf && !row.exclusion && (!row.outcome || row.outcome > asOf))
+    const journeyInstances = instances.filter(row => (row.applicationId ?? row.candidateId) === applicationKey(candidate));
+    const unresolved = journeyInstances.filter(row => row.entry && row.entry <= asOf && !row.exclusion && (!row.outcome || row.outcome > asOf))
       .sort((a, b) => a.entry!.localeCompare(b.entry!) || a.round - b.round || a.logId - b.logId);
     const current = unresolved.at(-1);
     if (!current) continue;
-    const latestAttempt = eligible.filter(row => row.candidateId === candidate.candidate_id && row.entry && row.entry <= asOf && !row.exclusion)
+    const latestAttempt = journeyInstances.filter(row => row.entry && row.entry <= asOf && !row.exclusion)
       .sort((a, b) => a.entry!.localeCompare(b.entry!) || a.round - b.round || a.logId - b.logId).at(-1);
     if (latestAttempt?.id !== current.id) continue;
     const unavailable = Boolean(current.invalidDue || current.edited && current.edited > asOf || current.unreliable && asOf < today);
@@ -87,7 +97,7 @@ export function buildStageBottleneckReport(data: DashboardData, requisitions: En
   const asOf = range.end < today ? range.end : today, instances = normalizeStageInstances(data.recruitment_logs);
   const current = stageSnapshot(data, requisitions, instances, range.start, asOf, channel, today);
   const dates = observationDates(range.start, asOf);
-  return { ...current, asOf, start: range.start, future: range.start > asOf, channel, instances: instances.filter(row => (current.contexts.get(row.candidateId)?.length ?? 0) > 0), priorRange,
+  return { ...current, asOf, start: range.start, future: range.start > asOf, channel, instances: instances.filter(row => (current.contexts.get(row.applicationId ?? row.candidateId)?.length ?? 0) > 0), priorRange,
     prior: range.start > asOf ? null : stageSnapshot(data, requisitions, instances, priorRange.start, priorRange.end, channel, today),
     trends: dates.map((date, i) => { const snapshot = stageSnapshot(data, requisitions, instances, i ? addCalendarDays(dates[i - 1], 1) : range.start, date, channel, today); return { date, ...snapshot.metrics, overdue: snapshot.metrics.unavailable ? null : snapshot.metrics.overdue }; }) };
 }

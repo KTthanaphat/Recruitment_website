@@ -1,36 +1,73 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { UserPlus } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { OperationalSummaryStrip } from "@/components/ui/Operations";
 import { Panel, SectionTitle } from "@/components/ui/Panel";
 import { Tag } from "@/components/ui/Tag";
 import { statusTone } from "@/lib/format";
+import { loadAuthorizedRecruiterOptions } from "@/lib/recruiter-options-client";
 import { roleLabel, translate } from "@/lib/i18n/dictionary";
-import type { DashboardData, Language } from "@/types/recruitment";
+import type { Profile, DashboardData, Language } from "@/types/recruitment";
+
+type ProfileCatalogState = {
+  client: SupabaseClient;
+  requestKey: string;
+  status: "loading" | "ready" | "error";
+  profiles: Profile[];
+};
 
 export function AdminView({
   language,
   data,
   canManageUsers,
-  onInvite
+  onInvite,
+  client,
+  accessScope,
+  refreshKey
 }: {
   language: Language;
   data: DashboardData;
   canManageUsers: boolean;
   onInvite: () => void;
+  client: SupabaseClient | null;
+  accessScope: string;
+  refreshKey: number;
 }) {
   const [search, setSearch] = useState("");
+  const [retry, setRetry] = useState(0);
+  const profileId = data.profile?.id ?? "";
+  const requestKey = `${accessScope}\u001f${profileId}\u001f${refreshKey}\u001f${retry}`;
+  const [catalog, setCatalog] = useState<ProfileCatalogState | null>(null);
+
+  useEffect(() => {
+    if (!canManageUsers || !client || !profileId || !accessScope) return;
+    let current = true;
+    setCatalog({ client, requestKey, status: "loading", profiles: [] });
+    void loadAuthorizedRecruiterOptions(client, { profileId, key: accessScope }).then(
+      (profiles) => {
+        if (current) setCatalog({ client, requestKey, status: "ready", profiles });
+      },
+      () => {
+        if (current) setCatalog({ client, requestKey, status: "error", profiles: [] });
+      },
+    );
+    return () => { current = false; };
+  }, [accessScope, canManageUsers, client, profileId, refreshKey, requestKey, retry]);
+
+  const catalogCurrent = catalog?.client === client && catalog.requestKey === requestKey ? catalog : null;
+  const profiles = catalogCurrent?.status === "ready" ? catalogCurrent.profiles : [];
   const filteredProfiles = useMemo(() => {
     const query = search.trim().toLowerCase();
-    if (!query) return data.profiles;
-    return data.profiles.filter((profile) =>
+    if (!query) return profiles;
+    return profiles.filter((profile) =>
       [profile.nickname, profile.full_name, profile.email, profile.role, profile.site]
         .some((value) => (value ?? "").toLowerCase().includes(query))
     );
-  }, [data.profiles, search]);
-  const usersWithoutSite = data.profiles.filter((profile) => !profile.site && profile.role === "site_recruiter").length;
-  const siteRecruiters = data.profiles.filter((profile) => profile.role === "site_recruiter").length;
+  }, [profiles, search]);
+  const usersWithoutSite = profiles.filter((profile) => !profile.site && profile.role === "site_recruiter").length;
+  const siteRecruiters = profiles.filter((profile) => profile.role === "site_recruiter").length;
 
   if (!canManageUsers) {
     return (
@@ -40,6 +77,9 @@ export function AdminView({
     );
   }
 
+  const loading = !catalogCurrent || catalogCurrent.status === "loading";
+  const unavailable = !client || !profileId || !accessScope || catalogCurrent?.status === "error";
+
   return (
     <Panel>
       <SectionTitle
@@ -47,45 +87,58 @@ export function AdminView({
         eyebrow={translate(language, "accountsAndRoleMapping")}
         action={<Button type="button" size="sm" variant="secondary" icon={<UserPlus size={16} />} onClick={onInvite}>{translate(language, "manageUser")}</Button>}
       />
-      <div className="mb-4 grid gap-3">
-        <OperationalSummaryStrip
-          items={[
-            { label: translate(language, "systemAdmins"), value: data.profiles.filter((profile) => profile.role === "system_admin").length, tone: "success", helper: translate(language, "fullAccess") },
-            { label: translate(language, "recruiters"), value: data.profiles.filter((profile) => profile.role === "admin_recruiter").length, tone: "primary", helper: translate(language, "operationalAccess") },
-            { label: translate(language, "siteRecruiters"), value: siteRecruiters, tone: "teal", helper: translate(language, "siteScopedUsers") },
-            { label: translate(language, "missingSite"), value: usersWithoutSite, tone: usersWithoutSite > 0 ? "warning" : "success", helper: translate(language, "siteRecruitersOnly") },
-            { label: translate(language, "viewers"), value: data.profiles.filter((profile) => profile.role === "viewer").length, tone: "muted", helper: translate(language, "readOnlyAccess") }
-          ]}
-        />
-        <div className="rounded-md border border-[#D7DEE8] bg-[#F8FAFD] p-3 text-sm font-medium text-slate">
-          {translate(language, "userPermissionWarning")}
+      {loading ? (
+        <div role="status" className="py-6 text-center text-sm font-medium text-slate">{translate(language, "loading")}</div>
+      ) : unavailable ? (
+        <div role="alert" className="grid justify-items-center gap-3 py-5 text-center">
+          <p className="text-sm font-medium text-slate">{translate(language, "couldNotLoadRecruitmentRecords")}</p>
+          <Button type="button" size="sm" variant="secondary" onClick={() => setRetry((value) => value + 1)}>{translate(language, "retry")}</Button>
         </div>
-        <label className="grid gap-1 text-sm font-semibold text-slate">
-          {translate(language, "searchUsers")}
-          <input
-            className="min-h-9 rounded-md border border-[#C9D5E6] bg-white px-3 text-sm font-medium text-navy focus:border-primary focus:outline-none"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder={translate(language, "userSearchPlaceholder")}
-            type="search"
-          />
-        </label>
-      </div>
-      {data.profiles.length === 0 ? (
-        <EmptyState message={translate(language, "noReadableProfiles")} />
       ) : (
-        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-          {filteredProfiles.map((account) => (
-            <div key={account.id} className="rounded-md border border-[#D7DEE8] bg-white p-3 shadow-[0_3px_10px_rgba(11,19,43,0.02)]">
-              <div className="flex items-center justify-between gap-2">
-                <strong className="text-navy">{account.nickname ?? account.full_name ?? account.email ?? translate(language, "user")}</strong>
-                <Tag tone={statusTone(account.role)}>{roleLabel(language, account.role)}</Tag>
-              </div>
-              <p className="mt-1 text-sm font-medium text-slate">{account.email ?? "-"}</p>
-              <p className="text-sm font-medium text-slate">{translate(language, "siteValue", { site: account.site ?? "-" })}</p>
+        <>
+          <div className="mb-4 grid gap-3">
+            <OperationalSummaryStrip
+              items={[
+                { label: translate(language, "systemAdmins"), value: profiles.filter((profile) => profile.role === "system_admin").length, tone: "success", helper: translate(language, "fullAccess") },
+                { label: translate(language, "recruiters"), value: profiles.filter((profile) => profile.role === "admin_recruiter").length, tone: "primary", helper: translate(language, "operationalAccess") },
+                { label: translate(language, "siteRecruiters"), value: siteRecruiters, tone: "teal", helper: translate(language, "siteScopedUsers") },
+                { label: translate(language, "missingSite"), value: usersWithoutSite, tone: usersWithoutSite > 0 ? "warning" : "success", helper: translate(language, "siteRecruitersOnly") },
+                { label: translate(language, "viewers"), value: profiles.filter((profile) => profile.role === "viewer").length, tone: "muted", helper: translate(language, "readOnlyAccess") }
+              ]}
+            />
+            <div className="rounded-md border border-[#D7DEE8] bg-[#F8FAFD] p-3 text-sm font-medium text-slate">
+              {translate(language, "userPermissionWarning")}
             </div>
-          ))}
-        </div>
+            <label className="grid gap-1 text-sm font-semibold text-slate">
+              {translate(language, "searchUsers")}
+              <input
+                className="min-h-9 rounded-md border border-[#C9D5E6] bg-white px-3 text-sm font-medium text-navy focus:border-primary focus:outline-none"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder={translate(language, "userSearchPlaceholder")}
+                type="search"
+              />
+            </label>
+          </div>
+          {profiles.length === 0 ? (
+            <EmptyState message={translate(language, "noReadableProfiles")} />
+          ) : filteredProfiles.length === 0 ? (
+            <EmptyState message={translate(language, "noSearchResults")} />
+          ) : (
+            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+              {filteredProfiles.map((account) => (
+                <div key={account.id} className="rounded-md border border-[#D7DEE8] bg-white p-3 shadow-[0_3px_10px_rgba(11,19,43,0.02)]">
+                  <div className="flex items-center justify-between gap-2">
+                    <strong className="text-navy">{account.nickname ?? account.full_name ?? account.email ?? translate(language, "user")}</strong>
+                    <Tag tone={statusTone(account.role)}>{roleLabel(language, account.role)}</Tag>
+                  </div>
+                  <p className="mt-1 text-sm font-medium text-slate">{account.email ?? "-"}</p>
+                  <p className="text-sm font-medium text-slate">{translate(language, "siteValue", { site: account.site ?? "-" })}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
     </Panel>
   );

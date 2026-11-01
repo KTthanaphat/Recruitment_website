@@ -11,6 +11,8 @@ export const performanceCopy = {
   th: { title: "ผลการสรรหา", period: "ช่วงเวลา", year: "ปี", month: "เดือน", site: "สถานที่", department: "ฝ่าย", all: "ทั้งหมด", vacancies: "อัตราว่างทั้งหมด", filled: "บรรจุแล้ว", filledPct: "สัดส่วนบรรจุ", slaPct: "บรรจุภายใน SLA", time: "เวลาบรรจุเฉลี่ย", day: "วัน", noData: "ไม่มีอัตราว่างที่เข้าเกณฑ์ในช่วงเวลานี้", noFills: "ไม่มีการบรรจุในช่วงเวลานี้", noComparison: "ไม่มีค่าช่วงก่อนหน้า", prior: "เทียบช่วงก่อนหน้า", vacancyType: "อัตราว่างใหม่และทดแทนตามระดับงาน", matrix: "อัตราบรรจุและคงค้างตามระดับงานและสถานที่", sla: "การบรรจุภายใน SLA ตามระดับงานและสถานที่", new: "ใหม่", replacement: "ทดแทน", open: "คงค้าง", onTime: "ใน SLA", late: "เกิน SLA", unknown: "ไม่ทราบ SLA", cumulative: "สัดส่วนอัตราว่างสะสม", total: "รวม", export: "ส่งออกภาพรวม PNG", exportFailed: "ส่งออกภาพรวม PNG ไม่สำเร็จ", loading: "กำลังเตรียม PNG…", unknownLevel: "ไม่ทราบระดับ", level: "ระดับงาน", count: "อัตราว่าง", unknownHelp: "ไม่รวมรายการที่ไม่ทราบ SLA ในเปอร์เซ็นต์", increased: "เพิ่มขึ้น", decreased: "ลดลง", unchanged: "ไม่เปลี่ยนแปลง", pp: "จุดเปอร์เซ็นต์", pim: "ผลการดำเนินงานรายเดือน" }
 } as const;
 
+export type PerformanceReportView = Pick<Report, "range" | "metrics" | "cells" | "sites">;
+
 const BLUE = "#0A3CDC", AMBER = "#FFC107", GREEN = "#65C91A", RED = "#F23852", GRAY = "#94A3B8";
 const sitePalette: Record<string, [string, string]> = { HQ: ["#0AA0C3", "#CDEEF3"], KT1: ["#146EFA", "#CDE0FF"], KT2: ["#411EDC", "#DAD2FA"], Total: [BLUE, "#D0DAFA"] };
 export const reportSiteColors = (site: string): [string, string] => sitePalette[site] ?? ["#536B9B", "#DCE3EF"];
@@ -28,7 +30,7 @@ function sumCells(cells: PerformanceCell[], site?: string, band?: PerformanceBan
 }
 const rounded = (value: number, decimals = 0) => Number(value.toFixed(decimals));
 
-export function PerformanceReport({ report, previous, language, sites, period = "mtd", exportMode = false }: { report: Report; previous: Report; language: Language; sites: string[]; period?: string; exportMode?: boolean }) {
+export function PerformanceReport({ report, previous, language, sites, period = "mtd", exportMode = false }: { report: PerformanceReportView; previous: PerformanceReportView; language: Language; sites: string[]; period?: string; exportMode?: boolean }) {
   const t = performanceCopy[language];
   const descriptionId = useId();
   const comparisonLabel = language === "th" ? `เทียบ ${period.toUpperCase()} ก่อนหน้า` : `vs prior ${period.toUpperCase()}`;

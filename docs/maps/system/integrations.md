@@ -31,3 +31,11 @@ Read this node for this feature only. It indexes ownership; product rules remain
 [SYS-PIPELINE](pipeline.md) (`invokes`).
 
 If the task changes schema, environment or release state, cross to [Setup](../SETUP_MAP.md). For visual-only work remain in this system node and its design contract. Coverage names are search leads inherited from the feature index, not evidence that checks passed or that every named scenario has a dedicated file.
+
+## Application context
+
+Interview/letter authorization derives the application from the existing stage-instance ID. Routes: [interview meetings](../../../src/app/api/interview-meetings/route.ts), [letter draft](../../../src/app/api/rejection-letters/draft/route.ts). Transfer checks scheduled/in-flight meeting status; it never sends or cancels invitations. Contract: [person/journey behavior](../../WEBSITE_STRUCTURE.md#independent-candidate-profiles); owner: [Pipeline](pipeline.md#independent-profile-and-application-ownership).
+
+## Application PIC authorization
+
+Meeting and rejection endpoints use the caller-scoped `app_can_manage_application_v1` capability before service-role writes or delivery. Site membership and profile creation alone do not authorize sending or scheduling. Owners: [meeting](../../../src/app/api/interview-meetings/route.ts), [letter](../../../src/app/api/rejection-letters/draft/route.ts); [profile contract](pipeline.md#creator-privacy-and-profileapplication-layout).

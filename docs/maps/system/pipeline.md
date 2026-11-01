@@ -17,6 +17,8 @@ Dashboard Stage Bottleneck detail entry: [report loader](../../../src/lib/dashbo
 
 ### F22: Candidate Pipeline board/record register
 
+- Complete stage-history reads: [history loader](../../../src/lib/recruitment-history-loader.ts) pages by unique log_id with exact counts, so imported records cannot hide older candidates. No candidate re-upload is involved. Regression: [loader checks](../../../tests/unit/recruitment-history.test.cjs) and [candidate drawer](../../../tests/e2e/recruitment-history-loading.spec.ts).
+
 - Owner/search: [src/components/pipeline/PipelineBoardView.tsx](../../../src/components/pipeline/PipelineBoardView.tsx), [src/components/RecruitmentWorkspace.tsx](../../../src/components/RecruitmentWorkspace.tsx), [supabase/schemas/50_rpc_functions.sql](../../../supabase/schemas/50_rpc_functions.sql).
 - Related symbols: derived `log_date`, optional estimate, audit history, correction.
 - Rejection reasons and targeted Configuration catalog refresh: [FailureReasonFields.tsx](../../../src/components/rejection-reasons/FailureReasonFields.tsx), [ConfigurationItemEditor.tsx](../../../src/components/configuration/ConfigurationItemEditor.tsx), [ConfigurationView.tsx](../../../src/components/configuration/ConfigurationView.tsx), [reason helpers](../../../src/lib/rejection-reasons.ts), and [seed](../../../supabase/schemas/15_rejection_reason_seed.sql); contract: [Candidate Pipeline](../../WEBSITE_STRUCTURE.md#recruitment-workflows); checks: [pipeline actions](../../../tests/e2e/pipeline-actions.spec.ts) and [catalog controls](../../../tests/e2e/rejection-reason-admin.spec.ts).
@@ -47,3 +49,18 @@ Dashboard Stage Bottleneck detail entry: [report loader](../../../src/lib/dashbo
 [SYS-HOME](home.md) (`opens`), [SYS-WORKSPACE](workspace.md) (`embeds`), [SYS-RECORDS](records.md) (`feeds`), [SYS-REPORTING](reporting.md) (`reads`), [SYS-INTEGRATIONS](integrations.md) (`updates`).
 
 If the task changes schema, environment or release state, cross to [Setup](../SETUP_MAP.md). For visual-only work remain in this system node and its design contract. Coverage names are search leads inherited from the feature index, not evidence that checks passed or that every named scenario has a dedicated file.
+
+## Independent profile and application ownership
+
+- Profile/registry: [CandidateRegistry](../../../src/components/candidates/CandidateRegistry.tsx), [CandidateProfilePanel](../../../src/components/candidates/CandidateProfilePanel.tsx); contract: [person/journey behavior](../../WEBSITE_STRUCTURE.md#independent-candidate-profiles), [drawer selection](../../design/candidate-detail.md#profile-and-application-selection).
+- Journey projections/context: [applications.ts](../../../src/lib/applications.ts); SQL: [12](../../../supabase/schemas/12_candidate_applications.sql), [32](../../../supabase/schemas/32_application_context.sql), [56](../../../supabase/schemas/56_candidate_application_rpc.sql).
+- Search: `CandidateProfile`, `candidate_applications`, `application_id`, `APPLICATION_SELECTION_REQUIRED`, `app_transfer_candidate_application_v1`, `entry_assignment_id`, `outcome_assignment_id`.
+- Checks: [SQL](../../../tests/db/candidate-applications.sql), [browser](../../../tests/e2e/candidate-applications.spec.ts). Impacts: [Reporting](reporting.md), [Integrations](integrations.md), [Workspace](workspace.md).
+
+## Creator privacy and profile/application layout
+
+Owners: [profile panel](../../../src/components/candidates/CandidateProfilePanel.tsx), [registry](../../../src/components/candidates/CandidateRegistry.tsx), [capabilities](../../../src/lib/applications.ts), [profile SQL](../../../supabase/schemas/58_candidate_profile_contract.sql). Contract: [behavior](../../WEBSITE_STRUCTURE.md#independent-candidate-profiles), [tabs/forms](../../design/candidate-detail.md#shared-profile-and-application-tabs). Search: `created_by`, `can_edit_note`, `app_masked_candidate_pool_v1`, `duplicate_review`, `app_upsert_candidate_note_v2`. Checks: [browser](../../../tests/e2e/candidate-profile-redesign.spec.ts), [SQL](../../../tests/db/candidate-profile-contract.sql), [evidence](../../work-items/candidate-profile-redesign/implementation.md).
+
+## Connected profile and group uniqueness
+
+Owners: [drawer](../../../src/components/candidates/CandidateProfilePanel.tsx), [shared fields](../../../src/components/ui/RecordDetailFields.tsx), [group claims](../../../supabase/schemas/59_candidate_group_claims.sql). Contract: [layout](../../design/candidate-detail.md#connected-drawer-refinement), [behavior](../../WEBSITE_STRUCTURE.md#independent-candidate-profiles). Search: `CandidateApplicationDetailsExtras`, `candidateCanUseGroup`, `APPLICATION_GROUP_ALREADY_USED`. [Checks/evidence](../../work-items/candidate-detail-refinement/implementation.md).

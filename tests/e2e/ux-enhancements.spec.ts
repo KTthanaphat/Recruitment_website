@@ -580,11 +580,13 @@ test("offers show status, requisition impact, and quick links", async ({ page })
 });
 
 test("audit filters records and shows readable field diff", async ({ page }) => {
-  await installMockSupabase(page, { role: "admin_recruiter" });
+  const mock = await installMockSupabase(page, { role: "admin_recruiter" });
   await page.goto("/audit");
   await expectWorkspaceReady(page);
 
   await page.getByLabel("Entity", { exact: true }).fill("recruitment_logs");
+  await expect.poll(() => mock.rpcCalls.some(call => call.endpoint === "app_recruitment_list_v1" && call.payload.p_entity === "audit_log" && (call.payload.p_filters as Record<string, unknown>)?.entity === "recruitment_logs")).toBe(true);
+  expect(mock.rpcCalls.some(call => call.endpoint === "app_recruitment_list_count_v1" && call.payload.p_entity === "audit_log")).toBe(true);
   await expect(page.getByTestId("audit-table-viewport")).toBeVisible();
   await expect(page.getByTestId("audit-table-viewport").locator("article").first()).toContainText("Pipeline");
   await expect(page.getByTestId("audit-table-viewport").locator("article").first()).toContainText("16");
@@ -597,10 +599,7 @@ test("audit filters records and shows readable field diff", async ({ page }) => 
   if (!diffId) throw new Error("Missing Audit disclosure target");
   const diff = page.locator(`#${diffId}`);
   await expect(diff.getByText("candidate_id")).toBeVisible();
-  await page.setViewportSize({ width: 768, height: 800 });
   expect((await diff.boundingBox())?.width ?? 0).toBeGreaterThan(500);
   await page.setViewportSize({ width: 360, height: 800 });
-  await page.getByRole("button", { name: "Filters" }).click();
-  await expect(page.getByRole("dialog", { name: "Filters" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Open candidate" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Audit Log — desktop layout required" })).toBeVisible();
 });

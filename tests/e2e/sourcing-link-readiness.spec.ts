@@ -43,7 +43,8 @@ test("matching and unmatching refresh sourcing link readiness", async ({ page })
   await expectWorkspaceReady(page);
   await page.getByRole("article").filter({ hasText: "GRP-ENG" }).getByRole("button", { name: "Details" }).click();
   let dialog = page.getByRole("dialog", { name: "Group details · GRP-ENG" });
-  await dialog.getByLabel("Select requisition to add").selectOption("REQ-UNMATCHED-1");
+  await dialog.getByLabel("Select requisition to add").click();
+  await page.getByRole("option", { name: /REQ-UNMATCHED-1/ }).click();
   await dialog.getByRole("button", { name: "Add Match", exact: true }).click();
   await page.getByRole("dialog", { name: "Confirm Save" }).getByRole("button", { name: "Save Changes" }).click();
   await expect.poll(() => mock.rpcCalls.at(-1)?.endpoint).toBe("app_create_group_match");
@@ -61,4 +62,26 @@ test("matching and unmatching refresh sourcing link readiness", async ({ page })
 
   await page.goto("/requisitions?detailType=requisition&detailId=REQ-UNMATCHED-1");
   await expect(page.getByRole("dialog").getByText("Not linked", { exact: true })).toBeVisible();
+});
+
+test("sourcing add-match selection clears when authorized header criteria change", async ({ page }) => {
+  await installMockSupabase(page, { role: "admin_recruiter" });
+  await page.goto("/sourcing?sourcingWeek=2026-07-06");
+  await expectWorkspaceReady(page);
+  await page.getByRole("article").filter({ hasText: "GRP-ENG" }).getByRole("button", { name: "Details" }).click();
+  const dialog = page.getByRole("dialog", { name: "Group details · GRP-ENG" });
+  const addMatch = dialog.getByRole("button", { name: "Add Match", exact: true });
+  await dialog.getByLabel("Select requisition to add").click();
+  await page.getByRole("option", { name: /REQ-UNMATCHED-1/ }).click();
+  await expect(addMatch).toBeEnabled();
+
+  await dialog.getByRole("button", { name: "Close", exact: true }).click();
+  await page.locator("[data-app-header-filters]").getByRole("button", { name: "Site", exact: true }).click();
+  await page.getByRole("option", { name: "KT1", exact: true }).click();
+  await page.locator("[data-app-header-filters]").getByRole("button", { name: "Site", exact: true }).click();
+  await page.getByRole("option", { name: "All sites", exact: true }).click();
+  await page.getByRole("article").filter({ hasText: "GRP-ENG" }).getByRole("button", { name: "Details" }).click();
+  const reopened = page.getByRole("dialog", { name: "Group details · GRP-ENG" });
+  const reopenedAddMatch = reopened.getByRole("button", { name: "Add Match", exact: true });
+  await expect(reopenedAddMatch).toBeDisabled();
 });

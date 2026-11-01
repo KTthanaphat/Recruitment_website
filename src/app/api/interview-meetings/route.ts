@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { validateInterviewInvitationTemplate } from "@/lib/interview-invitation";
-import { createServiceClient } from "@/lib/supabase/server";
+import { createServiceClient, createUserClient } from "@/lib/supabase/server";
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const editableStatuses = ["creating", "scheduled", "rescheduling", "failed"];
@@ -30,18 +30,15 @@ export async function POST(request: NextRequest) {
     const [{ data: profile }, { data: candidate }, { data: stage }] = await Promise.all([
       service.from("profiles").select("role,site,nickname,full_name").eq("id", auth.user.id).single(),
       service.from("candidates").select("candidate_id,name,email,group_id,doc_group_id").eq("candidate_id", payload.candidate_id).single(),
-      service.from("recruitment_logs").select("candidate_id,stage_instance_id,recruitment_process,result,superseded_at").eq("stage_instance_id", payload.stage_instance_id).single()
+      service.from("recruitment_logs").select("candidate_id,application_id,stage_instance_id,recruitment_process,result,superseded_at").eq("stage_instance_id", payload.stage_instance_id).single()
     ]);
     if (!profile || profile.role === "viewer" || !candidate || !stage || stage.candidate_id !== candidate.candidate_id || stage.result !== null || stage.superseded_at || !["HR Interview", "Line Interview"].includes(stage.recruitment_process)) return NextResponse.json({ ok: false, error: "Only pending HR or Line interviews can be scheduled." }, { status: 403 });
     if (operation !== "cancel" && !emailPattern.test(candidateEmail)) return NextResponse.json({ ok: false, error: "A valid candidate email is required before scheduling." }, { status: 400 });
 
-    if (profile.role === "site_recruiter") {
-      const { data: matches } = candidate.group_id ? await service.from("document_groups").select("doc_id").eq("group_id", candidate.group_id) : await service.from("document_groups").select("doc_id").eq("doc_group_id", candidate.doc_group_id);
-      const docIds = (matches ?? []).map((match) => match.doc_id);
-      const { data: requisitions } = docIds.length ? await service.from("requisitions").select("site,person_in_charge").in("doc_id", docIds) : { data: [] as Array<{ site: string; person_in_charge: string | null }> };
-      const names = [profile.nickname, profile.full_name].filter((name): name is string => Boolean(name?.trim())).map((name) => name.trim().toLowerCase());
-      if (!(requisitions ?? []).some((row) => row.site === profile.site && !!row.person_in_charge && names.includes(row.person_in_charge.trim().toLowerCase()))) return NextResponse.json({ ok: false, error: "You can schedule interviews only for candidates you manage." }, { status: 403 });
-    }
+    const { data: application } = await service.from("candidate_applications").select("application_id,group_id,candidate_id").eq("application_id", stage.application_id).single();
+    if (!application || application.candidate_id !== candidate.candidate_id) return NextResponse.json({ ok: false, error: "Application is unavailable." }, { status: 403 });
+    const permission=await createUserClient(token).rpc("app_can_manage_application_v1",{p_application_id:application.application_id});
+    if(permission.error||permission.data!==true) return NextResponse.json({ok:false,error:"Only this application group PICs or administrators may perform this action."},{status:403});
 
     const startsAt = typeof payload.starts_at === "string" ? Date.parse(payload.starts_at) : NaN;
     const endsAt = typeof payload.ends_at === "string" ? Date.parse(payload.ends_at) : NaN;

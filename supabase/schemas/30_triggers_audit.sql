@@ -293,19 +293,39 @@ $$;
 
 create or replace function app_private.can_read_position_group(p_group_id text)
 returns boolean
-language sql
+language plpgsql
 stable
 security definer
 set search_path = public
 as $$
-  select
-    app_private.current_app_role() in ('system_admin', 'admin_recruiter')
-    or exists (
-      select 1
-      from public.document_groups dg
-      where dg.group_id = p_group_id
-        and app_private.can_read_requisition(dg.doc_id)
-    )
+declare v_role text; v_site text; v_nickname text; v_full_name text; v_doc_id text; v_req_site text; v_pic text;
+begin
+  if auth.uid() is null then return false; end if;
+  v_role:=app_private.current_app_role();
+  if v_role in ('system_admin','admin_recruiter') then return true; end if;
+  if v_role='viewer' then
+    return exists(select 1 from public.document_groups dg join public.requisitions r using(doc_id) where dg.group_id=p_group_id);
+  end if;
+  if v_role<>'site_recruiter' then return false; end if;
+  v_site:=app_private.current_profile_site();
+  select p.nickname,p.full_name into v_nickname,v_full_name from public.profiles p where p.id=auth.uid();
+  for v_doc_id in select dg.doc_id from public.document_groups dg where dg.group_id=p_group_id loop
+    select r.site,r.person_in_charge into v_req_site,v_pic from public.requisitions r where r.doc_id=v_doc_id;
+    if not found then continue; end if;
+    if v_req_site=v_site then return true; end if;
+    if lower(btrim(v_pic)) in (lower(btrim(v_nickname)),lower(btrim(v_full_name))) then return true; end if;
+    if exists(
+      select 1 from public.document_groups shared
+      where shared.doc_id=v_doc_id and exists(
+        select 1 from public.document_groups claimed join public.requisitions owner_req on owner_req.doc_id=claimed.doc_id
+        where claimed.group_id=shared.group_id
+          and nullif(btrim(owner_req.person_in_charge),'') is not null
+          and lower(btrim(owner_req.person_in_charge)) in (lower(btrim(v_nickname)),lower(btrim(v_full_name)))
+      )
+    ) then return true; end if;
+  end loop;
+  return false;
+end
 $$;
 
 create or replace function app_private.can_read_sourcing_group(p_group_id text)
@@ -400,6 +420,7 @@ set search_path = public
 as $$
 declare
   v_value integer;
+  v_min_width integer;
 begin
   if p_entity is null or p_prefix is null then
     raise exception 'Entity and prefix are required.';
@@ -414,7 +435,8 @@ begin
   where entity = p_entity
   returning next_value - 1 into v_value;
 
-  return p_prefix || '-' || lpad(v_value::text, 4, '0');
+  v_min_width := case when upper(p_prefix) in ('CAN', 'GRP') then 5 else 4 end;
+  return p_prefix || '-' || lpad(v_value::text, greatest(v_min_width, length(v_value::text)), '0');
 end;
 $$;
 
@@ -556,7 +578,7 @@ declare
 begin
   select count(*)::integer into v_unresolved_count
   from public.candidate_references reference
-  left join public.candidate_reference_checks checked on checked.reference_id = reference.reference_id
+  left join public.candidate_reference_checks checked on checked.reference_id = reference.reference_id and checked.application_id = app_private.current_application_id()
   where reference.candidate_id = p_candidate_id
     and reference.status = 'available'
     and checked.reference_id is null;
