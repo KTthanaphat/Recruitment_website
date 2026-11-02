@@ -120,3 +120,16 @@ test("Home quality snapshot shows loaded rows after its initial skeleton", async
   await expect(page.locator("[data-home-quality-row]").first()).toBeVisible();
   await expect(page.locator("[data-home-record-list] [data-loading-skeleton]")).toHaveCount(0);
 });
+
+
+test("Admin keeps its loaded directory and metrics during a same-user refresh", async ({ page }) => {
+  const mock = await installMockSupabase(page, { role: "system_admin" });
+  const email = mock.data.profiles.find(profile => profile.role === "admin_recruiter")!.email;
+  let hold: ReturnType<typeof gate> | null = null;
+  await page.route("**/rest/v1/profiles?**", async route => { const url = new URL(route.request().url()); if (hold && !url.searchParams.has("id")) await hold.pending; await route.fallback(); });
+  await page.goto("/admin?lang=en"); await expectWorkspaceReady(page);
+  const entry = page.getByText(email, { exact: true }); await expect(entry).toBeVisible();
+  hold = gate(); await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(page.locator("[data-refreshing=true]").first()).toBeVisible(); await expect(entry).toBeVisible();
+  await expect(page.locator("[data-loading-skeleton]")).toHaveCount(0); hold.release();
+});

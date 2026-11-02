@@ -1612,7 +1612,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       navigationContext={navigationContext}
       profile={data.profile}
       onLanguageChange={() => setLanguage((current) => (current === "en" ? "th" : "en"))}
-      onRefresh={desktopRequired ? undefined : () => { clearDashboardReportCache(); clearDashboardSummaryCache(); clearRecruitmentListCache(); void loadData(true, true); }}
+      onRefresh={desktopRequired ? undefined : () => { clearDashboardReportCache(); clearDashboardSummaryCache(); clearRecruitmentListCache(); if (supabase) clearScopedDetailCache(supabase); void loadData(true, true); }}
       onSignOut={signOut}
     >
       {desktopRequired ? <DesktopRequiredNotice view={initialView} language={language} navigationContext={navigationContext} /> : <>

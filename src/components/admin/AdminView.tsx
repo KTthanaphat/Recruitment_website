@@ -60,7 +60,7 @@ export function AdminView({
   }, [accessScope, canManageUsers, client, profileId, refreshKey, requestKey, retry]);
 
   const catalogCurrent = catalog?.client === client && catalog.requestKey === requestKey ? catalog : null;
-  const profiles = catalogCurrent?.status === "ready" ? catalogCurrent.profiles : [];
+  const profiles = catalogCurrent?.profiles ?? [];
   const filteredProfiles = useMemo(() => {
     const query = search.trim().toLowerCase();
     if (!query) return profiles;
