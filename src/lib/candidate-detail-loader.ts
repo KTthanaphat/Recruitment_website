@@ -28,7 +28,7 @@ async function readComplete<T>(makePage: (from: number, to: number) => PromiseLi
   }
 }
 
-async function readScoped<T>(client: ScopedClient, table: string, column: string, value: string, order: string, label: string): Promise<T[]> {
+async function readScoped<T>(client: ScopedClient, table: string, column: string, value: string, order: keyof T & string, label: string): Promise<T[]> {
   return readComplete<T>(
     (from, to) => client.from(table).select("*", { count: "exact" }).eq(column, value).order(order, { ascending: true }).range(from, to),
     row => String((row as Record<string, unknown>)[order] ?? ""),
@@ -150,7 +150,7 @@ async function loadCandidateDetailUncached(client: SupabaseClient, accessScope: 
       readScoped<ApplicationAssignment>(client as ScopedClient, "candidate_application_assignments", "application_id", selected.application_id, "assignment_id", "assignment history"),
       readScoped<CandidateReference>(client as ScopedClient, "candidate_references", "candidate_id", candidateId, "reference_id", "reference rows"),
       projection.capabilities?.can_read_note ? readScoped<CandidateNote>(client as ScopedClient, "candidate_notes", "candidate_id", candidateId, "note_id", "candidate note") : Promise.resolve([]),
-      readScoped<CandidateReferenceCheck>(client as ScopedClient, "candidate_reference_checks", "application_id", selected.application_id, "reference_check_id", "reference checks"),
+      readScoped<CandidateReferenceCheck>(client as ScopedClient, "candidate_reference_checks", "application_id", selected.application_id, "check_id", "reference checks"),
       readScoped<DashboardData["offers"][number]>(client as ScopedClient, "offers", "application_id", selected.application_id, "offer_id", "offers"),
       readComplete<DashboardData["document_groups"][number]>((from, to) => client.from("document_groups").select("*", { count: "exact" }).eq("group_id", selected.group_id).order("doc_group_id", { ascending: true }).range(from, to), row => row.doc_group_id, "candidate group requisitions")
     ]);
