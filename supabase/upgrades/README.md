@@ -39,6 +39,7 @@ Use these adapters only for a legacy target whose migration history confirms tha
    - `20261102123200_bottleneck_authorization_key_memoization.sql`
    - `20261102123300_rejection_distinct_authorization_precompute.sql`
    - `20261102123400_candidate_assignment_application_history_index.sql`
+   - `20261102123500_ytd_report_materialization.sql`
 
    The two auth-fastpath migrations `20261101180543_scoped_application_read_fastpath.sql` and `20261101183410_candidate_home_site_auth_fastpath.sql` are intentionally deferred and are not part of this rollout sequence. Apply declarative schema/index/grant changes only through the separately approved schema workflow.
 

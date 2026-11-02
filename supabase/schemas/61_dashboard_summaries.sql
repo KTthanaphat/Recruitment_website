@@ -373,7 +373,9 @@ grant execute on function public.app_dashboard_filter_options_v1(jsonb) to authe
 -- Database aggregates for the Pipeline funnel, Source effectiveness, and vacancy movements.
 create or replace function app_private.dashboard_pipeline_summary_data_v1(p_start date,p_end date,p_period text,p_scope jsonb,p_channel text) returns jsonb
 language sql stable security invoker set search_path = '' as $$
-with base as (
+with report_candidates as materialized (
+    select c.candidate_id,c.channel,c.group_id,c.doc_group_id from public.candidates c where app_private.can_read_candidate(c.candidate_id)
+  ), base as (
     select r.doc_id,r.site,r.department,r.section,r.position,r.level,r.head_count,r.request_type,r.status,r.pr_approved_date,r.created_at
     from public.requisitions r where app_private.can_read_requisition(r.doc_id)
       and (coalesce(p_scope->>'headerSite','')='' or r.site=p_scope->>'headerSite')
@@ -418,7 +420,7 @@ with base as (
       coalesce(a.group_id,c.group_id,dg.group_id) as group_id,
       case when l.result=1 then coalesce(l.outcome_date,l.log_date) else l.log_date end as activity_date
     from public.recruitment_logs l
-    join public.candidates c on c.candidate_id=l.candidate_id and app_private.can_read_candidate(c.candidate_id)
+    join report_candidates c on c.candidate_id=l.candidate_id
     left join public.candidate_application_assignments a on a.assignment_id=case when l.result is null then l.entry_assignment_id else l.outcome_assignment_id end and (l.application_id is null or a.application_id=l.application_id)
     left join public.document_groups dg on dg.doc_group_id=c.doc_group_id
     where l.superseded_at is null and (l.application_id is null or app_private.can_read_application(l.application_id))
@@ -426,23 +428,23 @@ with base as (
       and l.recruitment_process in ('Phone Screen','HR Interview','Line Interview','Test','Reference Check','Offer')
       and (case when l.result=1 then coalesce(l.outcome_date,l.log_date) else l.log_date end) between p_start and p_end
       and coalesce(a.group_id,c.group_id,dg.group_id) in (select group_id from group_docs)
-  ), resume_ranks as (
+  ), resume_ranks as materialized (
     select l.log_id,row_number() over(partition by l.candidate_id order by l.activity_date,l.log_id) as resume_rank
     from raw_logs l where l.recruitment_process='Phone Screen'
-  ), pass_ranks as (
+  ), pass_ranks as materialized (
     select l.log_id,row_number() over(partition by l.candidate_id,l.recruitment_process order by l.activity_date,l.log_id) as pass_rank
     from raw_logs l where l.result=1
   ), stage_values as (
     select x.*,case when rr.resume_rank=1 then 1 else 0 end as resume,case when pr.pass_rank=1 then 1 else 0 end as passed
     from raw_logs x left join resume_ranks rr using(log_id) left join pass_ranks pr using(log_id)
   ), candidate_sources as (
-    select c.candidate_id,btrim(coalesce(c.channel,'')) as channel from public.candidates c where app_private.can_read_candidate(c.candidate_id)
+    select c.candidate_id,btrim(coalesce(c.channel,'')) as channel from report_candidates c
   ),
   hire_rows as (
     select o.offer_id,o.candidate_id,btrim(coalesce(c.channel,'')) as channel,o.accepted_date,
       row_number() over(partition by o.candidate_id order by o.accepted_date,o.offer_id) as hire_rank
     from public.offers o join eligible e on e.doc_id=o.doc_id
-    join public.candidates c on c.candidate_id=o.candidate_id and app_private.can_read_candidate(c.candidate_id)
+    join report_candidates c on c.candidate_id=o.candidate_id
     where o.accepted_date between p_start and p_end and (p_channel='all' or btrim(coalesce(c.channel,''))=p_channel)
   ),
   channel_rows as (
@@ -495,7 +497,7 @@ with base as (
     select coalesce(jsonb_agg(channel order by ordinal,channel),'[]'::jsonb) as options from (
       select channel,min(ordinal) as ordinal from (
         select label as channel,ordinal from (values ('Facebook',1),('JobThai',2),('JobTopGun',3),('JobsDB',4),('JobBKK',5),('LinkedIn',6),('Walk-in',7),('Referral',8),('Others',9)) fixed(label,ordinal)
-        union all select distinct btrim(c.channel),10 from public.candidates c where app_private.can_read_candidate(c.candidate_id) and nullif(btrim(c.channel),'') is not null
+        union all select distinct btrim(c.channel),10 from report_candidates c where nullif(btrim(c.channel),'') is not null
       ) raw_options group by channel
     ) o
   )
@@ -1208,7 +1210,9 @@ begin
   if jsonb_typeof(coalesce(p_scope,'{}'::jsonb))<>'object' or exists(select 1 from jsonb_object_keys(coalesce(p_scope,'{}'::jsonb)) k where k not in ('headerSite','headerPic','priorityOnly','sites','departments','levels'))
     or (p_scope ? 'headerSite' and jsonb_typeof(p_scope->'headerSite')<>'string') or (p_scope ? 'headerPic' and jsonb_typeof(p_scope->'headerPic')<>'string')
     or (p_scope ? 'priorityOnly' and jsonb_typeof(p_scope->'priorityOnly')<>'boolean') then raise exception 'REPORT_SCOPE_INVALID'; end if;
-  with base as materialized (
+  with report_candidates as materialized (
+    select c.candidate_id,c.group_id from public.candidates c where app_private.can_read_candidate(c.candidate_id)
+  ), base as materialized (
     select r.doc_id,r.site,r.department,r.section,r.position,r.level,r.head_count,r.request_type,r.status,r.person_in_charge,r.pr_approved_date,r.is_priority
     from public.requisitions r where app_private.can_read_requisition(r.doc_id)
       and (coalesce(p_scope->>'headerSite','')='' or r.site=p_scope->>'headerSite')
@@ -1247,7 +1251,7 @@ begin
     select e.doc_id,l.recruitment_process,count(distinct case when p_stage_mode='status' then ca.application_id::text else l.candidate_id end)::integer n
     from eligible e join public.document_groups d on d.doc_id=e.doc_id
     join public.candidate_applications ca on ca.group_id=d.group_id
-    join public.candidates c on c.candidate_id=ca.candidate_id and app_private.can_read_candidate(c.candidate_id)
+    join report_candidates c on c.candidate_id=ca.candidate_id
     join public.recruitment_logs l on l.candidate_id=c.candidate_id and l.application_id=ca.application_id
     left join public.candidate_application_assignments a on a.assignment_id=case when l.result is null then l.entry_assignment_id else l.outcome_assignment_id end and a.application_id=ca.application_id
     where app_private.can_read_application(ca.application_id) and l.recruitment_process in ('Phone Screen','HR Interview','Line Interview','Test','Reference Check','Offer')
@@ -1260,7 +1264,7 @@ begin
             and newer.log_date<=p_end and (newer.outcome_date is null or newer.outcome_date>p_end or newer.result is null)
             and (newer.log_date>l.log_date or (newer.log_date=l.log_date and newer.log_id>l.log_id))) end
     group by e.doc_id,l.recruitment_process
-  ), stage_pivot as (
+  ), stage_pivot as materialized (
     select doc_id,
       coalesce(max(n) filter(where recruitment_process='Phone Screen'),0)::integer phone_screen,
       coalesce(max(n) filter(where recruitment_process='HR Interview'),0)::integer hr_interview,

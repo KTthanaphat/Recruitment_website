@@ -214,6 +214,7 @@ async function main() {
   assert.equal((await db.query("select to_regclass('public.idx_candidate_application_assignments_application_id') as idx")).rows[0].idx,null,'chronological index migration is not masked by the early schema20 replay');
   await db.exec(assignmentHistoryMigration);
   assert.deepEqual((await db.query("select i.indisvalid valid,i.indisready ready,i.indpred is null all_history from pg_index i where i.indexrelid='public.idx_candidate_application_assignments_application_id'::regclass")).rows[0],{valid:true,ready:true,all_history:true},'additive migration creates a valid ready all-history index without a partial predicate');
+  await db.exec(fs.readFileSync(path.join(root,'supabase/migrations/20261102123500_ytd_report_materialization.sql'),'utf8'));
   if (process.argv.includes('--inline-auth-experiment')) {
     await db.exec(fs.readFileSync(path.join(root,'tests/db/scoped-auth-inline-experiment.sql'),'utf8'));
   }
