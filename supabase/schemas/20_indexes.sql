@@ -34,3 +34,5 @@ create index if not exists idx_change_logs_changed_at on public.change_logs(chan
 create index if not exists idx_sourcing_weekly_updates_updated_by on public.sourcing_weekly_updates(updated_by) where updated_by is not null;
 create index if not exists idx_vacancy_weekly_snapshots_updated_by on public.vacancy_weekly_snapshots(updated_by) where updated_by is not null;
 create index if not exists idx_change_logs_changed_by on public.change_logs(changed_by) where changed_by is not null;
+create index if not exists idx_candidate_application_assignments_application_id
+on public.candidate_application_assignments(application_id);

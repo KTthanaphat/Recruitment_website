@@ -742,11 +742,26 @@ with scoped_requisitions as (
     and (jsonb_array_length(coalesce(p_scope->'sites','[]'::jsonb))=0 or r.site in(select jsonb_array_elements_text(p_scope->'sites')))
     and (jsonb_array_length(coalesce(p_scope->'departments','[]'::jsonb))=0 or r.department in(select jsonb_array_elements_text(p_scope->'departments')))
     and (jsonb_array_length(coalesce(p_scope->'levels','[]'::jsonb))=0 or exists(select 1 from jsonb_array_elements_text(p_scope->'levels') x(band) where btrim(coalesce(r.level,'')) ~* '^L?(0|[1-9]|1[0-4])$' and substring(btrim(r.level) from '([0-9]+)$')::int between split_part(x.band,'-',1)::int and split_part(x.band,'-',2)::int))
+), failure_logs as materialized (
+  select l.* from public.recruitment_logs l
+  where l.result=0 and l.superseded_at is null and l.superseded_by_stage_instance_id is null
+), needed_candidate_ids as materialized (
+  select distinct candidate_id from failure_logs
+), authorized_candidates as materialized (
+  select c.candidate_id,c.name,c.group_id,c.doc_group_id
+  from public.candidates c join needed_candidate_ids n using(candidate_id)
+  where app_private.can_read_candidate(c.candidate_id)
+), needed_application_ids as materialized (
+  select distinct application_id,candidate_id from failure_logs where application_id is not null
+), authorized_applications as materialized (
+  select a.application_id,a.candidate_id,a.group_id
+  from public.candidate_applications a join needed_application_ids n using(application_id,candidate_id)
+  where app_private.can_read_application(a.application_id)
 ), failures as (
   select l.*,c.name candidate_name,a.group_id application_group,
     case when l.outcome_assignment_id is not null then assignment.group_id
       when exists(select 1 from public.candidate_application_assignments history where history.application_id=l.application_id) then null
-      else coalesce(a.group_id,c.group_id,(select dg.group_id from public.document_groups dg where dg.doc_group_id=c.doc_group_id limit 1)) end group_id,
+      else coalesce(a.group_id,c.group_id,(select dg.group_id from public.document_groups dg where dg.doc_group_id=c.doc_group_id limit 1)) end resolved_group,
     case when l.failure_actor in ('company','candidate') then l.failure_actor else 'unclassified' end normalized_actor,
     case when nullif(btrim(l.failure_reason_snapshot->>'main_en'),'') is not null or nullif(btrim(l.failure_reason_snapshot->>'main_th'),'') is not null then coalesce(nullif(l.failure_reason_snapshot->>'main_en',''),l.failure_reason_snapshot->>'main_th') else 'Unclassified reason' end normalized_main_en,
     case when nullif(btrim(l.failure_reason_snapshot->>'main_en'),'') is not null or nullif(btrim(l.failure_reason_snapshot->>'main_th'),'') is not null then coalesce(nullif(l.failure_reason_snapshot->>'main_th',''),l.failure_reason_snapshot->>'main_en') else 'ไม่ได้ระบุเหตุผล' end normalized_main_th,
@@ -759,11 +774,10 @@ with scoped_requisitions as (
       when l.failure_detail_reason_id is not null then to_jsonb(l.failure_detail_reason_id::text)
       else jsonb_build_array(coalesce(nullif(l.failure_reason_snapshot->>'detail_en',''),l.failure_reason_snapshot->>'detail_th'),coalesce(nullif(l.failure_reason_snapshot->>'detail_th',''),l.failure_reason_snapshot->>'detail_en')) end detail_value,
     case when l.recruitment_process in ('Phone Screen','HR Interview','Line Interview','Test','Reference Check','Offer') and l.stage_instance_id is not null then l.outcome_date else coalesce(l.outcome_date,l.log_date) end failure_date
-  from public.recruitment_logs l join public.candidates c on c.candidate_id=l.candidate_id
-  left join public.candidate_applications a on a.application_id=l.application_id and a.candidate_id=l.candidate_id
+  from failure_logs l join authorized_candidates c on c.candidate_id=l.candidate_id
+  left join authorized_applications a on a.application_id=l.application_id and a.candidate_id=l.candidate_id
   left join public.candidate_application_assignments assignment on assignment.assignment_id=l.outcome_assignment_id and assignment.application_id=l.application_id
-  where l.result=0 and l.superseded_at is null and l.superseded_by_stage_instance_id is null
-    and app_private.can_read_candidate(l.candidate_id) and (l.application_id is null or (a.application_id is not null and app_private.can_read_application(l.application_id)))
+  where l.application_id is null or a.application_id is not null
 ), keyed as (
   select f.*,coalesce(f.application_id::text,f.candidate_id)||':'||coalesce(f.stage_instance_id::text,'legacy-'||f.log_id::text) event_id,
     app_private.dashboard_json_compact_v1(jsonb_build_array(normalized_actor,main_value)) main_key,
@@ -778,7 +792,7 @@ with scoped_requisitions as (
     left join scoped_requisitions r on r.doc_id=dg.doc_id where k.resolved_group is not null and dg.group_id=k.resolved_group
   ) context on true
 )
-select c.event_id,c.log_id,c.application_id,c.candidate_id,c.candidate_name,c.group_id,c.position_name,c.failure_date,c.recruitment_process,c.round,c.normalized_actor,c.main_key,c.detail_key,
+select c.event_id,c.log_id,c.application_id,c.candidate_id,c.candidate_name,c.resolved_group,c.position_name,c.failure_date,c.recruitment_process,c.round,c.normalized_actor,c.main_key,c.detail_key,
   c.normalized_main_en,c.normalized_main_th,c.normalized_detail_en,c.normalized_detail_th,c.requisitions,coalesce(c.has_scope_context,false),
   c.resolved_group is null or coalesce(c.has_links,false)=false,c.failure_date is null
 from context_rows c
@@ -1001,6 +1015,24 @@ begin
       (select o.accepted_date from public.offers o where o.application_id=a.application_id and o.accepted_date is not null order by o.accepted_date desc,o.offer_id desc limit 1) accepted_date
     from visible_apps a),
   candidate_rows as (select a.* from latest_apps a),
+  authorized_candidates as materialized (
+    select c.candidate_id,c.name,to_jsonb(c)->>'phone_no' phone_no,to_jsonb(c)->>'candidate_folder_url' candidate_folder_url
+    from public.candidates c where app_private.can_read_candidate(c.candidate_id)
+  ),
+  candidate_match_keys as materialized (
+    select candidate_id,'phone'::text match_kind,phone_no match_value from authorized_candidates where nullif(phone_no,'') is not null
+    union all
+    select candidate_id,'name',lower(btrim(name)) from authorized_candidates where name is not null
+    union all
+    select candidate_id,'folder',candidate_folder_url from authorized_candidates where nullif(candidate_folder_url,'') is not null
+  ),
+  duplicate_match_keys as materialized (
+    select match_kind,match_value from candidate_match_keys group by match_kind,match_value having count(distinct candidate_id)>1
+  ),
+  duplicate_flags as materialized (
+    select k.candidate_id,bool_or(k.match_kind='phone') has_phone,bool_or(k.match_kind='name') has_name,bool_or(k.match_kind='folder') has_folder
+    from candidate_match_keys k join duplicate_match_keys d using(match_kind,match_value) group by k.candidate_id
+  ),
   group_rows as (select d.group_id,pg.group_position,coalesce(sum(r.open_headcount),0)::integer open_headcount,
       array_agg(distinct r.doc_id order by r.doc_id) doc_ids,max(u.updated_at) latest_update,
       array_agg(distinct r.site) sites,string_agg(distinct r.person_in_charge,', ') owners
@@ -1009,8 +1041,8 @@ begin
   issues as (
     select 'warning'::text severity,'candidate'::text entity,c.candidate_id entity_id,'Possible duplicate candidate'::text title,'Another record has the same phone, name, or folder URL.'::text detail,'Review candidate'::text action_label,
       '/candidates?detailType=candidate&detailId='||c.candidate_id href,'duplicateCandidate'::text workspace_code,
-      jsonb_build_object('fields',concat_ws(',',case when exists(select 1 from public.candidates d where d.candidate_id<>c.candidate_id and nullif(c.phone_no,'') is not null and to_jsonb(d)->>'phone_no'=c.phone_no and app_private.can_read_candidate(d.candidate_id)) then 'phone' end,case when exists(select 1 from public.candidates d where d.candidate_id<>c.candidate_id and lower(btrim(d.name))=lower(btrim(c.name)) and app_private.can_read_candidate(d.candidate_id)) then 'name' end,case when exists(select 1 from public.candidates d where d.candidate_id<>c.candidate_id and nullif(c.candidate_folder_url,'') is not null and to_jsonb(d)->>'candidate_folder_url'=c.candidate_folder_url and app_private.can_read_candidate(d.candidate_id)) then 'folder' end)) workspace_params,c.application_id::text journey_id
-    from candidate_rows c where exists(select 1 from public.candidates d where d.candidate_id<>c.candidate_id and ((nullif(c.phone_no,'') is not null and to_jsonb(d)->>'phone_no'=c.phone_no) or lower(btrim(d.name))=lower(btrim(c.name)) or (nullif(c.candidate_folder_url,'') is not null and to_jsonb(d)->>'candidate_folder_url'=c.candidate_folder_url)) and app_private.can_read_candidate(d.candidate_id))
+      jsonb_build_object('fields',concat_ws(',',case when d.has_phone then 'phone' end,case when d.has_name then 'name' end,case when d.has_folder then 'folder' end)) workspace_params,c.application_id::text journey_id
+    from candidate_rows c join duplicate_flags d using(candidate_id)
     union all select 'info','candidate',c.candidate_id,'Candidate has no activity','Candidate has been created but has no process update.','Start process','/pipeline?detailType=candidate&detailId='||c.candidate_id,'candidateNoActivity',jsonb_build_object('days',v_today-c.created_at::date),c.application_id::text
       from candidate_rows c where c.latest_process is null and c.created_at is not null and v_today-c.created_at::date>2
     union all select 'warning','candidate',c.candidate_id,'Candidate linked to closed requisition',closed.doc_id||' is '||closed.status||'.','Review match','/workspace?type=requisition&id='||closed.doc_id,'candidateClosedRequest',jsonb_build_object('docId',closed.doc_id),c.application_id::text||':'||closed.doc_id

@@ -14,6 +14,7 @@ const schema = fs.readFileSync(path.join(root, 'supabase/schemas/61_dashboard_su
 const migration = fs.readFileSync(path.join(root, 'supabase/migrations/20261101130623_dashboard_summaries.sql'), 'utf8');
 const qualityScopeBaseMigration = fs.readFileSync(path.join(root, 'supabase/migrations/20261102113000_home_quality_detail_scope.sql'), 'utf8');
 const qualityScopeMigration = fs.readFileSync(path.join(root, 'supabase/migrations/20261102114500_home_quality_exact_group_scope.sql'), 'utf8');
+const qualityPrecomputeMigration = fs.readFileSync(path.join(root, 'supabase/migrations/20261102123000_home_quality_duplicate_key_precompute.sql'), 'utf8');
 const ownerOptionsMigration = fs.readFileSync(path.join(root, 'supabase/migrations/20261101183700_dashboard_owner_filter_options.sql'), 'utf8');
 const rejectionAliasMigration = fs.readFileSync(path.join(root, 'supabase/migrations/20261101184800_rejection_id_alias_search.sql'), 'utf8');
 const companyFeed = fs.readFileSync(path.join(root, 'supabase/schemas/55_dashboard_report.sql'), 'utf8');
@@ -21,7 +22,7 @@ const fixture = JSON.parse(fs.readFileSync(path.join(root, 'tests/db/fixtures/da
 const qualityStart = schema.indexOf('create or replace function public.app_home_quality_page_v1(');
 const qualityEnd = schema.indexOf('-- Compact sourcing chart inputs', qualityStart);
 assert.ok(qualityStart >= 0 && qualityEnd > qualityStart, 'quality function block exists in declarative schema');
-assert.equal(qualityScopeMigration.replaceAll('\r\n','\n').trimEnd(), schema.slice(qualityStart, qualityEnd).trimEnd(), 'scoped quality migration matches the declarative function and ACL block');
+assert.equal(qualityPrecomputeMigration.replaceAll('\r\n','\n').trimEnd(), schema.slice(qualityStart, qualityEnd).trimEnd(), 'quality precompute migration matches the declarative function and ACL block');
 const optionsStart = schema.indexOf('create or replace function app_private.dashboard_filter_options_v1(');
 const optionsEnd = schema.indexOf('-- Database aggregates for the Pipeline funnel', optionsStart);
 assert.ok(optionsStart >= 0 && optionsEnd > optionsStart, 'filter options function block exists in declarative schema');
@@ -54,7 +55,7 @@ async function main() {
     create schema auth; create schema app_private; grant usage on schema app_private to authenticated;
     create function auth.uid() returns uuid language sql stable as $$ select coalesce(nullif(current_setting('request.jwt.claim.sub',true),'')::uuid,'00000000-0000-0000-0000-000000000001'::uuid) $$;
     create function app_private.is_recruitment_reader() returns boolean language sql stable as $$ select true $$;
-    create function app_private.can_read_candidate(text) returns boolean language sql stable as $$ select coalesce(current_setting('test.candidate_access',true),'true') <> 'false' $$;
+    create function app_private.can_read_candidate(text) returns boolean language sql stable as $$ select coalesce(current_setting('test.candidate_access',true),'true') <> 'false' and $1 is distinct from nullif(current_setting('test.hidden_candidate',true),'') $$;
     create function app_private.can_read_application(uuid) returns boolean language sql stable as $$ select coalesce(current_setting('test.application_access',true),'true') <> 'false' $$;
     create function app_private.can_read_requisition(text) returns boolean language sql stable as $$ select coalesce(current_setting('test.requisition_access',true),'true') <> 'false' $$;
     create function app_private.can_read_sourcing_group(text) returns boolean language sql stable as $$ select coalesce(current_setting('test.sourcing_access',true),'true') <> 'false' $$;
@@ -104,6 +105,7 @@ async function main() {
   await db.exec(rejectionAliasMigration);
   await db.exec(qualityScopeBaseMigration);
   await db.exec(qualityScopeMigration);
+  await db.exec(qualityPrecomputeMigration);
   const query = async (sql, params = []) => (await db.query(sql, params)).rows[0];
   const {loadBottleneckPage}=require(path.join(root,'src/lib/dashboard-summary-client.ts'));
   const sqlQueueEnvelope={rows:[],hasMore:false,hasMoreBefore:false,nextCursor:null,previousCursor:null};
@@ -428,7 +430,10 @@ async function main() {
       (33,'CAN-REJ','10000000-0000-0000-0000-000000000006',0,null,null,'HR Interview',null,2,'2026-08-01','2026-08-08','20000000-0000-0000-0000-000000000033',now(),'company','{"main_en":"Not suitable","main_th":"ไม่เหมาะสม","detail_en":"Experience","detail_th":"ประสบการณ์"}');`);
   const weeklyRejection=(await query(`select public.app_dashboard_rejection_summary_v1('2026-08-01','2026-09-01','{}'::jsonb,'{}'::jsonb) as data`)).data;
   assert.equal(weeklyRejection.granularity,'weekly');assert.deepEqual(weeklyRejection.trends.slice(0,2).map(row=>[row.start,row.end,row.count]),[['2026-08-01','2026-08-07',1],['2026-08-08','2026-08-14',1]],'weekly rejection buckets start Saturday and end Friday');
-  await db.exec(`insert into public.candidates values ('CAN-Q1','Quality Duplicate',null,'Others','GRP-1',null),('CAN-Q2','Quality Duplicate',null,'Others','GRP-1',null);
+  await db.exec(`alter table public.candidates add column phone_no text, add column candidate_folder_url text;
+    insert into public.candidates(candidate_id,name,nickname,channel,group_id,doc_group_id,phone_no,candidate_folder_url) values
+      ('CAN-Q1','',null,'Others','GRP-1',null,'555-0100','https://drive.test/duplicate'),
+      ('CAN-Q2','  ',null,'Others','GRP-1',null,'555-0100','https://drive.test/duplicate');
     insert into public.candidate_applications values ('10000000-0000-0000-0000-000000000007','CAN-Q1','GRP-1','active'),('10000000-0000-0000-0000-000000000008','CAN-Q2','GRP-1','active');`);
   const qualityRangeDate='2026-11-01';
   const qualityPage=(await query(`select public.app_home_quality_page_v1('{}'::jsonb,$1,null,null,null,1) as data`,[qualityRangeDate])).data;
@@ -438,6 +443,11 @@ async function main() {
   const qualityAll=[...qualityPage.items,...qualityNext.items];let qualityCursor=qualityNext.nextCursor;
   while(qualityCursor){const next=(await query(`select public.app_home_quality_page_v1('{}'::jsonb,$1,$2,$3,$4,50) as data`,[qualityRangeDate,qualityCursor.severity,qualityCursor.title,qualityCursor.id])).data;qualityAll.push(...next.items);qualityCursor=next.nextCursor;}
   assert.equal(qualityAll.length,qualityPage.totalCount,'Home quality cursor pages exhaust the independently reported total');
+  for (const candidateId of ['CAN-Q1','CAN-Q2']) {
+    const duplicateIssue=qualityAll.find(row=>row.entityId===candidateId&&row.workspaceCode==='duplicateCandidate');
+    assert(duplicateIssue,'blank-name candidate participates in globally authorized duplicate matching');
+    assert.equal(duplicateIssue.workspaceParams.fields,'phone,name,folder','precomputed duplicate flags preserve exact phone/name/folder reporting order and semantics');
+  }
   const { deriveDataQualityIssues } = require(path.join(root,'src/lib/operations.ts'));
   const qualityData={...tsPipelineData,candidates:isoRows(await readRows('candidates')),candidate_applications:isoRows(await readRows('candidate_applications')),candidate_application_assignments:isoRows(await readRows('candidate_application_assignments')),recruitment_logs:isoRows(await readRows('recruitment_logs')),requisitions:isoRows(await readRows('requisitions')),document_groups:isoRows(await readRows('document_groups')),position_groups:isoRows(await readRows('position_groups')),offers:isoRows(await readRows('offers')),sourcing_weekly_updates:isoRows(await readRows('sourcing_weekly_updates'))};
   const tsQualityIds=deriveDataQualityIssues(qualityData).map(row=>row.id).sort(),sqlQualityIds=qualityAll.map(row=>row.id).sort();
@@ -448,7 +458,10 @@ async function main() {
       union all select 'REQ-Q-1-'||lpad(n::text,2,'0'),false,'2026-07-01'::date,'KT1','Scoped '||n,'Ops','Plant','L2',1,'Recruiter A','New','ongoing',now(),now() from generate_series(2,35) n;
     insert into document_groups(doc_group_id,doc_id,group_id) values ('DG-Q-1','REQ-Q-1','GRP-Q-1'),('DG-Q-1-SHARED','REQ-Q-1','GRP-Q-10'),('DG-Q-10','REQ-Q-10','GRP-Q-10')
       union all select 'DG-Q-'||n,'REQ-Q-1-'||lpad(n::text,2,'0'),'GRP-Q-1' from generate_series(2,35) n;
-    insert into candidates(candidate_id,name,nickname,channel,group_id,doc_group_id) values ('CAN-Q-G1','Group One Person',null,'Referral','GRP-Q-1',null),('CAN-Q-G10','Group Ten Person',null,'Referral','GRP-Q-10',null);
+    insert into candidates(candidate_id,name,nickname,channel,group_id,doc_group_id,phone_no,candidate_folder_url) values
+      ('CAN-Q-G1','Group One Person',null,'Referral','GRP-Q-1',null,'GROUP-GLOBAL-DUPE',null),
+      ('CAN-Q-G10','Group Ten Person',null,'Referral','GRP-Q-10',null,null,null),
+      ('CAN-Q-REMOTE','Remote same phone',null,'Referral','GRP-Q-10',null,'GROUP-GLOBAL-DUPE',null);
     insert into candidate_applications values ('10000000-0000-0000-0000-000000000041','CAN-Q-G1','GRP-Q-1','active'),('10000000-0000-0000-0000-000000000042','CAN-Q-G10','GRP-Q-10','active');
     insert into offers(offer_id,candidate_id,doc_id,application_id,accepted_date,first_working_date,start_confirmation,created_at,updated_at) values
       (41,'CAN-Q-G1','REQ-Q-1','10000000-0000-0000-0000-000000000041','2026-10-01',null,null,now(),now()),
@@ -467,6 +480,12 @@ async function main() {
   while(scopedCursor){const next=(await query(`select public.app_home_quality_page_v1('{"groupId":"GRP-Q-1"}'::jsonb,$1,$2,$3,$4,50) as data`,[qualityRangeDate,scopedCursor.severity,scopedCursor.title,scopedCursor.id])).data;scopedQualityRows.push(...next.items);scopedCursor=next.nextCursor;}
   assert.equal(scopedQualityRows.length,groupQuality.totalCount,'group-scoped cursor pages exhaust exact count without gaps');
   assert(scopedQualityRows.some(row=>row.entityId==='CAN-Q-G1'&&row.workspaceCode==='pipelineOrder'),'quality page includes selected-group authorized application issues');
+  const globalDuplicate=scopedQualityRows.find(row=>row.entityId==='CAN-Q-G1'&&row.workspaceCode==='duplicateCandidate');
+  assert(globalDuplicate&&globalDuplicate.workspaceParams.fields==='phone','duplicate matching remains globally scoped to authorized candidates outside the selected group');
+  await query(`select set_config('test.hidden_candidate','CAN-Q-REMOTE',false)`);
+  const hiddenDuplicate=(await query(`select public.app_home_quality_page_v1('{"groupId":"GRP-Q-1"}'::jsonb,$1,null,null,null,50) as data`,[qualityRangeDate])).data;
+  assert(!hiddenDuplicate.items.some(row=>row.entityId==='CAN-Q-G1'&&row.workspaceCode==='duplicateCandidate'),'candidate RLS prevents hidden outside-group identities from influencing duplicate flags');
+  await query(`select set_config('test.hidden_candidate','',false)`);
   assert(!scopedQualityRows.some(row=>row.entityId==='CAN-Q-G10'),'shared requisition does not pull people from neighboring group');
   assert(scopedQualityRows.some(row=>row.entityId==='GRP-Q-1'&&row.workspaceCode==='groupSourcingStale'),'group quality page includes selected-group sourcing issue');
   assert(!scopedQualityRows.some(row=>row.entityId==='GRP-Q-10'&&row.workspaceCode==='groupSourcingStale'),'shared requisition does not pull neighboring group sourcing issues');
