@@ -133,3 +133,12 @@ test("Admin keeps its loaded directory and metrics during a same-user refresh", 
   await expect(page.locator("[data-refreshing=true]").first()).toBeVisible(); await expect(entry).toBeVisible();
   await expect(page.locator("[data-loading-skeleton]")).toHaveCount(0); hold.release();
 });
+
+
+test("Thai offers loading and read retry names are localized", async ({ page }) => {
+  await installMockSupabase(page, { role: "admin_recruiter", language: "th" }); const hold = gate();
+  await page.route("**/rest/v1/rpc/app_recruitment_list_v1", async route => { if (route.request().postDataJSON().p_entity !== "offers") return route.fallback(); await hold.pending; return route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ message: "Read unavailable" }) }); });
+  await page.goto("/offers?lang=th"); await expectWorkspaceReady(page);
+  await expect(page.locator("table [data-loading-skeleton=table]")).toContainText("กำลังโหลด"); hold.release();
+  await expect(page.getByRole("button", { name: "ลองอีกครั้ง", exact: true })).toBeVisible();
+});

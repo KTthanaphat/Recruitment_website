@@ -60,7 +60,7 @@ export function AuditView({ language, rows, client, accessScope }: { language: L
           <Button type="button" onClick={() => setFiltersOpen(false)}>{translate(language, "confirm")}</Button>
         </div>
       </MobileBottomSheet>
-      {list.error ? <div role="alert" className="mb-3 flex items-center gap-3 text-sm text-scarlet"><span>Could not load audit records.</span><RetryIconButton title={`${language === "th" ? "ลองโหลดข้อมูลอีกครั้ง" : "Retry loading"}: Audit`} type="button"  onClick={list.retry} loading={list.loading}>Retry</RetryIconButton></div> : null}
+      {list.error ? <div role="alert" className="mb-3 flex items-center gap-3 text-sm text-scarlet"><span>Could not load audit records.</span><RetryIconButton title={`${language === "th" ? "ลองโหลดข้อมูลอีกครั้ง" : "Retry loading"}: Audit`} type="button"  onClick={list.retry} loading={list.loading}>{language === "th" ? "ลองอีกครั้ง" : "Retry"}</RetryIconButton></div> : null}
       <p className="mb-3 text-sm font-medium text-slate" role="status">{translate(language, "auditResultCount", { count: list.loading ? list.totalCount : client ? list.totalCount : filteredRows.length })}</p>
       {filteredRows.length === 0 && !list.initialLoading ? <EmptyState message={list.error ? "Audit records are unavailable." : rows.length === 0 ? translate(language, "noAuditRecords") : translate(language, "noAuditRecordsMatch")} /> : (
         <div className="min-w-0 md:max-h-[min(68dvh,48rem)] md:overflow-auto" data-testid="audit-table-viewport">
