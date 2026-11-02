@@ -1,5 +1,6 @@
 "use client";
 
+import { RefreshIndicator } from "@/components/ui/LoadingSkeleton";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { RotateCcw } from "lucide-react";
 import { CommandMonthSelector, CommandSelector } from "@/components/ui/CommandSelector";
@@ -30,6 +31,7 @@ import { Drawer } from "@/components/ui/Drawer";
 
 export type DashboardRequisitionReference = Pick<EnrichedRequisition, "doc_id" | "site" | "department" | "position" | "level" | "head_count" | "person_in_charge">;
 export type DashboardReportContext = {
+  refreshRevision?: number;
   language: Language; data: DashboardData; requisitions: EnrichedRequisition[]; offers: EnrichedOffer[]; candidateOffers: Offer[];
   preferences: DashboardPreferences; onPreferencesChange: (patch: Partial<DashboardPreferences>) => void;
   headerScope: { site: string; owner: string; priorityOnly: boolean }; range: { start: string; end: string; valid: boolean }; summary: string; supportedFilters: DashboardReportIdentity["filters"];
@@ -102,7 +104,7 @@ export function DashboardPortal({ language, data, requisitions, offers, candidat
     updateWorkspaceUrlState(dashboardUrlValues(preferences));
     try { sessionStorage.setItem(sessionKey, JSON.stringify(preferences)); } catch { /* Keep URL state available. */ }
   }, [preferences, ready, sessionKey]);
-  const profileKey = `${data.profile?.id ?? ""}:${data.profile?.updated_at ?? ""}`;
+  const profileKey = `${data.profile?.id ?? ""}:${data.profile?.role ?? ""}:${data.profile?.site ?? ""}:${data.profile?.updated_at ?? ""}`;
   const headerOptionScope = { headerSite: globalSite, headerPic: globalOwner, priorityOnly: globalPriorityOnly };
   const optionKey = JSON.stringify([profileKey, headerOptionScope, preferences.sites]);
   useEffect(() => {
@@ -133,11 +135,11 @@ export function DashboardPortal({ language, data, requisitions, offers, candidat
   const riskRange = dashboardReportRange(preferences, today, riskReportDefinition?.filters ?? []);
   const pipelineScope = useMemo(() => ({ headerSite: globalSite, headerPic: globalOwner, priorityOnly: globalPriorityOnly, sites: preferences.sites, departments: preferences.departments, levels: preferences.levels }), [globalSite, globalOwner, globalPriorityOnly, preferences.sites, preferences.departments, preferences.levels]);
   const needsPipelineSummary = preferences.tab === "pipeline" && preferences.pipelineSubview === "overview" || preferences.tab === "performance" && preferences.performanceSubview === "vacancy";
-  const pipelineSummaryKey = JSON.stringify([profileKey, pipelineRange.start, pipelineRange.end, preferences.period, pipelineScope, preferences.funnelChannel, refreshKey, pipelineRetry]);
+  const pipelineSummaryKey = JSON.stringify([profileKey, pipelineRange.start, pipelineRange.end, preferences.period, pipelineScope, preferences.funnelChannel]);
   useEffect(() => {
     if (!ready || !needsPipelineSummary || !pipelineRange.valid) return;
     if (!supabase) { setPipelineSummaryState({ key: pipelineSummaryKey, status: "error" }); return; }
-    let cancelled = false; setPipelineSummaryState({ key: pipelineSummaryKey, status: "loading" });
+    let cancelled = false; setPipelineSummaryState(previous => ({ key: pipelineSummaryKey, status: "loading", value: previous?.key === pipelineSummaryKey ? previous.value : undefined }));
     loadPipelineSummary(supabase, { start: pipelineRange.start, end: pipelineRange.end, period: preferences.period, scope: pipelineScope, channel: preferences.funnelChannel, profileKey, refreshKey: refreshKey + pipelineRetry })
       .then(value => { if (!cancelled) setPipelineSummaryState({ key: pipelineSummaryKey, status: "ready", value }); })
       .catch(() => { if (!cancelled) setPipelineSummaryState({ key: pipelineSummaryKey, status: "error" }); });
@@ -145,12 +147,12 @@ export function DashboardPortal({ language, data, requisitions, offers, candidat
   }, [ready, needsPipelineSummary, preferences.tab, preferences.pipelineSubview, preferences.performanceSubview, preferences.period, preferences.funnelChannel, pipelineRange.start, pipelineRange.end, pipelineRange.valid, pipelineScope, pipelineSummaryKey, profileKey, refreshKey, pipelineRetry]);
   const riskPriorRange = previousPerformanceRange(preferences.period, { start: riskRange.start, end: riskRange.end < today ? riskRange.end : today });
   const riskTrendDates = useMemo(() => riskRange.valid ? observationDates(riskRange.start, riskRange.end < today ? riskRange.end : today) : [], [riskRange.start, riskRange.end, riskRange.valid, today]);
-  const riskSummaryKey = JSON.stringify([profileKey, riskRange.start, riskRange.end, riskPriorRange, pipelineScope, riskTrendDates, refreshKey, riskRetry]);
+  const riskSummaryKey = JSON.stringify([profileKey, riskRange.start, riskRange.end, riskPriorRange, pipelineScope, riskTrendDates]);
   const needsRiskSummary = preferences.tab === "performance" && preferences.performanceSubview === "risk";
   useEffect(() => {
     if (!ready || !needsRiskSummary || !riskRange.valid) return;
     if (!supabase) { setRiskSummaryState({ key: riskSummaryKey, status: "error" }); return; }
-    let cancelled = false; setRiskSummaryState({ key: riskSummaryKey, status: "loading" });
+    let cancelled = false; setRiskSummaryState(previous => ({ key: riskSummaryKey, status: "loading", value: previous?.key === riskSummaryKey ? previous.value : undefined }));
     loadRiskSummary(supabase, { start: riskRange.start, end: riskRange.end, priorStart: riskPriorRange.start, priorEnd: riskPriorRange.end, scope: pipelineScope, trendDates: riskTrendDates, profileKey, refreshKey: refreshKey + riskRetry })
       .then(value => { if (!cancelled) setRiskSummaryState({ key: riskSummaryKey, status: "ready", value }); })
       .catch(() => { if (!cancelled) setRiskSummaryState({ key: riskSummaryKey, status: "error" }); });
@@ -159,22 +161,22 @@ export function DashboardPortal({ language, data, requisitions, offers, candidat
   const bottleneckPriorRange=previousPerformanceRange(preferences.period,{start:pipelineRange.start,end:pipelineRange.end<today?pipelineRange.end:today});
   const bottleneckTrendDates=useMemo(()=>pipelineRange.valid?observationDates(pipelineRange.start,pipelineRange.end<today?pipelineRange.end:today):[],[pipelineRange.start,pipelineRange.end,pipelineRange.valid,today]);
   const needsBottleneckSummary=preferences.tab==="pipeline"&&preferences.pipelineSubview==="bottlenecks";
-  const bottleneckSummaryKey=JSON.stringify([profileKey,pipelineRange.start,pipelineRange.end,bottleneckPriorRange,pipelineScope,preferences.funnelChannel,bottleneckTrendDates,refreshKey,bottleneckRetry]);
+  const bottleneckSummaryKey=JSON.stringify([profileKey,pipelineRange.start,pipelineRange.end,bottleneckPriorRange,pipelineScope,preferences.funnelChannel,bottleneckTrendDates]);
   useEffect(()=>{
     if(!ready||!needsBottleneckSummary||!pipelineRange.valid)return;
     if(!supabase){setBottleneckSummaryState({key:bottleneckSummaryKey,status:"error"});return;}
-    let cancelled=false;setBottleneckSummaryState({key:bottleneckSummaryKey,status:"loading"});
+    let cancelled=false;setBottleneckSummaryState(previous => ({ key: bottleneckSummaryKey, status: "loading", value: previous?.key === bottleneckSummaryKey ? previous.value : undefined }));
     loadBottleneckSummary(supabase,{start:pipelineRange.start,end:pipelineRange.end,priorStart:bottleneckPriorRange.start,priorEnd:bottleneckPriorRange.end,scope:pipelineScope,channel:preferences.funnelChannel,trendDates:bottleneckTrendDates,profileKey,refreshKey:refreshKey+bottleneckRetry})
       .then(value=>{if(!cancelled)setBottleneckSummaryState({key:bottleneckSummaryKey,status:"ready",value});}).catch(()=>{if(!cancelled)setBottleneckSummaryState({key:bottleneckSummaryKey,status:"error"});});
     return()=>{cancelled=true;};
   },[ready,needsBottleneckSummary,pipelineRange.valid,pipelineRange.start,pipelineRange.end,bottleneckPriorRange.start,bottleneckPriorRange.end,pipelineScope,preferences.funnelChannel,bottleneckTrendDates,profileKey,refreshKey,bottleneckRetry,bottleneckSummaryKey]);
   const rejectionFilters={actor:preferences.rejectionActor,stage:preferences.rejectionStage,main:preferences.rejectionMain,detail:preferences.rejectionDetail,search:rejectionSearch};
   const needsRejectionSummary=preferences.tab==="pipeline"&&preferences.pipelineSubview==="rejections";
-  const rejectionSummaryKey=JSON.stringify([profileKey,pipelineRange.start,pipelineRange.end,pipelineScope,rejectionFilters,refreshKey,rejectionRetry]);
+  const rejectionSummaryKey=JSON.stringify([profileKey,pipelineRange.start,pipelineRange.end,pipelineScope,rejectionFilters]);
   useEffect(()=>{
     if(!ready||!needsRejectionSummary||!pipelineRange.valid)return;
     if(!supabase){setRejectionSummaryState({key:rejectionSummaryKey,status:"error"});return;}
-    let cancelled=false;setRejectionSummaryState({key:rejectionSummaryKey,status:"loading"});
+    let cancelled=false;setRejectionSummaryState(previous => ({ key: rejectionSummaryKey, status: "loading", value: previous?.key === rejectionSummaryKey ? previous.value : undefined }));
     loadRejectionSummary(supabase,{start:pipelineRange.start,end:pipelineRange.end,scope:pipelineScope,filters:rejectionFilters,profileKey,refreshKey:refreshKey+rejectionRetry})
       .then(value=>{if(!cancelled)setRejectionSummaryState({key:rejectionSummaryKey,status:"ready",value});}).catch(()=>{if(!cancelled)setRejectionSummaryState({key:rejectionSummaryKey,status:"error"});});
     return()=>{cancelled=true;};
@@ -201,7 +203,7 @@ export function DashboardPortal({ language, data, requisitions, offers, candidat
     const wantsRiskSummary = report.id === "performance" && preferences.performanceSubview === "risk";
     const wantsBottleneckSummary=report.id==="pipeline"&&preferences.pipelineSubview==="bottlenecks";
     const wantsRejectionSummary=report.id==="pipeline"&&preferences.pipelineSubview==="rejections";
-    return { headerScope: { site: globalSite, owner: globalOwner, priorityOnly: globalPriorityOnly }, language, data: reportData, requisitions: scoped, offers: offers.filter(row => ids.has(row.doc_id)), candidateOffers: candidateOffers.filter(row => ids.has(row.doc_id)), pipelineSummary: wantsSummary && pipelineSummaryState?.key === pipelineSummaryKey ? pipelineSummaryState.value ?? null : null, pipelineSummaryStatus: wantsSummary ? pipelineSummaryState?.key === pipelineSummaryKey ? pipelineSummaryState.status : "loading" : "idle", onRetryPipelineSummary: () => setPipelineRetry(value => value + 1), riskSummary: wantsRiskSummary && riskSummaryState?.key === riskSummaryKey ? riskSummaryState.value ?? null : null, riskSummaryStatus: wantsRiskSummary ? riskSummaryState?.key === riskSummaryKey ? riskSummaryState.status : "loading" : "idle", onRetryRiskSummary: () => setRiskRetry(value => value + 1), bottleneckSummary:wantsBottleneckSummary&&bottleneckSummaryState?.key===bottleneckSummaryKey?bottleneckSummaryState.value??null:null,bottleneckSummaryStatus:wantsBottleneckSummary?bottleneckSummaryState?.key===bottleneckSummaryKey?bottleneckSummaryState.status:"loading":"idle",onRetryBottleneckSummary:()=>setBottleneckRetry(value=>value+1),rejectionSummary:wantsRejectionSummary&&rejectionSummaryState?.key===rejectionSummaryKey?rejectionSummaryState.value??null:null,rejectionSummaryStatus:wantsRejectionSummary?rejectionSummaryState?.key===rejectionSummaryKey?rejectionSummaryState.status:"loading":"idle",onRetryRejectionSummary:()=>setRejectionRetry(value=>value+1),rejectionSummaryFilters:wantsRejectionSummary?rejectionFilters:undefined, preferences: effective, onPreferencesChange: change, range: effectiveRange, summary: parts.join(" · "), supportedFilters: report.filters,
+    return { refreshRevision: refreshKey, headerScope: { site: globalSite, owner: globalOwner, priorityOnly: globalPriorityOnly }, language, data: reportData, requisitions: scoped, offers: offers.filter(row => ids.has(row.doc_id)), candidateOffers: candidateOffers.filter(row => ids.has(row.doc_id)), pipelineSummary: wantsSummary && pipelineSummaryState?.key === pipelineSummaryKey ? pipelineSummaryState.value ?? null : null, pipelineSummaryStatus: wantsSummary ? pipelineSummaryState?.key === pipelineSummaryKey ? (pipelineSummaryState.value ? "ready" : pipelineSummaryState.status) : "loading" : "idle", onRetryPipelineSummary: () => setPipelineRetry(value => value + 1), riskSummary: wantsRiskSummary && riskSummaryState?.key === riskSummaryKey ? riskSummaryState.value ?? null : null, riskSummaryStatus: wantsRiskSummary ? riskSummaryState?.key === riskSummaryKey ? (riskSummaryState.value ? "ready" : riskSummaryState.status) : "loading" : "idle", onRetryRiskSummary: () => setRiskRetry(value => value + 1), bottleneckSummary:wantsBottleneckSummary&&bottleneckSummaryState?.key===bottleneckSummaryKey?bottleneckSummaryState.value??null:null,bottleneckSummaryStatus:wantsBottleneckSummary?bottleneckSummaryState?.key===bottleneckSummaryKey? (bottleneckSummaryState.value ? "ready" : bottleneckSummaryState.status):"loading":"idle",onRetryBottleneckSummary:()=>setBottleneckRetry(value=>value+1),rejectionSummary:wantsRejectionSummary&&rejectionSummaryState?.key===rejectionSummaryKey?rejectionSummaryState.value??null:null,rejectionSummaryStatus:wantsRejectionSummary?rejectionSummaryState?.key===rejectionSummaryKey? (rejectionSummaryState.value ? "ready" : rejectionSummaryState.status):"loading":"idle",onRetryRejectionSummary:()=>setRejectionRetry(value=>value+1),rejectionSummaryFilters:wantsRejectionSummary?rejectionFilters:undefined, preferences: effective, onPreferencesChange: change, range: effectiveRange, summary: parts.join(" · "), supportedFilters: report.filters,
       onOpenCandidate, onOpenRequisition: row => { if (onOpenRequisition) void onOpenRequisition(row).then(opened => { if (!opened) setLimited(row); }); else setLimited(row); } };
   }
   function change(patch: Partial<DashboardPreferences>) {
@@ -260,6 +262,7 @@ export function DashboardPortal({ language, data, requisitions, offers, candidat
           const summaryView = view === "risk" || view === "bottlenecks" || view === "rejections";
           const active = selected.id === report.id && activeView === view;
           return <div key={view} id={`${report.id}-${view}-panel`} role={views.length > 1 ? "tabpanel" : undefined} aria-labelledby={views.length > 1 ? `${report.id}-${view}-tab` : undefined} hidden={activeView !== view}>
+            {((needsPipelineSummary && pipelineSummaryState?.key === pipelineSummaryKey && pipelineSummaryState.status === "loading" && pipelineSummaryState.value) || (needsRiskSummary && riskSummaryState?.key === riskSummaryKey && riskSummaryState.status === "loading" && riskSummaryState.value) || (needsBottleneckSummary && bottleneckSummaryState?.key === bottleneckSummaryKey && bottleneckSummaryState.status === "loading" && bottleneckSummaryState.value) || (needsRejectionSummary && rejectionSummaryState?.key === rejectionSummaryKey && rejectionSummaryState.status === "loading" && rejectionSummaryState.value)) ? <RefreshIndicator language={language} /> : null}
             {!dashboardReportRange(preferences, today, report.filters).valid ? <p className="rounded-xl border border-[#E4E9F2] p-5 text-sm text-slate">{t.invalid}</p> : summaryView ? active ? view === "risk" ? <VacancyRiskView context={reportContext(report)} /> : view === "rejections" ? <RejectionDashboardView context={reportContext(report)} /> : <StageBottleneckView context={reportContext(report)} /> : null : view === "vacancy" ? <VacancyWaterfallView context={reportContext(report)} reportGroup="vacancy" /> : report.render(reportContext(report))}
           </div>;
         })}

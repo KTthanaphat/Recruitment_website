@@ -1,4 +1,6 @@
 "use client";
+import { RetryIconButton } from "@/components/ui/RetryIconButton";
+import { LoadingSkeleton } from "@/components/ui/LoadingSkeleton";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { X } from "lucide-react";
@@ -30,15 +32,15 @@ export function RejectionDashboardView({ context }: { context: DashboardReportCo
   const page=Math.max(0,Math.min(p.rejectionPage,1000));
   const [cursorStack,setCursorStack]=useState<Array<RejectionPage["nextCursor"]>>([]);
   const [pageState,setPageState]=useState<{key:string;status:"loading"|"ready"|"error";value?:RejectionPage}|null>(null);
-  const pageFilterKey=JSON.stringify([range.start,range.end,pageScope,filters,p.rejectionSort,data.profile?.id,data.profile?.updated_at]);
+  const pageFilterKey=JSON.stringify([range.start,range.end,pageScope,filters,p.rejectionSort,data.profile?.id,data.profile?.role,data.profile?.site,data.profile?.updated_at]);
   const [pageRetry,setPageRetry]=useState(0);
-  const pageKey=JSON.stringify([pageFilterKey,page,pageRetry]);
+  const pageKey=JSON.stringify([pageFilterKey,page]);
   const pageCursor=page?cursorStack[page-1]??undefined:undefined;
   useEffect(()=>{setCursorStack([]);},[pageFilterKey]);
   useEffect(()=>{
     if(!supabase||context.rejectionSummaryStatus!=="ready"||!report||!searchSettled)return;
     const client=supabase;
-    let cancelled=false;setPageState({key:pageKey,status:"loading"});
+    let cancelled=false;setPageState(previous => ({key:pageKey,status:"loading",value:previous?.key===pageKey?previous.value:undefined}));
     const load=async()=>{
       let cursor:RejectionPage["nextCursor"]=null;const cursors:Array<RejectionPage["nextCursor"]>=[];
       for(let index=0;index<=page;index++){
@@ -50,7 +52,7 @@ export function RejectionDashboardView({ context }: { context: DashboardReportCo
     };
     load().catch(()=>{if(!cancelled)setPageState({key:pageKey,status:"error"});});
     return()=>{cancelled=true;};
-  },[supabase,context.rejectionSummaryStatus,report,searchSettled,pageKey,page,pageFilterKey,pageScope,filters,p.rejectionSort,range.start,range.end,data.profile?.id,data.profile?.updated_at]);
+  },[pageRetry,supabase,context.rejectionSummaryStatus,report,searchSettled,pageKey,page,pageFilterKey,pageScope,filters,p.rejectionSort,range.start,range.end,data.profile?.id,data.profile?.updated_at]);
   const pageData=pageState?.key===pageKey?pageState.value:null;
   const rows=pageData?.events??[];
   const lastPage=Math.max(0,Math.ceil((pageData?.total??0)/25)-1);
@@ -120,7 +122,7 @@ export function RejectionDashboardView({ context }: { context: DashboardReportCo
         </div>)}</div></div></section>
       </div>
       <section className={styles.panel} aria-label={t("records")}><header className={styles.head}><h3>{t("records")} ({report.total})</h3>{!exportMode ? <CommandSelector typography="normal" density="compact" ariaLabel={t("sort")} emptyLabel={t("date-desc")} value={p.rejectionSort} options={(["date-desc", "date-asc", "candidate-asc", "stage-asc"] as RejectionSort[]).map(value => ({ value, label: t(value) }))} onValueChange={value => patch({ rejectionSort: value as RejectionSort })} /> : null}</header>
-        {!exportMode&&pageState?.key===pageKey&&pageState.status==="error" ? <div role="alert" className={styles.empty}>{language==="th"?"โหลดรายการไม่สำเร็จ":"Could not load rejection rows."} <Button type="button" size="toolbar" variant="secondary" onClick={()=>setPageRetry(value=>value+1)}>{language==="th"?"ลองอีกครั้ง":"Retry"}</Button></div> : !exportMode&&(pageState?.key!==pageKey||pageState.status!=="ready"||!pageData) ? <p role="status" className={styles.empty}>{language==="th"?"กำลังโหลดรายการ…":"Loading records…"}</p> : <div className={styles.scroll}><table className={styles.table}><thead><tr>{(["outcome", "person", "application", "position", "stage", "actor", "main", "detail", "context"] as RejectionCopyKey[]).map(key => <th key={key} scope="col">{t(key)}</th>)}</tr></thead><tbody>{(exportMode?exportEvents:rows).map(row => <tr key={row.id} data-rejection-event={row.id}>
+        {!exportMode&&pageState?.key===pageKey&&pageState.status==="error" ? <div role="alert" className={styles.empty}>{language==="th"?"โหลดรายการไม่สำเร็จ":"Could not load rejection rows."} <RetryIconButton title={`${language === "th" ? "ลองโหลดข้อมูลอีกครั้ง" : "Retry loading"}: Rejection Dashboard`} type="button"   onClick={()=>setPageRetry(value=>value+1)}>{language==="th"?"ลองอีกครั้ง":"Retry"}</RetryIconButton></div> : !exportMode&&(pageState?.key!==pageKey||pageState.status!=="ready"||!pageData) ? <LoadingSkeleton variant="table" label={<>{language==="th"?"กำลังโหลดรายการ…":"Loading records…"}</>} className={styles.empty} /> : <div className={styles.scroll}><table className={styles.table}><thead><tr>{(["outcome", "person", "application", "position", "stage", "actor", "main", "detail", "context"] as RejectionCopyKey[]).map(key => <th key={key} scope="col">{t(key)}</th>)}</tr></thead><tbody>{(exportMode?exportEvents:rows).map(row => <tr key={row.id} data-rejection-event={row.id}>
           <td>{formatDate(row.date, language)}</td><td>{context.onOpenCandidate ? <button type="button" className={styles.person} onClick={() => context.onOpenCandidate?.(row.candidateId, row.applicationId??undefined)}>{row.name}</button> : <strong>{row.name}</strong>}<small aria-label={formatRecruitmentId(row.candidateId)}>{formatRecruitmentId(row.candidateId)}</small></td><td>{row.applicationId ?? "—"}</td><td>{row.position??"—"}</td><td>{stageLabel(row.stage)}<small>{t("round")} {row.round}</small></td><td>{t(row.actor)}</td><td>{row.main[language]}</td><td>{row.detail[language]}</td><td>{row.requisitions.map(req => <div key={req.doc_id}>{req.doc_id}<small>{req.site} · {req.department} · {req.person_in_charge || "—"}</small></div>)}</td>
         </tr>)}</tbody></table></div>}
         {!exportMode && (pageData?.total??0)>25 ? <nav className={styles.pagination} aria-label={t("records")}><Button type="button" size="toolbar" variant="secondary" disabled={!page} onClick={() => change({ rejectionPage: page - 1 })}>{t("previous")}</Button><span>{t("page")} {page + 1} / {lastPage + 1}</span><Button type="button" size="toolbar" variant="secondary" disabled={!pageData?.hasMore} onClick={() => change({ rejectionPage: page + 1 })}>{t("next")}</Button></nav> : null}
@@ -146,7 +148,7 @@ export function RejectionDashboardView({ context }: { context: DashboardReportCo
     if(all.length!==report.total||new Set(all.map(row=>row.id)).size!==all.length)throw new Error("Rejection export returned an incomplete event set");
     return render(true,all);
   }
-  if(context.rejectionSummaryStatus==="error")return <section className={styles.panel}><p role="alert">{language==="th"?"โหลดสรุปการปฏิเสธไม่สำเร็จ":"Could not load the rejection summary."}</p><Button type="button" size="toolbar" className="mt-3" onClick={context.onRetryRejectionSummary}>{language==="th"?"ลองอีกครั้ง":"Retry"}</Button></section>;
-  if(context.rejectionSummaryStatus!=="ready"||!report||!searchSettled)return <section className={styles.panel}><p role="status">{language==="th"?"กำลังโหลดสรุปการปฏิเสธ…":"Loading rejection summary…"}</p></section>;
+  if(context.rejectionSummaryStatus==="error")return <section className={styles.panel}><p role="alert">{language==="th"?"โหลดสรุปการปฏิเสธไม่สำเร็จ":"Could not load the rejection summary."}</p><RetryIconButton type="button"  className="mt-3" onClick={context.onRetryRejectionSummary}>{language==="th"?"ลองอีกครั้ง":"Retry"}</RetryIconButton></section>;
+  if(context.rejectionSummaryStatus!=="ready"||!report||!searchSettled)return <section className={styles.panel}><LoadingSkeleton variant="table" label={<>{language==="th"?"กำลังโหลดสรุปการปฏิเสธ…":"Loading rejection summary…"}</>}  /></section>;
   return <RiskReportFrame title={t("title")} language={language} summary={context.summary} filename={`rejection-analysis-${range.start}-to-${range.end}`} render={render} workbook={exportRejectionWorkbook} preparePng={prepareRejectionPng} />;
 }

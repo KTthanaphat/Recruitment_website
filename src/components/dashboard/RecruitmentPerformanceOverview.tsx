@@ -1,5 +1,7 @@
 "use client";
 
+import { LoadingSkeleton, RefreshIndicator } from "@/components/ui/LoadingSkeleton";
+import { RetryIconButton } from "@/components/ui/RetryIconButton";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DashboardExportChooser } from "./DashboardExportChooser";
 import { buildPerformanceExportSnapshot, downloadDashboardWorkbook } from "@/lib/dashboard-workbook";
@@ -19,20 +21,21 @@ export function RecruitmentPerformanceOverview({ context }: { context: Dashboard
   const exportRef = useRef<HTMLDivElement | null>(null);
   const previous = useMemo(() => previousPerformanceRange(period, { start: range.start, end: range.end }), [period, range.start, range.end]);
   const [reportResult, setReportResult] = useState<{ key: string; current: PerformanceSummaryRange; prior: PerformanceSummaryRange } | null>(null);
+  const [reportLoading, setReportLoading] = useState(false);
   const [reportError, setReportError] = useState(false);
   const [retrySummary, setRetrySummary] = useState(0);
-  const requestKey = JSON.stringify([range.start, range.end, previous.start, previous.end, period, context.headerScope, preferences.sites, preferences.departments, preferences.levels, context.data.profile?.id, context.data.profile?.updated_at]);
+  const requestKey = JSON.stringify([range.start, range.end, previous.start, previous.end, period, context.headerScope, preferences.sites, preferences.departments, preferences.levels, context.data.profile?.id, context.data.profile?.role, context.data.profile?.site, context.data.profile?.updated_at]);
   useEffect(() => {
     if (!range.valid || !supabase) return;
-    let cancelled = false; setReportError(false);
+    let cancelled = false; setReportError(false); setReportLoading(true);
     loadPerformanceSummary(supabase, { start: range.start, end: range.end, priorStart: previous.start, priorEnd: previous.end, period,
       scope: { headerSite: context.headerScope.site, headerPic: context.headerScope.owner, priorityOnly: context.headerScope.priorityOnly,
         sites: preferences.sites, departments: preferences.departments, levels: preferences.levels },
-      profileKey: `${context.data.profile?.id ?? ""}:${context.data.profile?.updated_at ?? ""}` })
+      refreshKey: context.refreshRevision, profileKey: `${context.data.profile?.id ?? ""}:${context.data.profile?.updated_at ?? ""}` })
       .then(result => { if (!cancelled) setReportResult({ key: requestKey, current: result.current, prior: result.prior }); })
-      .catch(() => { if (!cancelled) setReportError(true); });
+      .catch(() => { if (!cancelled) setReportError(true); }).finally(() => { if (!cancelled) setReportLoading(false); });
     return () => { cancelled = true; };
-  }, [requestKey, range.valid, range.start, range.end, previous.start, previous.end, period, context.headerScope.site, context.headerScope.owner, context.headerScope.priorityOnly, context.data.profile?.id, context.data.profile?.updated_at, preferences.sites, preferences.departments, preferences.levels, retrySummary]);
+  }, [context.refreshRevision, requestKey, range.valid, range.start, range.end, previous.start, previous.end, period, context.headerScope.site, context.headerScope.owner, context.headerScope.priorityOnly, context.data.profile?.id, context.data.profile?.updated_at, preferences.sites, preferences.departments, preferences.levels, retrySummary]);
   const report = reportResult?.key === requestKey ? reportResult.current : null;
   const priorReport = reportResult?.key === requestKey ? reportResult.prior : null;
   const chartSites = useMemo(() => orderedReportSites(report?.sites ?? []), [report?.sites]);
@@ -105,8 +108,8 @@ export function RecruitmentPerformanceOverview({ context }: { context: Dashboard
       <DashboardExportChooser language={language} title={t.title} summary={metadata} pngLabel={t.export} disabled={!range.valid || !report || !priorReport} onPng={exportPng} onExcel={exportExcel} />
     </header>
     <div className={styles.reportContent}>
-      {report && priorReport ? <PerformanceReport report={report} previous={priorReport} language={language} sites={chartSites} period={period} />
-        : <div className="p-4 text-sm text-slate"><p role={reportError || !supabase ? "alert" : "status"}>{reportError || !supabase ? (language === "th" ? "โหลดสรุปรายงานไม่สำเร็จ" : "Could not load report summary") : (language === "th" ? "กำลังโหลดสรุปรายงาน…" : "Loading report summary…")}</p>{reportError && supabase ? <button type="button" className="mt-2 rounded-md px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40" onClick={() => setRetrySummary(value => value + 1)}>{language === "th" ? "ลองอีกครั้ง" : "Retry"}</button> : null}</div>}
+      {reportLoading && report ? <RefreshIndicator language={language} /> : null}{report && priorReport ? <PerformanceReport report={report} previous={priorReport} language={language} sites={chartSites} period={period} />
+        : <div className="p-4 text-sm text-slate">{!reportError && supabase ? <LoadingSkeleton variant="chart" language={language} /> : null}<p className={!reportError && supabase ? "sr-only" : ""} role={reportError || !supabase ? "alert" : "status"}>{reportError || !supabase ? (language === "th" ? "โหลดสรุปรายงานไม่สำเร็จ" : "Could not load report summary") : (language === "th" ? "กำลังโหลดสรุปรายงาน…" : "Loading report summary…")}</p>{reportError && supabase ? <RetryIconButton title={`${language === "th" ? "ลองโหลดข้อมูลอีกครั้ง" : "Retry loading"}: Recruitment Performance Overview`} type="button" className="mt-2 rounded-md px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40" onClick={() => setRetrySummary(value => value + 1)}>{language === "th" ? "ลองอีกครั้ง" : "Retry"}</RetryIconButton> : null}</div>}
     </div>
     <div ref={exportRef} className={`export-report-surface ${styles.root}`} style={{ width: Math.max(1306, 400 + png.sites.length * 240), minWidth: 1306, background: "#FAFAFC" }} aria-hidden="true" data-performance-export>
       <div className={styles.exportTitle}><h2>{t.title}</h2><span>{png.period === "pim" ? t.pim : png.period.toUpperCase()}</span></div>

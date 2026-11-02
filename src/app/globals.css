@@ -629,3 +629,10 @@ dialog::backdrop {
   max-width: none;
   overflow: visible;
 }
+
+/* Read-only loading feedback; geometry stays fixed and motion respects user settings. */
+.ats-skeleton { background: #E4E9F2; animation: ats-skeleton-pulse 1.6s ease-in-out infinite; }
+@keyframes ats-skeleton-pulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+.ats-retry-icon { min-width: 36px; min-height: 36px; }
+@media (max-width: 767px), (pointer: coarse) { .ats-retry-icon { min-width: 44px; min-height: 44px; } }
+@media (prefers-reduced-motion: reduce) { .ats-skeleton { animation: none; } }

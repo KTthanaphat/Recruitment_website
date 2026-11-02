@@ -1,3 +1,5 @@
+import { RetryIconButton } from "@/components/ui/RetryIconButton";
+import { LoadingSkeleton } from "@/components/ui/LoadingSkeleton";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/Button";
@@ -85,11 +87,11 @@ export function AuthorizedRequisitionLookup({ client, accessScope, language, fil
     </Field>
     <div className="flex min-h-5 items-center justify-between gap-2 text-xs text-slate">
       <span>{page.countLabel} · {translate(language, "requisitions")}</span>
-      {page.countError ? <Button type="button" size="sm" variant="secondary" onClick={page.retryCount}>{translate(language, "retry")}</Button> : null}
+      {page.countError ? <RetryIconButton title={`${language === "th" ? "ลองโหลดข้อมูลอีกครั้ง" : "Retry loading"}: Authorized Requisition Lookup`} type="button"   onClick={page.retryCount} loading={page.countLoading}>{translate(language, "retry")}</RetryIconButton> : null}
     </div>
-    {page.loading ? <p role="status" className="text-sm text-slate">{translate(language, "loading")}</p> : null}
+    {page.initialLoading ? <LoadingSkeleton variant="lookup" label={<>{translate(language, "loading")}</>} className="text-sm text-slate" /> : null}
     {accessUnavailable ? <p role="alert" className="text-sm text-danger">{translate(language, "recordUnavailableOrLoadFailed")}</p> : null}
-    {page.error ? <div role="alert" className="flex flex-wrap items-center justify-between gap-2 text-sm text-danger"><span>{translate(language, "recordUnavailableOrLoadFailed")}</span><Button type="button" size="sm" variant="secondary" onClick={page.retry}>{translate(language, "retry")}</Button></div> : null}
+    {page.error ? <div role="alert" className="flex flex-wrap items-center justify-between gap-2 text-sm text-danger"><span>{translate(language, "recordUnavailableOrLoadFailed")}</span><RetryIconButton type="button"   onClick={page.retry} loading={page.loading}>{translate(language, "retry")}</RetryIconButton></div> : null}
     {!accessUnavailable && !page.loading && !page.error && page.items.length === 0 ? <p role="status" className="text-sm text-slate">{translate(language, "noEligibleRequisitions")}</p> : null}
     {!page.error ? <CursorPagination language={language} page={page.page} pageSize={page.pageSize} loading={page.loading} canPrevious={page.canPrevious} canNext={page.canNext} onPrevious={page.goPrevious} onNext={page.goNext} onPageSizeChange={page.setPageSize} /> : null}
   </div>;

@@ -174,7 +174,7 @@ export function useRecruitmentList<T>({ client, accessScope, entity, filters = {
   const navigationPending = useRef(false);
   const listRevision = useSyncExternalStore(listener => subscribeRecruitmentLists(entity, listener), () => recruitmentListRevision(entity), () => 0);
   const filterKey = JSON.stringify(filters);
-  const criteriaKey = JSON.stringify([client ? clientId(client) : 0, accessScope, entity, debouncedSearch, filterKey, sort, direction, pageSize, listRevision, enabled]);
+  const criteriaKey = JSON.stringify([client ? clientId(client) : 0, accessScope, entity, debouncedSearch, filterKey, sort, direction, pageSize, enabled]);
   const effectiveCursor = cursorCriteria === criteriaKey ? cursor : null;
   const effectiveBefore = cursorCriteria === criteriaKey && before;
   const requestPage = effectiveCursor ? page : 1;
@@ -192,17 +192,17 @@ export function useRecruitmentList<T>({ client, accessScope, entity, filters = {
       .finally(() => { if (!cancelled) { setLoading(false); navigationPending.current = false; } });
     return () => { cancelled = true; };
   }, [accessScope, client, debouncedSearch, direction, effectiveBefore, effectiveCursor, enabled, entity, filterKey, listRevision, page, pageSize, requestKey, retry, sort]);
-  const countCriteriaKey = JSON.stringify([client ? clientId(client) : 0, accessScope, entity, debouncedSearch, filterKey, listRevision, enabled]);
+  const countCriteriaKey = JSON.stringify([client ? clientId(client) : 0, accessScope, entity, debouncedSearch, filterKey, enabled]);
   const [countState, setCountState] = useState<{ key: string; value: number | null; loading: boolean; error: boolean }>({ key: "", value: null, loading: false, error: false });
   const [countRetry, setCountRetry] = useState(0);
   useEffect(() => {
     if (!enabled || !client || !accessScope) { setCountState({ key: countCriteriaKey, value: null, loading: false, error: false }); return; }
     if (loadedKey !== requestKey || !result || error) return;
     let cancelled = false;
-    setCountState({ key: countCriteriaKey, value: null, loading: true, error: false });
+    setCountState(previous => ({ key: countCriteriaKey, value: previous.key === countCriteriaKey ? previous.value : null, loading: true, error: false }));
     fetchRecruitmentListCount(client, { accessScope, entity, search: debouncedSearch, filters })
       .then(value => { if (!cancelled) setCountState({ key: countCriteriaKey, value, loading: false, error: false }); })
-      .catch(() => { if (!cancelled) setCountState({ key: countCriteriaKey, value: null, loading: false, error: true }); });
+      .catch(() => { if (!cancelled) setCountState(previous => ({ key: countCriteriaKey, value: previous.key === countCriteriaKey ? previous.value : null, loading: false, error: true })); });
     return () => { cancelled = true; };
   }, [accessScope, client, countCriteriaKey, countRetry, debouncedSearch, enabled, entity, filterKey, listRevision, loadedKey, requestKey, result, error]);
   const current = loadedKey === requestKey ? result : null;
@@ -221,5 +221,5 @@ export function useRecruitmentList<T>({ client, accessScope, entity, filters = {
   const totalCount = currentCount?.value ?? null;
   const countLoading = currentCount?.loading ?? Boolean(enabled && client && accessScope);
   const countError = currentCount?.error ?? false;
-  return { search: activeSearch, setSearch: searchInput?.setValue ?? setSearch, items: current?.items ?? [], totalCount, countLabel: totalCount === null ? countError ? "—" : countLoading ? "…" : "—" : String(totalCount), countLoading, countError, page: displayPage, pageSize, setPageSize: changePageSize, loading, error, canPrevious: !loading && page > 1, canNext: !loading && Boolean(current?.has_more && current.next_cursor), goPrevious, goNext, goFirst, retry: () => setRetry(value => value + 1), retryCount: () => setCountRetry(value => value + 1) };
+  return { initialLoading: Boolean(enabled && client && accessScope && !current && !error), refreshing: Boolean(loading && current), search: activeSearch, setSearch: searchInput?.setValue ?? setSearch, items: current?.items ?? [], totalCount, countLabel: totalCount === null ? countError ? "—" : countLoading ? "…" : "—" : String(totalCount), countLoading, countError, page: displayPage, pageSize, setPageSize: changePageSize, loading, error, canPrevious: !loading && page > 1, canNext: !loading && Boolean(current?.has_more && current.next_cursor), goPrevious, goNext, goFirst, retry: () => setRetry(value => value + 1), retryCount: () => setCountRetry(value => value + 1) };
 }

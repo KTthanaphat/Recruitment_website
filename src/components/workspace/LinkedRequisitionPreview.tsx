@@ -1,5 +1,7 @@
 "use client";
 
+import { RetryIconButton } from "@/components/ui/RetryIconButton";
+import { LoadingSkeleton, RefreshIndicator } from "@/components/ui/LoadingSkeleton";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -11,21 +13,23 @@ import type { EnrichedRequisition, Language } from "@/types/recruitment";
 
 export function LinkedRequisitionPreview({ groupName, language, requisitions, docIds, client, accessScope, onOpenRequisition }: { groupName: string; language: Language; requisitions: EnrichedRequisition[]; docIds?: string[]; client?: SupabaseClient | null; accessScope?: ScopedAccessIdentity; onOpenRequisition: (docId: string) => void }) {
   const [open, setOpen] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const [retry, setRetry] = useState(0);
   const [remote, setRemote] = useState<{ key: string; rows: EnrichedRequisition[] | null; error: boolean }>({ key: "", rows: null, error: false });
   const remoteEnabled = Boolean(client && accessScope && docIds);
-  const requestKey = JSON.stringify([accessScope, docIds, retry]);
+  const requestKey = JSON.stringify([accessScope, docIds]);
   useEffect(() => {
     if (!open || !client || !accessScope || !docIds) return;
     let cancelled = false;
-    setRemote({ key: requestKey, rows: null, error: false });
+    setPreviewLoading(true);
+    setRemote(previous => ({ key: requestKey, rows: previous.key === requestKey ? previous.rows : null, error: false }));
     void loadScopedRequisitionPreview(client, { docIds, accessScope }).then(rows => {
       if (!cancelled) setRemote({ key: requestKey, rows, error: false });
-    }).catch(() => { if (!cancelled) setRemote({ key: requestKey, rows: null, error: true }); });
+    }).catch(() => { if (!cancelled) setRemote({ key: requestKey, rows: null, error: true }); }).finally(() => { if (!cancelled) setPreviewLoading(false); });
     return () => { cancelled = true; };
     // The serialized key tracks projected IDs and authorization without unstable array dependencies.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, client, requestKey]);
+  }, [open, client, requestKey, retry]);
   const previewRows = remoteEnabled ? remote.key === requestKey ? remote.rows : null : requisitions;
   const previewError = remoteEnabled && remote.key === requestKey && remote.error;
   const count = docIds ? new Set(docIds).size : requisitions.length;
@@ -96,7 +100,7 @@ export function LinkedRequisitionPreview({ groupName, language, requisitions, do
         onPointerLeave={(event) => { if (event.pointerType === "mouse" && !triggerRef.current?.contains(event.relatedTarget as Node)) scheduleClose(); }}
       >
         <p className="px-2 py-1 text-xs font-semibold text-slate">{translate(language, "linkedRequisitions")}</p>
-        {previewError ? <p role="alert" className="px-2 py-1 text-sm text-danger">{translate(language, "loadError")} <button type="button" className="font-semibold underline" onClick={() => setRetry(value => value + 1)}>{translate(language, "retry")}</button></p> : previewRows === null ? <p role="status" className="px-2 py-1 text-sm text-slate">{translate(language, "loading")}</p> : null}
+        {previewLoading && previewRows ? <RefreshIndicator language={language} /> : null}{previewError ? <p role="alert" className="px-2 py-1 text-sm text-danger">{translate(language, "loadError")} <RetryIconButton title={`${language === "th" ? "ลองโหลดข้อมูลอีกครั้ง" : "Retry loading"}: Linked Requisition Preview`} type="button" className="font-semibold underline" onClick={() => setRetry(value => value + 1)}>{translate(language, "retry")}</RetryIconButton></p> : previewRows === null ? <LoadingSkeleton variant="lookup" label={<>{translate(language, "loading")}</>} className="px-2 py-1 text-sm text-slate" /> : null}
         <ul className="divide-y divide-[#E4E9F2]">
           {(previewRows ?? []).map((row) => <li key={row.doc_id} className="min-w-0 text-sm">
             <button type="button" className="block min-h-11 w-full rounded-md px-2 py-2 text-left hover:bg-[#F1F6FC] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" aria-label={formatRequisitionOptionLabel(row)} onClick={() => { cancelClose(); setOpen(false); onOpenRequisition(row.doc_id); }}>

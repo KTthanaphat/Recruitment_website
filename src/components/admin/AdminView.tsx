@@ -1,3 +1,5 @@
+import { RetryIconButton } from "@/components/ui/RetryIconButton";
+import { LoadingSkeleton, RefreshIndicator } from "@/components/ui/LoadingSkeleton";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { UserPlus } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -16,6 +18,7 @@ type ProfileCatalogState = {
   requestKey: string;
   status: "loading" | "ready" | "error";
   profiles: Profile[];
+  hasSnapshot?: boolean;
 };
 
 export function AdminView({
@@ -38,13 +41,13 @@ export function AdminView({
   const [search, setSearch] = useState("");
   const [retry, setRetry] = useState(0);
   const profileId = data.profile?.id ?? "";
-  const requestKey = `${accessScope}\u001f${profileId}\u001f${refreshKey}\u001f${retry}`;
+  const requestKey = `${accessScope}\u001f${profileId}`;
   const [catalog, setCatalog] = useState<ProfileCatalogState | null>(null);
 
   useEffect(() => {
     if (!canManageUsers || !client || !profileId || !accessScope) return;
     let current = true;
-    setCatalog({ client, requestKey, status: "loading", profiles: [] });
+    setCatalog(previous => ({ client, requestKey, status: "loading", hasSnapshot: previous?.client === client && previous.requestKey === requestKey && (previous.status === "ready" || previous.hasSnapshot), profiles: previous?.client === client && previous.requestKey === requestKey ? previous.profiles : [] }));
     void loadAuthorizedRecruiterOptions(client, { profileId, key: accessScope }).then(
       (profiles) => {
         if (current) setCatalog({ client, requestKey, status: "ready", profiles });
@@ -78,6 +81,7 @@ export function AdminView({
   }
 
   const loading = !catalogCurrent || catalogCurrent.status === "loading";
+  const refreshing = loading && Boolean(catalogCurrent?.hasSnapshot);
   const unavailable = !client || !profileId || !accessScope || catalogCurrent?.status === "error";
 
   return (
@@ -87,12 +91,12 @@ export function AdminView({
         eyebrow={translate(language, "accountsAndRoleMapping")}
         action={<Button type="button" size="sm" variant="secondary" icon={<UserPlus size={16} />} onClick={onInvite}>{translate(language, "manageUser")}</Button>}
       />
-      {loading ? (
-        <div role="status" className="py-6 text-center text-sm font-medium text-slate">{translate(language, "loading")}</div>
+      {refreshing ? <RefreshIndicator language={language} /> : null}{loading && !refreshing ? (
+        <LoadingSkeleton variant="table" label={<>{translate(language, "loading")}</>} className="py-6 text-center text-sm font-medium text-slate" />
       ) : unavailable ? (
         <div role="alert" className="grid justify-items-center gap-3 py-5 text-center">
           <p className="text-sm font-medium text-slate">{translate(language, "couldNotLoadRecruitmentRecords")}</p>
-          <Button type="button" size="sm" variant="secondary" onClick={() => setRetry((value) => value + 1)}>{translate(language, "retry")}</Button>
+          <RetryIconButton title={`${language === "th" ? "ลองโหลดข้อมูลอีกครั้ง" : "Retry loading"}: Admin`} type="button"   onClick={() => setRetry((value) => value + 1)}>{translate(language, "retry")}</RetryIconButton>
         </div>
       ) : (
         <>

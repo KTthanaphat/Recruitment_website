@@ -78,3 +78,12 @@ Dashboard outer Site/PIC/Priority filters use visible inline header placement; r
 ### Mobile navigation sheet
 
 `MobileBottomSheet.breakpoint` defaults to `md` (below 768px); Records navigation opts into `lg` (below 1024px). Rendering, CSS visibility, scroll lock and focus use the same boundary. Tab/Shift+Tab stay inside, Escape closes, focus returns to the connected trigger; desktop transition closes it. Other callers retain geometry/defaults. [Shell contract](mobile-navigation.md), [checks](../../tests/e2e/mobile-operations.spec.ts).
+
+
+## Data loading and retry controls
+
+Use `LoadingSkeleton` for initial or changed-query reads: five table rows, three pipeline cards, four lookup rows, and metric/chart/detail variants. Preserve headings, filters and headers; skeleton shapes are decorative, with one localized status announcement and `aria-busy` per loading region. Neutral pulse animation stops under reduced motion. Do not display empty-state messages or zero totals before a successful response.
+
+The shared list hook exposes `initialLoading` and `refreshing`. Keep populated or empty snapshots during same-query refreshes, with `RefreshIndicator`; scope, user/role/site, selected entity, filters, period, sort, cursor and page size are semantic boundaries. Retry/revision tokens trigger fetching without becoming data identity. Existing cancellation guards and read scheduling remain active.
+
+`RetryIconButton` wraps the shared Button with RotateCw, a localized accessible name, hover/focus tooltip, busy state and duplicate-click guard. Desktop target is 36px; phones/coarse pointers use at least 44px. Read errors remain visible. Count retries refresh only counts. Save/send/export and other write retries stay labeled, and manual Refresh remains labeled. Checks: [loading feedback](../../tests/e2e/loading-feedback.spec.ts).

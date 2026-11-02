@@ -1,5 +1,6 @@
 "use client";
 
+import { LoadingSkeleton, RefreshIndicator } from "@/components/ui/LoadingSkeleton";
 import { BriefcaseBusiness, CalendarClock, CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
@@ -120,44 +121,48 @@ export function RecruitmentCalendar({
   }, [candidateById, offers, recruitmentLogs, today]);
   const summaryMode = Boolean(listClient && summaryScope && profileKey);
   const calendarScopeKey = JSON.stringify(summaryScope ?? null);
-  const events = summaryMode ? summaryEvents : localEvents;
+  const calendarIdentity = JSON.stringify([profileKey, calendarScopeKey, visibleMonth.year, visibleMonth.month]);
+  const [loadedCalendarIdentity, setLoadedCalendarIdentity] = useState("");
+  const todayIdentity = JSON.stringify([profileKey, calendarScopeKey, today]);
+  const [loadedTodayIdentity, setLoadedTodayIdentity] = useState("");
+  const events = summaryMode ? loadedCalendarIdentity === calendarIdentity ? summaryEvents : [] : localEvents;
   useEffect(() => {
     if (!summaryMode || !listClient || !summaryScope) return;
     const dates = monthCells(visibleMonth.year, visibleMonth.month).filter((date): date is string => Boolean(date));
     const start = dates[0], end = dates.at(-1);
     if (!start || !end) return;
     let cancelled = false;
-    setSummaryEvents([]);
+
     setCalendarLoading(true);
     loadRecruitmentCalendarSummary(listClient, { start, end, scope: JSON.parse(calendarScopeKey), profileKey, refreshKey })
       .then(result => {
         if (cancelled) return;
         const deduped = new Map<string, CalendarEvent>();
         for (const row of result.events) deduped.set(row.id || `${row.applicationId}:${row.eventType}:${row.date}:${row.round}`, { ...row, stage: row.stage as ProcessStage });
-        setSummaryEvents([...deduped.values()].sort(compareEvents));
+        setSummaryEvents([...deduped.values()].sort(compareEvents)); setLoadedCalendarIdentity(calendarIdentity);
         setCalendarError(false);
       })
       .catch(() => { if (!cancelled) setCalendarError(true); })
       .finally(() => { if (!cancelled) setCalendarLoading(false); });
     return () => { cancelled = true; };
-  }, [calendarScopeKey, listClient, profileKey, refreshKey, summaryMode, visibleMonth.month, visibleMonth.year]);
+  }, [calendarIdentity, calendarScopeKey, listClient, profileKey, refreshKey, summaryMode, visibleMonth.month, visibleMonth.year]);
   useEffect(() => {
     if (!summaryMode || !listClient || !summaryScope) return;
     let cancelled = false;
-    setTodaySummaryEvents([]);
+
     loadRecruitmentCalendarSummary(listClient, { start: today, end: today, scope: JSON.parse(calendarScopeKey), profileKey, refreshKey })
       .then(result => {
         if (cancelled) return;
         const deduped = new Map<string, CalendarEvent>();
         for (const row of result.events) deduped.set(row.id || `${row.applicationId}:${row.eventType}:${row.date}:${row.round}`, { ...row, stage: row.stage as ProcessStage });
-        setTodaySummaryEvents([...deduped.values()].sort(compareEvents));
+        setTodaySummaryEvents([...deduped.values()].sort(compareEvents)); setLoadedTodayIdentity(todayIdentity);
       })
       .catch(() => { if (!cancelled) setCalendarError(true); });
     return () => { cancelled = true; };
-  }, [calendarScopeKey, listClient, profileKey, refreshKey, summaryMode, today]);
+  }, [todayIdentity, calendarScopeKey, listClient, profileKey, refreshKey, summaryMode, today]);
   const monthKey = isoMonth(visibleMonth.year, visibleMonth.month);
   const monthEvents = events.filter((event) => event.date.startsWith(monthKey));
-  const todayEvents = useMemo(() => summaryMode ? todaySummaryEvents : events.filter((event) => event.date === today), [events, summaryMode, today, todaySummaryEvents]);
+  const todayEvents = useMemo(() => summaryMode ? loadedTodayIdentity === todayIdentity ? todaySummaryEvents : [] : events.filter((event) => event.date === today), [events, summaryMode, today, todaySummaryEvents, loadedTodayIdentity, todayIdentity]);
   useEffect(() => {
     const updateToday = () => setToday(bangkokToday());
     const interval = window.setInterval(updateToday, 60_000);
@@ -205,7 +210,7 @@ export function RecruitmentCalendar({
   return (
     <Panel variant="workspace" className={`p-3 sm:p-4 ${className}`}>
       <SectionTitle title={translate(language, "recruitmentCalendar")} action={controls} />
-      {calendarError ? <p role="alert" className="mb-2 text-sm text-scarlet">{translate(language, "loadError")}</p> : calendarLoading ? <p role="status" className="mb-2 text-xs text-slate">{translate(language, "loading")}</p> : null}
+      {calendarLoading && loadedCalendarIdentity === calendarIdentity ? <RefreshIndicator language={language} /> : null}{calendarError ? <p role="alert" className="mb-2 text-sm text-scarlet">{translate(language, "loadError")}</p> : calendarLoading && loadedCalendarIdentity !== calendarIdentity ? <LoadingSkeleton variant="chart" label={<>{translate(language, "loading")}</>} className="mb-2 text-xs text-slate" /> : null}
       <div className="mb-2 flex items-center justify-between gap-3 rounded-lg border border-[#E4E9F2] bg-[#F8FAFD] px-2.5 py-1.5">
         <div className="flex min-w-0 items-center gap-2">
           <CalendarDays size={17} className="shrink-0 text-primary" aria-hidden="true" />
