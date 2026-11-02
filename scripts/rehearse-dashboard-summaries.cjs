@@ -10,7 +10,7 @@ const { PGlite } = require(path.join(process.env.TEMP, 'recruitment-db-tools/nod
 
 const db = new PGlite();
 const root = path.resolve(__dirname, '..');
-const schema = fs.readFileSync(path.join(root, 'supabase/schemas/61_dashboard_summaries.sql'), 'utf8');
+const schema = fs.readFileSync(path.join(root, 'supabase/schemas/61_dashboard_summaries.sql'), 'utf8').replaceAll('\r\n','\n');
 const migration = fs.readFileSync(path.join(root, 'supabase/migrations/20261101130623_dashboard_summaries.sql'), 'utf8');
 const qualityScopeBaseMigration = fs.readFileSync(path.join(root, 'supabase/migrations/20261102113000_home_quality_detail_scope.sql'), 'utf8');
 const qualityScopeMigration = fs.readFileSync(path.join(root, 'supabase/migrations/20261102114500_home_quality_exact_group_scope.sql'), 'utf8');
@@ -531,6 +531,54 @@ async function main() {
   const cacheDifferentUser=summaryClient(7,'user-b');
   assert.equal((await loadHomeSummary(cacheA,sharedScope,'same-profile-key')).requisitions.open,2);
   assert.equal((await loadHomeSummary(cacheDifferentUser,sharedScope,'same-profile-key')).requisitions.open,7,'different authenticated identities must not share cached summaries');
+
+  // Compare the complete pre-optimization output with the YTD materialization migration.
+  await db.exec(`insert into public.profiles(id,role,site) values('00000000-0000-0000-0000-000000000001','system_admin',null)`);
+  await db.exec(`insert into public.recruitment_logs(log_id,candidate_id,application_id,recruitment_process,round,log_date,outcome_date,result,stage_instance_id,superseded_at)
+    select 90000+n,'CAN-1','10000000-0000-0000-0000-000000000001'::uuid,'Phone Screen',1+n,
+      date '2026-01-01'+(n%300),date '2026-01-01'+(n%300),(n%2)::smallint,md5('ytd-rank-'||n)::uuid,
+      case when n%7=0 then '2026-10-31T00:00:00Z'::timestamptz end from generate_series(1,1001) n`);
+  const ytdCases=[
+    {period:'ytd',start:'2026-01-01',end:'2026-10-31',scope:{},channel:'all'},
+    {period:'ytd',start:'2026-01-01',end:'2026-10-31',scope:{sites:['KT1'],priorityOnly:true},channel:'all'},
+    {period:'ytd',start:'2026-01-01',end:'2026-10-31',scope:{headerPic:'Recruiter A',departments:['Production'],levels:['0-3']},channel:'Facebook'},
+    {period:'mtd',start:'2026-07-01',end:'2026-07-31',scope:{},channel:'all'},
+    {period:'custom',start:'2026-06-01',end:'2026-07-31',scope:{},channel:'JobThai'},
+    {period:'pim',start:'2026-01-01',end:'2026-10-31',scope:{},channel:'all'},
+    {period:'ytd',start:'2025-01-01',end:'2025-10-31',scope:{},channel:'all'},
+    {period:'ytd',start:'2026-01-01',end:'2026-10-31',scope:{},channel:'all',hidden:'CAN-1'},
+    {period:'ytd',start:'2026-01-01',end:'2026-10-31',scope:{},channel:'all',candidateAccess:'false'},
+    {period:'ytd',start:'2026-01-01',end:'2026-10-31',scope:{},channel:'all',applicationAccess:'false'},
+    {period:'ytd',start:'2026-01-01',end:'2026-10-31',scope:{},channel:'all',requisitionAccess:'false'}
+  ];
+  async function captureYtdCases() {
+    const results=[];
+    for(const c of ytdCases) {
+      await db.query("select set_config('test.hidden_candidate',$1,false),set_config('test.candidate_access',$2,false),set_config('test.application_access',$3,false),set_config('test.requisition_access',$4,false)",
+        [c.hidden??'',c.candidateAccess??'true',c.applicationAccess??'true',c.requisitionAccess??'true']);
+      const scope=JSON.stringify(c.scope);
+      const pipeline=(await query('select public.app_dashboard_pipeline_summary_v1($1,$2,$3,$4::jsonb,$5) data',[c.start,c.end,c.period,scope,c.channel])).data;
+      const pages=[];
+      for(const mode of ['activity','status','accum']) {
+        const first=(await query('select public.app_dashboard_active_requisitions_page_v1($1,$2,$3,$4,$5::jsonb,null,null,25) data',[c.start,c.end,c.period,mode,scope])).data;
+        const second=first.nextCursor?(await query('select public.app_dashboard_active_requisitions_page_v1($1,$2,$3,$4,$5::jsonb,$6,$7,25) data',[c.start,c.end,c.period,mode,scope,first.nextCursor.value,first.nextCursor.id])).data:null;
+        pages.push({first,second});
+      }
+      results.push({pipeline,pages});
+    }
+    return results;
+  }
+  const authorizationSnapshot=await db.query("select proname,pg_get_functiondef(oid) definition from pg_proc where pronamespace='app_private'::regnamespace and proname like 'can_%' order by oid");
+  const beforeYtd=await captureYtdCases();
+  const ytdMigration=fs.readFileSync(path.join(root,'supabase/migrations/20261102123500_ytd_report_materialization.sql'),'utf8');
+  await db.exec(ytdMigration);
+  assert.deepEqual(await captureYtdCases(),beforeYtd,'YTD/MTD/PIM/custom complete JSON parity, all scopes, channels, stage modes, cursor pages and denied/hidden candidates');
+  assert.deepEqual(await db.query("select proname,pg_get_functiondef(oid) definition from pg_proc where pronamespace='app_private'::regnamespace and proname like 'can_%' order by oid"),authorizationSnapshot,'materialization does not change authorization helpers');
+  assert.match(ytdMigration,/resume_ranks as materialized/);
+  assert.match(ytdMigration,/pass_ranks as materialized/);
+  assert.match(ytdMigration,/stage_pivot as materialized/);
+  console.log('YTD materialization: 1,001 extra historical stages; 11 scope/access cases, all three stage modes, full JSON and cursor parity passed.');
+
   console.log('Performance/Rejection SQL parity, role boundaries, cross-filters, cursor paging, Saturday–Friday trends, trimmed/invalid levels, calendar metadata, Home DTO, and cache isolation passed.');
   await db.close();
 }

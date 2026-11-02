@@ -94,3 +94,23 @@ Render production was healthy, with the application ready, no memory pressure, a
 The client now schedules expensive read cache misses through one lane per Supabase client. Visible pages precede summaries and background counts; exact counts start only after a page succeeds. Cache freshness starts on completion, queued work is discarded when access identity changes, and active results retain the existing stale-response guards. Saves/workflow mutations are not queued. Existing authorization helpers, RLS policies, API timeouts, records and IDs are unchanged. A proposed duplicate-permission query refactor was rejected by automatic approval review and was not implemented.
 
 Direct verification without agents: 27/27 unit tests, production build with 22 pages, and seven focused browser tests (Home summaries/loading/retry, page-before-count, count retry, and peak heavy-RPC concurrency of one). The pending-count test uses an explicit response gate rather than a wall-clock delay. Existing lint warnings remain. Serial scheduling addresses request contention; intrinsically expensive reporting/count queries retain the previously documented limitations and require separate query optimization.
+
+
+## YTD vacancy and pipeline timeout recovery (2026-11-02)
+
+Production API logs isolated the YTD failures to `app_dashboard_active_requisitions_page_v1` and `app_dashboard_pipeline_summary_v1`: HTTP 500 responses reached the existing eight-second authenticated/authenticator statement timeout. The performance summary cards returned successfully. A native Pipeline inner plan repeated ranking subqueries 2,554 times and took 8.329 seconds.
+
+Migration `20261102123500_ytd_report_materialization.sql` materializes the existing permission-filtered candidate producer and ranking/pivot intermediates in the two affected functions. Existing candidate predicates remain in the producer; report periods, eligibility, historical/repeated/superseded stages, filters, cursor ordering, security modes, helpers, policies, grants, and API timeouts are unchanged. The migration is applied and recorded under this source version on both `mppnlkldlctvketcsald` and `sawiklexaafczfmzqhnr`. The two optional authorization fastpaths remain excluded. No frontend deployment is required.
+
+Native production system-admin measurements for 2026-01-01 through 2026-10-31, with identical parameters and complete JSON outputs:
+
+| Request | Before | After | Complete output parity |
+| --- | ---: | ---: | --- |
+| Pipeline and Source | 7.935 s | 4.145 s | Same 11,873-byte response and digest |
+| Requisition activity page (25 rows) | 4.336 s | 3.415 s | Same 25,030-byte response and digest |
+
+The before comparison used a transaction-local 45-second diagnostic budget; after reads passed under the unchanged eight-second budget. Requisition status and accum modes also passed at 1.286 and 2.477 seconds. These are single-request observations, not a cold-cache or all-role load guarantee. Authorization-helper and public-policy fingerprints matched before and after.
+
+Direct verification without agents: dashboard rehearsal passed complete original/new JSON and cursor parity for 11 period/filter/access cases, all three requisition stage modes, and 1,001 extra historical stage records. The production-upgrade full-schema rehearsal passed with 1,132 fixture identities, actual RLS checks, preserved raw links/dates/audit rows, and the 53 shared dual-site profiles. Application source is unchanged from the preceding production build/type-check checkpoint.
+
+Live authenticated Edge verification also passed for both YTD views: Vacancy/Requisitions rendered 200 matching requisitions with 25 rows loaded, and Pipeline/Sources rendered 2,298 applicants plus the pipeline/source sections for January through October 2026.
