@@ -7,11 +7,11 @@ import { downloadDashboardWorkbook, type ReportExportSnapshot } from "@/lib/dash
 import type { Language } from "@/types/recruitment";
 import { formatCompactDateRange } from "@/lib/format";
 import styles from "./risk-reports.module.css";
-export function RiskReportFrame({ title, summary, language, filename, render, workbook }: { title: string; summary: string; language: Language; filename: string; render: (exportMode: boolean) => ReactNode; workbook: () => ReportExportSnapshot }) {
+export function RiskReportFrame({ title, summary, language, filename, render, workbook, preparePng }: { title: string; summary: string; language: Language; filename: string; render: (exportMode: boolean) => ReactNode; workbook: () => ReportExportSnapshot | Promise<ReportExportSnapshot>; preparePng?: () => Promise<ReactNode> }) {
   const [image, setImage] = useState<ReactNode>(null);
   const ref = useRef<HTMLDivElement>(null);
   async function png() {
-    setImage(render(true));
+    setImage(preparePng ? await preparePng() : render(true));
     try {
       await document.fonts.ready;
       await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
@@ -37,7 +37,7 @@ export function RiskReportFrame({ title, summary, language, filename, render, wo
       <div className={styles.reportIdentity}>
         <span className={styles.headingIcon}><BarChart3 size={18} /></span><div><h2>{title}</h2><small>{summary}</small></div>
       </div>
-      <DashboardExportChooser language={language} title={title} summary={summary} pngLabel={`${title} PNG`} onPng={png} onExcel={async () => { const captured = workbook(); await downloadDashboardWorkbook(captured); }} />
+      <DashboardExportChooser language={language} title={title} summary={summary} pngLabel={`${title} PNG`} onPng={png} onExcel={async () => { const captured = await workbook(); await downloadDashboardWorkbook(captured); }} />
     </header>
     <div>{render(false)}</div>
     <div className={`export-report-surface ${styles.root} ${styles.export}`} ref={ref} aria-hidden="true" data-risk-export>

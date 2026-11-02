@@ -6,7 +6,7 @@ Read this node for this feature only. It indexes ownership; product rules remain
 
 ## Owners and search keys
 
-Banner asset: [home_banner.png](../../../home_banner.png). Summary metrics: `OperationalSummaryStrip` in [Operations.tsx](../../../src/components/ui/Operations.tsx); urgent count: `deriveWorkQueue` in [operations.ts](../../../src/lib/operations.ts).
+Banner asset: [home_banner.png](../../../home_banner.png). `HomeView` consumes compact Home counts/work queue from `app_home_summary_v1` and the header-scope banner aggregate from `app_home_banner_summary_v1`; their typed client/cache lives in [dashboard-summary-client.ts](../../../src/lib/dashboard-summary-client.ts). Welcome modal aggregate/loading/error state is owned by `RecruitmentWorkspace.tsx`, rendered by [WelcomeBackPrompt.tsx](../../../src/components/dashboard/WelcomeBackPrompt.tsx), and supplied by `app_home_welcome_summary_v1`. These are separate contracts: the banner ratio follows selected header Site/PIC/priority filters; Welcome modal counts use the current profile's authorized responsibility population. Summary rows are not sourced from bootstrap arrays. Summary metrics render through `OperationalSummaryStrip` in [Operations.tsx](../../../src/components/ui/Operations.tsx); urgent count: `deriveWorkQueue` in [operations.ts](../../../src/lib/operations.ts).
 
 ### F10: Home metrics, recruitment-events calendar, and tabbed records
 
@@ -17,8 +17,9 @@ Banner asset: [home_banner.png](../../../home_banner.png). Summary metrics: `Ope
 
 ### F20: Candidate data quality and PIM Welcome messages
 
-- Owner/search: [src/components/RecruitmentWorkspace.tsx](../../../src/components/RecruitmentWorkspace.tsx), [src/lib/daily-messages.ts](../../../src/lib/daily-messages.ts).
+- Owner/search: [src/components/RecruitmentWorkspace.tsx](../../../src/components/RecruitmentWorkspace.tsx), [WelcomeBackPrompt.tsx](../../../src/components/dashboard/WelcomeBackPrompt.tsx), [dashboard-summary-client.ts](../../../src/lib/dashboard-summary-client.ts), [src/lib/daily-messages.ts](../../../src/lib/daily-messages.ts).
 - Related symbols: Bangkok PIM accepted-offer ratio; weekday `Filled%_min` selection; canonical rules: [docs/WEBSITE_STRUCTURE.md](../../WEBSITE_STRUCTURE.md).
+- Data owner: [64_home_welcome_summaries.sql](../../../supabase/schemas/64_home_welcome_summaries.sql) and local migration `20261102122000_home_welcome_summaries.sql`; test parity is in [home-aggregate-summaries.spec.ts](../../../tests/e2e/home-aggregate-summaries.spec.ts) and the Home welcome rehearsal.
 - Entry: `/home`.
 - Existing check/search: [tests/e2e/forms-validation.spec.ts](../../../tests/e2e/forms-validation.spec.ts), [tests/e2e/ux-enhancements.spec.ts](../../../tests/e2e/ux-enhancements.spec.ts).
 

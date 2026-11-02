@@ -19,16 +19,26 @@ import { DashboardReportNavigation } from "./DashboardReportNavigation";
 import { ReportHelp } from "./ReportHelp";
 import { VacancyRiskView } from "./VacancyRiskView";
 import { StageBottleneckView } from "./StageBottleneckView";
+import { RejectionDashboardView } from "./RejectionDashboardView";
 import { riskCopy } from "./risk-copy";
-import { loadExtendedDashboardReport } from "@/lib/dashboard-report-loader";
+import { loadDashboardFilterOptions, loadPipelineSummary, loadRejectionSummary, type RejectionSummary, type PipelineSummary } from "@/lib/dashboard-summary-client";
+import { loadRiskSummary, type RiskSummary, loadBottleneckSummary, type BottleneckSummary } from "@/lib/dashboard-summary-client";
+import { previousPerformanceRange } from "@/lib/recruitment-performance";
+import { observationDates } from "@/lib/dashboard-history";
 import { supabase } from "@/lib/supabase/client";
 import { Drawer } from "@/components/ui/Drawer";
 
+export type DashboardRequisitionReference = Pick<EnrichedRequisition, "doc_id" | "site" | "department" | "position" | "level" | "head_count" | "person_in_charge">;
 export type DashboardReportContext = {
   language: Language; data: DashboardData; requisitions: EnrichedRequisition[]; offers: EnrichedOffer[]; candidateOffers: Offer[];
   preferences: DashboardPreferences; onPreferencesChange: (patch: Partial<DashboardPreferences>) => void;
   headerScope: { site: string; owner: string; priorityOnly: boolean }; range: { start: string; end: string; valid: boolean }; summary: string; supportedFilters: DashboardReportIdentity["filters"];
-  onOpenCandidate?: (id: string) => void; onOpenRequisition?: (row: EnrichedRequisition) => void;
+  pipelineSummary?: PipelineSummary | null; pipelineSummaryStatus?: "idle" | "loading" | "error" | "ready"; onRetryPipelineSummary?: () => void;
+  riskSummary?: RiskSummary | null; riskSummaryStatus?: "idle" | "loading" | "error" | "ready"; onRetryRiskSummary?: () => void;
+  bottleneckSummary?: BottleneckSummary | null; bottleneckSummaryStatus?: "idle" | "loading" | "error" | "ready"; onRetryBottleneckSummary?: () => void;
+  rejectionSummary?: RejectionSummary | null; rejectionSummaryStatus?: "idle" | "loading" | "error" | "ready"; onRetryRejectionSummary?: () => void;
+  rejectionSummaryFilters?: { actor: string; stage: string; main: string; detail: string; search: string };
+  onOpenCandidate?: (id: string, applicationId?: string) => void; onOpenRequisition?: (row: DashboardRequisitionReference) => void;
 };
 export type DashboardReportDefinition = DashboardReportIdentity & { render: (context: DashboardReportContext) => ReactNode };
 const renderers: Record<string, DashboardReportDefinition["render"]> = {
@@ -48,7 +58,7 @@ const copy = {
 export function DashboardPortal({ language, data, requisitions, offers, candidateOffers, globalSite, globalOwner, globalPriorityOnly, onOpenCandidate, onOpenRequisition, refreshKey = 0, reports = DASHBOARD_REPORTS }: {
   language: Language; data: DashboardData; requisitions: EnrichedRequisition[]; offers: EnrichedOffer[]; candidateOffers: Offer[];
   globalSite: string; globalOwner: string; globalPriorityOnly: boolean; reports?: readonly DashboardReportDefinition[];
-  onOpenCandidate?: (id: string) => void; onOpenRequisition?: (row: EnrichedRequisition) => Promise<boolean>;
+  onOpenCandidate?: (id: string, applicationId?: string) => void; onOpenRequisition?: (row: DashboardRequisitionReference) => Promise<boolean>;
   refreshKey?: number;
 }) {
   const registry = useMemo(() => validateDashboardReports(reports), [reports]);
@@ -56,19 +66,19 @@ export function DashboardPortal({ language, data, requisitions, offers, candidat
   const [preferences, setPreferences] = useState(() => dashboardDefaults(today));
   const [ready, setReady] = useState(false);
   const [removed, setRemoved] = useState(false);
-  const [extended, setExtended] = useState<{ refreshKey: number; access: string; data: DashboardData; refreshed: string } | null>(null);
-  const [loadError, setLoadError] = useState(false), [retry, setRetry] = useState(0);
-  const [limited, setLimited] = useState<EnrichedRequisition | null>(null);
-  const newView = preferences.tab === "performance" && preferences.performanceSubview === "risk" || preferences.tab === "pipeline" && preferences.pipelineSubview === "bottlenecks";
-  const access = `${data.profile?.id}:${data.profile?.role}:${data.profile?.site}:${data.profile?.updated_at}`;
-  const complete = extended?.refreshKey === refreshKey && extended.access === access;
-  useEffect(() => {
-    if (!newView || complete) return;
-    let cancelled = false; setLoadError(false);
-    if (!supabase) { setLoadError(true); return; }
-    loadExtendedDashboardReport(supabase, data).then(result => { if (!cancelled) setExtended({ refreshKey, access, data: result, refreshed: new Date().toISOString() }); }).catch(() => { if (!cancelled) setLoadError(true); });
-    return () => { cancelled = true; };
-  }, [newView, data, complete, refreshKey, access, retry]);
+  const [limited, setLimited] = useState<DashboardRequisitionReference | null>(null);
+  const [filterOptionsState, setFilterOptions] = useState<{ key: string; sites: string[]; departments: string[] } | null>(null);
+  const [filterOptionsError, setFilterOptionsError] = useState(false);
+  const [pipelineSummaryState, setPipelineSummaryState] = useState<{ key: string; status: "loading" | "ready" | "error"; value?: PipelineSummary } | null>(null);
+  const [pipelineRetry, setPipelineRetry] = useState(0);
+  const [riskSummaryState, setRiskSummaryState] = useState<{ key: string; status: "loading" | "ready" | "error"; value?: RiskSummary } | null>(null);
+  const [riskRetry, setRiskRetry] = useState(0);
+  const [bottleneckSummaryState,setBottleneckSummaryState]=useState<{key:string;status:"loading"|"ready"|"error";value?:BottleneckSummary}|null>(null);
+  const [bottleneckRetry,setBottleneckRetry]=useState(0);
+  const [rejectionSummaryState,setRejectionSummaryState]=useState<{key:string;status:"loading"|"ready"|"error";value?:RejectionSummary}|null>(null);
+  const [rejectionRetry,setRejectionRetry]=useState(0);
+  const [rejectionSearch,setRejectionSearch]=useState(preferences.rejectionSearch);
+  useEffect(()=>{const timer=window.setTimeout(()=>setRejectionSearch(preferences.rejectionSearch),300);return()=>window.clearTimeout(timer);},[preferences.rejectionSearch]);
   const sessionKey = `${DASHBOARD_SESSION_PREFIX}${process.env.NEXT_PUBLIC_SUPABASE_URL ?? "local"}:${data.profile?.id ?? "anonymous"}`;
   useEffect(() => {
     let base = dashboardDefaults(today);
@@ -88,41 +98,116 @@ export function DashboardPortal({ language, data, requisitions, offers, candidat
     return () => window.removeEventListener("popstate", restore);
   }, [sessionKey, today, registry]);
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || !filterOptions) return;
     updateWorkspaceUrlState(dashboardUrlValues(preferences));
     try { sessionStorage.setItem(sessionKey, JSON.stringify(preferences)); } catch { /* Keep URL state available. */ }
   }, [preferences, ready, sessionKey]);
-  const sites = useMemo(() => orderedReportSites(requisitions.map(row => row.site)), [requisitions]);
-  const departments = useMemo(() => [...new Set(requisitions.filter(row => !preferences.sites.length || preferences.sites.includes(row.site)).map(row => row.department).filter(Boolean))].sort(), [preferences.sites, requisitions]);
+  const profileKey = `${data.profile?.id ?? ""}:${data.profile?.updated_at ?? ""}`;
+  const headerOptionScope = { headerSite: globalSite, headerPic: globalOwner, priorityOnly: globalPriorityOnly };
+  const optionKey = JSON.stringify([profileKey, headerOptionScope, preferences.sites]);
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || !supabase) return;
+    let cancelled = false; setFilterOptionsError(false);
+    loadDashboardFilterOptions(supabase, { ...headerOptionScope, sites: preferences.sites }, profileKey)
+      .then(result => { if (!cancelled) setFilterOptions({ key: optionKey, ...result }); })
+      .catch(() => { if (!cancelled) setFilterOptionsError(true); });
+    return () => { cancelled = true; };
+  }, [ready, supabase, globalSite, globalOwner, globalPriorityOnly, preferences.sites, profileKey, optionKey]);
+  const filterOptions = filterOptionsState?.key === optionKey ? filterOptionsState : null;
+  const sites = useMemo(() => orderedReportSites(filterOptions?.sites ?? []), [filterOptions?.sites]);
+  const departments = filterOptions?.departments ?? [];
+  useEffect(() => {
+    if (!ready || !filterOptions || filterOptions.key !== optionKey) return;
     const selectedSites = preferences.sites.filter(value => sites.includes(value));
-    const allowedDepartments = new Set(requisitions.filter(row => !selectedSites.length || selectedSites.includes(row.site)).map(row => row.department));
+    const allowedDepartments = new Set(departments);
     const selectedDepartments = preferences.departments.filter(value => allowedDepartments.has(value));
     if (selectedSites.length !== preferences.sites.length || selectedDepartments.length !== preferences.departments.length) {
       setPreferences(current => ({ ...current, sites: selectedSites, departments: selectedDepartments })); setRemoved(true);
     }
-  }, [ready, requisitions, sites, preferences.sites, preferences.departments]);
+  }, [ready, filterOptions, departments, sites, preferences.sites, preferences.departments]);
   useEffect(() => { if (removed) { const timer = window.setTimeout(() => setRemoved(false), 7000); return () => window.clearTimeout(timer); } }, [removed]);
   const range = dashboardRange(preferences, today);
+  const pipelineReportDefinition = registry.find(report => report.id === "pipeline");
+  const pipelineRange = dashboardReportRange(preferences, today, pipelineReportDefinition?.filters ?? []);
+  const riskReportDefinition = registry.find(report => report.id === "performance");
+  const riskRange = dashboardReportRange(preferences, today, riskReportDefinition?.filters ?? []);
+  const pipelineScope = useMemo(() => ({ headerSite: globalSite, headerPic: globalOwner, priorityOnly: globalPriorityOnly, sites: preferences.sites, departments: preferences.departments, levels: preferences.levels }), [globalSite, globalOwner, globalPriorityOnly, preferences.sites, preferences.departments, preferences.levels]);
+  const needsPipelineSummary = preferences.tab === "pipeline" && preferences.pipelineSubview === "overview" || preferences.tab === "performance" && preferences.performanceSubview === "vacancy";
+  const pipelineSummaryKey = JSON.stringify([profileKey, pipelineRange.start, pipelineRange.end, preferences.period, pipelineScope, preferences.funnelChannel, refreshKey, pipelineRetry]);
+  useEffect(() => {
+    if (!ready || !needsPipelineSummary || !pipelineRange.valid) return;
+    if (!supabase) { setPipelineSummaryState({ key: pipelineSummaryKey, status: "error" }); return; }
+    let cancelled = false; setPipelineSummaryState({ key: pipelineSummaryKey, status: "loading" });
+    loadPipelineSummary(supabase, { start: pipelineRange.start, end: pipelineRange.end, period: preferences.period, scope: pipelineScope, channel: preferences.funnelChannel, profileKey, refreshKey: refreshKey + pipelineRetry })
+      .then(value => { if (!cancelled) setPipelineSummaryState({ key: pipelineSummaryKey, status: "ready", value }); })
+      .catch(() => { if (!cancelled) setPipelineSummaryState({ key: pipelineSummaryKey, status: "error" }); });
+    return () => { cancelled = true; };
+  }, [ready, needsPipelineSummary, preferences.tab, preferences.pipelineSubview, preferences.performanceSubview, preferences.period, preferences.funnelChannel, pipelineRange.start, pipelineRange.end, pipelineRange.valid, pipelineScope, pipelineSummaryKey, profileKey, refreshKey, pipelineRetry]);
+  const riskPriorRange = previousPerformanceRange(preferences.period, { start: riskRange.start, end: riskRange.end < today ? riskRange.end : today });
+  const riskTrendDates = useMemo(() => riskRange.valid ? observationDates(riskRange.start, riskRange.end < today ? riskRange.end : today) : [], [riskRange.start, riskRange.end, riskRange.valid, today]);
+  const riskSummaryKey = JSON.stringify([profileKey, riskRange.start, riskRange.end, riskPriorRange, pipelineScope, riskTrendDates, refreshKey, riskRetry]);
+  const needsRiskSummary = preferences.tab === "performance" && preferences.performanceSubview === "risk";
+  useEffect(() => {
+    if (!ready || !needsRiskSummary || !riskRange.valid) return;
+    if (!supabase) { setRiskSummaryState({ key: riskSummaryKey, status: "error" }); return; }
+    let cancelled = false; setRiskSummaryState({ key: riskSummaryKey, status: "loading" });
+    loadRiskSummary(supabase, { start: riskRange.start, end: riskRange.end, priorStart: riskPriorRange.start, priorEnd: riskPriorRange.end, scope: pipelineScope, trendDates: riskTrendDates, profileKey, refreshKey: refreshKey + riskRetry })
+      .then(value => { if (!cancelled) setRiskSummaryState({ key: riskSummaryKey, status: "ready", value }); })
+      .catch(() => { if (!cancelled) setRiskSummaryState({ key: riskSummaryKey, status: "error" }); });
+    return () => { cancelled = true; };
+  }, [ready, needsRiskSummary, riskRange.valid, riskRange.start, riskRange.end, riskPriorRange.start, riskPriorRange.end, pipelineScope, riskTrendDates, profileKey, refreshKey, riskRetry, riskSummaryKey]);
+  const bottleneckPriorRange=previousPerformanceRange(preferences.period,{start:pipelineRange.start,end:pipelineRange.end<today?pipelineRange.end:today});
+  const bottleneckTrendDates=useMemo(()=>pipelineRange.valid?observationDates(pipelineRange.start,pipelineRange.end<today?pipelineRange.end:today):[],[pipelineRange.start,pipelineRange.end,pipelineRange.valid,today]);
+  const needsBottleneckSummary=preferences.tab==="pipeline"&&preferences.pipelineSubview==="bottlenecks";
+  const bottleneckSummaryKey=JSON.stringify([profileKey,pipelineRange.start,pipelineRange.end,bottleneckPriorRange,pipelineScope,preferences.funnelChannel,bottleneckTrendDates,refreshKey,bottleneckRetry]);
+  useEffect(()=>{
+    if(!ready||!needsBottleneckSummary||!pipelineRange.valid)return;
+    if(!supabase){setBottleneckSummaryState({key:bottleneckSummaryKey,status:"error"});return;}
+    let cancelled=false;setBottleneckSummaryState({key:bottleneckSummaryKey,status:"loading"});
+    loadBottleneckSummary(supabase,{start:pipelineRange.start,end:pipelineRange.end,priorStart:bottleneckPriorRange.start,priorEnd:bottleneckPriorRange.end,scope:pipelineScope,channel:preferences.funnelChannel,trendDates:bottleneckTrendDates,profileKey,refreshKey:refreshKey+bottleneckRetry})
+      .then(value=>{if(!cancelled)setBottleneckSummaryState({key:bottleneckSummaryKey,status:"ready",value});}).catch(()=>{if(!cancelled)setBottleneckSummaryState({key:bottleneckSummaryKey,status:"error"});});
+    return()=>{cancelled=true;};
+  },[ready,needsBottleneckSummary,pipelineRange.valid,pipelineRange.start,pipelineRange.end,bottleneckPriorRange.start,bottleneckPriorRange.end,pipelineScope,preferences.funnelChannel,bottleneckTrendDates,profileKey,refreshKey,bottleneckRetry,bottleneckSummaryKey]);
+  const rejectionFilters={actor:preferences.rejectionActor,stage:preferences.rejectionStage,main:preferences.rejectionMain,detail:preferences.rejectionDetail,search:rejectionSearch};
+  const needsRejectionSummary=preferences.tab==="pipeline"&&preferences.pipelineSubview==="rejections";
+  const rejectionSummaryKey=JSON.stringify([profileKey,pipelineRange.start,pipelineRange.end,pipelineScope,rejectionFilters,refreshKey,rejectionRetry]);
+  useEffect(()=>{
+    if(!ready||!needsRejectionSummary||!pipelineRange.valid)return;
+    if(!supabase){setRejectionSummaryState({key:rejectionSummaryKey,status:"error"});return;}
+    let cancelled=false;setRejectionSummaryState({key:rejectionSummaryKey,status:"loading"});
+    loadRejectionSummary(supabase,{start:pipelineRange.start,end:pipelineRange.end,scope:pipelineScope,filters:rejectionFilters,profileKey,refreshKey:refreshKey+rejectionRetry})
+      .then(value=>{if(!cancelled)setRejectionSummaryState({key:rejectionSummaryKey,status:"ready",value});}).catch(()=>{if(!cancelled)setRejectionSummaryState({key:rejectionSummaryKey,status:"error"});});
+    return()=>{cancelled=true;};
+  },[ready,needsRejectionSummary,pipelineRange.valid,pipelineRange.start,pipelineRange.end,pipelineScope,rejectionFilters.actor,rejectionFilters.stage,rejectionFilters.main,rejectionFilters.detail,rejectionFilters.search,profileKey,refreshKey,rejectionRetry,rejectionSummaryKey]);
   function reportContext(report: DashboardReportDefinition): DashboardReportContext {
     const effective = dashboardEffectivePreferences(preferences, report.filters);
     const effectiveRange = dashboardReportRange(preferences, today, report.filters);
-    const scoped = scopeDashboardRequisitions(requisitions, preferences, report.filters);
+    const headerScoped = requisitions.filter(row => (!globalSite || row.site === globalSite)
+      && (!globalOwner || row.person_in_charge?.toLocaleLowerCase() === globalOwner.toLocaleLowerCase())
+      && (!globalPriorityOnly || row.is_priority));
+    const scoped = scopeDashboardRequisitions(headerScoped, preferences, report.filters);
     const ids = new Set(scoped.map(row => row.doc_id));
+    const sourceData = data;
+    const reportData: DashboardData = { ...sourceData, requisitions: scoped,
+      requisition_logs: sourceData.requisition_logs.filter(row => ids.has(row.doc_id)),
+      offers: sourceData.offers.filter(row => ids.has(row.doc_id)) };
     const parts = report.filters.includes("period") ? [effectiveRange.valid ? `${formatDate(effectiveRange.start, language)} – ${formatDate(effectiveRange.end, language)}` : t.invalid, preferences.period === "custom" ? t.custom : preferences.period.toUpperCase()] : [];
     parts.push(`${t.site}: ${effective.sites.join(", ") || globalSite || t.all}`);
     if (report.filters.includes("department")) parts.push(`${t.department}: ${effective.departments.join(", ") || t.all}`);
     if (report.filters.includes("level")) parts.push(`${t.level}: ${effective.levels.map(level => `L${level.replace("-", "–L")}`).join(", ") || t.all}`);
     parts.push(`${t.pic}: ${globalOwner || t.all}`);
     if (globalPriorityOnly) parts.push(t.priority);
-    return { headerScope: { site: globalSite, owner: globalOwner, priorityOnly: globalPriorityOnly }, language, data: newView && complete && extended ? { ...extended.data, requisitions: data.requisitions, requisition_logs: data.requisition_logs } : data, requisitions: scoped, offers: offers.filter(row => ids.has(row.doc_id)), candidateOffers: candidateOffers.filter(row => ids.has(row.doc_id)), preferences: effective, onPreferencesChange: change, range: effectiveRange, summary: parts.join(" · "), supportedFilters: report.filters,
+    const wantsSummary = report.id === "pipeline" || report.id === "performance" && preferences.performanceSubview === "vacancy";
+    const wantsRiskSummary = report.id === "performance" && preferences.performanceSubview === "risk";
+    const wantsBottleneckSummary=report.id==="pipeline"&&preferences.pipelineSubview==="bottlenecks";
+    const wantsRejectionSummary=report.id==="pipeline"&&preferences.pipelineSubview==="rejections";
+    return { headerScope: { site: globalSite, owner: globalOwner, priorityOnly: globalPriorityOnly }, language, data: reportData, requisitions: scoped, offers: offers.filter(row => ids.has(row.doc_id)), candidateOffers: candidateOffers.filter(row => ids.has(row.doc_id)), pipelineSummary: wantsSummary && pipelineSummaryState?.key === pipelineSummaryKey ? pipelineSummaryState.value ?? null : null, pipelineSummaryStatus: wantsSummary ? pipelineSummaryState?.key === pipelineSummaryKey ? pipelineSummaryState.status : "loading" : "idle", onRetryPipelineSummary: () => setPipelineRetry(value => value + 1), riskSummary: wantsRiskSummary && riskSummaryState?.key === riskSummaryKey ? riskSummaryState.value ?? null : null, riskSummaryStatus: wantsRiskSummary ? riskSummaryState?.key === riskSummaryKey ? riskSummaryState.status : "loading" : "idle", onRetryRiskSummary: () => setRiskRetry(value => value + 1), bottleneckSummary:wantsBottleneckSummary&&bottleneckSummaryState?.key===bottleneckSummaryKey?bottleneckSummaryState.value??null:null,bottleneckSummaryStatus:wantsBottleneckSummary?bottleneckSummaryState?.key===bottleneckSummaryKey?bottleneckSummaryState.status:"loading":"idle",onRetryBottleneckSummary:()=>setBottleneckRetry(value=>value+1),rejectionSummary:wantsRejectionSummary&&rejectionSummaryState?.key===rejectionSummaryKey?rejectionSummaryState.value??null:null,rejectionSummaryStatus:wantsRejectionSummary?rejectionSummaryState?.key===rejectionSummaryKey?rejectionSummaryState.status:"loading":"idle",onRetryRejectionSummary:()=>setRejectionRetry(value=>value+1),rejectionSummaryFilters:wantsRejectionSummary?rejectionFilters:undefined, preferences: effective, onPreferencesChange: change, range: effectiveRange, summary: parts.join(" · "), supportedFilters: report.filters,
       onOpenCandidate, onOpenRequisition: row => { if (onOpenRequisition) void onOpenRequisition(row).then(opened => { if (!opened) setLimited(row); }); else setLimited(row); } };
   }
   function change(patch: Partial<DashboardPreferences>) {
     const changesCommonFilter = ["period", "month", "customStart", "customEnd", "sites", "departments", "levels"].some(key => key in patch);
-    if (changesCommonFilter || ["performanceSubview", "pipelineSubview", "riskGrouping", "riskFilter", "riskGroup", "queueStatus", "queueStage", "queuePic", "queueSearch"].some(key => key in patch)) {
-      const next = { ...preferences, ...patch };
+    if (changesCommonFilter || Object.keys(patch).some(key => key.startsWith("rejection")) || ["performanceSubview", "pipelineSubview", "riskGrouping", "riskFilter", "riskGroup", "queueStatus", "queueStage", "queuePic", "queueSearch"].some(key => key in patch)) {
+      const next = { ...preferences, ...patch, ...(changesCommonFilter ? { rejectionPage: 0 } : {}) };
       pushWorkspaceUrlState(dashboardUrlValues(next));
       setPreferences(next);
     } else setPreferences(current => ({ ...current, ...patch }));
@@ -149,15 +234,16 @@ export function DashboardPortal({ language, data, requisitions, offers, candidat
         </div>
       </div>
       <p className="sr-only" data-dashboard-summary>{summary}</p>
-      {removed ? <p role="status" className="mt-2 text-xs text-slate">{t.removed}</p> : null}
+    {filterOptionsError ? <p role="alert" className="mt-2 text-xs text-danger">{language === "th" ? "โหลดตัวเลือกตัวกรองไม่สำเร็จ" : "Could not load dashboard filter options"}</p> : null}
+    {removed ? <p role="status" className="mt-2 text-xs text-slate">{t.removed}</p> : null}
       {!range.valid ? <p role="alert" className="mt-2 text-sm text-danger">{t.invalid}</p> : null}
     </section>
     <DashboardReportNavigation reports={registry} selectedId={selected.id} language={language} onSelect={selectTab} />
     {unsupported.length ? <p role="status" className="text-sm text-slate">{t.unsupported} {unsupported.map(filter => t[filter]).join(", ")}</p> : null}
     {registry.map(report => {
-      const views = report.id === "performance" ? ["overview", "vacancy", "risk"] : report.id === "pipeline" ? ["overview", "bottlenecks"] : ["overview"];
+      const views = report.id === "performance" ? ["overview", "vacancy", "risk"] : report.id === "pipeline" ? ["overview", "bottlenecks", "rejections"] : ["overview"];
       const activeView = report.id === "performance" ? preferences.performanceSubview : report.id === "pipeline" ? preferences.pipelineSubview : "overview";
-      const viewLabel = (view: string) => view === "overview" && report.id === "performance" ? language === "th" ? "ภาพรวมผลการสรรหา" : "Performance" : view === "vacancy" ? language === "th" ? "อัตราว่างและใบขออัตรา" : "Vacancy & Requisitions" : rt(view as "overview");
+      const viewLabel = (view: string) => view === "rejections" ? language === "th" ? "การปฏิเสธและถอนตัว" : "Rejections" : view === "overview" && report.id === "performance" ? language === "th" ? "ภาพรวมผลการสรรหา" : "Performance" : view === "vacancy" ? language === "th" ? "อัตราว่างและใบขออัตรา" : "Vacancy & Requisitions" : rt(view as "overview");
       return <div key={report.id} role="tabpanel" id={`dashboard-panel-${report.id}`} aria-labelledby={`dashboard-label-${report.id}`} hidden={selected.id !== report.id} className="min-w-0" data-report-group={report.id}>
         <span id={`dashboard-label-${report.id}`} className="sr-only">{report.label[language]}</span>
         {views.length > 1 ? <div className="dashboard-subviews mb-2 flex gap-1 overflow-x-auto" role="tablist" aria-label={report.label[language]} onKeyDown={event => {
@@ -171,10 +257,10 @@ export function DashboardPortal({ language, data, requisitions, offers, candidat
           {views.map(view => <button type="button" role="tab" key={view} id={`${report.id}-${view}-tab`} aria-controls={`${report.id}-${view}-panel`} aria-selected={activeView === view} tabIndex={activeView === view ? 0 : -1} className={`dashboard-compact-tab shrink-0 rounded-lg text-xs font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0A3CDC] ${activeView === view ? "bg-primary/10 text-primary" : "text-slate hover:bg-white"}`} onClick={() => change(report.id === "performance" ? { performanceSubview: view as DashboardPreferences["performanceSubview"] } : { pipelineSubview: view as DashboardPreferences["pipelineSubview"] })}>{viewLabel(view)}</button>)}
         </div> : null}
         {views.map(view => {
-          const extendedView = view === "risk" || view === "bottlenecks";
+          const summaryView = view === "risk" || view === "bottlenecks" || view === "rejections";
           const active = selected.id === report.id && activeView === view;
           return <div key={view} id={`${report.id}-${view}-panel`} role={views.length > 1 ? "tabpanel" : undefined} aria-labelledby={views.length > 1 ? `${report.id}-${view}-tab` : undefined} hidden={activeView !== view}>
-            {!dashboardReportRange(preferences, today, report.filters).valid ? <p className="rounded-xl border border-[#E4E9F2] p-5 text-sm text-slate">{t.invalid}</p> : extendedView ? active ? !complete || !extended ? <div className="rounded-xl border border-[#E4E9F2] bg-white p-5"><p role={loadError ? "alert" : "status"}>{rt(loadError ? "error" : "loading")}</p>{loadError ? <Button size="toolbar" className="mt-3" onClick={() => setRetry(value => value + 1)}>{rt("retry")}</Button> : null}</div> : <><p className="mb-2 text-right text-xs text-slate">{rt("updated")}: {new Intl.DateTimeFormat(language === "th" ? "th-TH" : "en-GB", { dateStyle: "short", timeStyle: "short", timeZone: "Asia/Bangkok" }).format(new Date(extended.refreshed))}</p>{view === "risk" ? <VacancyRiskView context={reportContext(report)} /> : <StageBottleneckView context={reportContext(report)} />}</> : null : view === "vacancy" ? <VacancyWaterfallView context={reportContext(report)} reportGroup="vacancy" /> : report.render(reportContext(report))}
+            {!dashboardReportRange(preferences, today, report.filters).valid ? <p className="rounded-xl border border-[#E4E9F2] p-5 text-sm text-slate">{t.invalid}</p> : summaryView ? active ? view === "risk" ? <VacancyRiskView context={reportContext(report)} /> : view === "rejections" ? <RejectionDashboardView context={reportContext(report)} /> : <StageBottleneckView context={reportContext(report)} /> : null : view === "vacancy" ? <VacancyWaterfallView context={reportContext(report)} reportGroup="vacancy" /> : report.render(reportContext(report))}
           </div>;
         })}
       </div>;

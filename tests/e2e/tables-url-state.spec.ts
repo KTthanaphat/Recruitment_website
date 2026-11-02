@@ -6,7 +6,12 @@ test("requisition table search and advanced filters persist in URL", async ({ pa
   await page.goto("/requisitions");
   await expectWorkspaceReady(page);
 
-  await page.getByPlaceholder("Search records").fill("Engineer");
+  const search = page.getByPlaceholder("Search records");
+  await expect(page.getByLabel("Rows per page")).toHaveValue("50");
+  await search.fill("no matching requisition");
+  await expect(page.getByText("No records match the current filters.", { exact: true })).toBeVisible();
+  await expect(search).toBeVisible();
+  await search.fill("Engineer");
   await expect(page.getByRole("button", { name: "View requisition detail for REQ-HQ-1", exact: true })).toBeVisible();
   await expect(page.getByText("REQ-KT1-1")).toHaveCount(0);
   await expect(page).toHaveURL(/reqSearch=Engineer/);

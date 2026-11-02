@@ -54,3 +54,11 @@ Read this node for this feature only. It indexes ownership; product rules remain
 [SYS-RECORDS](records.md) (`opens`).
 
 If the task changes schema, environment or release state, cross to [Setup](../SETUP_MAP.md). For visual-only work remain in this system node and its design contract. Coverage names are search leads inherited from the feature index, not evidence that checks passed or that every named scenario has a dedicated file.
+
+## Picker views and reusable profiles
+
+Owner: `WorkspacePicker`, `groupCells`, `selectView` in [HiringWorkspaceView](../../../src/components/workspace/HiringWorkspaceView.tsx). Contract: [view preference](../../design/workspace.md#group-picker-view-preference). Check `/workspace` and [application/views tests](../../../tests/e2e/candidate-applications.spec.ts). Search: `data-workspace-picker-results`, `recruitment:workspace:view`, `reassignmentCounts`. Candidate creation uses [Pipeline profile/application owners](pipeline.md#independent-profile-and-application-ownership).
+
+## Candidate matching and ownership
+
+Cross-site candidate destinations use the minimal application directory; matching permission does not grant journey management. Workspace create-existing/new-person flows use [profile/application capabilities](pipeline.md#creator-privacy-and-profileapplication-layout). PIC/admin gates apply to selected journey writes; creator/PIC/admin may add applications. Checks: [profile browser](../../../tests/e2e/candidate-profile-redesign.spec.ts), [Workspace](../../../tests/e2e/workspace.spec.ts).

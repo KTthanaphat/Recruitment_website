@@ -20,6 +20,8 @@ test("system admin can access user administration", async ({ page }) => {
 
   await expect(page.getByRole("heading", { name: "Administration", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /Manage User|New User|Create User/i })).toBeVisible();
+  await expect(page.getByText("site@example.com", { exact: true })).toBeVisible();
+  await expect(page.getByText("viewer@example.com", { exact: true })).toBeVisible();
 });
 
 test("admin recruiters can assign a recruiter while site recruiters stay locked to their own assignment", async ({ page }) => {
@@ -29,21 +31,25 @@ test("admin recruiters can assign a recruiter while site recruiters stay locked 
 
   await page.getByRole("button", { name: "New Requisition" }).click();
   const adminDialog = page.getByRole("dialog", { name: "Create Requisition" });
-  const adminSite = adminDialog.locator('select[name="site"]');
-  const adminDepartment = adminDialog.locator('select[name="department"]');
-  const adminSection = adminDialog.locator('select[name="section"]');
+  const adminSite = adminDialog.getByRole("button", { name: "Site" });
+  const adminDepartment = adminDialog.getByRole("button", { name: "Department" });
+  const adminSection = adminDialog.getByRole("button", { name: "Section" });
   await expect(adminDepartment).toBeDisabled();
-  await adminSite.selectOption("HQ");
-  await expect(adminDepartment.locator("option", { hasText: "Finance Department" })).toHaveCount(1);
+  await adminSite.click();
+  await page.getByRole("option", { name: "HQ", exact: true }).click();
   await expect(adminSection).toBeDisabled();
-  await adminDepartment.selectOption("Finance Department");
+  await adminDepartment.click();
+  await page.getByRole("option", { name: "Finance Department", exact: true }).click();
   await expect(adminSection).toBeEnabled();
-  await adminSection.selectOption("Financial Document Division");
-  await expect(adminSection).toHaveValue("Financial Document Division");
-  const adminOwner = adminDialog.getByLabel("Person in Charge");
+  await adminSection.click();
+  await page.getByRole("option", { name: "Financial Document Division", exact: true }).click();
+  await expect(adminSection).toContainText("Financial Document Division");
+  const adminOwner = adminDialog.getByRole("button", { name: "Person in Charge" });
   await expect(adminOwner).toBeEnabled();
-  await adminOwner.selectOption("Bob");
-  await expect(adminOwner).toHaveValue("Bob");
+  await adminOwner.click();
+  await expect(page.getByRole("option", { name: "Bob", exact: true })).toBeVisible();
+  await page.getByRole("option", { name: "Bob", exact: true }).click();
+  await expect(adminOwner).toContainText("Bob");
 
   await page.getByRole("button", { name: "Cancel" }).click();
   await installMockSupabase(page, { role: "site_recruiter" });
@@ -52,8 +58,8 @@ test("admin recruiters can assign a recruiter while site recruiters stay locked 
 
   await page.getByRole("button", { name: "New Requisition" }).click();
   const siteDialog = page.getByRole("dialog", { name: "Create Requisition" });
-  await expect(siteDialog.getByLabel("Person in Charge")).toBeDisabled();
-  await expect(siteDialog.getByLabel("Person in Charge")).toHaveValue("Bob");
-  await expect(siteDialog.getByLabel("Site")).toBeDisabled();
-  await expect(siteDialog.getByLabel("Site")).toHaveValue("KT1");
+  await expect(siteDialog.getByRole("button", { name: "Person in Charge" })).toBeDisabled();
+  await expect(siteDialog.getByRole("button", { name: "Person in Charge" })).toContainText("Bob");
+  await expect(siteDialog.getByRole("button", { name: "Site" })).toBeDisabled();
+  await expect(siteDialog.getByRole("button", { name: "Site" })).toContainText("KT1");
 });

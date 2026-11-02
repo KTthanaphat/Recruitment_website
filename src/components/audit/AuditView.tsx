@@ -7,12 +7,14 @@ import { Button } from "@/components/ui/Button";
 import { MobileBottomSheet } from "@/components/ui/MobileBottomSheet";
 import { DayDateSelector } from "@/components/ui/Field";
 import { Tag } from "@/components/ui/Tag";
-import { formatDateTime, statusTone, toTitle } from "@/lib/format";
+import { formatDateTime, formatRecruitmentId, statusTone, toTitle } from "@/lib/format";
 import { actionToneLabel, translate } from "@/lib/i18n/dictionary";
 import { auditDiffRows } from "@/lib/operations";
+import { useRecruitmentList } from "@/lib/recruitment-list";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ChangeLog, Language } from "@/types/recruitment";
 
-export function AuditView({ language, rows }: { language: Language; rows: ChangeLog[] }) {
+export function AuditView({ language, rows, client, accessScope }: { language: Language; rows: ChangeLog[]; client: SupabaseClient | null; accessScope: string }) {
   const [filters, setFilters] = useState({ action: "", changedBy: "", end: "", entity: "", entityId: "", start: "" });
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(() => new Set());
@@ -24,7 +26,8 @@ export function AuditView({ language, rows }: { language: Language; rows: Change
       entityId: params.get("entityId") ?? current.entityId
     }));
   }, []);
-  const filteredRows = useMemo(() => rows.filter((row) => {
+  const list = useRecruitmentList<ChangeLog>({ client, accessScope, entity: "audit_log", filters, sort: "changed_at", direction: "desc", enabled: Boolean(client && accessScope) });
+  const filteredRows = client && accessScope ? list.items : rows.filter((row) => {
     const changedAt = row.changed_at.slice(0, 10);
     return (!filters.entity || row.entity.toLowerCase().includes(filters.entity.toLowerCase()))
       && (!filters.action || row.action.toLowerCase().includes(filters.action.toLowerCase()))
@@ -32,7 +35,7 @@ export function AuditView({ language, rows }: { language: Language; rows: Change
       && (!filters.entityId || row.entity_id.toLowerCase().includes(filters.entityId.toLowerCase()))
       && (!filters.start || changedAt >= filters.start)
       && (!filters.end || changedAt <= filters.end);
-  }).sort((a, b) => b.changed_at.localeCompare(a.changed_at) || b.log_id - a.log_id), [filters, rows]);
+  }).sort((a, b) => b.changed_at.localeCompare(a.changed_at) || b.log_id - a.log_id);
 
   return (
     <Panel>
@@ -55,8 +58,9 @@ export function AuditView({ language, rows }: { language: Language; rows: Change
           <Button type="button" onClick={() => setFiltersOpen(false)}>{translate(language, "confirm")}</Button>
         </div>
       </MobileBottomSheet>
-      <p className="mb-3 text-sm font-medium text-slate" role="status">{translate(language, "auditResultCount", { count: filteredRows.length })}</p>
-      {rows.length === 0 ? <EmptyState message={translate(language, "noAuditRecords")} /> : filteredRows.length === 0 ? <EmptyState message={translate(language, "noAuditRecordsMatch")} /> : (
+      {list.error ? <div role="alert" className="mb-3 flex items-center gap-3 text-sm text-scarlet"><span>Could not load audit records.</span><Button type="button" variant="secondary" onClick={list.retry}>Retry</Button></div> : null}
+      <p className="mb-3 text-sm font-medium text-slate" role="status">{translate(language, "auditResultCount", { count: list.loading ? list.totalCount : client ? list.totalCount : filteredRows.length })}</p>
+      {list.loading && client ? <p role="status" className="py-4 text-sm text-slate">Loading audit records…</p> : filteredRows.length === 0 ? <EmptyState message={list.error ? "Audit records are unavailable." : rows.length === 0 ? translate(language, "noAuditRecords") : translate(language, "noAuditRecordsMatch")} /> : (
         <div className="min-w-0 md:max-h-[min(68dvh,48rem)] md:overflow-auto" data-testid="audit-table-viewport">
           <div className="sticky top-0 z-10 hidden min-w-[66rem] grid-cols-[minmax(13rem,1.5fr)_minmax(9rem,.8fr)_minmax(12rem,1fr)_minmax(10rem,1fr)_minmax(9rem,.8fr)] gap-3 border-b border-[#D7DEE8] bg-white px-3 py-2 text-xs font-medium text-slate md:grid"><span>{translate(language, "workspaceEvent")}</span><span>{translate(language, "date")}</span><span>{translate(language, "record")}</span><span>{translate(language, "actor")}</span><span>{translate(language, "fieldChanges")}</span></div>
           <div className="divide-y divide-[#E4E9F2] md:min-w-[66rem]">
@@ -64,15 +68,16 @@ export function AuditView({ language, rows }: { language: Language; rows: Change
               <div className="grid min-w-0 gap-2 md:grid-cols-[minmax(13rem,1.5fr)_minmax(9rem,.8fr)_minmax(12rem,1fr)_minmax(10rem,1fr)_minmax(9rem,.8fr)] md:items-start md:gap-3">
                 <div className="min-w-0"><span className="block text-xs text-slate md:hidden">{translate(language, "workspaceEvent")}</span><span className="block break-words font-semibold text-navy">{auditEntityLabel(language, row.entity)}</span><Tag appearance="soft" tone={statusTone(row.action) as never}>{actionToneLabel(language, row.action)}</Tag></div>
                 <div className="text-slate"><span className="block text-xs md:hidden">{translate(language, "date")}</span><time dateTime={row.changed_at}>{formatDateTime(row.changed_at, language)}</time></div>
-                <div className="min-w-0 break-all"><span className="block text-xs text-slate md:hidden">{translate(language, "record")}</span><span className="font-semibold text-navy">{row.entity_id}</span><AuditRecordLinks row={row} /></div>
+                <div className="min-w-0 break-all"><span className="block text-xs text-slate md:hidden">{translate(language, "record")}</span><span className="font-semibold text-navy">{formatRecruitmentId(row.entity_id)}</span><AuditRecordLinks row={row} /></div>
                 <div className="min-w-0 break-all text-slate"><span className="block text-xs md:hidden">{translate(language, "actor")}</span>{row.changed_by_email ?? row.changed_by ?? translate(language, "system")}</div>
-                <div className="min-w-0 md:col-start-5"><button type="button" aria-expanded={expandedIds.has(row.log_id)} aria-controls={expandedIds.has(row.log_id) ? `audit-diff-${row.log_id}` : undefined} className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-md px-1 text-left font-semibold text-primary hover:bg-[#E8F0FF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary md:min-h-9" aria-label={translate(language, "viewFieldChangesFor", { entity: row.entity, id: row.entity_id })} onClick={() => setExpandedIds((current) => { const next = new Set(current); if (next.has(row.log_id)) next.delete(row.log_id); else next.add(row.log_id); return next; })}><Search size={15} aria-hidden="true" />{translate(language, "auditChangedFieldCount", { count: changed })}</button></div>
+                <div className="min-w-0 md:col-start-5"><button type="button" aria-expanded={expandedIds.has(row.log_id)} aria-controls={expandedIds.has(row.log_id) ? `audit-diff-${row.log_id}` : undefined} className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-md px-1 text-left font-semibold text-primary hover:bg-[#E8F0FF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary md:min-h-9" aria-label={translate(language, "viewFieldChangesFor", { entity: row.entity, id: formatRecruitmentId(row.entity_id) })} onClick={() => setExpandedIds((current) => { const next = new Set(current); if (next.has(row.log_id)) next.delete(row.log_id); else next.add(row.log_id); return next; })}><Search size={15} aria-hidden="true" />{translate(language, "auditChangedFieldCount", { count: changed })}</button></div>
               </div>
               {expandedIds.has(row.log_id) ? <div id={`audit-diff-${row.log_id}`} className="mt-3 grid min-w-0 gap-2 rounded-lg border border-[#D7DEE8] bg-white p-3">{diffs.map((diff) => <div key={diff.field} className={`grid min-w-0 gap-1 border-b border-[#E4E9F2] pb-2 text-xs last:border-0 last:pb-0 md:grid-cols-[9rem_1fr_1fr] ${diff.changed ? "" : "opacity-70"}`}><strong className="break-all text-navy">{diff.field}</strong><span className="break-all text-slate">{translate(language, "oldValue")}: {diff.oldValue}</span><span className="break-all text-slate">{translate(language, "newValue")}: {diff.newValue}</span></div>)}</div> : null}
             </article>; })}
           </div>
         </div>
       )}
+      {client ? <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-[#D7DEE8] pt-3 text-sm"><span>Page {list.page} · {list.totalCount} records</span><div className="flex gap-2"><Button type="button" variant="secondary" disabled={!list.canPrevious} onClick={list.goPrevious}>Previous</Button><Button type="button" variant="secondary" disabled={!list.canNext} onClick={list.goNext}>Next</Button></div></div> : null}
     </Panel>
   );
 }

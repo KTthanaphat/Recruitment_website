@@ -5,6 +5,29 @@ type RequisitionTitleFields = { position?: string | null; level?: string | null 
 type RequisitionOptionFields = RequisitionTitleFields & { doc_id: string };
 type CandidateIdentityFields = { name?: string | null; nickname?: string | null };
 
+/** Display CAN/GRP identifiers with at least five digits without changing stored IDs. */
+export function formatRecruitmentId(value: string | null | undefined) {
+  if (!value) return value ?? "";
+  return value.replace(/^(CAN|GRP)-(\d+)$/i, (_match, prefix: string, digits: string) => `${prefix.toUpperCase()}-${digits.padStart(5, "0")}`);
+}
+
+export type RecruitmentIdResolution =
+  | { status: "matched"; id: string }
+  | { status: "missing" }
+  | { status: "ambiguous"; ids: string[] };
+
+/** Resolve exact stored IDs first, then accept a displayed padded form only when unique. */
+export function resolveRecruitmentId(value: string | null | undefined, storedIds: readonly string[]): RecruitmentIdResolution {
+  const raw = value?.trim() ?? "";
+  if (!raw) return { status: "missing" };
+  if (storedIds.includes(raw)) return { status: "matched", id: raw };
+  const display = formatRecruitmentId(raw);
+  const matches = [...new Set(storedIds.filter((id) => formatRecruitmentId(id) === display))];
+  if (matches.length === 1) return { status: "matched", id: matches[0] };
+  if (matches.length > 1) return { status: "ambiguous", ids: matches.sort() };
+  return { status: "missing" };
+}
+
 export function formatRequisitionTitle(requisition: RequisitionTitleFields) {
   const storedPosition = requisition.position ?? "";
   const position = storedPosition.trim() ? storedPosition : "-";

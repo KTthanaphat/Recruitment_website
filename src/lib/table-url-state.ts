@@ -12,7 +12,7 @@ export function readTableUrlState(prefix: string): TableUrlState {
   return {
     filters: parseFilters(params.get(`${prefix}Filters`)),
     page: positiveNumber(params.get(`${prefix}Page`), 1),
-    pageSize: positiveNumber(params.get(`${prefix}Size`), 25),
+    pageSize: positiveNumber(params.get(`${prefix}Size`), 50),
     search: params.get(`${prefix}Search`) ?? "",
     sortDirection: sortDirection === "asc" || sortDirection === "desc" ? sortDirection : null,
     sortKey: params.get(`${prefix}Sort`)
@@ -26,7 +26,7 @@ export function writeTableUrlValues(prefix: string, state: TableUrlState) {
     [`${prefix}Filters`]: Object.keys(filters).length > 0 ? JSON.stringify(filters) : null,
     [`${prefix}Page`]: state.page > 1 ? state.page : null,
     [`${prefix}Search`]: state.search,
-    [`${prefix}Size`]: state.pageSize !== 25 ? state.pageSize : null,
+    [`${prefix}Size`]: state.pageSize !== 50 ? state.pageSize : null,
     [`${prefix}Sort`]: state.sortKey
   };
 }
@@ -35,7 +35,7 @@ function defaultTableUrlState(): TableUrlState {
   return {
     filters: {},
     page: 1,
-    pageSize: 25,
+    pageSize: 50,
     search: "",
     sortDirection: null,
     sortKey: null

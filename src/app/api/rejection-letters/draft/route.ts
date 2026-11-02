@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { escapeLetterHtml } from "@/lib/rejection-letter";
-import { createServiceClient } from "@/lib/supabase/server";
+import { createServiceClient, createUserClient } from "@/lib/supabase/server";
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -18,19 +18,14 @@ export async function POST(request: NextRequest) {
     const [{ data: profile }, { data: candidate }, { data: failure }, { data: template }] = await Promise.all([
       service.from("profiles").select("role,site,nickname,full_name").eq("id", userId).single(),
       service.from("candidates").select("candidate_id,group_id,doc_group_id").eq("candidate_id", payload.candidate_id).single(),
-      service.from("recruitment_logs").select("candidate_id,stage_instance_id,result,superseded_at").eq("stage_instance_id", payload.failed_stage_instance_id).single(),
+      service.from("recruitment_logs").select("candidate_id,application_id,stage_instance_id,result,superseded_at").eq("stage_instance_id", payload.failed_stage_instance_id).single(),
       service.from("rejection_letter_templates").select("template_id,version,language,active").eq("template_id", payload.template_id).single()
     ]);
     if (!profile || profile.role === "viewer" || !candidate || !failure || failure.candidate_id !== candidate.candidate_id || failure.result !== 0 || failure.superseded_at || !template?.active || template.language !== payload.language) return NextResponse.json({ ok: false, error: "You cannot send an email for this candidate or template." }, { status: 403 });
-    if (profile.role === "site_recruiter") {
-      const { data: matches } = candidate.group_id
-        ? await service.from("document_groups").select("doc_id").eq("group_id", candidate.group_id)
-        : await service.from("document_groups").select("doc_id").eq("doc_group_id", candidate.doc_group_id);
-      const docIds = (matches ?? []).map((match) => match.doc_id);
-      const { data: requisitions } = docIds.length ? await service.from("requisitions").select("site,person_in_charge").in("doc_id", docIds) : { data: [] as Array<{ site: string; person_in_charge: string | null }> };
-      const names = [profile.nickname, profile.full_name].filter((name): name is string => Boolean(name?.trim())).map((name) => name.trim().toLowerCase());
-      if (!(requisitions ?? []).some((row) => row.site === profile.site && !!row.person_in_charge && names.includes(row.person_in_charge.trim().toLowerCase()))) return NextResponse.json({ ok: false, error: "You can send emails only for candidates you manage." }, { status: 403 });
-    }
+    const { data: application } = await service.from("candidate_applications").select("application_id,group_id,candidate_id").eq("application_id", failure.application_id).single();
+    if (!application || application.candidate_id !== candidate.candidate_id) return NextResponse.json({ ok: false, error: "Application is unavailable." }, { status: 403 });
+    const permission=await createUserClient(token).rpc("app_can_manage_application_v1",{p_application_id:application.application_id});
+    if(permission.error||permission.data!==true) return NextResponse.json({ok:false,error:"Only this application group PICs or administrators may perform this action."},{status:403});
     const { data: existingDelivery, error: deliveryError } = await service.from("rejection_letter_drafts").select("draft_id").eq("candidate_id", payload.candidate_id).eq("failed_stage_instance_id", payload.failed_stage_instance_id).in("status", ["sending", "sent"]).maybeSingle();
     if (deliveryError) throw new Error(deliveryError.message);
     if (existingDelivery) return NextResponse.json({ ok: false, error: "A rejection letter has already been sent or is sending for this failed stage." }, { status: 409 });

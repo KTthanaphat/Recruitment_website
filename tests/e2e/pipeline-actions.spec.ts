@@ -308,6 +308,35 @@ test("candidate detail Edit opens the current stage editor for an authorized rec
   await expect(stageDialog.getByText("25/07/2026", { exact: true })).toBeVisible();
 });
 
+test("an absent-bootstrap HR interview loads its authorized invitation template on editor open",async({page})=>{
+  const mock=await installMockSupabase(page,{role:"admin_recruiter"});
+  await page.goto("/pipeline");await expectWorkspaceReady(page);
+  await page.getByRole("button",{name:/^Hana HR/}).click();
+  const detail=page.getByRole("dialog",{name:/C-HR/});
+  await detail.getByRole("button",{name:"Edit",exact:true}).click();
+  const editor=page.getByRole("dialog",{name:"Edit current stage"});
+  await editor.getByRole("button",{name:"Teams meeting"}).click();
+  await expect.poll(()=>mock.restReads.some(read=>read.table==="interview_invitation_templates")).toBe(true);
+  await editor.getByRole("button",{name:"Invitation template"}).click();
+  await expect(page.getByRole("option",{name:/English Teams interview/})).toBeVisible();
+  expect(mock.restReads.some(read=>read.table==="interview_invitation_templates")).toBe(true);
+});
+
+test("selected-journey rejection drafts load from the scoped history relation",async({page})=>{
+  const mock=await installMockSupabase(page,{role:"admin_recruiter"});
+  const failed=mock.data.recruitment_logs.find(log=>log.candidate_id==="C-FAILED"&&log.result===0)!;
+  mock.data.rejection_letter_drafts.push({draft_id:"draft-scoped",candidate_id:"C-FAILED",failed_stage_instance_id:failed.stage_instance_id??"",template_id:"template-en",template_version:1,language:"en",recipient_email:"candidate@example.com",subject:"Result",body:"Dear candidate",status:"draft_created",shared_mailbox:null,outlook_draft_id:null,flow_run_id:null,response_metadata:null,failure_summary:null,retry_of_draft_id:null,created_by:mock.data.profile?.id??null,created_at:"2026-07-20T00:00:00.000Z",finalized_at:null});
+  await page.goto("/candidates");await expectWorkspaceReady(page);
+  await page.getByRole("searchbox").fill("C-FAILED");
+  const row=page.getByRole("row").filter({hasText:"C-FAILED"});await expect(row).toBeVisible();
+  await row.getByRole("button",{name:/Finn Failed/}).click();
+  const detail=page.getByRole("dialog",{name:/C-FAILED/});
+  await expect(detail.getByText("1 recorded",{exact:true})).toBeVisible();
+  await detail.getByText("Rejection letters",{exact:true}).click();
+  await expect(detail.getByText("candidate@example.com")).toBeVisible();
+  expect(mock.restReads.some(read=>read.table==="rejection_letter_drafts"&&read.scopedCandidate==="C-FAILED")).toBe(true);
+});
+
 test("candidate detail Journey Update opens the in-place Pipeline action popup", async ({ page }) => {
   await installMockSupabase(page, { role: "admin_recruiter" });
   await page.goto("/pipeline");

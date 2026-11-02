@@ -1,6 +1,36 @@
 import { expect, test } from "@playwright/test";
 import { expectWorkspaceReady, installMockSupabase } from "./support/mock-supabase";
 
+async function chooseCommandOption(page: import("@playwright/test").Page, label: string, option: string) {
+  await page.getByLabel(label).click();
+  await page.getByRole("listbox", { name: label }).getByRole("option", { name: option, exact: true }).click();
+}
+
+test("Home consumes scoped summary metrics and a bounded date-range calendar response", async ({ page }) => {
+  const mock = await installMockSupabase(page, { role: "admin_recruiter" });
+  await page.goto("/home");
+  await expectWorkspaceReady(page);
+  await expect(page.getByRole("heading", { name: "Recruitment Calendar" })).toBeVisible();
+  await expect.poll(() => mock.rpcCalls.some(call => call.endpoint === "app_home_summary_v1")).toBe(true);
+  await expect.poll(() => mock.rpcCalls.some(call => call.endpoint === "app_recruitment_list_v1" && call.payload.p_entity === "requisitions")).toBe(true);
+  expect(mock.restReads.filter(read => ["requisitions","candidates","candidate_applications","recruitment_logs","offers","position_groups","document_groups"].includes(read.table))).toEqual([]);
+  await expect.poll(() => mock.rpcCalls.some(call => call.endpoint === "app_recruitment_calendar_v1")).toBe(true);
+  const summary = mock.rpcCalls.find(call => call.endpoint === "app_home_summary_v1")!;
+  expect(summary.payload.p_scope).toEqual({ headerSite: "", headerPic: "", priorityOnly: false });
+  const calendarCalls = mock.rpcCalls.filter(call => call.endpoint === "app_recruitment_calendar_v1");
+  const calendar = calendarCalls.find(call => call.payload.p_start !== call.payload.p_end)!;
+  const start = Date.parse(`${calendar.payload.p_start}T00:00:00Z`);
+  const end = Date.parse(`${calendar.payload.p_end}T00:00:00Z`);
+  expect(Number.isFinite(start) && Number.isFinite(end)).toBe(true);
+  expect(end).toBeGreaterThanOrEqual(start);
+  expect((end - start) / 86_400_000).toBeLessThanOrEqual(61);
+  expect(calendar.payload.p_scope).toEqual({ headerSite: "", headerPic: "", priorityOnly: false });
+  await expect.poll(() => mock.rpcCalls.some(call => call.endpoint === "app_recruitment_calendar_v1" && call.payload.p_start === call.payload.p_end)).toBe(true);
+  const today = calendarCalls.find(call => call.payload.p_start === call.payload.p_end);
+  expect(today).toBeTruthy();
+  expect(today?.payload.p_scope).toEqual(calendar.payload.p_scope);
+});
+
 test("Home sourcing and quality use the requested Thai copy", async ({ page }) => {
   const mock = await installMockSupabase(page, { role: "admin_recruiter" });
   const recorded = mock.data.sourcing_weekly_updates.find((row) => row.group_id === "GRP-ENG" && row.week_start === "2026-07-06");
@@ -53,20 +83,20 @@ test("Candidate Pipeline count, sorting, and six-column layout work across width
   const header = panel.locator("[data-home-record-header]");
   for (const label of ["Candidate", "Stage", "Site / owner", "Last Touch", "Pending remark", "Progress"]) await expect(header).toContainText(label);
   const sort = panel.getByLabel("Sort candidate pipeline");
-  await expect(sort).toHaveValue("oldest_touch");
+  await expect(sort).toContainText("Oldest touch first");
   await expect(rows.first()).toContainText("Avery Aging");
   const idsInOrder = () => rows.evaluateAll((items) => items.map((item) => item.getAttribute("data-candidate-id")));
   let orderedIds = await idsInOrder();
-  expect(orderedIds.indexOf("C-HR")).toBeLessThan(orderedIds.indexOf("C-PHONE"));
-  await sort.selectOption("newest_touch");
+  expect(orderedIds.indexOf("C-HR")).toBeGreaterThan(orderedIds.indexOf("C-PHONE"), "null touch dates stay after recorded dates");
+  await chooseCommandOption(page, "Sort candidate pipeline", "Newest touch first");
   await expect(rows.first()).toContainText("Liam Line");
   orderedIds = await idsInOrder();
-  expect(orderedIds.indexOf("C-HR")).toBeLessThan(orderedIds.indexOf("C-PHONE"));
-  await sort.selectOption("name");
+  expect(orderedIds.indexOf("C-HR")).toBeGreaterThan(orderedIds.indexOf("C-PHONE"), "null touch dates stay last regardless of sort direction");
+  await chooseCommandOption(page, "Sort candidate pipeline", "Candidate A–Z");
   await expect(rows.first()).toContainText("Avery Aging");
   await expect(rows.first()).not.toContainText("current");
-  await sort.selectOption("progression");
-  await expect(sort).toHaveValue("progression");
+  await chooseCommandOption(page, "Sort candidate pipeline", "Progression: furthest first");
+  await expect(sort).toContainText("Progression: furthest first");
   const progressIcons = rows.first().locator("[data-stage-icon]");
   await expect(progressIcons.first()).toBeVisible();
   await expect(progressIcons.first()).not.toHaveClass(/rounded-full|bg-primary|ring-2/);
@@ -150,7 +180,7 @@ test("Candidate Pipeline shows recorded touch, fallback, and current pending rem
   mock.data.recruitment_logs = mock.data.recruitment_logs.filter((log) => log.candidate_id !== "C-HR" || log.result === null);
   const hrPending = mock.data.recruitment_logs.find((log) => log.candidate_id === "C-HR");
   if (!hrPending) throw new Error("Expected HR pending fixture.");
-  hrPending.log_date = "2026-08-01";
+  hrPending.log_date = "2026-11-15";
   hrCandidate.first_contact_date = null;
   await page.setViewportSize({ width: 768, height: 900 });
   await page.goto("/home");
@@ -165,9 +195,9 @@ test("Candidate Pipeline shows recorded touch, fallback, and current pending rem
   await expect(row("C-LINE")).toContainText("1d ago");
   await expect(row("C-TEST")).toContainText("23/06/2026");
   await expect(row("C-HR")).toContainText("—");
-  await panel.getByLabel("Sort candidate pipeline").selectOption("newest_touch");
+  await chooseCommandOption(page, "Sort candidate pipeline", "Newest touch first");
   await expect(panel.locator("[data-home-candidate-row]").last()).toHaveAttribute("data-candidate-id", "C-HR");
-  await panel.getByLabel("Sort candidate pipeline").selectOption("oldest_touch");
+  await chooseCommandOption(page, "Sort candidate pipeline", "Oldest touch first");
   await expect(panel.locator("[data-home-candidate-row]").last()).toHaveAttribute("data-candidate-id", "C-HR");
   const remark = row("C-PHONE").getByText(phone.remark, { exact: true });
   await expect(remark).toHaveAttribute("title", phone.remark);
@@ -190,7 +220,7 @@ test("Candidate Pipeline keeps its count, sort, and empty state when no candidat
   const panel = page.getByRole("tabpanel");
   await expect(panel.locator("[data-home-candidate-count]")).toHaveText("0 active candidates");
   await expect(panel.getByText("No active candidates in pipeline.")).toBeVisible();
-  await panel.getByLabel("Sort candidate pipeline").selectOption("name");
+  await chooseCommandOption(page, "Sort candidate pipeline", "Candidate A–Z");
   await expect(panel.locator("[data-home-candidate-row]")).toHaveCount(0);
   await page.setViewportSize({ width: 360, height: 800 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);

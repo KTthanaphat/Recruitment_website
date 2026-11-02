@@ -8,6 +8,12 @@ test("workspace Pipeline submits the locked group ID when creating a candidate",
 
   await page.getByRole("button", { name: "New Candidate", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Create Candidate" });
+  const lockedGroup = dialog.getByRole("button", { name: "Application group (optional)", exact: true });
+  await expect(lockedGroup).toBeDisabled();
+  await expect(lockedGroup).toContainText("GRP-TECH");
+  await expect(dialog.locator('input[type="hidden"][name="group_id"]')).toHaveCount(1);
+  await expect(dialog.getByRole("textbox", { name: "Search Application group" })).toHaveCount(0);
+  expect(mock.rpcCalls.filter(call => call.endpoint === "app_application_destinations_page_v1")).toHaveLength(0);
   await dialog.getByRole("textbox", { name: "Name", exact: true }).fill("Workspace Candidate");
   await dialog.getByRole("button", { name: "Channel" }).click();
   await page.getByRole("option", { name: "Facebook", exact: true }).click();
@@ -16,11 +22,36 @@ test("workspace Pipeline submits the locked group ID when creating a candidate",
   const confirmation = page.getByRole("dialog", { name: "Confirm Save" });
   await expect(confirmation.locator("pre")).toContainText('"group_id": "GRP-TECH"');
   await confirmation.getByRole("button", { name: "Save changes" }).click();
-  expect(mock.rpcCalls.at(-1)).toMatchObject({ endpoint: "app_upsert_candidate", payload: { group_id: "GRP-TECH" } });
+  expect(mock.rpcCalls.at(-1)).toMatchObject({ endpoint: "app_upsert_candidate_profile_v2", payload: { group_id: "GRP-TECH" } });
+});
+
+test("workspace group lock also holds when creating an application for an existing candidate", async ({ page }) => {
+  const mock = await installMockSupabase(page, { role: "admin_recruiter" });
+  await page.goto("/workspace?type=group&id=GRP-TECH&section=pipeline");
+  await expectWorkspaceReady(page);
+
+  await page.getByRole("button", { name: "New Candidate", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Create Candidate" });
+  await dialog.getByRole("textbox", { name: "Use existing candidate", exact: true }).fill("C-PHONE");
+  await dialog.getByRole("button", { name: "Use existing candidate", exact: true }).click();
+  await expect(dialog.getByRole("option", { name: /C-PHONE · Pat Phone/ })).toBeVisible();
+  await page.getByRole("option", { name: /C-PHONE · Pat Phone/ }).click();
+  const lockedGroup = dialog.getByRole("button", { name: "Group ID", exact: true });
+  await expect(lockedGroup).toBeDisabled();
+  await expect(lockedGroup).toContainText("GRP-TECH");
+  await expect(dialog.locator('input[type="hidden"][name="group_id"]')).toHaveCount(1);
+  expect(mock.rpcCalls.filter(call => call.endpoint === "app_application_destinations_page_v1")).toHaveLength(0);
+  await dialog.getByRole("button", { name: "Review changes" }).click();
+  const confirmation = page.getByRole("dialog", { name: "Confirm Save" });
+  await expect(confirmation.locator("pre")).toContainText('"group_id": "GRP-TECH"');
+  await expect(confirmation.locator("pre")).toContainText('"candidate_id": "C-PHONE"');
+  await confirmation.getByRole("button", { name: "Save changes" }).click();
+  expect(mock.rpcCalls.at(-1)).toMatchObject({ endpoint: "app_create_candidate_application_v1", payload: { candidate_id: "C-PHONE", group_id: "GRP-TECH" } });
 });
 
 test("filled workspace allows correcting its final saved sourcing week", async ({ page }) => {
   const mock = await installMockSupabase(page, { role: "admin_recruiter" });
+  mock.data.sourcing_weekly_updates.filter((row) => row.group_id === "GRP-ENG").forEach((row) => { row.week_start = row.week_start === "2026-07-06" ? "2026-07-04" : "2026-06-27"; });
   const groupMatches = mock.data.document_groups.filter((row) => row.group_id === "GRP-ENG");
   const docIds = new Set(groupMatches.map((row) => row.doc_id));
   mock.data.requisitions.filter((row) => docIds.has(row.doc_id)).forEach((row) => {
@@ -37,12 +68,12 @@ test("filled workspace allows correcting its final saved sourcing week", async (
   await layout.getByRole("button", { name: "Save record" }).click();
 
   const confirmation = page.getByRole("dialog", { name: "Confirm Save" });
-  await expect(confirmation.locator("pre")).toContainText('"week_start": "2026-07-06"');
+  await expect(confirmation.locator("pre")).toContainText('"week_start": "2026-07-04"');
   await expect(confirmation.locator("pre")).toContainText('"applicants_fb": "9"');
   await confirmation.getByRole("button", { name: "Save changes" }).click();
   expect(mock.rpcCalls.at(-1)).toMatchObject({
     endpoint: "app_upsert_sourcing_weekly_update",
-    payload: { group_id: "GRP-ENG", week_start: "2026-07-06", applicants_fb: "9", expected_updated_at: "2026-07-06T00:00:00" }
+    payload: { group_id: "GRP-ENG", week_start: "2026-07-04", applicants_fb: "9", expected_updated_at: "2026-07-06T00:00:00" }
   });
 });
 
@@ -182,6 +213,23 @@ test("overview panels reflow and the highlighted journey row opens its section",
   await expect(page).toHaveURL(/section=sourcing/);
   await page.goBack();
   await expect(page.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
+});
+
+test("workspace displays padded group ids while retaining the stored raw id in navigation", async ({ page }) => {
+  const mock = await installMockSupabase(page, { role: "admin_recruiter" });
+  const replace = (value: unknown): void => {
+    if (Array.isArray(value)) { value.forEach(replace); return; }
+    if (!value || typeof value !== "object") return;
+    for (const [key, child] of Object.entries(value)) {
+      if (typeof child === "string" && child === "GRP-TECH") (value as Record<string, unknown>)[key] = "GRP-0001";
+      else replace(child);
+    }
+  };
+  replace(mock.data);
+  await page.goto("/workspace?type=group&id=GRP-0001&section=overview");
+  await expectWorkspaceReady(page);
+  await expect(page.getByText("GRP-00001", { exact: true }).first()).toBeVisible();
+  await expect(page).toHaveURL(/id=GRP-0001/);
 });
 
 test("overview scrolls all issues and retains destinations and setup permissions", async ({ page }) => {
@@ -449,11 +497,11 @@ test("picker previews every scoped linked requisition and shows group ratios", a
   await page.goto("/workspace");
   await expectWorkspaceReady(page);
 
-  const group = page.getByRole("button", { name: /Engineer, GRP-ENG/ }).locator("xpath=../..");
+  const group = page.getByRole("button", { name: /Engineer, GRP-ENG/ }).locator("xpath=ancestor::*[self::tr or self::article][1]");
   await expect(group).toContainText("3 requisitions");
   await expect(group).toContainText("1/7");
-  const identityBounds = await group.locator(":scope > div").first().boundingBox();
-  const readinessBounds = await group.locator(":scope > div").nth(1).boundingBox();
+  const identityBounds = await group.locator(":scope > td").first().boundingBox();
+  const readinessBounds = await group.locator(":scope > td").nth(1).boundingBox();
   expect(Math.abs((identityBounds!.y + identityBounds!.height / 2) - (readinessBounds!.y + readinessBounds!.height / 2))).toBeLessThanOrEqual(2);
   const trigger = group.getByRole("button", { name: /Linked requisitions: 3 requisition/ });
   await trigger.focus();
@@ -501,7 +549,7 @@ test("picker ratios and preview exclude requisitions outside the user's scope", 
   closed.group_id = "GRP-TECH";
   await page.goto("/workspace");
   await expectWorkspaceReady(page);
-  const group = page.getByRole("button", { name: /Technician, GRP-TECH/ }).locator("xpath=../..");
+  const group = page.getByRole("button", { name: /Technician, GRP-TECH/ }).locator("xpath=ancestor::*[self::tr or self::article][1]");
   await expect(group).toContainText("1 requisition");
   await expect(group).toContainText("1/3");
   await group.getByRole("button", { name: /Linked requisitions/ }).focus();
@@ -518,7 +566,7 @@ test("All groups opens a historical group and keeps the scope on return", async 
   await page.getByRole("button", { name: "All groups" }).click();
   const historical = page.getByRole("button", { name: /Closed Role, GRP-CLOSED/ });
   await expect(historical).toBeVisible();
-  await expect(historical.locator("xpath=../..")).toContainText("Filled");
+  await expect(historical.locator("xpath=ancestor::*[self::tr or self::article][1]")).toContainText("Filled");
   await historical.click();
   await expect(page).toHaveURL(/type=group.*id=GRP-CLOSED/);
   await expect(page.getByTestId("group-focused-tags")).toContainText("Filled");
@@ -543,7 +591,7 @@ test("historical group URL selects All and labels mixed terminal links", async (
   await expect(page.getByTestId("group-focused-tags")).toContainText("Closed");
   await page.getByRole("button", { name: "Back to Workspace groups" }).click();
   await expect(page.getByRole("button", { name: "All groups" })).toHaveAttribute("aria-pressed", "true");
-  const historical = page.getByRole("button", { name: /Closed Role, GRP-CLOSED/ }).locator("xpath=../..");
+  const historical = page.getByRole("button", { name: /Closed Role, GRP-CLOSED/ }).locator("xpath=ancestor::*[self::tr or self::article][1]");
   await expect(historical).toContainText("Closed");
   await expect(historical).toContainText("2 requisitions");
 });
@@ -1011,6 +1059,28 @@ test("group header handles long ID, missing owner, and back navigation", async (
   await expect(page.getByRole("heading", { name: "Select a hiring workspace" })).toBeVisible();
 });
 
+test("selected Workspace group hydrates only its scoped metadata from empty bootstrap", async ({ page }) => {
+  const mock = await installMockSupabase(page, { role: "admin_recruiter" });
+  await page.goto("/workspace?type=group&id=GRP-ENG");
+  await expectWorkspaceReady(page);
+  await expect(page.getByRole("heading", { name: /Engineer/ }).first()).toBeVisible();
+  const lookup = mock.rpcCalls.find(call => call.endpoint === "app_recruitment_groups_page_v1");
+  expect(lookup?.payload.p_filters).toMatchObject({ exactGroupId: "GRP-ENG" });
+  expect(mock.restReads.some(read => read.table === "candidates")).toBe(false);
+  expect(mock.rpcCalls.some(call => call.endpoint === "app_pipeline_summary_v1" && call.payload.p_group_id === "GRP-ENG")).toBe(true);
+  await expect(page.getByTestId("group-header-metrics")).toBeVisible();
+});
+
+test("selected Workspace requisition hydrates its related records without loading people", async ({ page }) => {
+  const mock = await installMockSupabase(page, { role: "admin_recruiter" });
+  await page.goto("/workspace?type=requisition&id=REQ-UNMATCHED-1");
+  await expectWorkspaceReady(page);
+  await expect(page.getByRole("dialog")).toContainText("REQ-UNMATCHED-1");
+  expect(mock.restReads.some(read => read.table === "offers")).toBe(true);
+  expect(mock.restReads.some(read => read.table === "candidates")).toBe(false);
+  await expect(page.getByRole("dialog")).toContainText("Requisition Detail");
+});
+
 test("long group identity keeps metrics below it on phones and compacts on scroll", async ({ page }) => {
   const mock = await installMockSupabase(page, { role: "admin_recruiter" });
   const longTitle = "Senior Procurement Operations and Supplier Development Specialist with Regional Strategic Sourcing Responsibilities";
@@ -1054,8 +1124,8 @@ test("workspace group rows truncate long titles and retain the full native toolt
   await expect(title).toBeVisible();
   await expect(title).toHaveAttribute("title", longTitle);
   await expect(title.locator("span")).toHaveClass(/truncate/);
-  await expect(page.getByText("GRP-ENG", { exact: true })).toBeVisible();
-  const [cellBox, titleBox, idBox] = await Promise.all([title.locator("..").boundingBox(), title.boundingBox(), page.getByText("GRP-ENG", { exact: true }).boundingBox()]);
+  await expect(page.getByRole("table").getByText("GRP-ENG", { exact: true })).toBeVisible();
+  const [cellBox, titleBox, idBox] = await Promise.all([title.locator("..").boundingBox(), title.boundingBox(), page.getByRole("table").getByText("GRP-ENG", { exact: true }).boundingBox()]);
   expect(cellBox!.width).toBeLessThan(250);
   expect(titleBox!.height).toBeGreaterThanOrEqual(44);
   expect(idBox!.y).toBeGreaterThanOrEqual(titleBox!.y + titleBox!.height);
@@ -1143,7 +1213,8 @@ test("workspace picker keeps all matches, supports sorting, and opens the select
   await expectWorkspaceReady(page);
   await expect(page.getByRole("status")).toContainText("matching workspaces");
   await expect(page.getByRole("button", { name: /GRP-EXTRA-13/ })).toBeVisible();
-  await page.getByLabel("Sort by").selectOption("name");
+  await page.getByRole("button",{name:"Sort by",exact:true}).click();
+  await page.getByRole("option",{name:"Name A–Z",exact:true}).click();
   await expect(page.getByRole("button", { name: /GRP-ENG/ })).toBeVisible();
   await page.getByLabel("Search workspaces").fill("GRP-EXTRA-13");
   await expect(page.getByRole("status")).toContainText("1 matching workspaces");

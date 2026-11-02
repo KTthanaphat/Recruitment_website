@@ -1,6 +1,7 @@
 import { BUILTIN_DASHBOARD_REPORTS, type CommonDashboardFilter, type DashboardReportIdentity } from "./dashboard-report-registry";
 import { previousSourcingReportingRange } from "./dates";
 import { performanceRange, type PerformancePeriod } from "./recruitment-performance";
+import type { RejectionSort } from "./rejection-report";
 
 export type DashboardTab = string;
 export type DashboardLevel = "0-3" | "4-6" | "7-9" | "10-14";
@@ -12,7 +13,9 @@ export type DashboardPreferences = DashboardFilterState & {
   tab: DashboardTab;
   funnelChannel: string; funnelLegend: boolean; stageCountMode: "status" | "activity" | "accum";
   executiveBreakdownOpen: boolean; exportColumns: string[];
-  performanceSubview: "overview" | "vacancy" | "risk"; pipelineSubview: "overview" | "bottlenecks";
+  performanceSubview: "overview" | "vacancy" | "risk"; pipelineSubview: "overview" | "bottlenecks" | "rejections";
+  rejectionActor: string; rejectionStage: string; rejectionMain: string; rejectionDetail: string; rejectionSearch: string;
+  rejectionSort: RejectionSort; rejectionPage: number; rejectionReasonView: "treemap" | "bars";
   riskGrouping: "department-site" | "department" | "site"; riskFilter: string; riskGroup: string;
   queueStatus: string; queueStage: string; queuePic: string; queueSearch: string;
 };
@@ -23,6 +26,7 @@ export function dashboardDefaults(today: string): DashboardPreferences {
   return { period: "mtd", month: today.slice(0, 7), customStart: range.startDate, customEnd: range.endDate,
     sites: [], departments: [], levels: [], tab: "performance", funnelChannel: "all", funnelLegend: true, stageCountMode: "status",
     executiveBreakdownOpen: false, exportColumns: [], performanceSubview: "overview", pipelineSubview: "overview",
+    rejectionActor: "", rejectionStage: "", rejectionMain: "", rejectionDetail: "", rejectionSearch: "", rejectionSort: "date-desc", rejectionPage: 0, rejectionReasonView: "treemap",
     riskGrouping: "department-site", riskFilter: "attention", riskGroup: "", queueStatus: "auto", queueStage: "", queuePic: "", queueSearch: "" };
 }
 export function validDashboardDate(value: string) {
@@ -83,13 +87,19 @@ export function restoreDashboardPreferences(params: URLSearchParams, base: Dashb
     state.performanceSubview = view === "vacancy" || view === "risk" ? view : "overview";
   } else if (legacyVacancy) state.performanceSubview = params.get("vacancySubview") === "risk" ? "risk" : "vacancy";
   else if (explicitTab === "performance") state.performanceSubview = "overview";
-  if (params.has("pipelineSubview")) state.pipelineSubview = params.get("pipelineSubview") === "bottlenecks" ? "bottlenecks" : "overview";
+  if (params.has("pipelineSubview")) state.pipelineSubview = params.get("pipelineSubview") === "rejections" ? "rejections" : params.get("pipelineSubview") === "bottlenecks" ? "bottlenecks" : "overview";
   else if (explicitTab === "pipeline") state.pipelineSubview = "overview";
   const grouping = params.get("riskGrouping");
   if (grouping === "department" || grouping === "site" || grouping === "department-site") state.riskGrouping = grouping;
   for (const key of ["riskFilter", "riskGroup", "queueStatus", "queueStage", "queuePic", "queueSearch"] as const) if (params.has(key)) state[key] = params.get(key) ?? "";
   if (!["all", "track", "near", "overdue", "unknown", "attention", "priority"].includes(state.riskFilter)) state.riskFilter = "attention";
   if (!["auto", "all", "overdue", "today", "upcoming", "unscheduled", "unavailable"].includes(state.queueStatus)) state.queueStatus = "auto";
+  for (const key of ["rejectionActor", "rejectionStage", "rejectionMain", "rejectionDetail", "rejectionSearch"] as const) if (params.has(key)) state[key] = params.get(key) ?? "";
+  if (!["", "company", "candidate", "unclassified"].includes(state.rejectionActor)) state.rejectionActor = "";
+  if (params.has("rejectionReasonView")) state.rejectionReasonView = params.get("rejectionReasonView") === "bars" ? "bars" : "treemap";
+  const rejectionSort = params.get("rejectionSort");
+  if (rejectionSort && ["date-desc", "date-asc", "candidate-asc", "stage-asc"].includes(rejectionSort)) state.rejectionSort = rejectionSort as RejectionSort;
+  if (params.has("rejectionPage")) { const page = Number(params.get("rejectionPage")); state.rejectionPage = Number.isSafeInteger(page) && page >= 0 ? page : 0; }
   return state;
 }
 export function dashboardUrlValues(state: DashboardPreferences) {
@@ -97,6 +107,7 @@ export function dashboardUrlValues(state: DashboardPreferences) {
   const legacy = state as DashboardPreferences & { vacancySubview?: string };
   const oldVacancy = state.tab === "vacancy";
   return { dashboardTab: oldVacancy ? "performance" : state.tab, dashboardPeriod: state.period, dashboardMonth: state.month,
+    rejectionActor: state.rejectionActor ?? "", rejectionStage: state.rejectionStage ?? "", rejectionMain: state.rejectionMain ?? "", rejectionDetail: state.rejectionDetail ?? "", rejectionSearch: state.rejectionSearch ?? "", rejectionSort: state.rejectionSort ?? "date-desc", rejectionPage: String(state.rejectionPage ?? 0), rejectionReasonView: state.rejectionReasonView === "bars" ? "bars" : "treemap",
     performanceSubview: state.performanceSubview ?? (oldVacancy ? legacy.vacancySubview === "risk" ? "risk" : "vacancy" : "overview"), vacancySubview: null, pipelineSubview: state.pipelineSubview ?? "overview", riskGrouping: state.riskGrouping ?? "department-site", riskFilter: state.riskFilter ?? "attention", riskGroup: state.riskGroup ?? "",
     queueStatus: state.queueStatus ?? "auto", queueStage: state.queueStage ?? "", queuePic: state.queuePic ?? "", queueSearch: state.queueSearch ?? "",
     dashboardStart: state.customStart, dashboardEnd: state.customEnd,

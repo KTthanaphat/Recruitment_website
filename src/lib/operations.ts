@@ -1,8 +1,10 @@
+import { compareApplicationLogs } from "@/lib/application-stage-order";
 import { ACTIVE_PIPELINE_STAGES, PROCESS_UPDATE_STAGES, SOURCING_CHANNELS, processLabel } from "@/lib/constants";
 import { enrichCandidates, enrichOffers, enrichRequisitions, enrichSourcingGroups, latestLogsForCandidate } from "@/lib/data";
 import { formatLocalDateInput } from "@/lib/dates";
 import { formatCandidateName, formatRequisitionTitle } from "@/lib/format";
 import { countsTowardHeadcount } from "@/lib/offer-headcount";
+import { applicationCandidates, belongsToApplication, assignmentGroup, canManageCandidateJourney } from "@/lib/applications";
 import { getRequisitionSlaState } from "@/lib/sla";
 import type {
   ChangeLog,
@@ -349,6 +351,10 @@ export function offerStatus(offer: Pick<EnrichedOffer, "accepted_date" | "create
 }
 
 export function offerImpact(offer: EnrichedOffer, allOffers: Offer[], requisitions: EnrichedRequisition[]) {
+  if (typeof offer.head_count === "number" && typeof offer.accepted_count === "number") {
+    const open = Math.max(offer.head_count - offer.accepted_count, 0);
+    return `${offer.accepted_count}/${offer.head_count} accepted - ${open === 0 ? "fills requisition" : `${open} open`}`;
+  }
   const requisition = requisitions.find((row) => row.doc_id === offer.doc_id);
   if (!requisition) return "Requisition not found";
   const accepted = allOffers.filter((row) => row.doc_id === offer.doc_id && countsTowardHeadcount(row)).length;
@@ -403,7 +409,8 @@ export function ageDays(value: string | null | undefined) {
 
 export function candidateProcessDisabledReason(candidate: EnrichedCandidate, logs: RecruitmentLog[], profile: Profile | null): DisabledReason {
   if (!canProfileWrite(profile)) return disabled("readonly_role", "Read-only role", "Your role can inspect this candidate but cannot update process records.", "Ask an admin recruiter or site recruiter with access to update it.");
-  if (logs.some((log) => log.result === 0)) return disabled("failed_candidate", "Failed candidate", "Pipeline update unavailable because this candidate has a failed stage.", "Review the history or create a separate candidate record for a new application.");
+  if (!canManageCandidateJourney(candidate,profile)) return disabled("permission_scope","Application PIC required","Only this application group PICs or administrators can update the journey.","Ask the application PIC to update it.");
+  if (logs.some((log) => log.result === 0)) return disabled("failed_candidate", "Failed candidate", "Pipeline update unavailable because this candidate has a failed stage.", "Review this journey or add a fresh application to the existing profile.");
   if (candidate.accepted_date || (candidate.latest_process === "Offer" && candidate.latest_result === 1)) {
     return disabled("completed_candidate", "Completed candidate", "Pipeline update unavailable because this candidate completed all stages.", "Review the offer record instead of adding another process update.");
   }
@@ -421,8 +428,8 @@ export function candidatePipelineCapability(candidate: EnrichedCandidate, logs: 
   if (profile?.role === "site_recruiter") {
     const names = [profile.nickname, profile.full_name].filter(Boolean).map((value) => value!.trim().toLowerCase());
     const inAssignedSite = Boolean(profile.site && candidate.site?.toLowerCase() === profile.site.toLowerCase());
-    const isAssignedRecruiter = names.some((name) => (candidate.person_in_charge ?? "").toLowerCase() === name);
-    if (!inAssignedSite && !isAssignedRecruiter) {
+    const isAssignedRecruiter = names.some((name) => (candidate.person_in_charges ?? [candidate.person_in_charge]).some(pic => pic?.trim().toLowerCase() === name));
+    if (!isAssignedRecruiter) {
       return {
         blocked: true,
         code: "permission_scope",
@@ -475,7 +482,7 @@ export function pipelineStageRecords(logs: RecruitmentLog[], changeLogs: ChangeL
   }
   const legacyRecords: PipelineStageRecord[] = [];
   for (const rows of groups.values()) {
-    const ordered = [...rows].sort((a, b) => a.log_id - b.log_id);
+    const ordered = [...rows].sort(compareApplicationLogs);
     const pending = ordered.find((row) => row.result === null);
     const outcomeLog = [...ordered].reverse().find((row) => row.result === 0 || row.result === 1) ?? null;
     const source = pending ?? outcomeLog;
@@ -509,7 +516,7 @@ function isActiveProcessStage(stage: ProcessStage): stage is ActiveProcessStage 
 }
 
 export function activeProcessStage(logs: RecruitmentLog[]): { stage: ActiveProcessStage; round: number; pendingLogId: number; stageInstanceId: string; updatedAt: string } | null {
-  const pending = [...logs].sort((a, b) => b.log_id - a.log_id).find((row): row is RecruitmentLog & { recruitment_process: ActiveProcessStage } => row.result === null && isActiveProcessStage(row.recruitment_process));
+  const pending = [...logs].sort((a, b) => compareApplicationLogs(b, a)).find((row): row is RecruitmentLog & { recruitment_process: ActiveProcessStage } => row.result === null && isActiveProcessStage(row.recruitment_process));
   return pending ? { stage: pending.recruitment_process, round: pending.round, pendingLogId: pending.log_id, stageInstanceId: pending.stage_instance_id ?? String(pending.log_id), updatedAt: pending.updated_at ?? pending.created_at } : null;
 }
 
@@ -533,6 +540,7 @@ export function pipelineMoveDisabledReason(candidate: EnrichedCandidate, targetS
 export function offerActionDisabledReason(candidate: EnrichedCandidate | null | undefined, requisition: EnrichedRequisition | Requisition | null | undefined, profile: Profile | null): DisabledReason {
   if (!canProfileWrite(profile)) return disabled("readonly_role", "Read-only role", "Your role can inspect offers but cannot create or update them.", "Ask a recruiter with write access.");
   if (!candidate) return disabled("missing_required_data", "Missing candidate", "An offer must be linked to a candidate.", "Select a candidate before creating the offer.");
+  if (!canManageCandidateJourney(candidate,profile)) return disabled("permission_scope","Application PIC required","Only the application PICs or administrators may update its offers.","Ask its PIC to update the offer.");
   if (!requisition) return disabled("missing_required_data", "Missing requisition", "An offer must be linked to a requisition.", "Match the candidate to a requisition first.");
   if ("status" in requisition && requisition.status === "cancel") return disabled("closed_requisition", "Closed requisition", "Offers cannot be created for cancelled requisitions.", "Use an ongoing requisition.");
   if (candidate.latest_process !== "Offer") return disabled("not_offer_stage", "Not in Offer", "Candidate has not reached the Offer stage.", "Move the candidate to Offer before creating the offer record.");
@@ -583,7 +591,7 @@ export function derivePipelineBottlenecks(candidates: EnrichedCandidate[], recru
       && (!filters?.query || [candidate.candidate_id, candidate.name, candidate.nickname, candidate.group_position, candidate.doc_ids.join(" ")].join(" ").toLowerCase().includes(filters.query.toLowerCase()))
   );
   const scopedCandidateIds = new Set(scoped.map((candidate) => candidate.candidate_id));
-  const scopedLogs = recruitmentLogs.filter((log) => scopedCandidateIds.has(log.candidate_id));
+  const scopedLogs = recruitmentLogs.filter((log) => scoped.some(candidate=>belongsToApplication(log,candidate)));
   const activeRows = scoped.filter((row) => row.latest_result !== 0 && !(row.latest_process === "Offer" && row.latest_result === 1));
   const stages: Array<ProcessStage | "No activity"> = ["No activity", ...ACTIVE_PIPELINE_STAGES];
   const stageHealth = stages.map((stage) => deriveStageHealth(stage, activeRows, scopedLogs));
@@ -614,7 +622,7 @@ export function deriveDataQualityIssues(data: DashboardData): DataQualityIssue[]
     ...requisitions.flatMap((requisition) => requisitionQualityIssues(requisition, data)),
     ...offers.flatMap((offer) => offerQualityIssues(offer, data)),
     ...groups.flatMap((group) => sourcingQualityIssues(group, data)),
-    ...candidates.flatMap((candidate) => pipelineQualityIssues(candidate, latestLogsForCandidate(data, candidate.candidate_id), data))
+    ...candidates.flatMap((candidate) => pipelineQualityIssues(candidate, latestLogsForCandidate(data, candidate.candidate_id, candidate.application_id), data))
   ].sort((a, b) => severityWeight(b.severity) - severityWeight(a.severity) || a.title.localeCompare(b.title));
 }
 
@@ -700,19 +708,19 @@ export function pipelineQualityIssues(candidate: EnrichedCandidate, logs: Recrui
 
 export function deriveSourcingConversionMetrics(data: DashboardData, groupId: string, weekStart = formatLocalDateInput()): SourcingConversionMetric[] {
   const groupMatches = data.document_groups.filter((match) => match.group_id === groupId);
-  const candidates = data.candidates.filter((candidate) => candidate.group_id === groupId || (!candidate.group_id && groupMatches.some((match) => match.doc_group_id === candidate.doc_group_id)));
+  const candidates = applicationCandidates(data).filter((candidate) => candidate.group_id === groupId || (!candidate.group_id && groupMatches.some((match) => match.doc_group_id === candidate.doc_group_id)));
   const update = data.sourcing_weekly_updates.find((row) => row.group_id === groupId && row.week_start === weekStart);
   const previous = sourcingPreviousUpdate(data, groupId, weekStart);
 
   return SOURCING_CHANNELS.map((channel) => {
     const channelCandidates = candidates.filter((candidate) => normalized(candidate.channel) === normalized(channel.label));
     const candidateIds = new Set(channelCandidates.map((candidate) => candidate.candidate_id));
-    const logs = data.recruitment_logs.filter((log) => candidateIds.has(log.candidate_id));
+    const logs = data.recruitment_logs.filter((log) => candidateIds.has(log.candidate_id) && (log.entry_assignment_id ? assignmentGroup(data,log.entry_assignment_id) === groupId : channelCandidates.some(candidate=>belongsToApplication(log,candidate))));
     const reachedOfferIds = new Set(logs.filter((log) => log.recruitment_process === "Offer").map((log) => log.candidate_id));
     const applicants = Number(update?.[channel.count] ?? 0);
-    const candidateCount = channelCandidates.length;
+    const candidateCount = candidateIds.size;
     const reachedOffer = reachedOfferIds.size;
-    const acceptedOffers = data.offers.filter((offer) => candidateIds.has(offer.candidate_id) && offer.accepted_date).length;
+    const acceptedOffers = data.offers.filter((offer) => channelCandidates.some(candidate=>belongsToApplication(offer,candidate)) && offer.accepted_date && groupMatches.some(link=>link.doc_id===offer.doc_id)).length;
     return {
       groupId,
       channel: channel.label,

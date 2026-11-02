@@ -190,6 +190,8 @@ Canonical URLs use `dashboardTab`, `dashboardPeriod`, `dashboardMonth`, `dashboa
 
 The overview uses eligible approved headcount as Total Vacancies, accepted positions in the selected range as Filled (capped at each requisition's headcount), and their difference as Open. It uses the existing report eligibility and no-show/SLA rules. Filled PCT is Filled divided by Total Vacancies; Filled in SLA PCT excludes unknown SLA outcomes and shows their count separately; average time to fill is PR approval to accepted offer in calendar days. A zero denominator displays an unavailable value. KPI deltas compare MTD and Performance in Month with the immediately preceding equal-length range, and YTD with the corresponding prior-year range; percentage deltas use percentage points.
 
+Performance screen metrics and cells come from `app_dashboard_performance_summary_v1`; the response contains only current/prior ranges, totals, cells and site labels. Excel retrieves the complete authenticated company report feed before building source/contribution rows; an incomplete or duplicate source response blocks the download. Home summary values use `app_home_summary_v1` while record lists remain separately paged. The Recruitment Calendar requests its visible date window from `app_recruitment_calendar_v1`, limited to 62 inclusive dates and returned in 200-row `(date,id)` cursor pages. The client loads all pages before publishing the event list. Database-wide Site/Department choices use `app_dashboard_filter_options_v1` within the active header scope.
+
 Its charts use one filtered population: New/Replacement approved headcount by job level with cumulative vacancy share, Filled/Open by site and level, and on-time/late/unknown-SLA fills by site and level. Bands are NML L0–L3, FML L4–L6, MML L7–L9, SML L10–L12, Executive L13–L14, plus Unknown for invalid or missing levels. The matrix and SLA rows descend from Executive; the composition chart ascends from NML; Unknown is appended. Keep all standard chart categories and scoped site axes even with zero records, while leaving empty matrix value cells blank and retaining empty-state messages and KPI zero/unavailable values. Waterfall shows only populated Opening, site Open/Filled and Closing columns, with an empty message when no movement exists. Matrix and SLA count scales are shared across their site columns. The SLA axis rounds highest fills × 1.1 up to the next even count (minimum 2), and percentages always follow the end of the entire stacked bar. Recruitment Performance, Vacancy Waterfall, Active Requisitions and Pipeline Health use static title/date/action headers with always-open report content; internal Waterfall breakdown remains optional. Chart help is localized and available on hover, focus and tap. An overview PNG captures a complete desktop report with title, dates, applied filters, metrics and charts regardless of viewport size. Presentation is specified in the [Recruitment Performance visual contract](design/recruitment-performance.md).
 
 The Waterfall has no Y-axis. Readable stacked segments show centered white absolute vacancy counts; short segments defer to grouped site-count braces beside both Week Start and Total. Preserve established colors, legend, connectors, print, and PNG capture.
@@ -321,10 +323,10 @@ Sourcing:
 
 Candidates:
 
-- Candidates belong to `group_id`; optional `doc_group_id` preserves requisition-match context and may be reassigned or cleared by Unmatch.
+- Candidates are reusable person profiles with an immutable creator. Site-recruiter creations inherit the creator site; administrator creations may have no home site. `candidate_applications.group_id` owns each hiring journey; legacy profile group columns are compatibility anchors only.
 - Candidate channel is a dropdown filtered by the selected group’s marked sourcing channels.
-- New Candidate lists only Group IDs linked to ongoing requisitions with remaining headcount. Offers confirmed as `did_not_start` do not consume headcount. Site Recruiters additionally require their assigned Site and PIC; Admin Recruiter and System Admin retain all eligible groups. `app_upsert_candidate` enforces the same new-record rule.
-- New Candidate required fields are Name, Group ID, Channel, and First Contact Date. Phone and Email are optional in New mode; supplied phone must be a valid Thai 10-digit number and supplied email must be valid. Email remains optional in Change mode, while Phone is required. Candidate ID remains optional in New mode because it is generated.
+- The creator/admin starts an unmatched profile’s first application in any eligible group across sites; creator/application-group PIC/admin may start further applications. The restricted destination directory lists groups with ongoing demand and remaining headcount, without exposing unrelated pipelines. `app_upsert_candidate_profile_v2` atomically saves a profile, its optional note, and optional initial application.
+- New Candidate required fields are Name, Channel, and First Contact Date. Home site and Responsible recruiter controls are absent in New and Edit; the server owns creation defaults and ordinary edits preserve them. Name and Nickname share a desktop row and stack consecutively on phones. An application group is optional. Phone and Email are optional in New mode; supplied phone must be a valid Thai 10-digit number and supplied email must be valid. Email remains optional in Change mode, while Phone is required. Candidate ID remains optional in New mode because it is generated.
 - New Requisition shows a Doc ID example (`RMP-0000-00-00-0000`) and a localized Line Manager name example. Pipeline Pending and Outcome remarks show localized, stage-aware guidance only; placeholder text is never saved.
 - PR Approved Date, First Contact Date, and Pipeline Outcome date use the shared day-date selector. It displays Gregorian `DD/MM/YYYY`, submits the unchanged `YYYY-MM-DD` value, and uses Asia/Bangkok for today defaults; chronology and validation rules are unchanged.
 - Name remains the official required identity; Nickname is optional, stored as nullable text, and every candidate label uses `Full name (nickname)` when a nickname exists (otherwise the full name alone).
@@ -333,7 +335,7 @@ Candidates:
 - Reference Name is visible and required only when Channel is `Referral`; changing to another channel omits `ref_name` from the submitted candidate payload.
 - Candidate contact and Pipeline stage dates may precede PR Approved Date, so recruiters can record pre-approval outreach. They still follow the existing Pipeline chronology and Bangkok-business-date rules.
 - Candidate folder URL is stored in `candidate_folder_url` and shown as an external link in candidate detail.
-- Candidate detail shows a pipeline journey above the timeline and displays optional candidate email when present.
+- Candidate detail shows the complete shared profile, position interests, and one current profile note before accessible application tabs. Selected application content contains Journey, Application details, Contact references, and Activity; shared identity is not repeated.
 - Candidate Pipeline Journey includes a derived first `Resume Screening` dot. It is shown as passed for recorded candidates, but it is not stored in `recruitment_logs` and is not an active Pipeline board column.
 - Candidate detail keeps stage/result in tags instead of duplicate summary boxes. The Update process action only appears when the candidate is updateable; secondary navigation remains in the detail drawer action menu. Record tables/cards expose only the magnifying-glass View detail action.
 
@@ -346,7 +348,7 @@ Group doc URL context:
 Process update validation:
 
 - Users cannot update to a stage before the current stage.
-- Update is unavailable if the candidate failed at any historical stage.
+- Update is unavailable if the selected application has a current failed stage. Another application starts independently.
 - Update is unavailable if the candidate completed all active stages.
 - Manual Process Update cannot open a future stage while the latest stage is still pending. No-activity candidates can create Phone Screen as Pending; active candidates must complete the current pending stage with a result before the next pending stage is opened.
 
@@ -416,6 +418,9 @@ Supabase tables:
 - `position_groups`
 - `document_groups`
 - `candidates`
+- `candidate_applications`
+- `candidate_application_assignments`
+- `candidate_notes`
 - `candidate_requisitions`
 - `recruitment_logs`
 - `offers`
@@ -432,7 +437,7 @@ Important newer fields:
 - `recruitment_logs.stage_instance_id`, Outcome detail fields, Pending edit metadata, record origin/migration note, and supersession metadata.
 - sourcing channel flags and applicant counts for LinkedIn, Walk-in, Referral, and Others.
 
-Candidates store direct `group_id`; `doc_group_id` is optional requisition-match context. Group-level sourcing and weekly applicant totals remain available after a requisition is unmatched. Before a formal offer exists, Pipeline Funnel stages and Source Effectiveness Phone counts use candidate group membership; Hired counts use the offer's exact `doc_id`. `candidate_requisitions` is an offer-backed, audited association projection: candidate creation does not create requisition links, and offer insert/update/delete keeps exact links synchronized. Candidate Detail does not manually edit these links.
+Candidate profiles store `home_site`, `responsible_recruiter_id`, and `position_interests`. Applications own group membership; assignment intervals preserve transfer history. Recruitment logs, offers, reference assessments, and explicit requisition associations carry `application_id` plus a consistent candidate ID. Logs retain separate entry/outcome assignment references. Offer-backed `candidate_requisitions` remains an audited projection; saving a pool profile creates no requisition link or stage. See [Independent candidate profiles](#independent-candidate-profiles) for counting and access rules.
 
 New group-scope migration:
 
@@ -542,3 +547,41 @@ If browser behavior changed, also run or manually verify the impacted flow at `h
 ## Documentation Rule
 
 Update this file when routes, workflows, database tables, RPCs, roles, or visual structure change.
+
+## Independent candidate profiles
+
+- `candidates.created_by` is immutable and independent of application PICs. `home_site` is nullable for administrator creation; a site recruiter must have a configured account site. Legacy creator backfill uses unambiguous creation audit actors and preserves timestamps/outcomes.
+- Unmatched means no application has ever existed. Creator/admin can read the full unmatched profile; all signed-in roles can discover only ID, interests, creator label, and saved date through a server-redacted projection. Other identity/contact/CV/reference/note values never enter browser data. Only creator/admin can start its first application.
+- Matched profiles retain scoped group/site reads plus creator/admin access. Shared-profile edits belong to creator/application PIC/admin. Creator status alone grants no foreign journey access. Closing all journeys does not restore global masked discovery.
+- All PICs on requisitions linked to an application's current group can read its linked requisition/offer context and manage that journey, without receiving extra requisition write privileges; site membership alone is read-only. Stage, assessment, offer, meeting, letter, and transfer writes enforce PIC/admin authorization on the server. Creator/PIC/admin can add independent applications across sites. Source PIC/admin can transfer across sites, with existing accepted-offer and meeting blockers.
+- One journey per candidate/group across current and historical assignments, including closed journeys. The original journey may transfer back; a different/new journey cannot use that group. Internal unique candidate/group claims enforce the rule for RPC, legacy, and direct writes (`APPLICATION_GROUP_ALREADY_USED`). Transfers preserve the ID, stage/round/results, and entry/outcome assignment attribution. Access follows destination scope; former PICs receive no special retention.
+- Each candidate has one optional current profile note. Creator/admin edits or clears it with expected note ID/version; creator/application PIC/admin reads it. PICs cannot inject a note edit through profile writes. Unauthorized readers receive no note, snippet, author, or count. Protected audit records retain revisions.
+- Contact duplicate review runs on Review changes and again on write. It lists only authorized full-profile matches, with candidate IDs and phone/email match categories. The popup supports Open existing profile, Back to form, and Continue as a separate candidate. There is no checkbox, merge, or automatic duplicate block. Normalized contacts and the reviewed match set must still match at write time.
+- Registry counts distinct authorized people; masked unmatched summaries are separate from full profiles. Search masked entries only by permitted fields. Active counts/history reflect authorized journeys; never fabricate hidden application counts or classify an out-of-scope journey as unmatched.
+- Application tabs include active and closed authorized journeys, active first/newest first. Registry opening with multiple journeys requires selection; contextual `applicationId` links select exactly. Journey actions always use that application's ID. Shared profile information is shown once above tabs.
+- Current group pipeline counts active assigned journeys; group historical totals and company profile totals count distinct people. Entry/outcome assignment determines event attribution; actual offer requisitions determine headcount. Reassigned in/out counts remain transfer-event counts, without fabricated assessments.
+- Workspace Groups Table/Cards preference remains per-user, with Table default and one uncapped filtered/sorted result model.
+
+Behavior owners: [Candidate detail](design/candidate-detail.md), [Workspace](design/workspace.md). Verification and migration: [profile redesign record](work-items/candidate-profile-redesign/implementation.md).
+
+## Rejection analytics
+
+Dashboard → Pipeline & Sources → Rejections is a read-only, authorized failure-event report. It inherits common Period/Site/Department/Level and header Site/PIC/Priority restrictions. Existing candidate/application RLS remains authoritative; visible profiles do not grant visibility into hidden applications. Dashboard retains its desktop requirement.
+
+Count one canonical failed outcome (result 0) per stage instance, excluding superseded records. Separate reopened attempts and applications count separately, even if the person later progresses or succeeds. Normalize legacy attempts with the existing stage-history rules; pending rows never count. Canonical outcomes require outcome_date; legacy outcomes may use their recorded log_date. Interpret timestamps in Bangkok and include both period boundaries. Creation/edit timestamps never replace missing outcome dates.
+
+Attribute events through outcome_assignment_id, validating that it belongs to the same application. Never fall back to the current group when assignment history or an explicit unresolved assignment exists. Where no assignment history exists, use the application's group or legacy candidate/document-group context. A shared group contributes one event if any linked requisition matches scope; retain all matching requisition context without multiplying events.
+
+Saved bilingual reason snapshots remain display truth after catalog edits or archival. Group by actor and saved reason ID when present; otherwise use actor and saved bilingual labels. Missing actor and missing reasons are independent classifications. Do not infer reasons from remarks or letter content. Dated legacy failures remain visible as Unclassified as necessary. Undated failures with resolvable matching recruitment scope are disclosed across history, excluded from period totals, and explicitly cannot be assigned to a period. Unresolved recruitment context is disclosed separately for in-period or undated authorized events; it cannot be attributed to a selected Site/Department/PIC. Ordinary out-of-scope events are excluded without being called data defects.
+
+Summary shows total events, company/candidate/unclassified actor counts, distinct people and distinct applications. Actor categories reconcile to total; shares divide by selected failure events, with no processed-candidate denominator. No previous-period comparison. All local filters affect selected-report summaries, bars, stage/trend charts and records. Treemap uses the explicitly labeled comparison population below. Actor, stage, main/detail reason and name/ID search persist in URL/session alongside sort/page; changing a parent reason clears its dependent selection. The first ten reasons retain shares of the full filtered total. Stage bars retain six active stages followed by any historical labels. Time buckets are daily through 31 days, Saturday–Friday weekly through 120 days, otherwise calendar months, zero-filled and clipped at boundaries.
+
+Candidate drilldowns pass applicationId to existing authorized hydration. Complete paginated loading is required before publishing a report, with refresh/cache invalidation/retry preserved. PNG and Excel freeze the selected report, export every matching event irrespective of pagination, and omit contact details/private notes. Excel retains two worksheets and typed dates/numeric shares. Presentation: [Rejection design](design/dashboard-rejections.md); implementation and checks: [Reporting](maps/system/reporting.md#rejection-analytics).
+
+### Reason treemap and comparison population
+
+Rejections alone defaults to Treemap, with a saved Treemap/Bars preference. Main-reason comparison applies period, authorized recruitment/header scope, actor, stage and search, ignoring Main/Detail selections. Selecting Main drills into its detailed comparison; that population additionally applies Main while ignoring Detail. Selecting Detail filters the selected report but retains sibling comparison values. Treemap percentages divide by its labeled comparison total. Bars retain selected-report counting. The breadcrumb clears Main/Detail; changing views preserves selection; clearing report filters preserves the view.
+
+Weekly buckets start Saturday/end Friday in Bangkok, clip both boundary buckets to the selected date range, and remain zero-filled. Granularity thresholds remain daily ≤31 days, weekly 32–120, monthly >120. No other dashboard's weekly convention changes.
+
+PNG captures the active view with full comparison labels and selected records. Excel retains selected-event source rows and adds separate comparison summary/source tables, including a selected-report contribution flag; exactly two worksheets remain. No schema or authorization change is required.

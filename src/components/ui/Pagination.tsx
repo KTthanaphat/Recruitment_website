@@ -10,6 +10,7 @@ export function Pagination({
   page,
   pageSize,
   totalRows,
+  disabled = false,
   onPageChange,
   onPageSizeChange
 }: {
@@ -17,6 +18,7 @@ export function Pagination({
   page: number;
   pageSize: number;
   totalRows: number;
+  disabled?: boolean;
   onPageChange: (page: number) => void;
   onPageSizeChange: (pageSize: number) => void;
 }) {
@@ -50,7 +52,7 @@ export function Pagination({
           className={`grid size-9 place-items-center rounded text-lg font-medium transition-colors ${
             safePage <= 1 ? "cursor-not-allowed text-cool" : "text-navy hover:bg-lightgray hover:text-primary"
           }`}
-          disabled={safePage <= 1}
+          disabled={disabled || safePage <= 1}
           aria-label={translate(language, "previousPage")}
           onClick={() => onPageChange(safePage - 1)}
         >
@@ -66,7 +68,7 @@ export function Pagination({
           className={`grid size-9 place-items-center rounded text-lg font-medium transition-colors ${
             safePage >= totalPages ? "cursor-not-allowed text-cool" : "text-navy hover:bg-lightgray hover:text-primary"
           }`}
-          disabled={safePage >= totalPages}
+          disabled={disabled || safePage >= totalPages}
           aria-label={translate(language, "nextPage")}
           onClick={() => onPageChange(safePage + 1)}
         >

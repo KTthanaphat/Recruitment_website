@@ -6,7 +6,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { RecordActionGroup, type RecordAction } from "@/components/ui/Operations";
 import { SectionTitle } from "@/components/ui/Panel";
 import { Tag } from "@/components/ui/Tag";
-import { formatDate, formatRequisitionOptionLabel, formatRequisitionTitle } from "@/lib/format";
+import { formatDate, formatRecruitmentId, formatRequisitionOptionLabel, formatRequisitionTitle } from "@/lib/format";
 import { offerStatusLabel, translate } from "@/lib/i18n/dictionary";
 import { offerStatus } from "@/lib/operations";
 import { countsTowardHeadcount } from "@/lib/offer-headcount";
@@ -138,15 +138,15 @@ export function WorkspaceOfferSection({
                 <div className="grid min-w-0 gap-1">
                   <div className="flex min-w-0 flex-wrap items-start gap-x-2 gap-y-1">
                     <button type="button" className="min-w-0 break-words text-left font-bold text-navy focus:outline-none focus:ring-2 focus:ring-primary/25" onClick={() => onOpenCandidate(offer.candidate_id)}>
-                      {offer.candidate_name ?? offer.candidate_id}
+                      {offer.candidate_name ?? formatRecruitmentId(offer.candidate_id)}
                     </button>
                     <Tag tone={status.tone}>{offerStatusLabel(language, status.label)}</Tag>
                   </div>
-                  <p className="text-[10px] font-medium text-cool">{offer.candidate_id}</p>
+                  <p className="text-[10px] font-medium text-cool">{formatRecruitmentId(offer.candidate_id)}</p>
                 </div>
                 <div className="min-w-0"><span className="text-xs text-slate md:sr-only">{translate(language, "requisitionId")}: </span><button type="button" className="block max-w-full truncate text-left text-sm font-semibold text-navy hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" title={formatRequisitionTitle(offer)} onClick={() => onOpenRequisition(offer.doc_id)}>{formatRequisitionTitle(offer)}</button><p className="text-xs text-cool">{offer.doc_id}</p></div>
                 <div className="grid min-w-0 gap-1 text-xs text-slate"><span><span className="md:sr-only">{translate(language, "workspaceImpact")}: </span>{impact}</span><span>{translate(language, "accepted")}: {formatDate(offer.accepted_date, language)}</span><span>{translate(language, "firstWorkingDate")}: {formatDate(offer.first_working_date, language)}</span></div>
-                <RecordActionGroup label={offer.candidate_name ?? offer.candidate_id} primary={primary} items={details} />
+                <RecordActionGroup label={offer.candidate_name ?? formatRecruitmentId(offer.candidate_id)} primary={primary} items={details} />
               </article>
             );
           })}

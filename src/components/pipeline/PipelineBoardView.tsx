@@ -1,8 +1,11 @@
 "use client";
+import { compareApplicationLogs } from "@/lib/application-stage-order";
+import { belongsToApplication, applicationKey } from "@/lib/applications";
+
 import { failureReasonText } from "@/lib/rejection-reasons";
 
 import { ArrowRight, Filter, Mail, Pencil, Plus, Search } from "lucide-react";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/Button";
 import { DayDateSelector, SelectInput } from "@/components/ui/Field";
@@ -10,17 +13,21 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { OperationalSummaryStrip } from "@/components/ui/Operations";
 import { Panel, SectionTitle } from "@/components/ui/Panel";
 import { PAGE_SIZE_OPTIONS, Pagination, paginateRows } from "@/components/ui/Pagination";
+import { CursorPagination } from "@/components/ui/CursorPagination";
 import { SortableFilterHeader, TableToolbar, type TableColumn, useTableControls } from "@/components/ui/TableControls";
 import { Tag } from "@/components/ui/Tag";
 import { DisabledReasonHint } from "@/components/ui/Workflow";
 import { ACTIVE_PIPELINE_STAGES, processIndex, processLabel } from "@/lib/constants";
 import { formatLocalDateInput } from "@/lib/dates";
-import { formatCandidateName, formatDate, resultText, statusTone } from "@/lib/format";
+import { formatCandidateName, formatDate, formatRecruitmentId, resultText, statusTone } from "@/lib/format";
 import { translate } from "@/lib/i18n/dictionary";
 import { candidatePipelineCapability, candidateProcessDisabledReason, candidateTouchAgeDays, isCandidateAging, pipelineMoveDisabledReason, type DataQualityIssue } from "@/lib/operations";
 import { readTableUrlState, writeTableUrlValues } from "@/lib/table-url-state";
 import { updateWorkspaceUrlState } from "@/lib/workspace-url-state";
-import type { CandidateReference, CandidateReferenceCheck, EnrichedCandidate, Language, ProcessStage, Profile, RecruitmentLog } from "@/types/recruitment";
+import { useRecruitmentList } from "@/lib/recruitment-list";
+import { clearPipelineSummaryCache, loadPipelineSummary, pipelineSummaryRevision, subscribePipelineSummary, type PipelineSummary } from "@/lib/pipeline-summary-loader";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { CandidateReference, CandidateReferenceCheck, DashboardData, EnrichedCandidate, Language, ProcessStage, Profile, RecruitmentLog } from "@/types/recruitment";
 
 type PipelineStageKey = ProcessStage | "No activity";
 type PipelineGroupBy = "none" | "site" | "owner";
@@ -33,7 +40,7 @@ function isRepeatableStage(stage: PipelineStageKey | null | undefined): stage is
 
 export function PipelineBoardView({
   language,
-  rows,
+  rows: initialRows,
   recruitmentLogs,
   recruitmentLogHistory = recruitmentLogs,
   candidateReferences = [],
@@ -57,7 +64,12 @@ export function PipelineBoardView({
   onUpdateOffer,
   onEditCandidate,
   onCorrectPipelineRecord
-  , onCreateRejectionLetter
+  , onCreateRejectionLetter,
+  listClient = null,
+  accessScope = "",
+  listScope = {},
+  onEnsureActionContext,
+  mutationRevision = 0
 }: {
   language: Language;
   rows: EnrichedCandidate[];
@@ -73,7 +85,7 @@ export function PipelineBoardView({
   offeredCandidateIds?: ReadonlySet<string>;
   rejectionLetterSentCandidateIds?: ReadonlySet<string>;
   onNewCandidate?: () => void;
-  onOpen: (candidateId: string) => void;
+  onOpen: (candidateId: string, applicationId?: string) => void;
   onMove: (candidate: EnrichedCandidate, nextStage: ProcessStage) => void;
   onFailCurrentStage: (candidate: EnrichedCandidate) => void;
   onMaintainTest: (candidate: EnrichedCandidate) => void;
@@ -86,6 +98,11 @@ export function PipelineBoardView({
   onEditCandidate?: (candidateId: string) => void;
   onCorrectPipelineRecord?: (candidate: EnrichedCandidate, log: RecruitmentLog) => void;
   onCreateRejectionLetter?: (candidate: EnrichedCandidate) => void;
+  listClient?: SupabaseClient | null;
+  accessScope?: string;
+  listScope?: Record<string, unknown>;
+  mutationRevision?: number;
+  onEnsureActionContext?: (candidate: EnrichedCandidate) => Promise<{ data: DashboardData; candidate: EnrichedCandidate } | null>;
 }) {
   const [dragged, setDragged] = useState<EnrichedCandidate | null>(null);
   const [blockedStage, setBlockedStage] = useState<PipelineStageKey | null>(null);
@@ -97,17 +114,69 @@ export function PipelineBoardView({
   const [filterOpen, setFilterOpen] = useState(false);
   const [focusedCandidateId, setFocusedCandidateId] = useState<string | null>(null);
   const [pipelineView, setPipelineView] = useState<PipelineView>("board");
+  const [actionContexts, setActionContexts] = useState<Record<string, Pick<DashboardData, "recruitment_logs" | "candidate_references" | "candidate_reference_checks">>>({});
+  useEffect(() => { setActionContexts({}); setOpenStageMenu(null); setOpenMobileStageMenu(null); }, [accessScope, mutationRevision]);
+  const serverEnabled = Boolean(listClient && accessScope);
+  const stageFilters = { ...listScope, boardFilter, asOf: formatLocalDateInput(), recentSince: recentCutoffDate() };
+  const stageSearchInput = { value: pipelineSearch, setValue: setPipelineSearch };
+  const noActivityList = useRecruitmentList<EnrichedCandidate>({ client: listClient, accessScope, entity: "pipeline_stage", filters: { ...stageFilters, stage: "No activity" }, sort: "board_last_update", direction: "asc", searchInput: stageSearchInput, enabled: serverEnabled });
+  const phoneList = useRecruitmentList<EnrichedCandidate>({ client: listClient, accessScope, entity: "pipeline_stage", filters: { ...stageFilters, stage: "Phone Screen" }, sort: "board_last_update", direction: "asc", searchInput: stageSearchInput, enabled: serverEnabled });
+  const hrInterviewList = useRecruitmentList<EnrichedCandidate>({ client: listClient, accessScope, entity: "pipeline_stage", filters: { ...stageFilters, stage: "HR Interview" }, sort: "board_last_update", direction: "asc", searchInput: stageSearchInput, enabled: serverEnabled });
+  const lineInterviewList = useRecruitmentList<EnrichedCandidate>({ client: listClient, accessScope, entity: "pipeline_stage", filters: { ...stageFilters, stage: "Line Interview" }, sort: "board_last_update", direction: "asc", searchInput: stageSearchInput, enabled: serverEnabled });
+  const testList = useRecruitmentList<EnrichedCandidate>({ client: listClient, accessScope, entity: "pipeline_stage", filters: { ...stageFilters, stage: "Test" }, sort: "board_last_update", direction: "asc", searchInput: stageSearchInput, enabled: serverEnabled });
+  const referenceList = useRecruitmentList<EnrichedCandidate>({ client: listClient, accessScope, entity: "pipeline_stage", filters: { ...stageFilters, stage: "Reference Check" }, sort: "board_last_update", direction: "asc", searchInput: stageSearchInput, enabled: serverEnabled });
+  const offerList = useRecruitmentList<EnrichedCandidate>({ client: listClient, accessScope, entity: "pipeline_stage", filters: { ...stageFilters, stage: "Offer" }, sort: "board_last_update", direction: "asc", searchInput: stageSearchInput, enabled: serverEnabled });
+  const stageLists: Array<{ stage: PipelineStageKey; list: ReturnType<typeof useRecruitmentList<EnrichedCandidate>> }> = [
+    { stage: "No activity", list: noActivityList }, { stage: "Phone Screen", list: phoneList }, { stage: "HR Interview", list: hrInterviewList },
+    { stage: "Line Interview", list: lineInterviewList }, { stage: "Test", list: testList }, { stage: "Reference Check", list: referenceList }, { stage: "Offer", list: offerList }
+  ];
+  const stageListByStage = new Map(stageLists.map(entry => [entry.stage, entry.list]));
+  const failedList = useRecruitmentList<EnrichedCandidate>({ client: listClient, accessScope, entity: "candidate_applications", filters: { ...listScope, boardFilter: "failed", asOf: formatLocalDateInput(), ...(embedded ? { embeddedAllTime: true } : { recentSince: recentCutoffDate() }) }, sort: "latest_log_date", direction: "desc", enabled: serverEnabled });
+  const passedOfferList = useRecruitmentList<EnrichedCandidate>({ client: listClient, accessScope, entity: "candidate_applications", filters: { ...listScope, boardFilter: "passed_offer", asOf: formatLocalDateInput(), ...(embedded ? { embeddedAllTime: true } : { recentSince: recentCutoffDate() }) }, sort: "latest_log_date", direction: "desc", enabled: serverEnabled });
+  async function openCandidateActionMenu(candidate: EnrichedCandidate, setMenu: (value: string | null | ((current: string | null) => string | null)) => void) {
+    const key = applicationKey(candidate);
+    if (serverEnabled && onEnsureActionContext) {
+      const hydrated = await onEnsureActionContext(candidate);
+      if (!hydrated) return;
+      setActionContexts({ [key]: hydrated.data });
+    }
+    setMenu(current => current === key ? null : key);
+  }
+  function actionRows(candidate: EnrichedCandidate) {
+    const hydrated = actionContexts[applicationKey(candidate)];
+    return {
+      recruitmentLogs: hydrated?.recruitment_logs ?? recruitmentLogs.filter(log => belongsToApplication(log, candidate)),
+      candidateReferences: hydrated?.candidate_references ?? candidateReferences.filter(reference => reference.candidate_id === candidate.candidate_id),
+      candidateReferenceChecks: hydrated?.candidate_reference_checks ?? candidateReferenceChecks
+    };
+  }
+  const scopeKey = JSON.stringify(listScope);
+  const summaryRevision = useSyncExternalStore(subscribePipelineSummary, pipelineSummaryRevision, () => 0);
+  const [summary, setSummary] = useState<PipelineSummary | null>(null);
+  const [summaryError, setSummaryError] = useState(false);
+  const rows = serverEnabled ? stageLists.flatMap(entry => entry.list.items) : initialRows;
   const boardRef = useRef<HTMLDivElement>(null);
   const filterTriggerRef = useRef<HTMLButtonElement>(null);
   const filterSearchRef = useRef<HTMLInputElement>(null);
   const activeFilterCount = Number(Boolean(pipelineSearch.trim())) + Number(boardFilter !== "all");
   const activeRowsBase = rows.filter((row) => row.latest_result !== 0 && !(row.latest_process === "Offer" && row.latest_result === 1));
-  const activeRows = filterBoardRows(filterPipelineRows(activeRowsBase, pipelineSearch), boardFilter);
-  const failedGroups = failedCandidatesByStage(filterPipelineRows(rows, pipelineSearch), recruitmentLogs, embedded ? null : recentCutoffDate());
-  const passedOfferRows = passedOfferCandidates(filterPipelineRows(rows, pipelineSearch), embedded ? null : recentCutoffDate());
+  const activeRows = serverEnabled ? rows : filterBoardRows(filterPipelineRows(activeRowsBase, pipelineSearch), boardFilter);
+  const failedGroups = serverEnabled ? failedGroupsFromPage(failedList.items) : failedCandidatesByStage(filterPipelineRows(initialRows, pipelineSearch), recruitmentLogs, embedded ? null : recentCutoffDate());
+  const passedOfferRows = serverEnabled ? passedOfferList.items : passedOfferCandidates(filterPipelineRows(initialRows, pipelineSearch), embedded ? null : recentCutoffDate());
   const agingRows = activeRows.filter(isCandidateAging);
   const noActivityRows = activeRows.filter((row) => row.latest_process === "No activity");
   const displayStages: PipelineStageKey[] = ["No activity", ...ACTIVE_PIPELINE_STAGES];
+
+  useEffect(() => { if (serverEnabled) { failedList.setSearch(pipelineSearch); passedOfferList.setSearch(pipelineSearch); } }, [pipelineSearch, serverEnabled]);
+  useEffect(() => { setSummary(null); setSummaryError(false); }, [accessScope, scopeKey, serverEnabled]);
+  useEffect(() => {
+    if (!serverEnabled || !listClient) return;
+    let cancelled = false;
+    loadPipelineSummary(listClient, accessScope, JSON.parse(scopeKey) as Record<string, unknown>, typeof listScope.groupId === "string" ? listScope.groupId : null, formatLocalDateInput(), 7)
+      .then(value => { if (!cancelled) { setSummary(value); setSummaryError(false); } })
+      .catch(() => { if (!cancelled) setSummaryError(true); });
+    return () => { cancelled = true; };
+  }, [accessScope, listClient, scopeKey, serverEnabled, summaryRevision]);
 
   useEffect(() => {
     if (!openStageMenu && !openMobileStageMenu) return;
@@ -193,11 +262,14 @@ export function PipelineBoardView({
       onOpen={onOpen}
       onCorrectPipelineRecord={onCorrectPipelineRecord}
       onViewChange={setPipelineView}
+      listClient={listClient}
+      accessScope={accessScope}
+      listScope={listScope}
     />;
   }
 
   return (
-    <div className="grid gap-5">
+    <div className="grid min-w-0 max-w-full gap-5 overflow-x-clip">
       <Panel variant={embedded ? "workspace" : "primary"} className={embedded ? "!rounded-none !border-0 !p-0 !shadow-none" : ""}>
         <SectionTitle
           title={translate(language, "candidatePipeline")}
@@ -208,13 +280,14 @@ export function PipelineBoardView({
             className={embedded ? "hidden" : undefined}
             density="compact"
             items={[
-              { label: translate(language, "activeCandidates"), value: activeRows.length, tone: "primary", helper: translate(language, "visibleOnBoard") },
-              { label: translate(language, "aging"), value: agingRows.length, tone: agingRows.length > 0 ? "danger" : "success", helper: translate(language, "daysSinceTouch") },
-              { label: translate(language, embedded ? "failedAllTime" : "failed7d"), value: failedGroups.reduce((sum, group) => sum + group.rows.length, 0), tone: "danger", helper: translate(language, embedded ? "allFailedOutcomes" : "recentFailedOutcomes") },
-              { label: translate(language, embedded ? "offerPassAllTime" : "offerPass7d"), value: passedOfferRows.length, tone: "success", helper: translate(language, embedded ? "allCompletedOffers" : "recentlyCompleted") },
-              { label: translate(language, "noActivity"), value: noActivityRows.length, tone: noActivityRows.length > 0 ? "warning" : "success", helper: translate(language, "needsFirstUpdate") }
+              { label: translate(language, "activeCandidates"), value: serverEnabled ? summary?.active ?? "—" : activeRows.length, tone: "primary", helper: translate(language, "visibleOnBoard") },
+              { label: translate(language, "aging"), value: serverEnabled ? summary?.aging ?? "—" : agingRows.length, tone: "danger", helper: translate(language, "daysSinceTouch") },
+              { label: translate(language, embedded ? "failedAllTime" : "failed7d"), value: serverEnabled ? summary?.failed ?? "—" : failedGroups.reduce((sum, group) => sum + group.rows.length, 0), tone: "danger", helper: translate(language, embedded ? "allFailedOutcomes" : "recentFailedOutcomes") },
+              { label: translate(language, embedded ? "offerPassAllTime" : "offerPass7d"), value: serverEnabled ? summary?.passed_offer ?? "—" : passedOfferRows.length, tone: "success", helper: translate(language, embedded ? "allCompletedOffers" : "recentlyCompleted") },
+              { label: translate(language, "noActivity"), value: serverEnabled ? summary?.no_activity ?? "—" : noActivityRows.length, tone: "warning", helper: translate(language, "needsFirstUpdate") }
             ]}
           />
+          {serverEnabled && summaryError ? <div role="alert" className="rounded-lg border border-[#E9B9B4] bg-[#FFF8F7] px-3 py-2 text-sm text-scarlet">{translate(language, "loadError")} <button type="button" className="ml-2 font-semibold underline" onClick={() => { setSummaryError(false); setSummary(null); clearPipelineSummaryCache(); }}>{translate(language, "retry")}</button></div> : null}
           <div className={`relative flex flex-wrap items-center justify-between gap-2 ${embedded ? "hidden md:flex" : ""}`} data-filter-popover-root="true">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <span className="text-xs font-semibold text-slate">{translate(language, "groupCards")}</span>
@@ -298,7 +371,7 @@ export function PipelineBoardView({
             </SelectInput>
           </label>
         </div>
-        {embedded ? <MobileWorkspacePipelineStages language={language} rows={activeRows} stages={displayStages} canWrite={canWrite} onMove={onMove} onOpen={onOpen} onStartProcess={onStartProcess} renderCandidate={(candidate) => (
+        {embedded ? <MobileWorkspacePipelineStages language={language} rows={activeRows} stages={displayStages} stageLists={serverEnabled ? stageListByStage : undefined} canWrite={canWrite} onMove={onMove} onOpen={onOpen} onStartProcess={onStartProcess} renderCandidate={(candidate) => (
           <PipelineCandidateCard
             candidate={candidate}
             compact
@@ -306,11 +379,9 @@ export function PipelineBoardView({
             canWrite={canWrite}
             updateStages={nextStages(candidate.latest_process)}
             profile={profile}
-            recruitmentLogs={recruitmentLogs.filter((log) => log.candidate_id === candidate.candidate_id)}
-            candidateReferences={candidateReferences.filter((reference) => reference.candidate_id === candidate.candidate_id)}
-            candidateReferenceChecks={candidateReferenceChecks}
+            {...actionRows(candidate)}
             issueCount={dataQualityIssues.filter((issue) => issue.entityId === candidate.candidate_id).length}
-            menuOpen={openMobileStageMenu === candidate.candidate_id}
+            menuOpen={openMobileStageMenu === applicationKey(candidate)}
             onOpen={onOpen}
             onMove={onMove}
             onFailCurrentStage={onFailCurrentStage}
@@ -320,13 +391,14 @@ export function PipelineBoardView({
             onPassStage={onPassStage}
             onManageReferenceChecks={onManageReferenceChecks}
             onUpdateOffer={onUpdateOffer}
-            onMenuToggle={() => setOpenMobileStageMenu((current) => current === candidate.candidate_id ? null : candidate.candidate_id)}
+            onMenuToggle={() => { void openCandidateActionMenu(candidate, setOpenMobileStageMenu); }}
             onMenuClose={() => setOpenMobileStageMenu(null)}
           />
         )} /> : null}
         <div ref={boardRef} className={`flex gap-2 overflow-x-auto rounded-2xl border border-[#E4E9F2] bg-white p-2 md:gap-3 md:p-3 ${embedded ? "hidden md:flex" : ""}`} aria-label={translate(language, "candidatePipeline")}>
           {displayStages.map((stage) => {
-            const stageRows = sortByLastUpdateAsc(activeRows.filter((row) => row.latest_process === stage));
+            const stageList = stageListByStage.get(stage)!;
+            const stageRows = serverEnabled ? stageList.items : sortByLastUpdateAsc(activeRows.filter((row) => row.latest_process === stage));
             const isBlocked = blockedStage === stage;
             const groupedRows = groupPipelineRows(stageRows, groupBy, language);
 
@@ -364,12 +436,16 @@ export function PipelineBoardView({
                 }}
               >
                 <div className="sticky top-0 z-10 -mx-1 mb-2 min-w-0 bg-[#EAF3FF] px-1 pb-2 md:mb-3 md:pb-1">
-                  <h3 className="break-words text-sm font-semibold text-navy">
-                    {processLabel(stage, language)}
+                  <h3 className={`break-words text-sm font-semibold ${processIndex(stage) === 1 ? "text-scarlet" : "text-navy"}`}>
+                  {processLabel(stage, language)} <span aria-hidden="true" className="ml-1 rounded bg-white/70 px-1.5 py-0.5 text-xs tabular-nums">{serverEnabled ? stageList.countLabel : stageRows.length}</span>
                   </h3>
+                  {serverEnabled && stageList.countError ? <Button type="button" size="sm" variant="secondary" onClick={stageList.retryCount}>{translate(language, "retry")}</Button> : null}
+                  {serverEnabled && stageList.error ? <Button type="button" size="sm" variant="secondary" onClick={stageList.retry}>{translate(language, "retry")}</Button> : null}
                 </div>
                 {stageRows.length === 0 ? (
-                  <EmptyState variant="board" message={translate(language, "noData")} />
+                  serverEnabled && stageList.loading ? <p role="status" className="px-1 py-2 text-xs font-medium text-slate">{translate(language, "loading")}</p>
+                    : serverEnabled && stageList.error ? <p role="alert" className="px-1 py-2 text-xs font-medium text-scarlet">{translate(language, "loadError")}</p>
+                    : <EmptyState variant="board" message={serverEnabled && (stageList.totalCount ?? 0) > 0 ? translate(language, "noRecordsOnCurrentPage") : translate(language, "noData")} />
                 ) : (
                 <div className="grid gap-2">
                   {groupedRows.map((group) => (
@@ -380,19 +456,17 @@ export function PipelineBoardView({
                       const issueCount = dataQualityIssues.filter((issue) => issue.entityId === candidate.candidate_id).length;
                       return (
                       <PipelineCandidateCard
-                        key={candidate.candidate_id}
+                        key={applicationKey(candidate)}
                         candidate={candidate}
                         language={language}
                         canWrite={canWrite}
-                        draggable={canWrite && candidatePipelineCapability(candidate, recruitmentLogs.filter((log) => log.candidate_id === candidate.candidate_id), profile).canDrag}
+                        draggable={canWrite && candidatePipelineCapability(candidate, recruitmentLogs.filter((log) => belongsToApplication(log, candidate)), profile).canDrag}
                         updateStages={updateStages}
                         profile={profile}
-                        recruitmentLogs={recruitmentLogs.filter((log) => log.candidate_id === candidate.candidate_id)}
-                        candidateReferences={candidateReferences.filter((reference) => reference.candidate_id === candidate.candidate_id)}
-                        candidateReferenceChecks={candidateReferenceChecks}
+                        {...actionRows(candidate)}
                         issueCount={issueCount}
                         focused={focusedCandidateId === candidate.candidate_id}
-                        menuOpen={openStageMenu === candidate.candidate_id}
+                        menuOpen={openStageMenu === applicationKey(candidate)}
                         onOpen={onOpen}
                         onMove={onMove}
                         onFailCurrentStage={onFailCurrentStage}
@@ -402,7 +476,7 @@ export function PipelineBoardView({
                         onPassStage={onPassStage}
                         onManageReferenceChecks={onManageReferenceChecks}
                         onUpdateOffer={onUpdateOffer}
-                        onMenuToggle={() => setOpenStageMenu((current) => current === candidate.candidate_id ? null : candidate.candidate_id)}
+                        onMenuToggle={() => { void openCandidateActionMenu(candidate, setOpenStageMenu); }}
                         onMenuClose={() => setOpenStageMenu(null)}
                         onDragStart={() => setDragged(candidate)}
                         onDragEnd={() => {
@@ -416,6 +490,7 @@ export function PipelineBoardView({
                   ))}
                 </div>
                 )}
+                {serverEnabled ? <CursorPagination language={language} page={stageList.page} pageSize={stageList.pageSize} loading={stageList.loading} canPrevious={stageList.canPrevious} canNext={stageList.canNext} onPrevious={stageList.goPrevious} onNext={stageList.goNext} onPageSizeChange={stageList.setPageSize} /> : null}
               </section>
             );
           })}
@@ -426,7 +501,7 @@ export function PipelineBoardView({
         <Panel variant="secondary">
           <SectionTitle title={translate(language, embedded ? "failedCandidatesAllTime" : "failedCandidatesLast7Days")} />
           {failedGroups.every((group) => group.rows.length === 0) ? (
-            <EmptyState variant="quiet" message={translate(language, embedded ? "noFailedCandidatesAllTime" : "noFailedCandidatesLast7Days")} />
+            serverEnabled && failedList.loading ? <p role="status" className="py-3 text-sm text-slate">{translate(language, "loading")}</p> : <EmptyState variant="quiet" message={translate(language, embedded ? "noFailedCandidatesAllTime" : "noFailedCandidatesLast7Days")} />
           ) : (
             <div className="grid grid-flow-col gap-3 overflow-x-auto pb-2" style={{ gridAutoColumns: "minmax(240px, 1fr)" }}>
               {failedGroups.map((group) => (
@@ -438,7 +513,7 @@ export function PipelineBoardView({
                   <div className="grid gap-2">
                     {group.rows.map((candidate) => (
                       <PipelineCandidateCard
-                        key={candidate.candidate_id}
+                        key={applicationKey(candidate)}
                         candidate={candidate}
                         language={language}
                         canWrite={false}
@@ -446,7 +521,7 @@ export function PipelineBoardView({
                         focused={focusedCandidateId === candidate.candidate_id}
                         onOpen={onOpen}
                         onCreateRejectionLetter={canWrite ? onCreateRejectionLetter : undefined}
-                        rejectionLetterSent={rejectionLetterSentCandidateIds?.has(candidate.candidate_id)}
+                        rejectionLetterSent={rejectionLetterSentCandidateIds?.has(applicationKey(candidate))}
                       />
                     ))}
                   </div>
@@ -454,22 +529,23 @@ export function PipelineBoardView({
               ))}
             </div>
           )}
+          {serverEnabled ? <div className="mt-3 flex items-center justify-end gap-2"><span className="text-xs text-slate">{failedList.countLabel} · {translate(language, "pipelineRecords")}</span>{failedList.countError ? <Button type="button" size="sm" variant="secondary" onClick={failedList.retryCount}>{translate(language, "retry")}</Button> : null}{failedList.error ? <Button type="button" size="sm" variant="secondary" onClick={failedList.retry}>{translate(language, "retry")}</Button> : null}<CursorPagination language={language} page={failedList.page} pageSize={failedList.pageSize} loading={failedList.loading} canPrevious={failedList.canPrevious} canNext={failedList.canNext} onPrevious={failedList.goPrevious} onNext={failedList.goNext} onPageSizeChange={failedList.setPageSize} /></div> : null}
         </Panel>
 
         <Panel variant="secondary">
           <SectionTitle title={translate(language, embedded ? "passedOfferAllTime" : "passedOfferLast7Days")} />
           {passedOfferRows.length === 0 ? (
-            <EmptyState variant="quiet" message={translate(language, embedded ? "noOfferPassAllTime" : "noOfferPassLast7Days")} />
+            serverEnabled && passedOfferList.loading ? <p role="status" className="py-3 text-sm text-slate">{translate(language, "loading")}</p> : <EmptyState variant="quiet" message={translate(language, embedded ? "noOfferPassAllTime" : "noOfferPassLast7Days")} />
           ) : (
             <div className="grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(240px,1fr))]">
               {passedOfferRows.map((candidate) => (
                 <PipelineCandidateCard
-                  key={candidate.candidate_id}
+                  key={applicationKey(candidate)}
                   candidate={candidate}
                   language={language}
                   canWrite={false}
                   tone="passed"
-                  showCreateOffer={canWrite && !offeredCandidateIds?.has(candidate.candidate_id)}
+                  showCreateOffer={canWrite && !offeredCandidateIds?.has(applicationKey(candidate))}
                   focused={focusedCandidateId === candidate.candidate_id}
                   onOpen={onOpen}
                   onCreateOffer={onCreateOffer}
@@ -477,6 +553,7 @@ export function PipelineBoardView({
               ))}
             </div>
           )}
+          {serverEnabled ? <div className="mt-3 flex items-center justify-end gap-2"><span className="text-xs text-slate">{passedOfferList.countLabel} · {translate(language, "pipelineRecords")}</span>{passedOfferList.countError ? <Button type="button" size="sm" variant="secondary" onClick={passedOfferList.retryCount}>{translate(language, "retry")}</Button> : null}{passedOfferList.error ? <Button type="button" size="sm" variant="secondary" onClick={passedOfferList.retry}>{translate(language, "retry")}</Button> : null}<CursorPagination language={language} page={passedOfferList.page} pageSize={passedOfferList.pageSize} loading={passedOfferList.loading} canPrevious={passedOfferList.canPrevious} canNext={passedOfferList.canNext} onPrevious={passedOfferList.goPrevious} onNext={passedOfferList.goNext} onPageSizeChange={passedOfferList.setPageSize} /></div> : null}
         </Panel>
       </div>
     </div>
@@ -491,17 +568,17 @@ function PipelineViewSwitch({ language, value, onChange }: { language: Language;
 
 type PipelineRecordRow = { candidate: EnrichedCandidate; log: RecruitmentLog; audit: boolean };
 
-function PipelineTableView({ language, rows, recruitmentLogs, recruitmentLogHistory, profile, canWrite, onNewCandidate, onOpen, onCorrectPipelineRecord, onViewChange }: {
-  language: Language; rows: EnrichedCandidate[]; recruitmentLogs: RecruitmentLog[]; recruitmentLogHistory: RecruitmentLog[]; profile: Profile | null; canWrite: boolean; onNewCandidate?: () => void; onOpen: (candidateId: string) => void; onCorrectPipelineRecord?: (candidate: EnrichedCandidate, log: RecruitmentLog) => void; onViewChange: (view: PipelineView) => void;
+function PipelineTableView({ language, rows, recruitmentLogs, recruitmentLogHistory, profile, canWrite, onNewCandidate, onOpen, onCorrectPipelineRecord, onViewChange, listClient, accessScope, listScope }: {
+  language: Language; rows: EnrichedCandidate[]; recruitmentLogs: RecruitmentLog[]; recruitmentLogHistory: RecruitmentLog[]; profile: Profile | null; canWrite: boolean; onNewCandidate?: () => void; onOpen: (candidateId: string, applicationId?: string) => void; onCorrectPipelineRecord?: (candidate: EnrichedCandidate, log: RecruitmentLog) => void; onViewChange: (view: PipelineView) => void; listClient: SupabaseClient | null; accessScope: string; listScope: Record<string, unknown>;
 }) {
   const initial = useMemo(() => ({ ...readTableUrlState("pipe"), sortKey: readTableUrlState("pipe").sortKey ?? "date", sortDirection: readTableUrlState("pipe").sortDirection ?? "desc" }), []);
   const [page, setPage] = useState(initial.page);
   const [pageSize, setPageSize] = useState<number>((PAGE_SIZE_OPTIONS as readonly number[]).includes(initial.pageSize) ? initial.pageSize : 25);
   const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(Object.keys(initial.filters ?? {}).length > 0);
   const [showAudit, setShowAudit] = useState(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("pipeAudit") === "1");
-  const candidateById = useMemo(() => new Map(rows.map((candidate) => [candidate.candidate_id, candidate])), [rows]);
+  const candidateById = useMemo(() => new Map(rows.map((candidate) => [applicationKey(candidate), candidate])), [rows]);
   const recordRows = useMemo(() => recruitmentLogHistory.flatMap((log) => {
-    const candidate = candidateById.get(log.candidate_id);
+    const candidate = candidateById.get(log.application_id ?? log.candidate_id);
     if (!candidate || (!showAudit && Boolean(log.superseded_at))) return [];
     return [{ candidate, log, audit: Boolean(log.superseded_at) }];
   }), [candidateById, recruitmentLogHistory, showAudit]);
@@ -517,6 +594,10 @@ function PipelineTableView({ language, rows, recruitmentLogs, recruitmentLogHist
   ];
   const table = useTableControls(recordRows, columns, initial);
   const paginated = paginateRows(table.controlledRows, page, pageSize);
+  const serverEnabled = Boolean(listClient && accessScope);
+  const historyList = useRecruitmentList<PipelineRecordRow>({ client: listClient, accessScope, entity: "pipeline_history", filters: { ...listScope, ...table.filters, showAudit }, sort: table.sortKey === "date" ? "log_date" : table.sortKey ?? "log_date", direction: table.sortDirection ?? "desc", enabled: serverEnabled });
+  useEffect(() => { if (serverEnabled) historyList.setSearch(table.search); }, [serverEnabled, table.search]);
+  const visibleRows = serverEnabled ? historyList.items : paginated.rows;
   const adminCanCorrect = profile?.role === "system_admin" || profile?.role === "admin_recruiter";
   useEffect(() => { setPage(1); }, [showAudit, table.controlledRows.length, table.search, table.sortDirection, table.sortKey]);
   useEffect(() => { updateWorkspaceUrlState({ ...writeTableUrlValues("pipe", { filters: table.filters, page: paginated.page, pageSize, search: table.search, sortDirection: table.sortDirection, sortKey: table.sortKey }), pipeAudit: showAudit ? "1" : null }); }, [pageSize, paginated.page, showAudit, table.filters, table.search, table.sortDirection, table.sortKey]);
@@ -525,20 +606,23 @@ function PipelineTableView({ language, rows, recruitmentLogs, recruitmentLogHist
     <SectionTitle title={translate(language, "candidatePipeline")} action={<div className="flex min-w-0 flex-wrap items-center justify-end gap-2"><PipelineViewSwitch language={language} value="table" onChange={onViewChange} />{canWrite && onNewCandidate ? <Button type="button" size="sm" icon={<Plus size={17} />} onClick={onNewCandidate}>{translate(language, "newCandidate")}</Button> : null}</div>} />
     <TableToolbar advancedFiltersOpen={advancedFiltersOpen} language={language} onAdvancedFiltersToggle={() => setAdvancedFiltersOpen((open) => !open)} onSearch={table.setSearch} resultCount={table.controlledRows.length} searchValue={table.search} totalCount={recordRows.length} />
     {advancedFiltersOpen ? <div className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-[#E4E9F2] bg-[#F8FAFD] p-3"><label className="flex items-center gap-2 text-sm font-semibold text-navy"><input type="checkbox" checked={showAudit} onChange={(event) => setShowAudit(event.target.checked)} />{translate(language, "showAuditHistory")}</label><Button type="button" variant="secondary" size="sm" onClick={clear}>{translate(language, "clear")}</Button></div> : null}
-    <div className="grid gap-2 md:hidden">{paginated.rows.map(({ candidate, log, audit }) => <article key={log.log_id} className="ats-card p-3"><button type="button" onClick={() => onOpen(candidate.candidate_id)} className="text-left"><strong className="block text-navy">{formatCandidateName(candidate)}</strong><span className="text-xs text-slate">{processLabel(log.recruitment_process, language)} · {translate(language, "round")} {log.round}</span></button><p className="mt-2 text-xs text-slate">{translate(language, "pendingDetails")}: {formatDate(log.log_date, language)} · {log.interviewer ?? "-"}</p>{log.estimated_action_date ? <p className="text-xs font-medium text-slate">{translate(language, "estimatedDateValue", { date: formatDate(log.estimated_action_date, language) })}</p> : null}{log.result !== null ? <p className="text-xs text-slate">{translate(language, "outcome")}: {resultText(log.result, language)} · {formatDate(log.outcome_date, language)}</p> : null}<RecordTableActions candidate={candidate} log={log} audit={audit} language={language} canCorrect={adminCanCorrect} onOpen={onOpen} onCorrect={onCorrectPipelineRecord} /></article>)}</div>
-    <div className="table-scroll hidden md:block"><table className="w-full border-collapse text-left text-sm"><thead className="bg-lightgray text-xs uppercase text-slate"><tr>{columns.map((column) => <th key={column.key} scope="col" className="px-3 py-3 align-top"><SortableFilterHeader columnKey={column.key} filterValue={table.filters[column.key] ?? ""} language={language} label={column.label} onFilter={table.setFilter} onSort={table.toggleSort} sortDirection={table.sortDirection} sortKey={table.sortKey} showFilter={advancedFiltersOpen} /></th>)}<th className="px-3 py-3"><span className="sr-only">{translate(language, "actions")}</span></th></tr></thead><tbody>{paginated.rows.map(({ candidate, log, audit }) => <tr key={log.log_id} className="border-b border-[#D7DEE8] last:border-0"><td className="px-3 py-3"><button type="button" onClick={() => onOpen(candidate.candidate_id)} className="text-left font-semibold text-navy hover:text-primary">{candidate.candidate_id}<span className="block text-xs font-medium text-slate">{formatCandidateName(candidate)}</span></button></td><td className="px-3 py-3 text-slate">{candidate.group_position ?? "-"}<span className="block text-xs">{candidate.doc_ids.join(", ") || "-"}</span></td><td className="px-3 py-3 text-slate">{candidate.site ?? "-"}</td><td className="px-3 py-3 text-slate">{candidate.person_in_charge ?? "-"}</td><td className="px-3 py-3"><Tag tone={audit ? "muted" : "teal"}>{processLabel(log.recruitment_process, language)} · {log.round}</Tag></td><td className="px-3 py-3 text-slate">{formatDate(log.log_date, language)}{log.estimated_action_date ? <span className="block text-xs font-semibold text-primary">{translate(language, "estimatedDateValue", { date: formatDate(log.estimated_action_date, language) })}</span> : null}<span className="block text-xs">{log.interviewer ?? "-"}</span><span className="block text-xs">{log.remark ?? ""}</span></td><td className="px-3 py-3 text-slate">{log.result === null ? <Tag tone="warning">{resultText(null, language)}</Tag> : <><Tag tone={statusTone(log.result)}>{resultText(log.result, language)}</Tag><span className="block text-xs">{formatDate(log.outcome_date, language)} · {log.outcome_interviewer ?? "-"}</span><span className="block text-xs">{log.result === 0 ? failureReasonText(log, language) : ""}</span><span className="block text-xs">{log.outcome_remark ?? ""}</span></>}</td><td className="px-3 py-3 text-slate">{formatDate(log.updated_at ?? log.created_at, language)}</td><td className="px-3 py-3"><RecordTableActions candidate={candidate} log={log} audit={audit} language={language} canCorrect={adminCanCorrect} onOpen={onOpen} onCorrect={onCorrectPipelineRecord} /></td></tr>)}</tbody></table></div>
-    {paginated.rows.length === 0 ? <EmptyState message={translate(language, "noData")} /> : null}<Pagination language={language} page={paginated.page} pageSize={pageSize} totalRows={table.controlledRows.length} onPageChange={setPage} onPageSizeChange={setPageSize} />
+    {serverEnabled && historyList.error ? <div role="alert" className="rounded-lg border border-[#E9B9B4] bg-[#FFF8F7] px-3 py-2 text-sm text-scarlet">{translate(language, "loadError")} <Button type="button" size="sm" variant="secondary" onClick={historyList.retry}>{translate(language, "retry")}</Button></div> : null}
+    {serverEnabled && historyList.loading ? <p role="status" className="px-3 py-2 text-sm text-slate">{translate(language, "loading")}</p> : null}
+    <div className="grid gap-2 md:hidden">{visibleRows.map(({ candidate, log, audit }) => <article key={log.log_id} className="ats-card p-3"><button type="button" onClick={() => onOpen(candidate.candidate_id, candidate.application_id)} className="text-left"><strong className="block text-navy">{formatCandidateName(candidate)}</strong><span className="text-xs text-slate">{processLabel(log.recruitment_process, language)} · {translate(language, "round")} {log.round}</span></button><p className="mt-2 text-xs text-slate">{translate(language, "pendingDetails")}: {formatDate(log.log_date, language)} · {log.interviewer ?? "-"}</p>{log.estimated_action_date ? <p className="text-xs font-medium text-slate">{translate(language, "estimatedDateValue", { date: formatDate(log.estimated_action_date, language) })}</p> : null}{log.result !== null ? <p className="text-xs text-slate">{translate(language, "outcome")}: {resultText(log.result, language)} · {formatDate(log.outcome_date, language)}</p> : null}<RecordTableActions candidate={candidate} log={log} audit={audit} language={language} canCorrect={adminCanCorrect} onOpen={onOpen} onCorrect={onCorrectPipelineRecord} /></article>)}</div>
+    <div className="table-scroll hidden md:block"><table className="w-full border-collapse text-left text-sm"><thead className="bg-lightgray text-xs uppercase text-slate"><tr>{columns.map((column) => <th key={column.key} scope="col" className="px-3 py-3 align-top"><SortableFilterHeader columnKey={column.key} filterValue={table.filters[column.key] ?? ""} language={language} label={column.label} onFilter={table.setFilter} onSort={table.toggleSort} sortDirection={table.sortDirection} sortKey={table.sortKey} showFilter={advancedFiltersOpen} /></th>)}<th className="px-3 py-3"><span className="sr-only">{translate(language, "actions")}</span></th></tr></thead><tbody>{visibleRows.map(({ candidate, log, audit }) => <tr key={log.log_id} className="border-b border-[#D7DEE8] last:border-0"><td className="px-3 py-3"><button type="button" onClick={() => onOpen(candidate.candidate_id, candidate.application_id)} className="text-left font-semibold text-navy hover:text-primary">{formatRecruitmentId(candidate.candidate_id)}<span className="block text-xs font-medium text-slate">{formatCandidateName(candidate)}</span></button></td><td className="px-3 py-3 text-slate">{candidate.group_position ?? "-"}<span className="block text-xs">{candidate.doc_ids.join(", ") || "-"}</span></td><td className="px-3 py-3 text-slate">{candidate.site ?? "-"}</td><td className="px-3 py-3 text-slate">{candidate.person_in_charge ?? "-"}</td><td className="px-3 py-3"><Tag tone={audit ? "muted" : "teal"}>{processLabel(log.recruitment_process, language)} · {log.round}</Tag></td><td className="px-3 py-3 text-slate">{formatDate(log.log_date, language)}{log.estimated_action_date ? <span className="block text-xs font-semibold text-primary">{translate(language, "estimatedDateValue", { date: formatDate(log.estimated_action_date, language) })}</span> : null}<span className="block text-xs">{log.interviewer ?? "-"}</span><span className="block text-xs">{log.remark ?? ""}</span></td><td className="px-3 py-3 text-slate">{log.result === null ? <Tag tone="warning">{resultText(null, language)}</Tag> : <><Tag tone={statusTone(log.result)}>{resultText(log.result, language)}</Tag><span className="block text-xs">{formatDate(log.outcome_date, language)} · {log.outcome_interviewer ?? "-"}</span><span className="block text-xs">{log.result === 0 ? failureReasonText(log, language) : ""}</span><span className="block text-xs">{log.outcome_remark ?? ""}</span></>}</td><td className="px-3 py-3 text-slate">{formatDate(log.updated_at ?? log.created_at, language)}</td><td className="px-3 py-3"><RecordTableActions candidate={candidate} log={log} audit={audit} language={language} canCorrect={adminCanCorrect} onOpen={onOpen} onCorrect={onCorrectPipelineRecord} /></td></tr>)}</tbody></table></div>
+    {visibleRows.length === 0 && !historyList.loading ? <EmptyState message={translate(language, "noData")} /> : null}
+    {serverEnabled ? <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#E4E9F2] pt-3"><span className="text-xs font-medium text-slate">{historyList.totalCount} · {translate(language, "pipelineRecords")}</span><div className="flex items-center gap-2"><SelectInput aria-label={translate(language, "rowsPerPage")} value={historyList.pageSize} onChange={event => historyList.setPageSize(Number(event.target.value))}>{PAGE_SIZE_OPTIONS.map(size => <option key={size} value={size}>{size}</option>)}</SelectInput><Button type="button" size="sm" variant="secondary" disabled={!historyList.canPrevious} onClick={historyList.goPrevious}>{translate(language, "previous")}</Button><span className="min-w-12 text-center text-xs tabular-nums text-slate">{historyList.page}</span><Button type="button" size="sm" variant="secondary" disabled={!historyList.canNext} onClick={historyList.goNext}>{translate(language, "next")}</Button></div></div> : <Pagination language={language} page={paginated.page} pageSize={pageSize} totalRows={table.controlledRows.length} onPageChange={setPage} onPageSizeChange={setPageSize} />}
   </Panel>;
 }
 
-function RecordTableActions({ candidate, log, audit, language, canCorrect, onOpen, onCorrect }: { candidate: EnrichedCandidate; log: RecruitmentLog; audit: boolean; language: Language; canCorrect: boolean; onOpen: (id: string) => void; onCorrect?: (candidate: EnrichedCandidate, log: RecruitmentLog) => void }) {
-  return <div className="flex items-center justify-end gap-1"><Button type="button" variant="ghost" size="icon-sm" icon={<Search size={15} />} aria-label={translate(language, "viewCandidateDetailFor", { name: formatCandidateName(candidate) })} title={translate(language, "viewDetail")} onClick={() => onOpen(candidate.candidate_id)} />{canCorrect && !audit && onCorrect ? <Button type="button" variant="ghost" size="icon-sm" icon={<Pencil size={15} />} aria-label={translate(language, "editPipelineRecord")} title={translate(language, "editPipelineRecord")} onClick={() => onCorrect(candidate, log)} /> : null}</div>;
+function RecordTableActions({ candidate, log, audit, language, canCorrect, onOpen, onCorrect }: { candidate: EnrichedCandidate; log: RecruitmentLog; audit: boolean; language: Language; canCorrect: boolean; onOpen: (id: string, applicationId?: string) => void; onCorrect?: (candidate: EnrichedCandidate, log: RecruitmentLog) => void }) {
+  return <div className="flex items-center justify-end gap-1"><Button type="button" variant="ghost" size="icon-sm" icon={<Search size={15} />} aria-label={translate(language, "viewCandidateDetailFor", { name: formatCandidateName(candidate) })} title={translate(language, "viewDetail")} onClick={() => onOpen(candidate.candidate_id, candidate.application_id)} />{canCorrect && !audit && onCorrect ? <Button type="button" variant="ghost" size="icon-sm" icon={<Pencil size={15} />} aria-label={translate(language, "editPipelineRecord")} title={translate(language, "editPipelineRecord")} onClick={() => onCorrect(candidate, log)} /> : null}</div>;
 }
 
 function LegacyPipelineTableView({
   language, rows, recruitmentLogs, candidateReferences, candidateReferenceChecks, profile, canWrite, onNewCandidate, onOpen, onStartProcess, onEditPending, onPassStage, onFailCurrentStage, onMaintainTest, onUpdateOffer, onEditCandidate, onViewChange
 }: {
-  language: Language; rows: EnrichedCandidate[]; recruitmentLogs: RecruitmentLog[]; candidateReferences: CandidateReference[]; candidateReferenceChecks: CandidateReferenceCheck[]; profile: Profile | null; canWrite: boolean; onNewCandidate?: () => void; onOpen: (candidateId: string) => void; onStartProcess: (candidate: EnrichedCandidate) => void; onEditPending?: (candidate: EnrichedCandidate) => void; onPassStage?: (candidate: EnrichedCandidate) => void; onFailCurrentStage: (candidate: EnrichedCandidate) => void; onMaintainTest: (candidate: EnrichedCandidate) => void; onUpdateOffer: (candidate: EnrichedCandidate) => void; onEditCandidate?: (candidateId: string) => void; onViewChange: (view: PipelineView) => void;
+  language: Language; rows: EnrichedCandidate[]; recruitmentLogs: RecruitmentLog[]; candidateReferences: CandidateReference[]; candidateReferenceChecks: CandidateReferenceCheck[]; profile: Profile | null; canWrite: boolean; onNewCandidate?: () => void; onOpen: (candidateId: string, applicationId?: string) => void; onStartProcess: (candidate: EnrichedCandidate) => void; onEditPending?: (candidate: EnrichedCandidate) => void; onPassStage?: (candidate: EnrichedCandidate) => void; onFailCurrentStage: (candidate: EnrichedCandidate) => void; onMaintainTest: (candidate: EnrichedCandidate) => void; onUpdateOffer: (candidate: EnrichedCandidate) => void; onEditCandidate?: (candidateId: string) => void; onViewChange: (view: PipelineView) => void;
 }) {
   const initial = useMemo(() => ({ ...readTableUrlState("pipe"), sortKey: readTableUrlState("pipe").sortKey ?? "last_touch", sortDirection: readTableUrlState("pipe").sortDirection ?? "desc" }), []);
   const initialAdvanced = useMemo(() => {
@@ -586,8 +670,8 @@ function LegacyPipelineTableView({
       <label className="grid gap-1 text-xs font-semibold text-slate"><span>{translate(language, "lastTouchTo")}</span><DayDateSelector ariaLabel={translate(language, "lastTouchTo")} language={language} name="last_touch_to" value={toDate} onChange={(event) => setToDate(event.target.value)} /></label>
       <div className="flex items-end"><Button type="button" variant="secondary" size="sm" disabled={activeFilterCount === 0 && !table.search} onClick={clearFilters}>{translate(language, "clear")}</Button></div>
     </div> : null}
-    <div className="grid gap-2 md:hidden">{paginated.rows.map((row) => <PipelineTableCard key={row.candidate_id} candidate={row} language={language} recruitmentLogs={recruitmentLogs} candidateReferences={candidateReferences} candidateReferenceChecks={candidateReferenceChecks} profile={profile} canWrite={canWrite} onOpen={onOpen} onStartProcess={onStartProcess} onEditPending={onEditPending} onPassStage={onPassStage} onFailCurrentStage={onFailCurrentStage} onMaintainTest={onMaintainTest} onUpdateOffer={onUpdateOffer} onEditCandidate={onEditCandidate} />)}</div>
-    <div className="table-scroll hidden md:block"><table className="w-full border-collapse text-left text-sm"><thead className="bg-lightgray text-xs uppercase text-slate"><tr>{columns.map((column) => <th key={column.key} scope="col" className="px-3 py-3 align-top"><SortableFilterHeader columnKey={column.key} filterValue={table.filters[column.key] ?? ""} language={language} label={column.label} onFilter={table.setFilter} onSort={table.toggleSort} sortDirection={table.sortDirection} sortKey={table.sortKey} showFilter={advancedFiltersOpen} /></th>)}<th className="px-3 py-3"><span className="sr-only">{translate(language, "actions")}</span></th></tr></thead><tbody>{paginated.rows.map((row) => <tr key={row.candidate_id} className="border-b border-[#D7DEE8] last:border-0"><td className="px-3 py-3"><button type="button" onClick={() => onOpen(row.candidate_id)} className="text-left font-semibold text-navy hover:text-primary">{row.candidate_id}<span className="block text-xs font-medium text-slate">{formatCandidateName(row)}</span></button></td><td className="px-3 py-3 text-slate">{row.group_position ?? "-"}<span className="block text-xs">{row.doc_ids.join(", ") || "-"}</span></td><td className="px-3 py-3 text-slate">{row.site ?? "-"}</td><td className="px-3 py-3 text-slate">{row.person_in_charge ?? "-"}</td><td className="px-3 py-3"><Tag tone="teal">{processLabel(row.latest_process, language)}</Tag></td><td className="px-3 py-3"><Tag tone={pipelineStateTone(row)}>{pipelineStateLabel(row, language)}</Tag></td><td className="px-3 py-3 text-slate">{pendingInterviewer(row, recruitmentLogs) ?? "-"}</td><td className="px-3 py-3 text-slate">{formatDate(candidateLastUpdate(row), language)}</td><td className="px-3 py-3 text-slate">{ageLabel(row)}</td><td className="px-3 py-3"><PipelineTableActions candidate={row} language={language} recruitmentLogs={recruitmentLogs} candidateReferences={candidateReferences} candidateReferenceChecks={candidateReferenceChecks} profile={profile} canWrite={canWrite} onOpen={onOpen} onStartProcess={onStartProcess} onEditPending={onEditPending} onPassStage={onPassStage} onFailCurrentStage={onFailCurrentStage} onMaintainTest={onMaintainTest} onUpdateOffer={onUpdateOffer} onEditCandidate={onEditCandidate} /></td></tr>)}</tbody></table></div>
+    <div className="grid gap-2 md:hidden">{paginated.rows.map((row) => <PipelineTableCard key={applicationKey(row)} candidate={row} language={language} recruitmentLogs={recruitmentLogs} candidateReferences={candidateReferences} candidateReferenceChecks={candidateReferenceChecks} profile={profile} canWrite={canWrite} onOpen={onOpen} onStartProcess={onStartProcess} onEditPending={onEditPending} onPassStage={onPassStage} onFailCurrentStage={onFailCurrentStage} onMaintainTest={onMaintainTest} onUpdateOffer={onUpdateOffer} onEditCandidate={onEditCandidate} />)}</div>
+    <div className="table-scroll hidden md:block"><table className="w-full border-collapse text-left text-sm"><thead className="bg-lightgray text-xs uppercase text-slate"><tr>{columns.map((column) => <th key={column.key} scope="col" className="px-3 py-3 align-top"><SortableFilterHeader columnKey={column.key} filterValue={table.filters[column.key] ?? ""} language={language} label={column.label} onFilter={table.setFilter} onSort={table.toggleSort} sortDirection={table.sortDirection} sortKey={table.sortKey} showFilter={advancedFiltersOpen} /></th>)}<th className="px-3 py-3"><span className="sr-only">{translate(language, "actions")}</span></th></tr></thead><tbody>{paginated.rows.map((row) => <tr key={applicationKey(row)} className="border-b border-[#D7DEE8] last:border-0"><td className="px-3 py-3"><button type="button" onClick={() => onOpen(row.candidate_id, row.application_id)} className="text-left font-semibold text-navy hover:text-primary">{formatRecruitmentId(row.candidate_id)}<span className="block text-xs font-medium text-slate">{formatCandidateName(row)}</span></button></td><td className="px-3 py-3 text-slate">{row.group_position ?? "-"}<span className="block text-xs">{row.doc_ids.join(", ") || "-"}</span></td><td className="px-3 py-3 text-slate">{row.site ?? "-"}</td><td className="px-3 py-3 text-slate">{row.person_in_charge ?? "-"}</td><td className="px-3 py-3"><Tag tone="teal">{processLabel(row.latest_process, language)}</Tag></td><td className="px-3 py-3"><Tag tone={pipelineStateTone(row)}>{pipelineStateLabel(row, language)}</Tag></td><td className="px-3 py-3 text-slate">{pendingInterviewer(row, recruitmentLogs) ?? "-"}</td><td className="px-3 py-3 text-slate">{formatDate(candidateLastUpdate(row), language)}</td><td className="px-3 py-3 text-slate">{ageLabel(row)}</td><td className="px-3 py-3"><PipelineTableActions candidate={row} language={language} recruitmentLogs={recruitmentLogs} candidateReferences={candidateReferences} candidateReferenceChecks={candidateReferenceChecks} profile={profile} canWrite={canWrite} onOpen={onOpen} onStartProcess={onStartProcess} onEditPending={onEditPending} onPassStage={onPassStage} onFailCurrentStage={onFailCurrentStage} onMaintainTest={onMaintainTest} onUpdateOffer={onUpdateOffer} onEditCandidate={onEditCandidate} /></td></tr>)}</tbody></table></div>
     {paginated.rows.length === 0 ? <EmptyState message={translate(language, "noData")} /> : null}
     <Pagination language={language} page={paginated.page} pageSize={pageSize} totalRows={table.controlledRows.length} onPageChange={setPage} onPageSizeChange={setPageSize} />
   </Panel>;
@@ -595,21 +679,21 @@ function LegacyPipelineTableView({
 
 function PipelineTableCard(props: PipelineTableActionProps) {
   const { candidate, language, recruitmentLogs, onOpen } = props;
-  return <article className="ats-card p-3"><button type="button" onClick={() => onOpen(candidate.candidate_id)} className="text-left"><strong className="block text-navy">{formatCandidateName(candidate)}</strong><span className="text-xs text-slate">{candidate.candidate_id} · {candidate.site ?? "-"} · {candidate.person_in_charge ?? "-"}</span></button><div className="mt-2 flex flex-wrap gap-2"><Tag tone="teal">{processLabel(candidate.latest_process, language)}</Tag><Tag tone={pipelineStateTone(candidate)}>{pipelineStateLabel(candidate, language)}</Tag><span className="text-xs text-slate">{translate(language, "lastTouch")}: {formatDate(candidateLastUpdate(candidate), language)}</span></div><div className="mt-3"><PipelineTableActions {...props} /></div></article>;
+  return <article className="ats-card p-3"><button type="button" onClick={() => onOpen(candidate.candidate_id, candidate.application_id)} className="text-left"><strong className="block text-navy">{formatCandidateName(candidate)}</strong><span className="text-xs text-slate">{formatRecruitmentId(candidate.candidate_id)} · {candidate.site ?? "-"} · {candidate.person_in_charge ?? "-"}</span></button><div className="mt-2 flex flex-wrap gap-2"><Tag tone="teal">{processLabel(candidate.latest_process, language)}</Tag><Tag tone={pipelineStateTone(candidate)}>{pipelineStateLabel(candidate, language)}</Tag><span className="text-xs text-slate">{translate(language, "lastTouch")}: {formatDate(candidateLastUpdate(candidate), language)}</span></div><div className="mt-3"><PipelineTableActions {...props} /></div></article>;
 }
 
-type PipelineTableActionProps = { candidate: EnrichedCandidate; language: Language; recruitmentLogs: RecruitmentLog[]; candidateReferences: CandidateReference[]; candidateReferenceChecks: CandidateReferenceCheck[]; profile: Profile | null; canWrite: boolean; onOpen: (candidateId: string) => void; onStartProcess: (candidate: EnrichedCandidate) => void; onEditPending?: (candidate: EnrichedCandidate) => void; onPassStage?: (candidate: EnrichedCandidate) => void; onFailCurrentStage: (candidate: EnrichedCandidate) => void; onMaintainTest: (candidate: EnrichedCandidate) => void; onUpdateOffer: (candidate: EnrichedCandidate) => void; onEditCandidate?: (candidateId: string) => void; };
+type PipelineTableActionProps = { candidate: EnrichedCandidate; language: Language; recruitmentLogs: RecruitmentLog[]; candidateReferences: CandidateReference[]; candidateReferenceChecks: CandidateReferenceCheck[]; profile: Profile | null; canWrite: boolean; onOpen: (candidateId: string, applicationId?: string) => void; onStartProcess: (candidate: EnrichedCandidate) => void; onEditPending?: (candidate: EnrichedCandidate) => void; onPassStage?: (candidate: EnrichedCandidate) => void; onFailCurrentStage: (candidate: EnrichedCandidate) => void; onMaintainTest: (candidate: EnrichedCandidate) => void; onUpdateOffer: (candidate: EnrichedCandidate) => void; onEditCandidate?: (candidateId: string) => void; };
 
 function PipelineTableActions({ candidate, language, profile, onOpen, onEditCandidate }: PipelineTableActionProps) {
   const canEditRecord = profile?.role === "system_admin" || profile?.role === "admin_recruiter";
-  return <div className="flex items-center justify-end gap-1"><Button type="button" variant="ghost" size="icon-sm" icon={<Search size={15} />} aria-label={translate(language, "viewCandidateDetailFor", { name: formatCandidateName(candidate) })} title={translate(language, "viewDetail")} onClick={() => onOpen(candidate.candidate_id)} />{canEditRecord && onEditCandidate ? <Button type="button" variant="ghost" size="icon-sm" icon={<Pencil size={15} />} aria-label={translate(language, "changeRecord")} title={translate(language, "changeRecord")} onClick={() => onEditCandidate(candidate.candidate_id)} /> : null}</div>;
+  return <div className="flex items-center justify-end gap-1"><Button type="button" variant="ghost" size="icon-sm" icon={<Search size={15} />} aria-label={translate(language, "viewCandidateDetailFor", { name: formatCandidateName(candidate) })} title={translate(language, "viewDetail")} onClick={() => onOpen(candidate.candidate_id, candidate.application_id)} />{canEditRecord && onEditCandidate ? <Button type="button" variant="ghost" size="icon-sm" icon={<Pencil size={15} />} aria-label={translate(language, "changeRecord")} title={translate(language, "changeRecord")} onClick={() => onEditCandidate(candidate.candidate_id)} /> : null}</div>;
 }
 
 const pipelineTableStates = ["awaiting", "passed", "failed", "no_activity", "offer_complete"] as const;
 function pipelineStateKey(row: EnrichedCandidate) { if (row.latest_process === "No activity") return "no_activity"; if (row.latest_process === "Offer" && row.latest_result === 1) return "offer_complete"; if (row.latest_result === 0) return "failed"; if (row.latest_result === 1) return "passed"; return "awaiting"; }
 function pipelineStateLabel(row: EnrichedCandidate, language: Language) { return translate(language, `pipelineState${pipelineStateKey(row)}`); }
 function pipelineStateTone(row: EnrichedCandidate) { const state = pipelineStateKey(row); return state === "failed" ? "danger" : state === "awaiting" || state === "no_activity" ? "warning" : state === "offer_complete" ? "success" : "teal"; }
-function pendingInterviewer(row: EnrichedCandidate, logs: RecruitmentLog[]) { return logs.filter((log) => log.candidate_id === row.candidate_id && log.superseded_at === null && log.result === null).sort((a, b) => b.log_id - a.log_id)[0]?.interviewer ?? null; }
+function pendingInterviewer(row: EnrichedCandidate, logs: RecruitmentLog[]) { return logs.filter((log) => belongsToApplication(log, row) && log.superseded_at === null && log.result === null).sort((a, b) => compareApplicationLogs(b, a))[0]?.interviewer ?? null; }
 function ageLabel(row: EnrichedCandidate) { const age = candidateTouchAgeDays(row); return age === null ? "-" : `${age}d`; }
 
 function failedCandidatesByStage(rows: EnrichedCandidate[], recruitmentLogs: RecruitmentLog[], cutoff: string | null) {
@@ -618,8 +702,8 @@ function failedCandidatesByStage(rows: EnrichedCandidate[], recruitmentLogs: Rec
   for (const row of rows) {
     if (row.latest_result !== 0 || row.latest_process === "No activity") continue;
     const failureDate = recruitmentLogs
-      .filter((log) => log.candidate_id === row.candidate_id && log.superseded_at === null && log.result === 0)
-      .sort((a, b) => b.log_id - a.log_id)[0]?.outcome_date;
+      .filter((log) => belongsToApplication(log, row) && log.superseded_at === null && log.result === 0)
+      .sort((a, b) => compareApplicationLogs(b, a))[0]?.outcome_date;
     if (cutoff && (!failureDate || failureDate < cutoff)) continue;
     groups.set(row.latest_process, [...(groups.get(row.latest_process) ?? []), row]);
   }
@@ -628,6 +712,10 @@ function failedCandidatesByStage(rows: EnrichedCandidate[], recruitmentLogs: Rec
     stage,
     rows: sortByLastUpdateAsc(groups.get(stage) ?? [])
   }));
+}
+
+function failedGroupsFromPage(rows: EnrichedCandidate[]) {
+  return ACTIVE_PIPELINE_STAGES.map(stage => ({ stage, rows: rows.filter(row => row.latest_process === stage) }));
 }
 
 function passedOfferCandidates(rows: EnrichedCandidate[], cutoff: string | null) {
@@ -654,6 +742,7 @@ function MobileWorkspacePipelineStages({
   language,
   rows,
   stages,
+  stageLists,
   canWrite,
   onMove,
   onOpen,
@@ -663,9 +752,10 @@ function MobileWorkspacePipelineStages({
   language: Language;
   rows: EnrichedCandidate[];
   stages: PipelineStageKey[];
+  stageLists?: ReadonlyMap<PipelineStageKey, ReturnType<typeof useRecruitmentList<EnrichedCandidate>>>;
   canWrite: boolean;
   onMove: (candidate: EnrichedCandidate, nextStage: ProcessStage) => void;
-  onOpen: (candidateId: string) => void;
+  onOpen: (candidateId: string, applicationId?: string) => void;
   onStartProcess: (candidate: EnrichedCandidate) => void;
   renderCandidate?: (candidate: EnrichedCandidate) => JSX.Element;
 }) {
@@ -673,10 +763,11 @@ function MobileWorkspacePipelineStages({
     return (
       <div data-workspace-pipeline-stages className="grid gap-2 md:hidden" aria-label={translate(language, "candidatePipeline")}>
         {stages.map((stage) => {
-          const stageRows = sortByLastUpdateAsc(rows.filter((row) => row.latest_process === stage));
+          const stageList = stageLists?.get(stage);
+          const stageRows = stageList?.items ?? sortByLastUpdateAsc(rows.filter((row) => row.latest_process === stage));
           return <details key={stage} className="group rounded-lg border border-[#E4E9F2] bg-white">
-            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 text-sm font-semibold text-navy focus:outline-none focus:ring-2 focus:ring-primary/30 [&::-webkit-details-marker]:hidden"><span className="min-w-0 truncate">{processLabel(stage, language)}</span><span className="inline-flex min-w-7 items-center justify-center rounded-md bg-[#F1F6FC] px-2 py-1 text-xs tabular-nums text-navy">{stageRows.length}</span></summary>
-            <div className="grid gap-1 border-t border-[#E4E9F2] p-2">{stageRows.length === 0 ? <p className="px-1 py-2 text-xs font-medium text-slate">{translate(language, "noData")}</p> : stageRows.map(renderCandidate)}</div>
+            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 text-sm font-semibold text-navy focus:outline-none focus:ring-2 focus:ring-primary/30 [&::-webkit-details-marker]:hidden"><span className="min-w-0 truncate">{processLabel(stage, language)}</span><span className="inline-flex min-w-7 items-center justify-center rounded-md bg-[#F1F6FC] px-2 py-1 text-xs tabular-nums text-navy">{stageList?.countLabel ?? stageRows.length}</span></summary>
+            <div className="grid gap-1 border-t border-[#E4E9F2] p-2">{stageList?.countError ? <Button type="button" size="sm" variant="secondary" onClick={stageList.retryCount}>{translate(language, "retry")}</Button> : null}{stageList?.error ? <Button type="button" size="sm" variant="secondary" onClick={stageList.retry}>{translate(language, "retry")}</Button> : null}{stageRows.length === 0 ? stageList?.loading ? <p role="status" className="px-1 py-2 text-xs font-medium text-slate">{translate(language, "loading")}</p> : stageList?.error ? <p role="alert" className="px-1 py-2 text-xs font-medium text-scarlet">{translate(language, "loadError")}</p> : <p className="px-1 py-2 text-xs font-medium text-slate">{translate(language, "noData")}</p> : stageRows.map(renderCandidate)}{stageList ? <CursorPagination language={language} page={stageList.page} pageSize={stageList.pageSize} loading={stageList.loading} canPrevious={stageList.canPrevious} canNext={stageList.canNext} onPrevious={stageList.goPrevious} onNext={stageList.goNext} onPageSizeChange={stageList.setPageSize} /> : null}</div>
           </details>;
         })}
       </div>
@@ -685,25 +776,28 @@ function MobileWorkspacePipelineStages({
   return (
     <div data-workspace-pipeline-stages className="grid gap-2 md:hidden" aria-label={translate(language, "candidatePipeline")}>
       {stages.map((stage) => {
-        const stageRows = sortByLastUpdateAsc(rows.filter((row) => row.latest_process === stage));
+        const stageList = stageLists?.get(stage);
+        const stageRows = stageList?.items ?? sortByLastUpdateAsc(rows.filter((row) => row.latest_process === stage));
         return (
           <details key={stage} className="group rounded-lg border border-[#E4E9F2] bg-white">
             <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 text-sm font-semibold text-navy focus:outline-none focus:ring-2 focus:ring-primary/30 [&::-webkit-details-marker]:hidden">
               <span className="min-w-0 truncate">{processLabel(stage, language)}</span>
-              <span className="inline-flex min-w-7 items-center justify-center rounded-md bg-[#F1F6FC] px-2 py-1 text-xs tabular-nums text-navy">{stageRows.length}</span>
+              <span className="inline-flex min-w-7 items-center justify-center rounded-md bg-[#F1F6FC] px-2 py-1 text-xs tabular-nums text-navy">{stageList?.countLabel ?? stageRows.length}</span>
             </summary>
             <div className="grid gap-1 border-t border-[#E4E9F2] p-2">
-              {stageRows.length === 0 ? <p className="px-1 py-2 text-xs font-medium text-slate">{translate(language, "noData")}</p> : stageRows.map((candidate) => {
+              {stageList?.countError ? <Button type="button" size="sm" variant="secondary" onClick={stageList.retryCount}>{translate(language, "retry")}</Button> : null}{stageList?.error ? <Button type="button" size="sm" variant="secondary" onClick={stageList.retry}>{translate(language, "retry")}</Button> : null}
+              {stageRows.length === 0 ? stageList?.loading ? <p role="status" className="px-1 py-2 text-xs font-medium text-slate">{translate(language, "loading")}</p> : stageList?.error ? <p role="alert" className="px-1 py-2 text-xs font-medium text-scarlet">{translate(language, "loadError")}</p> : <p className="px-1 py-2 text-xs font-medium text-slate">{translate(language, "noData")}</p> : stageRows.map((candidate) => {
                 const nextStage = nextStages(candidate.latest_process)[0];
                 const canAdvance = canWrite && (candidate.latest_process === "No activity" || Boolean(nextStage));
                 const advanceLabel = candidate.latest_process === "No activity"
                   ? translate(language, "startPhoneScreenFor", { name: formatCandidateName(candidate) })
                   : `${processLabel(nextStage!, language)} · ${formatCandidateName(candidate)}`;
-                return <div key={candidate.candidate_id} className="flex min-h-11 min-w-0 items-center gap-2 rounded-md px-2 hover:bg-[#F8FAFD]">
-                  <button type="button" onClick={() => onOpen(candidate.candidate_id)} className="min-w-0 flex-1 text-left focus:outline-none focus:ring-2 focus:ring-primary/30"><strong className="block truncate text-sm text-navy">{formatCandidateName(candidate)}</strong><span className="block truncate text-xs font-medium text-slate">{candidate.site ?? "-"} · {candidate.group_position ?? "-"}</span></button>
+                return <div key={applicationKey(candidate)} className="flex min-h-11 min-w-0 items-center gap-2 rounded-md px-2 hover:bg-[#F8FAFD]">
+                  <button type="button" onClick={() => onOpen(candidate.candidate_id, candidate.application_id)} className="min-w-0 flex-1 text-left focus:outline-none focus:ring-2 focus:ring-primary/30"><strong className="block truncate text-sm text-navy">{formatCandidateName(candidate)}</strong><span className="block truncate text-xs font-medium text-slate">{candidate.site ?? "-"} · {candidate.group_position ?? "-"}</span></button>
                   {canAdvance ? <button type="button" aria-label={advanceLabel} title={advanceLabel} onClick={() => candidate.latest_process === "No activity" ? onStartProcess(candidate) : onMove(candidate, nextStage!)} className="inline-flex size-11 shrink-0 items-center justify-center rounded-lg border border-[#C9D5E6] text-primary hover:bg-[#F1F7FF] focus:outline-none focus:ring-2 focus:ring-primary/30"><ArrowRight size={17} aria-hidden="true" /></button> : null}
                 </div>;
               })}
+              {stageList ? <CursorPagination language={language} page={stageList.page} pageSize={stageList.pageSize} loading={stageList.loading} canPrevious={stageList.canPrevious} canNext={stageList.canNext} onPrevious={stageList.goPrevious} onNext={stageList.goNext} onPageSizeChange={stageList.setPageSize} /> : null}
             </div>
           </details>
         );
@@ -762,7 +856,7 @@ function PipelineCandidateCard({
   tone?: "default" | "failed" | "passed";
   showCreateOffer?: boolean;
   rejectionLetterSent?: boolean;
-  onOpen: (candidateId: string) => void;
+  onOpen: (candidateId: string, applicationId?: string) => void;
   onMove?: (candidate: EnrichedCandidate, nextStage: ProcessStage) => void;
   onFailCurrentStage?: (candidate: EnrichedCandidate) => void;
   onMaintainTest?: (candidate: EnrichedCandidate) => void;
@@ -779,18 +873,18 @@ function PipelineCandidateCard({
   onCreateRejectionLetter?: (candidate: EnrichedCandidate) => void;
 }) {
   const lastUpdate = candidateLastUpdate(candidate);
-  const currentPending = [...recruitmentLogs].sort((a, b) => b.log_id - a.log_id).find((log) => log.result === null && !log.superseded_at);
+  const currentPending = [...recruitmentLogs].sort((a, b) => compareApplicationLogs(b, a)).find((log) => log.result === null && !log.superseded_at);
   const estimatedActionDate = currentPending?.estimated_action_date ?? null;
   const estimateOverdue = Boolean(estimatedActionDate && estimatedActionDate < formatLocalDateInput());
   const canFailCurrentStage = ACTIVE_PIPELINE_STAGES.includes(candidate.latest_process as ProcessStage) && candidate.latest_result === null;
   const unresolvedReferences = candidateReferences.filter((reference) => (
-    reference.status === "available" && !candidateReferenceChecks.some((check) => check.reference_id === reference.reference_id)
+    reference.status === "available" && !candidateReferenceChecks.some((check) => check.reference_id === reference.reference_id && check.application_id === candidate.application_id)
   )).length;
   const referencePassBlocked = candidate.latest_process === "Reference Check" && unresolvedReferences > 0;
   const hasCardAction = showCreateOffer || updateStages.length > 0 || canFailCurrentStage || candidate.latest_process === "Offer" || candidate.latest_process === "No activity";
   const baseDisabledReason = candidateProcessDisabledReason(candidate, recruitmentLogs ?? [], profile ?? null);
   const capability = candidatePipelineCapability(candidate, recruitmentLogs ?? [], profile ?? null);
-  const stageMenuId = `stage-menu-${candidate.candidate_id}`;
+  const stageMenuId = `stage-menu-${applicationKey(candidate)}`;
   const actionsButtonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const wasMenuOpenRef = useRef(false);
@@ -837,7 +931,8 @@ function PipelineCandidateCard({
       draggable={draggable}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
-      id={`pipeline-candidate-${candidate.candidate_id}`}
+      id={`pipeline-candidate-${applicationKey(candidate)}`}
+      data-candidate-id={candidate.candidate_id}
       tabIndex={focused ? -1 : undefined}
       className={`${compact ? "border-0 bg-transparent p-1 shadow-none" : "ats-card p-2.5 md:p-3"} relative min-w-0 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-primary/30 ${focused ? "border-primary ring-2 ring-primary/25" : ""} ${toneClass}`}
     >
@@ -847,11 +942,11 @@ function PipelineCandidateCard({
           className="min-w-0 flex-1 rounded-sm text-left focus:outline-none focus:ring-2 focus:ring-primary/25"
           onClick={() => {
             onMenuClose?.();
-            onOpen(candidate.candidate_id);
+            onOpen(candidate.candidate_id, candidate.application_id);
           }}
         >
           <strong className="block truncate text-sm leading-tight text-navy">{formatCandidateName(candidate)}</strong>
-          <p className="mt-1 truncate text-xs font-medium text-slate">{candidate.site ?? "-"} · {candidate.group_position ?? "-"}{compact ? "" : ` (${candidate.person_in_charge ?? "-"})`}</p>
+          <p className="mt-1 truncate text-xs font-medium text-slate">{formatRecruitmentId(candidate.candidate_id)} · {candidate.site ?? "-"} · {candidate.group_position ?? "-"}{compact ? "" : ` (${candidate.person_in_charge ?? "-"})`}</p>
         </button>
         <div className="flex shrink-0 items-center gap-1">
         {tone === "failed" && onCreateRejectionLetter ? (

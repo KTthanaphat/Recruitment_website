@@ -14,10 +14,10 @@ create index if not exists idx_candidate_reference_checks_reference on public.ca
 create index if not exists idx_recruitment_logs_candidate_latest on public.recruitment_logs(candidate_id, log_id desc) where superseded_at is null;
 create index if not exists idx_recruitment_logs_stage_result_date on public.recruitment_logs(recruitment_process, result, coalesce(outcome_date, log_date) desc) where superseded_at is null;
 create unique index if not exists uq_recruitment_logs_canonical_stage_round
-on public.recruitment_logs(candidate_id, recruitment_process, round)
+on public.recruitment_logs(application_id, recruitment_process, round)
 where superseded_at is null;
 create unique index if not exists uq_recruitment_logs_current_pending
-on public.recruitment_logs(candidate_id)
+on public.recruitment_logs(application_id)
 where superseded_at is null and result is null;
 create index if not exists idx_offers_candidate_id on public.offers(candidate_id);
 create index if not exists idx_rejection_letter_drafts_candidate_created on public.rejection_letter_drafts(candidate_id, created_at desc);

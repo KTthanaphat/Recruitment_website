@@ -48,3 +48,9 @@ Dashboard uses the system dark blue sidebar in expanded/collapsed modes, the nor
 Canonical Performance children use `performanceSubview=overview|vacancy|risk`; Pipeline retains `pipelineSubview=overview|bottlenecks`. Explicit groups without children open their default; explicit canonical children win. Old `dashboardTab=vacancy`/`vacancySubview` links and saved v1 selections migrate to Performance Vacancy/Risk while retaining their report period and local filters. Invalid children fall back. Canonical serialization removes legacy navigation/collapse flags; Back/Forward restores views and filters. Future registry IDs remain supported.
 
 Dashboard data bars/tracks/segments/sparklines have square ends in screen and PNG. Preserve panel/control/badge/switch radii, legend dots and Median/P90 markers; shared non-Dashboard callers retain defaults. Verification: [navigation/summary refinement](../../tests/e2e/dashboard-refinement.spec.ts).
+
+## Rejection analytics
+
+Pipeline now contains Overview / Stage Bottlenecks / Rejections. Rejections is an extended-history subview with independent controlled local filters, sort and pagination in the existing URL/session state. It inherits common/header scope, loading/retry, refresh timestamp and desktop restrictions. See [Rejection design](dashboard-rejections.md) and [canonical behavior](../WEBSITE_STRUCTURE.md#rejection-analytics).
+
+Rejections retains its existing tab and adds a saved Treemap/Bars reason-view preference. Local controls use the established compact pattern; see [Rejection design](dashboard-rejections.md).

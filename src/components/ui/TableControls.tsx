@@ -116,10 +116,10 @@ export function TableToolbar({
   language: Language;
   onAdvancedFiltersToggle: () => void;
   onSearch: (value: string) => void;
-  resultCount: number;
+  resultCount: number | null;
   searchValue: string;
   trailingActions?: ReactNode;
-  totalCount: number;
+  totalCount: number | null;
 }) {
   return (
     <div data-table-toolbar className="mb-3 flex flex-col gap-2 rounded-2xl border border-[#E4E9F2] bg-[#F8FAFD] p-3 sm:flex-row sm:items-center sm:justify-between">
@@ -135,7 +135,7 @@ export function TableToolbar({
         />
       </label>
       <div className="flex flex-wrap items-center justify-between gap-2 sm:justify-end">
-        <span className="text-xs font-medium text-slate">{translate(language, "recordsCount", { result: formatNumber(resultCount, language), total: formatNumber(totalCount, language) })}</span>
+        <span className="text-xs font-medium text-slate">{translate(language, "recordsCount", { result: resultCount === null ? "…" : formatNumber(resultCount, language), total: totalCount === null ? "…" : formatNumber(totalCount, language) })}</span>
         <button
           type="button"
           className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-xl px-3 text-sm font-semibold transition-colors ${

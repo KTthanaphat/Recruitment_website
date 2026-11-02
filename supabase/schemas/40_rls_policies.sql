@@ -34,18 +34,7 @@ using (app_private.is_system_admin())
 with check (app_private.is_system_admin());
 
 drop policy if exists requisitions_read on public.requisitions;
-create policy requisitions_read on public.requisitions
-for select to authenticated
-using (
-  app_private.is_global_recruitment_reader()
-  or (
-    app_private.current_app_role() = 'site_recruiter'
-    and (
-      site = app_private.current_profile_site()
-      or person_in_charge = app_private.current_profile_nickname()
-    )
-  )
-);
+create policy requisitions_read on public.requisitions for select to authenticated using(app_private.can_read_requisition(doc_id));
 
 drop policy if exists requisition_logs_read on public.requisition_logs;
 create policy requisition_logs_read on public.requisition_logs
@@ -70,19 +59,19 @@ using (app_private.can_read_candidate(candidate_id));
 drop policy if exists candidate_requisitions_scoped_read on public.candidate_requisitions;
 create policy candidate_requisitions_scoped_read on public.candidate_requisitions
 for select to authenticated
-using (app_private.can_read_requisition(doc_id) and app_private.can_read_candidate(candidate_id));
+using (app_private.can_read_requisition(doc_id) and app_private.can_read_application(application_id));
 
 drop policy if exists recruitment_logs_read on public.recruitment_logs;
 create policy recruitment_logs_read on public.recruitment_logs
 for select to authenticated
 using (
-  app_private.can_read_candidate(recruitment_logs.candidate_id)
+  app_private.can_read_application(recruitment_logs.application_id)
 );
 
 drop policy if exists offers_read on public.offers;
 create policy offers_read on public.offers
 for select to authenticated
-using (app_private.can_read_requisition(doc_id));
+using (app_private.can_read_requisition(doc_id) and app_private.can_read_application(application_id));
 
 drop policy if exists sourcing_weekly_updates_read on public.sourcing_weekly_updates;
 create policy sourcing_weekly_updates_read on public.sourcing_weekly_updates
@@ -103,12 +92,12 @@ using (
 drop policy if exists change_logs_read on public.change_logs;
 create policy change_logs_read on public.change_logs
 for select to authenticated
-using (app_private.is_global_recruitment_reader());
+using (app_private.can_read_candidate_audit(entity,entity_id,old_data,new_data));
 
 create policy rejection_letter_templates_read on public.rejection_letter_templates for select to authenticated using (active or app_private.current_app_role() in ('system_admin', 'admin_recruiter'));
 create policy rejection_reasons_read on public.rejection_reasons for select to authenticated using (active or app_private.current_app_role() in ('system_admin', 'admin_recruiter'));
 create policy rejection_reasons_insert on public.rejection_reasons for insert to authenticated with check (app_private.current_app_role() in ('system_admin', 'admin_recruiter'));
 create policy rejection_reasons_update on public.rejection_reasons for update to authenticated using (app_private.current_app_role() in ('system_admin', 'admin_recruiter')) with check (app_private.current_app_role() in ('system_admin', 'admin_recruiter'));
-create policy rejection_letter_drafts_read on public.rejection_letter_drafts for select to authenticated using (app_private.can_read_candidate(candidate_id));
+create policy rejection_letter_drafts_read on public.rejection_letter_drafts for select to authenticated using (exists(select 1 from public.recruitment_logs l where l.stage_instance_id=rejection_letter_drafts.failed_stage_instance_id and app_private.can_read_application(l.application_id)));
 create policy interview_invitation_templates_read on public.interview_invitation_templates for select to authenticated using (active or app_private.current_app_role() in ('system_admin', 'admin_recruiter'));
-create policy interview_meetings_read on public.interview_meetings for select to authenticated using (app_private.can_read_candidate(candidate_id));
+create policy interview_meetings_read on public.interview_meetings for select to authenticated using (exists(select 1 from public.recruitment_logs l where l.stage_instance_id=interview_meetings.stage_instance_id and app_private.can_read_application(l.application_id)));

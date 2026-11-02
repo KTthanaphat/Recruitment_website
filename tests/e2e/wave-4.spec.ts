@@ -232,7 +232,9 @@ test("group details can add an eligible requisition to an existing group", async
   await group.getByRole("button", { name: "Details" }).click();
   const detailDialog = page.getByRole("dialog", { name: "Group details · GRP-ENG" });
   await expect(detailDialog.getByRole("heading", { name: "Add requisition" })).toBeVisible();
-  await detailDialog.getByLabel("Select requisition to add").selectOption("REQ-UNMATCHED-1");
+  const requisitionPicker = detailDialog.getByLabel("Select requisition to add");
+  await requisitionPicker.click();
+  await detailDialog.getByRole("option", { name: /REQ-UNMATCHED-1/ }).click();
   await detailDialog.getByRole("button", { name: "Add Match" }).click();
 
   const confirmDialog = page.getByRole("dialog", { name: "Confirm Save" });
@@ -240,6 +242,49 @@ test("group details can add an eligible requisition to an existing group", async
   await confirmDialog.getByRole("button", { name: "Save Changes" }).click();
   await expect.poll(() => mock.rpcCalls.at(-1)?.endpoint).toBe("app_create_group_match");
   expect(mock.rpcCalls.at(-1)?.payload).toEqual({ group_id: "GRP-ENG", doc_id: "REQ-UNMATCHED-1" });
+});
+
+test("group details hydrate from the lean bootstrap and search eligible requisitions beyond the first page", async ({ page }) => {
+  const mock = await installMockSupabase(page, { role: "admin_recruiter" });
+  const template = mock.data.requisitions.find(row => row.doc_id === "REQ-UNMATCHED-1");
+  if (!template) throw new Error("Expected eligible requisition fixture is missing.");
+  const linkTemplate = mock.data.document_groups.find(row => row.doc_id === "REQ-HQ-1");
+  if (!linkTemplate) throw new Error("Expected requisition link fixture is missing.");
+  for (let index = 0; index < 55; index += 1) {
+    const docId = `REQ-A-${String(index).padStart(3, "0")}`;
+    mock.data.requisitions.push({ ...template, doc_id: docId });
+    mock.data.document_groups.push({ ...linkTemplate, doc_group_id: `DG-A-${String(index).padStart(3, "0")}`, group_id: "GRP-OTHER", doc_id: docId });
+  }
+  mock.data.requisitions.push({ ...template, doc_id: "REQ-Z-SEARCH-TARGET", position: "Target outside first page" });
+  await page.goto("/sourcing?sourcingWeek=2026-07-06");
+  await expectWorkspaceReady(page);
+  const group = page.getByRole("article").filter({ hasText: "GRP-ENG" });
+  await group.getByRole("button", { name: "Details" }).click();
+  const dialog = page.getByRole("dialog", { name: "Group details · GRP-ENG" });
+  await expect(dialog.getByRole("textbox", { name: "Group display name" })).toBeVisible();
+  await expect(dialog.getByRole("switch", { name: "Toggle Facebook" })).toHaveAttribute("aria-checked", "true");
+  await expect(dialog.getByRole("button", { name: "Unmatch REQ-HQ-1" })).toBeVisible();
+  await expect.poll(() => mock.rpcCalls.some(call => call.endpoint === "app_recruitment_groups_page_v1")).toBe(true);
+  const search = dialog.getByRole("textbox", { name: "Search requisitions" });
+  await search.fill("REQ-Z-SEARCH-TARGET");
+  await expect.poll(() => mock.rpcCalls.filter(call => call.endpoint === "app_recruitment_list_v1" && call.payload.p_entity === "requisitions").some(call => call.payload.p_search === "REQ-Z-SEARCH-TARGET")).toBe(true);
+  const pageCall = mock.rpcCalls.find(call => call.endpoint === "app_recruitment_list_v1" && call.payload.p_entity === "requisitions" && call.payload.p_search === "REQ-Z-SEARCH-TARGET");
+  expect((pageCall?.response as { items?: Array<{ doc_id: string }>; total_count?: number } | undefined)?.items?.map(row => row.doc_id)).toEqual(["REQ-Z-SEARCH-TARGET"]);
+  expect((pageCall?.response as { total_count?: number } | undefined)?.total_count).toBe(1);
+  const countCall = mock.rpcCalls.find(call => call.endpoint === "app_recruitment_list_count_v1" && call.payload.p_entity === "requisitions" && call.payload.p_search === "REQ-Z-SEARCH-TARGET");
+  await expect.poll(() => countCall?.response).toBe(1);
+  const choices = dialog.getByLabel("Select requisition to add");
+  await choices.click();
+  await expect(dialog.getByRole("option", { name: /REQ-Z-SEARCH-TARGET/ })).toBeVisible();
+  await dialog.getByRole("option", { name: /REQ-Z-SEARCH-TARGET/ }).click();
+  await search.fill("REQ-A-001");
+  await expect.poll(() => mock.rpcCalls.some(call => call.endpoint === "app_recruitment_list_v1" && call.payload.p_entity === "requisitions" && call.payload.p_search === "REQ-A-001")).toBe(true);
+  await expect(choices).toContainText("REQ-Z-SEARCH-TARGET");
+  await dialog.getByRole("button", { name: "Add Match" }).click();
+  const confirm = page.getByRole("dialog", { name: "Confirm Save" });
+  await confirm.getByRole("button", { name: "Save Changes" }).click();
+  await expect.poll(() => mock.rpcCalls.at(-1)?.endpoint).toBe("app_create_group_match");
+  expect(mock.rpcCalls.at(-1)?.payload).toEqual({ group_id: "GRP-ENG", doc_id: "REQ-Z-SEARCH-TARGET" });
 });
 
 test("Admin Recruiters can add cross-site matches and the mixed-site group persists", async ({ page }) => {
@@ -250,13 +295,15 @@ test("Admin Recruiters can add cross-site matches and the mixed-site group persi
   const adminGroup = page.getByRole("article").filter({ hasText: "GRP-MIX" });
   await adminGroup.getByRole("button", { name: "Details" }).click();
   const adminDialog = page.getByRole("dialog", { name: "Group details · GRP-MIX" });
-  const adminOptions = await adminDialog.getByLabel("Select requisition to add").locator("option").allTextContents();
+  await adminDialog.getByLabel("Select requisition to add").click();
+  const adminOptions = await adminDialog.getByRole("option").allTextContents();
   expect(adminOptions.join(" ")).toContain("REQ-KT2-MIX-BOB");
-  await adminDialog.getByLabel("Select requisition to add").selectOption("REQ-KT2-MIX-BOB");
+  await adminDialog.getByRole("option", { name: /REQ-KT2-MIX-BOB/ }).click();
   await adminDialog.getByRole("button", { name: "Add Match" }).click();
   const confirmDialog = page.getByRole("dialog", { name: "Confirm Save" });
   await confirmDialog.getByRole("button", { name: "Save Changes" }).click();
   await expect.poll(() => adminMock.rpcCalls.at(-1)?.endpoint).toBe("app_create_group_match");
+  await adminDialog.getByRole("button", { name: "Close" }).click();
   await page.getByRole("article").filter({ hasText: "GRP-MIX" }).getByRole("button", { name: "Details" }).click();
   await expect(page.getByRole("dialog", { name: "Group details · GRP-MIX" })).toContainText("REQ-KT2-MIX-BOB · KT2");
 
@@ -274,10 +321,11 @@ test("Site Recruiters can add an existing group-site requisition, while viewers 
   const group = page.getByRole("article").filter({ hasText: "GRP-MIX" });
   await group.getByRole("button", { name: "Details" }).click();
   const dialog = page.getByRole("dialog", { name: "Group details · GRP-MIX" });
-  const options = await dialog.getByLabel("Select requisition to add").locator("option").allTextContents();
+  await dialog.getByLabel("Select requisition to add").click();
+  const options = await dialog.getByRole("option").allTextContents();
   expect(options.join(" ")).toContain("REQ-KT1-MIX-PEER");
   expect(options.join(" ")).not.toContain("REQ-KT2-MIX-BOB");
-  await dialog.getByLabel("Select requisition to add").selectOption("REQ-KT1-MIX-PEER");
+  await dialog.getByRole("option", { name: /REQ-KT1-MIX-PEER/ }).click();
   await dialog.getByRole("button", { name: "Add Match" }).click();
   await page.getByRole("dialog", { name: "Confirm Save" }).getByRole("button", { name: "Save Changes" }).click();
   await expect.poll(() => siteMock.rpcCalls.at(-1)?.endpoint).toBe("app_create_group_match");
@@ -298,7 +346,9 @@ test("System Admins can choose a requisition from another site for Group Details
   await page.goto("/sourcing?sourcingWeek=2026-07-06");
   await expectWorkspaceReady(page);
   await page.getByRole("article").filter({ hasText: "GRP-MIX" }).getByRole("button", { name: "Details" }).click();
-  const options = await page.getByRole("dialog", { name: "Group details · GRP-MIX" }).getByLabel("Select requisition to add").locator("option").allTextContents();
+  const dialog = page.getByRole("dialog", { name: "Group details · GRP-MIX" });
+  await dialog.getByLabel("Select requisition to add").click();
+  const options = await dialog.getByRole("option").allTextContents();
   expect(options.join(" ")).toContain("REQ-KT2-MIX-BOB");
 });
 
@@ -332,6 +382,7 @@ test("group details use compact checkbox-style channel controls, Save, and icon-
     expected_updated_at: "2026-07-01T00:00:00"
   });
 
+  await detailDialog.getByRole("button", { name: "Close" }).click();
   await group.getByRole("button", { name: "Details" }).click();
   const reopenedDetailDialog = page.getByRole("dialog", { name: "Group details · GRP-ENG" });
   await reopenedDetailDialog.getByRole("button", { name: "Unmatch REQ-HQ-1" }).click();
@@ -391,7 +442,7 @@ test("pipeline URL search focuses a candidate and Actions is keyboard dismissibl
   await expectWorkspaceReady(page);
 
   await expect(page.getByLabel("Search pipeline")).toHaveValue("C-PHONE");
-  const card = page.locator("#pipeline-candidate-C-PHONE");
+  const card = page.locator('[data-candidate-id="C-PHONE"]');
   const actions = card.getByRole("button", { name: "Candidate actions for Pat Phone" });
   await actions.focus();
   await page.keyboard.press("Enter");
@@ -411,7 +462,8 @@ test("candidate drawer has one action hierarchy and modal becomes topmost", asyn
   const drawer = page.getByRole("dialog", { name: /C-PHONE \/ Pat Phone/ });
   await expect(drawer.getByText("Current stage")).toBeVisible();
   await expect(drawer.getByText("Pending details")).toBeVisible();
-  await expect(drawer.getByText("Awaiting outcome")).toBeVisible();
+  await expect(drawer.getByText("Phone Screening / Round 1")).toBeVisible();
+  await expect(drawer.getByText(/Pending details: 09\/07\/2026.*QA Interviewer/)).toBeVisible();
   await expect(drawer.getByText("Result", { exact: true })).toHaveCount(0);
   await expect(drawer.getByRole("button", { name: "Update process" })).toHaveCount(1);
 

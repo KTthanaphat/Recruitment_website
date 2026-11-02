@@ -36,7 +36,7 @@ using (
   exists (
     select 1 from public.candidate_references reference
     where reference.reference_id = candidate_reference_checks.reference_id
-      and (select app_private.can_read_candidate(reference.candidate_id))
+      and (select app_private.can_read_application(candidate_reference_checks.application_id))
   )
 );
 
@@ -76,3 +76,24 @@ grant execute on function public.app_upsert_vacancy_weekly_snapshot(jsonb) to au
 
 revoke all on function public.app_set_requisition_priority_v1(jsonb) from public, anon, authenticated;
 grant execute on function public.app_set_requisition_priority_v1(jsonb) to authenticated;
+revoke all on function public.app_recruitment_list_v1(text,text,jsonb,text,text,integer,jsonb,text,boolean,boolean) from public, anon, authenticated;
+grant execute on function public.app_recruitment_list_v1(text,text,jsonb,text,text,integer,jsonb,text,boolean,boolean) to authenticated;
+revoke all on function public.app_recruitment_list_count_v1(text,text,jsonb) from public, anon, authenticated;
+grant execute on function public.app_recruitment_list_count_v1(text,text,jsonb) to authenticated;
+revoke all on function public.app_recruitment_applications_page_v1(text,jsonb,text,text,integer,jsonb,text,boolean,boolean), public.app_recruitment_history_page_v1(text,jsonb,text,text,integer,jsonb,text,boolean,boolean), public.app_candidate_profile_detail_v1(text), public.app_pipeline_summary_v1(jsonb,text,date,integer) from public, anon, authenticated;
+grant execute on function public.app_recruitment_applications_page_v1(text,jsonb,text,text,integer,jsonb,text,boolean,boolean), public.app_recruitment_history_page_v1(text,jsonb,text,text,integer,jsonb,text,boolean,boolean), public.app_candidate_profile_detail_v1(text), public.app_pipeline_summary_v1(jsonb,text,date,integer) to authenticated;
+revoke all on function public.app_recruitment_requisitions_page_v1(text,jsonb,text,text,integer,jsonb,text,boolean,boolean) from public, anon, authenticated;
+grant execute on function public.app_recruitment_requisitions_page_v1(text,jsonb,text,text,integer,jsonb,text,boolean,boolean) to authenticated;
+revoke all on function public.app_recruitment_groups_page_v1(text,jsonb,text,text,integer,jsonb,text,boolean,boolean), public.app_recruitment_sourcing_page_v1(text,jsonb,text,text,integer,jsonb,text,boolean,boolean), public.app_recruitment_offers_page_v1(text,jsonb,text,text,integer,jsonb,text,boolean,boolean), public.app_recruitment_audit_page_v1(text,jsonb,text,text,integer,jsonb,text,boolean,boolean) from public, anon, authenticated;
+grant execute on function public.app_recruitment_groups_page_v1(text,jsonb,text,text,integer,jsonb,text,boolean,boolean), public.app_recruitment_sourcing_page_v1(text,jsonb,text,text,integer,jsonb,text,boolean,boolean), public.app_recruitment_offers_page_v1(text,jsonb,text,text,integer,jsonb,text,boolean,boolean), public.app_recruitment_audit_page_v1(text,jsonb,text,text,integer,jsonb,text,boolean,boolean) to authenticated;
+
+revoke all on function public.app_dashboard_bottleneck_summary_v1(date,date,date,date,jsonb,text,date[]), public.app_dashboard_bottleneck_queue_v1(date,jsonb,text,text,text,text,text,text,text,text,text,integer) from public,anon,authenticated;
+grant execute on function public.app_dashboard_bottleneck_summary_v1(date,date,date,date,jsonb,text,date[]), public.app_dashboard_bottleneck_queue_v1(date,jsonb,text,text,text,text,text,text,text,text,text,integer) to authenticated;
+-- Legacy writes remain authenticated RPCs with explicit application resolution.
+revoke all on function public.app_insert_pipeline_passes(jsonb), public.app_insert_pipeline_test_exit(jsonb), public.app_insert_recruitment_log(jsonb), public.app_insert_test_maintenance(jsonb) from public, anon;
+grant execute on function public.app_insert_pipeline_passes(jsonb), public.app_insert_pipeline_test_exit(jsonb), public.app_insert_recruitment_log(jsonb), public.app_insert_test_maintenance(jsonb) to authenticated;
+
+-- Trigger-only internal ledger maintenance is never callable by API users.
+revoke all on function app_private.claim_candidate_application_group() from public,anon,authenticated;
+revoke all on function public.app_home_welcome_summary_v1(), public.app_home_banner_summary_v1(jsonb) from public,anon,authenticated;
+grant execute on function public.app_home_welcome_summary_v1(), public.app_home_banner_summary_v1(jsonb) to authenticated;

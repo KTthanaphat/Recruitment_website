@@ -7,6 +7,7 @@ import { vacancyRiskAt, riskGroups, buildVacancyRiskReport } from "../../src/lib
 import { normalizeStageInstances, percentile, buildStageBottleneckReport } from "../../src/lib/stage-bottleneck-report";
 import { readReportPages } from "../../src/lib/dashboard-report-loader";
 import { buildBottleneckExport, buildRiskExport } from "../../src/lib/risk-bottleneck-export";
+import { assertFullContinuationPage } from "../../src/lib/report-export-pagination";
 import { createDashboardWorkbook } from "../../src/lib/dashboard-workbook";
 import { dashboardDefaults, restoreDashboardPreferences, dashboardUrlValues } from "../../src/lib/dashboard-filters";
 import type { Candidate, DashboardData, RecruitmentLog, Requisition } from "../../src/types/recruitment";
@@ -69,6 +70,11 @@ test("pagination retrieves >1000 rows and rejects truncated, duplicate or failed
   expect(await readReportPages(client(), "recruitment_logs", "log_id", "log_id")).toHaveLength(1101);
   await expect(readReportPages(client("cap"), "recruitment_logs", "log_id", "log_id")).rejects.toThrow("Incomplete"); await expect(readReportPages(client("duplicate"), "recruitment_logs", "log_id", "log_id")).rejects.toThrow("Duplicate"); await expect(readReportPages(client("error"), "recruitment_logs", "log_id", "log_id")).rejects.toThrow("Read failed");
 });
+test("complete report PNG rejects short nonterminal pages even when the cursor advances", () => {
+  expect(() => assertFullContinuationPage(true, 19, 20, "Bottleneck queue")).toThrow("incomplete");
+  expect(() => assertFullContinuationPage(true, 24, 25, "Risk")).toThrow("incomplete");
+  expect(() => assertFullContinuationPage(true, 20, 20, "Bottleneck queue")).not.toThrow();
+});
 test("both models export two typed worksheets with literal text and reconcilable ledgers", async () => {
   const data = dataset(); data.candidates[0].name = "=1+1"; data.candidates[0].candidate_id = "0001"; data.recruitment_logs = [log(1, "0001", "Phone Screen", "2026-07-01", "2026-07-03", 1), log(2, "C2")]; const c = context(data);
   const risk = buildVacancyRiskReport(data, c.requisitions, range, "2026-07-24", prior), stage = buildStageBottleneckReport(data, c.requisitions, range, "2026-07-24", prior);
@@ -89,10 +95,13 @@ test("stage subview controls, compact layouts and PNG retain all filtered action
   await page.setViewportSize({ width: 1280, height: 900 }); await page.getByRole("button", { name: "Export Stage Bottlenecks", exact: true }).click(); const pending = page.waitForEvent("download"); await page.getByRole("dialog").getByRole("button", { name: "Stage Bottlenecks PNG", exact: true }).click(); const file = await pending; expect(file.suggestedFilename()).toMatch(/^stage-bottlenecks-.*\.png$/); const stream = (await file.createReadStream())!; let bytes = 0; for await (const chunk of stream) bytes += chunk.length; expect(bytes).toBeGreaterThan(10000);
 });
 test("Thai report labels and keyboard subview operation", async ({ page }) => { await open(page, "vacancy", "th"); await expect(page.getByRole("region", { name: "ความเสี่ยงและอายุอัตราว่าง", exact: true })).toBeVisible(); await page.getByRole("tab", { name: "ความเสี่ยงและอายุ", exact: true }).focus(); await page.keyboard.press("Home"); await expect(page.getByRole("tab", { name: "ภาพรวมผลการสรรหา", exact: true })).toHaveAttribute("aria-selected", "true"); });
-test("complete history failure is retryable without publishing a partial report", async ({ page }) => {
-  await installMockSupabase(page); let failed = true;
-  await page.route("**/rest/v1/recruitment_logs?**", async route => { if (failed && route.request().headers().prefer?.includes("count=exact")) await route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ message: "Synthetic read failure" }) }); else await route.fallback(); });
-  await page.goto("/dashboard?dashboardTab=pipeline&pipelineSubview=bottlenecks&dashboardPeriod=pim&dashboardMonth=2026-07"); await expectWorkspaceReady(page); await expect(page.getByRole("alert").filter({ hasText: "Could not load complete report history" })).toBeVisible(); await expect(page.locator("[data-risk-report]:visible")).toHaveCount(0); failed = false; await page.getByRole("button", { name: "Retry", exact: true }).click(); await expect(page.locator("[data-risk-report]:visible")).toBeVisible();
+test("bottleneck summary errors retry and incomplete explicit exports publish no file", async ({ page }) => {
+  await installMockSupabase(page); let summaryFailed = true, exportFailed = true;
+  await page.route("**/rest/v1/rpc/app_dashboard_bottleneck_summary_v1", async route => { if (summaryFailed) await route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ message: "Synthetic summary failure" }) }); else await route.fallback(); });
+  await page.route("**/rest/v1/recruitment_logs?**", async route => { if (exportFailed&&route.request().headers().prefer?.includes("count=exact")) await route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ message: "Synthetic complete export failure" }) }); else await route.fallback(); });
+  await page.goto("/dashboard?dashboardTab=pipeline&pipelineSubview=bottlenecks&dashboardPeriod=pim&dashboardMonth=2026-07"); await expectWorkspaceReady(page); await expect(page.getByRole("alert").filter({ hasText: /unavailable/i }).first()).toBeVisible(); await expect(page.locator("[data-risk-report]:visible")).toBeVisible();
+  summaryFailed=false; await page.getByRole("button", { name: "Retry", exact: true }).click(); await expect(page.locator("[data-risk-report]:visible")).toBeVisible();
+  await page.getByRole("button", { name: "Export Stage Bottlenecks", exact: true }).click(); await page.getByRole("dialog").getByRole("button", { name: "Export Stage Bottlenecks XLSX", exact: true }).click(); await expect(page.getByRole("dialog").getByRole("alert").filter({ hasText: "Could not export this report" })).toBeVisible();
 });
 test("header scope narrows both new reports; Channel stays local and details hydrate", async ({ page }) => {
   await open(page, "pipeline"); await page.getByRole("button", { name: "Clear detail filters", exact: true }).click(); const total = Number(await page.getByRole('button', { name: /^All \d+$/ }).locator('b').innerText());
@@ -103,19 +112,70 @@ test("header scope narrows both new reports; Channel stays local and details hyd
 });
 test("company-only risk rows open limited read-only details without operational identity", async ({ page }) => {
   const { data } = await installMockSupabase(page, { role: "viewer" });
-  await page.route("**/rest/v1/rpc/app_dashboard_company_report", route => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ requisitions: [...data.requisitions, req("COMPANY-ONLY", "2026-06-01", "4", 1)], requisition_logs: [], offers: [] }) }));
-  await page.goto("/dashboard?dashboardTab=vacancy&vacancySubview=risk&dashboardPeriod=pim&dashboardMonth=2026-07&riskFilter=all"); await expectWorkspaceReady(page); const row = page.getByRole("region", { name: "Requisitions requiring action", exact: true }).getByRole("row").filter({ hasText: "COMPANY-ONLY" }); await row.getByRole("button", { name: "Review", exact: true }).click(); await expect(page.getByRole("dialog")).toContainText("Company report · Read-only details"); await expect(page.getByRole("dialog")).toContainText("No candidate identity"); await expect(page.getByRole("dialog").getByRole("button", { name: /Edit|Save/ })).toHaveCount(0);
+  const companyReq = req("COMPANY-ONLY", "2026-06-01", "4", 1);
+  data.requisitions.push(companyReq);
+  await page.route("**/rest/v1/rpc/app_dashboard_company_report", route => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ requisitions: [...data.requisitions], requisition_logs: [], offers: [] }) }));
+  await page.goto("/dashboard?dashboardTab=vacancy&vacancySubview=risk&dashboardPeriod=pim&dashboardMonth=2026-07&riskFilter=all"); await expectWorkspaceReady(page); const row = page.getByRole("region", { name: "Requisitions requiring action", exact: true }).getByRole("row").filter({ hasText: "COMPANY-ONLY" }); await expect(row).toBeVisible();
+  // The report feed is company-wide; remove the fixture from ordinary RLS reads
+  // after the aggregate/page has rendered and before the detail is hydrated.
+  data.requisitions = data.requisitions.filter(item => item.doc_id !== companyReq.doc_id);
+  await row.getByRole("button", { name: "Review", exact: true }).click(); await expect(page.getByRole("dialog")).toContainText("Company report · Read-only details"); await expect(page.getByRole("dialog")).toContainText("No candidate identity"); await expect(page.getByRole("dialog").getByRole("button", { name: /Edit|Save/ })).toHaveCount(0);
+});
+test("risk export uses the complete anonymized company ledger after empty-bootstrap history and restart", async ({ page }) => {
+  const { data } = await installMockSupabase(page, { role: "viewer" });
+  const companyReq = req("COMPANY-HISTORY", "2026-06-01", "4", 1);
+  const companyLog = { log_id: 88001, doc_id: companyReq.doc_id, log_date: "2026-07-01", status: "filled", remark: null, created_at: "2026-07-01T00:00:00Z" };
+  const companyOffer = { offer_id: 88001, candidate_id: null, doc_id: companyReq.doc_id, accepted_date: "2026-06-10", first_working_date: "2026-06-20", start_confirmation: "did_not_start", start_confirmed_at: "2026-07-15T08:00:00Z", start_confirmed_by: null, start_confirmation_reason: "No show", remark: null, created_at: "2026-06-10T00:00:00Z", updated_at: "2026-07-15T08:00:00Z" };
+  // Deliberately keep COMPANY-HISTORY out of bootstrap data. The explicit export RPC
+  // supplies the same anonymized business ledger that backs company-wide risk totals.
+  await page.route("**/rest/v1/rpc/app_dashboard_company_report", route => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ requisitions: [...data.requisitions, companyReq], requisition_logs: [...data.requisition_logs, companyLog], offers: [...data.offers, companyOffer] }) }));
+  await page.goto("/dashboard?dashboardTab=vacancy&vacancySubview=risk&dashboardPeriod=pim&dashboardMonth=2026-07&riskFilter=all"); await expectWorkspaceReady(page);
+  await page.getByRole("button", { name: "Export Vacancy Risk & Aging", exact: true }).click(); const pending = page.waitForEvent("download"); await page.getByRole("dialog").getByRole("button", { name: "Export Vacancy Risk & Aging XLSX", exact: true }).click();
+  const download = await pending, chunks: Buffer[] = []; for await (const chunk of (await download.createReadStream())!) chunks.push(Buffer.from(chunk));
+  const book = new Workbook(); await book.xlsx.load(Buffer.concat(chunks)); const source = book.worksheets[1].getSheetValues().flat(3);
+  expect(source).toContain("COMPANY-HISTORY"); expect(source).toContain("Restart"); expect(source.some(value => value instanceof Date && value.toISOString().startsWith("2026-07-15"))).toBe(true); expect(source).not.toContain("No show");
+});
+test("risk PNG export exhausts the selected server cursor beyond 1000 rows", async ({ page }) => {
+  test.setTimeout(90_000);
+  const { data, rpcCalls } = await installMockSupabase(page);
+  const template = data.requisitions[0];
+  data.requisitions = Array.from({ length: 1001 }, (_, index) => ({ ...template, doc_id: `RISK-BULK-${String(index).padStart(4,"0")}`, pr_approved_date: "2026-06-01", head_count: 1 }));
+  await page.goto("/dashboard?dashboardTab=vacancy&vacancySubview=risk&dashboardPeriod=pim&dashboardMonth=2026-07&riskFilter=all"); await expectWorkspaceReady(page);
+  await page.getByRole("button", { name: "Export Vacancy Risk & Aging", exact: true }).click(); const download = page.waitForEvent("download"); await page.getByRole("dialog").getByRole("button", { name: "Vacancy Risk & Aging PNG", exact: true }).click();
+  await download;
+  const pageCalls = rpcCalls.filter(call => call.endpoint === "app_dashboard_risk_page_v1");
+  expect(pageCalls.length).toBeGreaterThanOrEqual(51);
+  const exportPages = pageCalls.slice(-51); // all pages required for 1001 matching requisitions
+  expect(exportPages[0].payload.p_after_doc ?? null).toBeNull();
+  expect(new Set(exportPages.map(call => call.payload.p_after_doc ?? "<first>" )).size).toBe(51);
 });
 test("browser retrieves every stage page above 1000 and action PNG includes beyond-screen rows", async ({ page }) => {
+  test.setTimeout(90_000);
   const { data } = await installMockSupabase(page);
   const original = data.candidates.find(row => row.candidate_id === "C-PHONE")!;
-  for (let i = 0; i < 26; i++) { const id = `LONG-${i}`; data.candidates.push({ ...original, candidate_id: id, name: `Synthetic candidate ${i}` }); data.recruitment_logs.push(log(10000 + i, id, "Test", "2026-07-01")); }
-  for (let i = 0; i < 1050; i++) data.recruitment_logs.push({ ...log(11000 + i, original.candidate_id, "Phone Screen", "2026-07-01", "2026-07-03", 1), round: i + 1 });
-  await page.goto("/dashboard?dashboardTab=pipeline&pipelineSubview=bottlenecks&dashboardPeriod=pim&dashboardMonth=2026-07&queueStatus=all"); await expectWorkspaceReady(page); const queue = page.getByRole("region", { name: "Action queue", exact: true }); await expect(queue.locator("tbody tr")).toHaveCount(20); await expect(queue.getByText("Page 1 / 2", { exact: true })).toBeVisible();
+  const originalApplication = data.candidate_applications!.find(row => row.candidate_id === original.candidate_id)!;
+  const originalAssignment = data.candidate_application_assignments!.find(row => row.application_id === originalApplication.application_id)!;
+  // Synthetic profiles need journeys too; the application-aware queue intentionally excludes unmatched profiles.
+  for (let i = 0; i < 26; i++) {
+    const id = `LONG-${i}`, applicationId = `LONG-APP-${i}`, assignmentId = `LONG-ASSIGN-${i}`;
+    data.candidates.push({ ...original, candidate_id: id, name: `Synthetic candidate ${i}` });
+    data.candidate_applications!.push({ ...originalApplication, application_id: applicationId, candidate_id: id });
+    data.candidate_application_assignments!.push({ ...originalAssignment, application_id: applicationId, assignment_id: assignmentId });
+    data.recruitment_logs.push({ ...log(10000 + i, id, "Test", "2026-07-01"), application_id: applicationId, entry_assignment_id: assignmentId });
+  }
+  for (let i = 0; i < 1001; i++) {
+    const id = `WAIT-${i}`, applicationId = `WAIT-APP-${i}`, assignmentId = `WAIT-ASSIGN-${i}`;
+    data.candidates.push({ ...original, candidate_id: id, name: `Waiting candidate ${i}` });
+    data.candidate_applications!.push({ ...originalApplication, application_id: applicationId, candidate_id: id, state: "active" });
+    data.candidate_application_assignments!.push({ ...originalAssignment, application_id: applicationId, assignment_id: assignmentId });
+    data.recruitment_logs.push({ ...log(20000 + i, id, "Phone Screen", "2026-07-01"), application_id: applicationId, entry_assignment_id: assignmentId });
+  }
+  for (let i = 0; i < 1050; i++) data.recruitment_logs.push({ ...log(11000 + i, original.candidate_id, "Phone Screen", "2026-07-01", "2026-07-03", 1), application_id: originalApplication.application_id, entry_assignment_id: originalAssignment.assignment_id, outcome_assignment_id: originalAssignment.assignment_id, round: i + 1 });
+  await page.goto("/dashboard?dashboardTab=pipeline&pipelineSubview=bottlenecks&dashboardPeriod=pim&dashboardMonth=2026-07&queueStatus=all"); await expectWorkspaceReady(page); const queue = page.getByRole("region", { name: "Action queue", exact: true }); await expect(queue.locator("tbody tr")).toHaveCount(20); await expect(queue.getByRole("button", { name: "Next", exact: true })).toBeEnabled();
   const expectedPhone = buildStageBottleneckReport(data, enrichRequisitions(data), { start: "2026-07-01", end: "2026-07-31" }, "2026-07-24", prior).stages[0].sample;
   expect(expectedPhone).toBeGreaterThan(1000);
   const stages = page.getByRole("heading", { name: "Stage completion time", exact: true }).locator("..").locator("..").locator(".."); await expect(stages.getByRole("row").filter({ has: page.getByRole("button", { name: "Phone Screening", exact: true }) })).toContainText(String(expectedPhone));
-  const total = Number(await page.getByRole('button', { name: /^All \d+$/ }).locator('b').innerText()); await page.getByRole("button", { name: "Export Stage Bottlenecks", exact: true }).click(); const download = page.waitForEvent("download"); await page.getByRole("dialog").getByRole("button", { name: "Stage Bottlenecks PNG", exact: true }).click(); await expect(page.locator('[data-risk-export] section[aria-label="Action queue"] tbody tr')).toHaveCount(total); await download;
+  const total = Number(await page.getByRole('button', { name: /^All \d+$/ }).locator('b').innerText()); expect(total).toBeGreaterThan(1000); await page.getByRole("button", { name: "Export Stage Bottlenecks", exact: true }).click(); const download = page.waitForEvent("download"); await page.getByRole("dialog").getByRole("button", { name: "Stage Bottlenecks PNG", exact: true }).click(); await expect(page.locator('[data-risk-export] section[aria-label="Action queue"] tbody tr')).toHaveCount(total, { timeout: 55_000 }); await download;
 });
 for (const role of ["site_recruiter", "viewer"] as const) test(`${role} stage source rows stay within authorized operational records`, async ({ page }) => {
   const { data } = await installMockSupabase(page, { role });

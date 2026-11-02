@@ -33,3 +33,6 @@ test-results/
 
 .DS_Store
 Thumbs.db
+/.local/
+/outputs/
+/exports/

@@ -1,7 +1,10 @@
 import { loadRecruitmentHistory } from "@/lib/recruitment-history-loader";
+import { compareApplicationLogs } from "@/lib/application-stage-order";
 import { PROCESS_STAGES, SOURCING_CHANNELS } from "@/lib/constants";
 import { formatCandidateName } from "@/lib/format";
 import { countsTowardHeadcount } from "@/lib/offer-headcount";
+import { applicationCandidates, belongsToApplication, assignmentGroup, groupCandidateCount as countGroupPeople } from "@/lib/applications";
+import type { CandidateApplication, ApplicationAssignment, CandidateNote, MaskedCandidateSummary, CandidateProfileCapabilities, ApplicationDestination } from "@/types/recruitment";
 import type {
   Candidate,
   CandidateReference,
@@ -110,7 +113,10 @@ export async function loadDashboardData(client: SupabaseLike): Promise<Dashboard
     rejectionLetterTemplates,
     rejectionLetterDrafts,
     interviewInvitationTemplates,
-    interviewMeetings
+    interviewMeetings,
+    candidateApplications,
+    applicationAssignments,
+    candidateNotes, maskedPool, profileCapabilities, applicationDestinations
   ] = await Promise.all([
     client.auth.getUser(),
     selectAll<Profile>(client, "profiles", "updated_at"),
@@ -130,7 +136,13 @@ export async function loadDashboardData(client: SupabaseLike): Promise<Dashboard
     selectOptionalAll<RejectionLetterTemplate>(client, "rejection_letter_templates", "updated_at"),
     selectOptionalAll<RejectionLetterDraft>(client, "rejection_letter_drafts", "created_at"),
     selectOptionalAll<InterviewInvitationTemplate>(client, "interview_invitation_templates", "updated_at"),
-    selectOptionalAll<InterviewMeeting>(client, "interview_meetings", "starts_at")
+    selectOptionalAll<InterviewMeeting>(client, "interview_meetings", "starts_at"),
+    selectAll<CandidateApplication>(client, "candidate_applications", "updated_at"),
+    selectAll<ApplicationAssignment>(client, "candidate_application_assignments", "started_at"),
+    selectAll<CandidateNote>(client, "candidate_notes", "created_at"),
+    profileProjection<MaskedCandidateSummary>(client, "app_masked_candidate_pool_v1"),
+    profileProjection<CandidateProfileCapabilities>(client, "app_candidate_profile_capabilities_v1"),
+    profileProjection<ApplicationDestination>(client, "app_application_destinations_v1")
   ]);
 
   if (userResult.error) throw new Error(userResult.error.message);
@@ -160,8 +172,36 @@ export async function loadDashboardData(client: SupabaseLike): Promise<Dashboard
     rejection_letter_templates: rejectionLetterTemplates,
     rejection_letter_drafts: rejectionLetterDrafts,
     interview_invitation_templates: interviewInvitationTemplates,
-    interview_meetings: interviewMeetings
+    interview_meetings: interviewMeetings,
+    candidate_applications: candidateApplications,
+    candidate_application_assignments: applicationAssignments,
+    candidate_notes: candidateNotes,
+    masked_candidate_pool: maskedPool,
+    candidate_profile_capabilities: profileCapabilities,
+    application_destinations: applicationDestinations
   };
+}
+
+/** Minimal authenticated startup payload. Operational records are fetched by their active list/detail consumers. */
+export async function loadRecruitmentBootstrap(client: SupabaseLike): Promise<DashboardData> {
+  const user = await client.auth.getUser();
+  if (user.error) throw new Error(user.error.message);
+  const userId = user.data.user?.id;
+  if (!userId) throw new Error("Could not verify the signed-in user.");
+  const profileQuery = client.from("profiles").select("*") as unknown as { eq: (column: string, value: string) => { limit: (count: number) => SupabaseRows } };
+  const { data, error } = await profileQuery.eq("id", userId).limit(1);
+  if (error) throw new Error(error.message);
+  const profile = ((data ?? []) as Profile[]).find(row => row.id === userId) ?? null;
+  if (!profile) throw new Error("Could not load the signed-in profile.");
+  const rejectionReasons = await selectOptionalAll<RejectionReason>(client, "rejection_reasons", "sort_order");
+  return { ...emptyDashboardData, profile, profiles: [profile], rejection_reasons: rejectionReasons };
+}
+
+async function profileProjection<T>(client: SupabaseLike, name: string): Promise<T[]> {
+  if (!client.rpc) return [];
+  const {data,error}=await client.rpc(name);
+  if(error) throw new Error(error.message);
+  return Array.isArray(data) ? data as T[] : [];
 }
 
 export async function loadCompanyDashboardReport(client: SupabaseLike): Promise<DashboardReportData | null> {
@@ -181,7 +221,7 @@ export function enrichRequisitions(data: DashboardData): EnrichedRequisition[] {
     const relatedGroups = data.document_groups.filter((group) => group.doc_id === requisition.doc_id);
     const relatedPositionGroupIds = new Set(relatedGroups.map((group) => group.group_id).filter((groupId): groupId is string => Boolean(groupId)));
     const relatedGroupIds = new Set(relatedGroups.map((group) => group.doc_group_id));
-    const candidateCount = data.candidates.filter((candidate) => (candidate.group_id ? relatedPositionGroupIds.has(candidate.group_id) : Boolean(candidate.doc_group_id && relatedGroupIds.has(candidate.doc_group_id)))).length;
+    const candidateCount = new Set(applicationCandidates(data).filter((candidate) => (candidate.group_id ? relatedPositionGroupIds.has(candidate.group_id) : Boolean(candidate.doc_group_id && relatedGroupIds.has(candidate.doc_group_id)))).map(candidate => candidate.candidate_id)).size;
     const relatedOffers = data.offers.filter((offer) => offer.doc_id === requisition.doc_id);
     const acceptedCount = relatedOffers.filter(countsTowardHeadcount).length;
     const slaRestartDate = relatedOffers
@@ -202,14 +242,14 @@ export function enrichRequisitions(data: DashboardData): EnrichedRequisition[] {
 }
 
 export function enrichCandidates(data: DashboardData): EnrichedCandidate[] {
-  return data.candidates.map((candidate) => {
+  return applicationCandidates(data).map((candidate) => {
     const group = candidate.group_id ? data.position_groups.find((row) => row.group_id === candidate.group_id) : data.document_groups.find((row) => row.doc_group_id === candidate.doc_group_id);
     const context = candidateGroupContext(data, candidate.group_id, candidate.doc_group_id);
     const logs = data.recruitment_logs
-      .filter((log) => log.candidate_id === candidate.candidate_id)
-      .sort((a, b) => b.log_id - a.log_id);
+      .filter((log) => belongsToApplication(log, candidate))
+      .sort((a, b) => compareApplicationLogs(b, a));
     const latest = logs[0];
-    const acceptedOffer = data.offers.find((offer) => offer.candidate_id === candidate.candidate_id && offer.accepted_date);
+    const acceptedOffer = data.offers.find((offer) => belongsToApplication(offer, candidate) && countsTowardHeadcount(offer));
 
     return {
       ...candidate,
@@ -246,10 +286,13 @@ export function enrichOffers(data: DashboardData): EnrichedOffer[] {
   });
 }
 
-export function latestLogsForCandidate(data: DashboardData, candidateId: string) {
+export function latestLogsForCandidate(data: DashboardData, candidateId: string, applicationId?: string | null) {
+  const applications = data.candidate_applications?.filter(row => row.candidate_id === candidateId);
+  const selectedId = applicationId ?? (applications?.length === 1 ? applications[0].application_id : null);
+  if (applications && !selectedId) return [];
   return data.recruitment_logs
-    .filter((log) => log.candidate_id === candidateId)
-    .sort((a, b) => b.log_id - a.log_id);
+    .filter((log) => log.candidate_id === candidateId && (!applications || log.application_id === selectedId))
+    .sort((a, b) => compareApplicationLogs(b, a));
 }
 
 export function pipelineBoard(candidates: EnrichedCandidate[]) {
@@ -283,7 +326,7 @@ function enrichLinkedGroups(data: DashboardData, weekStart: string, includeTermi
       if (matchedRequisitions.length === 0) return null;
 
       const positionGroup = data.position_groups.find((group) => group.group_id === groupId);
-      const groupCandidateCount = candidates.filter((candidate) => candidate.group_id === groupId || (!candidate.group_id && data.document_groups.find((row) => row.doc_group_id === candidate.doc_group_id)?.group_id === groupId)).length;
+      const groupCandidateCount = countGroupPeople(data, groupId);
       const latestUpdate = data.sourcing_weekly_updates.find(
         (update) => update.group_id === groupId && update.week_start === weekStart
       ) ?? null;
@@ -364,7 +407,7 @@ export function staleOpenSourcingGroups(data: DashboardData, staleDays = 6): Enr
       const latestUpdatedAt = latestUpdate ? new Date(latestUpdate.updated_at) : null;
       if (latestUpdatedAt && latestUpdatedAt > staleBefore) return null;
 
-      const groupCandidateCount = candidates.filter((candidate) => candidate.group_id === groupId || (!candidate.group_id && data.document_groups.find((row) => row.doc_group_id === candidate.doc_group_id)?.group_id === groupId)).length;
+      const groupCandidateCount = countGroupPeople(data, groupId);
 
       return {
         group_id: groupId,
@@ -439,7 +482,12 @@ function changeLogContext(data: DashboardData, log: ChangeLog) {
   if (entity === "vacancy_weekly_snapshots") return contextFromValues(value("site"), null);
   if (entity === "offers") return contextForDocId(data, value("doc_id"));
   if (entity === "candidates") return contextForCandidateId(data, value("candidate_id") ?? entityId);
-  if (entity === "recruitment_logs") return contextForCandidateId(data, value("candidate_id"));
+  if (entity === "recruitment_logs") {
+    const group = assignmentGroup(data,value("outcome_assignment_id")??value("entry_assignment_id")) ?? data.candidate_applications?.find(application=>application.application_id===value("application_id"))?.group_id;
+    return group ? contextForGroupId(data,group) : contextForCandidateId(data,value("candidate_id"));
+  }
+  if (entity === "candidate_applications" || entity === "candidate_application_assignments") return contextForGroupId(data,value("group_id"));
+  if (entity === "candidate_notes") return contextForCandidateId(data,value("candidate_id"));
   if (entity === "document_groups") {
     return contextForGroupId(data, value("group_id")) ?? contextForDocId(data, value("doc_id")) ?? contextForDocGroupId(data, value("doc_group_id") ?? entityId);
   }
@@ -449,7 +497,7 @@ function changeLogContext(data: DashboardData, log: ChangeLog) {
 
 function contextForCandidateId(data: DashboardData, candidateId: string | null) {
   const candidate = data.candidates.find((row) => row.candidate_id === candidateId);
-  return candidate ? contextFromValues(candidateGroupContext(data, candidate.group_id, candidate.doc_group_id).sites, candidateGroupContext(data, candidate.group_id, candidate.doc_group_id).owners) : null;
+  return candidate ? contextFromValues(candidate.home_site ?? candidateGroupContext(data,candidate.group_id,candidate.doc_group_id).sites, data.profiles.find(profile=>profile.id===candidate.responsible_recruiter_id)?.nickname ?? candidateGroupContext(data,candidate.group_id,candidate.doc_group_id).owners) : null;
 }
 
 function contextForDocGroupId(data: DashboardData, docGroupId: string | null) {

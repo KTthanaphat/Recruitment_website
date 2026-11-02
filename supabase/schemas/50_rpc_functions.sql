@@ -255,13 +255,13 @@ begin
     if new.estimated_action_date is not null and new.estimated_action_date < new.log_date then raise exception 'PIPELINE_ESTIMATED_DATE_ORDER: Estimated action date cannot precede the corrected Pending date.'; end if;
     return new;
   end if;
-  select exists(select 1 from public.recruitment_logs l where l.candidate_id = new.candidate_id and l.superseded_at is null and l.log_id is distinct from new.log_id) into v_has_previous;
-  if not v_has_previous then
-    select first_contact_date into v_first from public.candidates where candidate_id = new.candidate_id;
-    if v_first is null then raise exception 'PIPELINE_FIRST_CONTACT_REQUIRED: Add First Contact Date before starting Phone Screen.'; end if;
-    new.log_date := v_first;
+  select exists(select 1 from public.recruitment_logs l where l.application_id = new.application_id and l.superseded_at is null and l.log_id is distinct from new.log_id) into v_has_previous;
+  if new.recruitment_process='Phone Screen' then
+    -- A fresh application has its own entry date; shared profile outreach is not its stage entry.
+    if tg_op='UPDATE' then new.log_date:=old.log_date;
+    else new.log_date:=coalesce(new.log_date,(now() at time zone 'Asia/Bangkok')::date); end if;
   else
-    select l.outcome_date into v_previous from public.recruitment_logs l where l.candidate_id = new.candidate_id and l.superseded_at is null and l.result = 1 and (app_private.pipeline_stage_index(l.recruitment_process) < app_private.pipeline_stage_index(new.recruitment_process) or (l.recruitment_process in ('Line Interview', 'Test') and l.recruitment_process = new.recruitment_process and l.round < new.round)) order by app_private.pipeline_stage_index(l.recruitment_process) desc, l.round desc, l.log_id desc limit 1;
+    select l.outcome_date into v_previous from public.recruitment_logs l where l.application_id = new.application_id and l.superseded_at is null and l.result = 1 and (app_private.pipeline_stage_index(l.recruitment_process) < app_private.pipeline_stage_index(new.recruitment_process) or (l.recruitment_process in ('Line Interview', 'Test') and l.recruitment_process = new.recruitment_process and l.round < new.round)) order by app_private.pipeline_stage_index(l.recruitment_process) desc, l.round desc, l.log_id desc limit 1;
     if v_previous is null then raise exception 'PIPELINE_DATE_ORDER: Pending date must derive from the previous passed Outcome.'; end if;
     new.log_date := v_previous;
   end if;
@@ -276,8 +276,8 @@ create or replace function app_private.propagate_corrected_outcome_date() return
 declare v_next public.recruitment_logs%rowtype;
 begin
   if new.superseded_at is not null or new.record_origin <> 'correction' or new.result <> 1 then return new; end if;
-  if exists(select 1 from public.recruitment_logs l where l.candidate_id = new.candidate_id and l.superseded_at is null and l.result is not null and (app_private.pipeline_stage_index(l.recruitment_process) > app_private.pipeline_stage_index(new.recruitment_process) or (l.recruitment_process in ('Line Interview', 'Test') and l.recruitment_process = new.recruitment_process and l.round > new.round))) and not app_private.is_system_admin() then raise exception 'PIPELINE_DOWNSTREAM_HISTORY: Outcome date cannot change after a later completed stage exists.'; end if;
-  select * into v_next from public.recruitment_logs l where l.candidate_id = new.candidate_id and l.superseded_at is null and (app_private.pipeline_stage_index(l.recruitment_process) > app_private.pipeline_stage_index(new.recruitment_process) or (l.recruitment_process in ('Line Interview', 'Test') and l.recruitment_process = new.recruitment_process and l.round > new.round)) order by app_private.pipeline_stage_index(l.recruitment_process), l.round, l.log_id limit 1 for update;
+  if exists(select 1 from public.recruitment_logs l where l.application_id = new.application_id and l.superseded_at is null and l.result is not null and (app_private.pipeline_stage_index(l.recruitment_process) > app_private.pipeline_stage_index(new.recruitment_process) or (l.recruitment_process in ('Line Interview', 'Test') and l.recruitment_process = new.recruitment_process and l.round > new.round))) and not app_private.is_system_admin() then raise exception 'PIPELINE_DOWNSTREAM_HISTORY: Outcome date cannot change after a later completed stage exists.'; end if;
+  select * into v_next from public.recruitment_logs l where l.application_id = new.application_id and l.superseded_at is null and (app_private.pipeline_stage_index(l.recruitment_process) > app_private.pipeline_stage_index(new.recruitment_process) or (l.recruitment_process in ('Line Interview', 'Test') and l.recruitment_process = new.recruitment_process and l.round > new.round)) order by app_private.pipeline_stage_index(l.recruitment_process), l.round, l.log_id limit 1 for update;
   if new.recruitment_process <> 'Offer' and not found then raise exception 'PIPELINE_NEXT_PENDING_REQUIRED: A next unresolved Pending stage is required for this Outcome correction.'; end if;
   if found then
     if v_next.result is null then
@@ -319,7 +319,9 @@ begin
     select 1 from public.requisitions r
     left join lateral (
       select count(*)::integer as accepted_count from public.offers o
-      where o.doc_id = r.doc_id and o.accepted_date is not null
+      where o.doc_id = r.doc_id
+        and o.accepted_date is not null
+        and o.start_confirmation is distinct from 'did_not_start'
     ) accepted on true
     where r.doc_id = v_doc_id
       and r.status = 'ongoing'
@@ -667,7 +669,11 @@ begin
     from public.document_groups dg
     join public.requisitions r on r.doc_id = dg.doc_id
     left join lateral (
-      select count(*)::integer accepted_count from public.offers o where o.doc_id = r.doc_id and o.accepted_date is not null
+      select count(*)::integer accepted_count
+      from public.offers o
+      where o.doc_id = r.doc_id
+        and o.accepted_date is not null
+        and o.start_confirmation is distinct from 'did_not_start'
     ) accepted on true
     where dg.group_id = v_group_id
       and r.status = 'ongoing'
@@ -782,6 +788,7 @@ declare
   ];
   v_auto_next_stage text;
 begin
+  perform app_private.resolve_application(payload);
   perform app_private.assert_recruitment_writer();
   if not app_private.can_manage_candidate(v_candidate_id) then raise exception 'You can update process only for candidates where you are person in charge.'; end if;
   perform app_private.assert_candidate_pipeline_open(v_candidate_id);
@@ -789,8 +796,8 @@ begin
   select recruitment_process, result
     into v_current_stage, v_current_result
   from public.recruitment_logs
-  where candidate_id = v_candidate_id
-  order by log_id desc
+  where candidate_id = v_candidate_id and application_id = app_private.current_application_id()
+  order by app_private.pipeline_stage_index(recruitment_process) desc, round desc, log_id desc
   limit 1;
 
   if v_source = 'pipeline' then
@@ -865,6 +872,7 @@ declare
   v_pass_round integer;
   v_pass_date date;
 begin
+  perform app_private.resolve_application(payload);
   perform app_private.assert_recruitment_writer();
   if v_candidate_id is null then raise exception 'Candidate is required.'; end if;
   if v_target_stage is null then raise exception 'Target stage is required.'; end if;
@@ -875,8 +883,8 @@ begin
   select recruitment_process, result
     into v_current_stage, v_current_result
   from public.recruitment_logs
-  where candidate_id = v_candidate_id
-  order by log_id desc
+  where candidate_id = v_candidate_id and application_id = app_private.current_application_id()
+  order by app_private.pipeline_stage_index(recruitment_process) desc, round desc, log_id desc
   limit 1;
 
   v_current_index := coalesce(array_position(v_active_stages, v_current_stage), 0);
@@ -914,7 +922,7 @@ begin
     if not exists (
       select 1
       from public.recruitment_logs
-      where candidate_id = v_candidate_id
+      where candidate_id = v_candidate_id and application_id = app_private.current_application_id()
         and recruitment_process = v_pass_stage
         and round = v_pass_round
         and result is null
@@ -980,6 +988,7 @@ declare
   v_next_round integer := coalesce(nullif(v_next_test ->> 'round', '')::integer, v_current_round + 1);
   v_log_id bigint;
 begin
+  perform app_private.resolve_application(payload);
   perform app_private.assert_recruitment_writer();
   if v_candidate_id is null then raise exception 'Candidate is required.'; end if;
   if not app_private.can_manage_candidate(v_candidate_id) then raise exception 'You can update process only for candidates where you are person in charge.'; end if;
@@ -988,8 +997,8 @@ begin
   select recruitment_process, result, round
     into v_current_stage, v_current_result, v_latest_round
   from public.recruitment_logs
-  where candidate_id = v_candidate_id
-  order by log_id desc
+  where candidate_id = v_candidate_id and application_id = app_private.current_application_id()
+  order by app_private.pipeline_stage_index(recruitment_process) desc, round desc, log_id desc
   limit 1;
 
   if v_current_stage <> 'Test' or v_current_result is not null then
@@ -1053,6 +1062,7 @@ declare
   v_item jsonb;
   v_log_id bigint;
 begin
+  perform app_private.resolve_application(payload);
   perform app_private.assert_recruitment_writer();
   if v_candidate_id is null then raise exception 'Candidate is required.'; end if;
   if v_target_stage <> 'Reference Check' then raise exception 'Test exit target must be Reference Check.'; end if;
@@ -1063,8 +1073,8 @@ begin
   select recruitment_process, result, round
     into v_current_stage, v_current_result, v_latest_round
   from public.recruitment_logs
-  where candidate_id = v_candidate_id
-  order by log_id desc
+  where candidate_id = v_candidate_id and application_id = app_private.current_application_id()
+  order by app_private.pipeline_stage_index(recruitment_process) desc, round desc, log_id desc
   limit 1;
 
   if v_current_stage <> 'Test' or v_current_result is not null then
@@ -1142,24 +1152,28 @@ declare
   v_exists boolean;
   v_offer_id bigint;
 begin
+  perform app_private.resolve_application(payload);
   perform app_private.assert_recruitment_writer();
-  if not app_private.can_manage_requisition(v_doc_id) or not app_private.can_manage_candidate(v_candidate_id) then
+  if not app_private.can_manage_application(app_private.current_application_id()) then
     raise exception 'You can create offers only for requisitions where you are person in charge.';
   end if;
   if not exists (
     select 1
-    from public.candidates c
+    from public.candidate_applications c
     join public.document_groups dg on dg.group_id = c.group_id
-    where c.candidate_id = v_candidate_id and dg.doc_id = v_doc_id
+    where c.candidate_id = v_candidate_id and c.application_id = app_private.current_application_id() and dg.doc_id = v_doc_id
   ) then
     raise exception 'OFFER_CANDIDATE_GROUP_MISMATCH: Candidate must belong to the selected requisition''s sourcing group.';
   end if;
 
-  select exists(select 1 from public.offers where candidate_id = v_candidate_id and doc_id = v_doc_id) into v_exists;
+  select exists(select 1 from public.offers where candidate_id = v_candidate_id and application_id = app_private.current_application_id() and doc_id = v_doc_id) into v_exists;
   if v_mode = 'new' and v_exists then raise exception 'This offer already exists. Switch to Change mode to edit it.'; end if;
   if v_mode = 'change' and not v_exists then raise exception 'This offer does not exist. Switch to New mode to create it.'; end if;
 
   perform set_config('app.action', 'offer:' || v_mode, true);
+  perform 1 from public.candidates where candidate_id = v_candidate_id for update;
+  if not exists(select 1 from public.recruitment_logs where application_id=app_private.current_application_id() and recruitment_process='Offer' and result=1 and superseded_at is null) then raise exception 'OFFER_PASS_REQUIRED'; end if;
+  if v_mode='new' and not exists(select 1 from public.requisitions r where r.doc_id=v_doc_id and r.status='ongoing' and r.head_count>(select count(*) from public.offers o where o.doc_id=r.doc_id and o.accepted_date is not null and o.start_confirmation is distinct from 'did_not_start')) then raise exception 'OFFER_REQUISITION_NOT_AVAILABLE'; end if;
   insert into public.offers (candidate_id, doc_id, accepted_date, first_working_date, remark)
   values (
     v_candidate_id,
@@ -1168,7 +1182,7 @@ begin
     nullif(payload ->> 'first_working_date', '')::date,
     nullif(payload ->> 'remark', '')
   )
-  on conflict (candidate_id, doc_id) do update set
+  on conflict (application_id, doc_id) do update set
     accepted_date = excluded.accepted_date,
     first_working_date = excluded.first_working_date,
     remark = excluded.remark
@@ -1254,7 +1268,7 @@ as $$
 begin
   perform app_private.assert_recruitment_writer();
   if p_candidate_id is null then raise exception 'PIPELINE_CANDIDATE_REQUIRED: Candidate is required.'; end if;
-  if not app_private.can_manage_candidate(p_candidate_id) then
+  if not app_private.can_manage_application(app_private.current_application_id()) then
     raise exception 'PIPELINE_NOT_AUTHORIZED: You can update process only for candidates where you are person in charge.';
   end if;
   perform 1 from public.candidates where candidate_id = p_candidate_id for update;
@@ -1275,6 +1289,7 @@ declare
   v_estimated_action_date date := nullif(v_pending ->> 'estimated_action_date', '')::date;
   v_row public.recruitment_logs%rowtype;
 begin
+  perform app_private.resolve_application(payload);
   perform app_private.lock_pipeline_candidate(v_candidate_id);
   perform app_private.assert_candidate_pipeline_open(v_candidate_id);
   if v_opened_date is null then raise exception 'PIPELINE_INVALID_PAYLOAD: Pending opened date is required.'; end if;
@@ -1286,7 +1301,7 @@ begin
   end if;
   if exists (
     select 1 from public.recruitment_logs
-    where candidate_id = v_candidate_id and superseded_at is null
+    where candidate_id = v_candidate_id and application_id = app_private.current_application_id() and superseded_at is null
   ) then
     raise exception 'PIPELINE_INVALID_TRANSITION: A canonical Pipeline stage already exists.';
   end if;
@@ -1324,6 +1339,7 @@ declare
   v_previous_outcome_date date;
   v_row public.recruitment_logs%rowtype;
 begin
+  perform app_private.resolve_application(payload);
   perform app_private.lock_pipeline_candidate(v_candidate_id);
   perform app_private.assert_candidate_pipeline_open(v_candidate_id);
   if v_stage_instance_id is null or v_expected_updated_at is null or v_opened_date is null then
@@ -1332,7 +1348,7 @@ begin
 
   select * into v_row
   from public.recruitment_logs
-  where candidate_id = v_candidate_id
+  where candidate_id = v_candidate_id and application_id = app_private.current_application_id()
     and stage_instance_id = v_stage_instance_id
     and superseded_at is null
   for update;
@@ -1345,16 +1361,16 @@ begin
   end if;
   if exists (
     select 1 from public.recruitment_logs later
-    where later.candidate_id = v_candidate_id
+    where later.candidate_id = v_candidate_id and later.application_id = app_private.current_application_id()
       and later.superseded_at is null
-      and later.log_id > v_row.log_id
+      and (app_private.pipeline_stage_index(later.recruitment_process), later.round) > (app_private.pipeline_stage_index(v_row.recruitment_process), v_row.round)
   ) then
     raise exception 'PIPELINE_NOT_CURRENT: A later canonical stage already exists.';
   end if;
   select outcome_date into v_previous_outcome_date
   from public.recruitment_logs
-  where candidate_id = v_candidate_id and superseded_at is null and result is not null and log_id < v_row.log_id
-  order by log_id desc limit 1;
+  where candidate_id = v_candidate_id and application_id = app_private.current_application_id() and superseded_at is null and result is not null and (app_private.pipeline_stage_index(recruitment_process), round) < (app_private.pipeline_stage_index(v_row.recruitment_process), v_row.round)
+  order by app_private.pipeline_stage_index(recruitment_process) desc, round desc, log_id desc limit 1;
   if v_opened_date > app_private.pipeline_business_date()
     or (v_previous_outcome_date is not null and v_opened_date < v_previous_outcome_date)
     or (v_estimated_action_date is not null and v_estimated_action_date < v_opened_date)
@@ -1423,6 +1439,7 @@ declare
   v_handoff jsonb;
   v_failure_snapshot jsonb;
 begin
+  perform app_private.resolve_application(payload);
   perform app_private.lock_pipeline_candidate(v_candidate_id);
   perform app_private.assert_candidate_pipeline_open(v_candidate_id);
   if v_stage_instance_id is null or v_expected_updated_at is null or v_opened_date is null or v_outcome_date is null or v_result is null then
@@ -1431,20 +1448,20 @@ begin
 
   select * into v_row
   from public.recruitment_logs
-  where candidate_id = v_candidate_id
+  where candidate_id = v_candidate_id and application_id = app_private.current_application_id()
     and stage_instance_id = v_stage_instance_id
     and superseded_at is null
   for update;
 
   if not found or v_row.result is not null then raise exception 'PIPELINE_NOT_CURRENT: The selected stage is not Pending.'; end if;
   if v_row.updated_at <> v_expected_updated_at then raise exception 'PIPELINE_STALE_WRITE: The Pending stage changed after it was opened.'; end if;
-  if exists (select 1 from public.recruitment_logs later where later.candidate_id = v_candidate_id and later.superseded_at is null and later.log_id > v_row.log_id) then
+  if exists (select 1 from public.recruitment_logs later where later.candidate_id = v_candidate_id and later.application_id = app_private.current_application_id() and later.superseded_at is null and (app_private.pipeline_stage_index(later.recruitment_process), later.round) > (app_private.pipeline_stage_index(v_row.recruitment_process), v_row.round)) then
     raise exception 'PIPELINE_NOT_CURRENT: A later canonical stage already exists.';
   end if;
   select outcome_date into v_previous_outcome_date
   from public.recruitment_logs
-  where candidate_id = v_candidate_id and superseded_at is null and result is not null and log_id < v_row.log_id
-  order by log_id desc limit 1;
+  where candidate_id = v_candidate_id and application_id = app_private.current_application_id() and superseded_at is null and result is not null and (app_private.pipeline_stage_index(recruitment_process), round) < (app_private.pipeline_stage_index(v_row.recruitment_process), v_row.round)
+  order by app_private.pipeline_stage_index(recruitment_process) desc, round desc, log_id desc limit 1;
   if v_opened_date > app_private.pipeline_business_date()
     or v_outcome_date > app_private.pipeline_business_date()
     or v_outcome_date < v_opened_date
@@ -1512,6 +1529,7 @@ begin
   if v_result = 1 and v_row.recruitment_process = 'Offer' then
     select jsonb_build_object(
       'candidate_id', v_candidate_id,
+      'application_id', app_private.current_application_id(),
       'passed_date', v_outcome_date,
       'group_id', c.group_id,
       'requisitions', coalesce(jsonb_agg(jsonb_build_object(
@@ -1522,13 +1540,13 @@ begin
         'open_headcount', greatest(r.head_count - coalesce(accepted.accepted_count, 0), 0)
       ) order by r.doc_id) filter (where r.doc_id is not null), '[]'::jsonb)
     ) into v_handoff
-    from public.candidates c
+    from public.candidate_applications c
     join public.document_groups peer on peer.group_id = c.group_id
     join public.requisitions r on r.doc_id = peer.doc_id and r.status = 'ongoing'
     left join lateral (
       select count(*)::integer accepted_count from public.offers o where o.doc_id = r.doc_id and o.accepted_date is not null and o.start_confirmation is distinct from 'did_not_start'
     ) accepted on true
-    where c.candidate_id = v_candidate_id
+    where c.candidate_id = v_candidate_id and c.application_id = app_private.current_application_id()
       and greatest(r.head_count - coalesce(accepted.accepted_count, 0), 0) > 0
     group by c.group_id;
 
@@ -1586,6 +1604,7 @@ declare
   v_i integer;
   v_new_id uuid;
 begin
+  perform app_private.resolve_application(payload);
   perform app_private.lock_pipeline_candidate(v_candidate_id);
   perform app_private.assert_candidate_pipeline_open(v_candidate_id);
   if v_stage_instance_id is null or v_expected_updated_at is null or v_count < 1 or v_target_stage is null or v_target_date is null then
@@ -1593,17 +1612,17 @@ begin
   end if;
 
   select * into v_current from public.recruitment_logs
-  where candidate_id = v_candidate_id and stage_instance_id = v_stage_instance_id and superseded_at is null
+  where candidate_id = v_candidate_id and application_id = app_private.current_application_id() and stage_instance_id = v_stage_instance_id and superseded_at is null
   for update;
   if not found or v_current.result is not null then raise exception 'PIPELINE_NOT_CURRENT: Jump requires the current Pending stage.'; end if;
   if v_current.updated_at <> v_expected_updated_at then raise exception 'PIPELINE_STALE_WRITE: The Pending stage changed after it was opened.'; end if;
-  if exists (select 1 from public.recruitment_logs later where later.candidate_id = v_candidate_id and later.superseded_at is null and later.log_id > v_current.log_id) then
+  if exists (select 1 from public.recruitment_logs later where later.candidate_id = v_candidate_id and later.application_id = app_private.current_application_id() and later.superseded_at is null and (app_private.pipeline_stage_index(later.recruitment_process), later.round) > (app_private.pipeline_stage_index(v_current.recruitment_process), v_current.round)) then
     raise exception 'PIPELINE_NOT_CURRENT: A later canonical stage already exists.';
   end if;
   select outcome_date into v_previous_outcome_date
   from public.recruitment_logs
-  where candidate_id = v_candidate_id and superseded_at is null and result is not null and log_id < v_current.log_id
-  order by log_id desc limit 1;
+  where candidate_id = v_candidate_id and application_id = app_private.current_application_id() and superseded_at is null and result is not null and (app_private.pipeline_stage_index(recruitment_process), round) < (app_private.pipeline_stage_index(v_current.recruitment_process), v_current.round)
+  order by app_private.pipeline_stage_index(recruitment_process) desc, round desc, log_id desc limit 1;
 
   v_current_index := app_private.pipeline_stage_index(v_current.recruitment_process);
   if v_current_index is null or v_current_index + v_count > 6 then raise exception 'PIPELINE_INVALID_TRANSITION: Jump exceeds the active pipeline.'; end if;
@@ -1688,7 +1707,7 @@ begin
     'completed_stage_instance_ids', (
       select coalesce(jsonb_agg(stage_instance_id order by log_id), '[]'::jsonb)
       from public.recruitment_logs
-      where candidate_id = v_candidate_id and superseded_at is null and result = 1
+      where candidate_id = v_candidate_id and application_id = app_private.current_application_id() and superseded_at is null and result = 1
         and log_id >= v_current.log_id and log_id < (select log_id from public.recruitment_logs where stage_instance_id = v_new_id)
     ),
     'next_stage', jsonb_build_object('stage_instance_id', v_new_id, 'stage', v_target_stage, 'round', coalesce(nullif(v_target ->> 'round', '')::integer, 1), 'opened_date', v_target_date)
@@ -1716,6 +1735,7 @@ declare
   v_next_opened_date date;
   v_failure_snapshot jsonb;
 begin
+  perform app_private.resolve_application(payload);
   perform app_private.assert_system_admin();
   if v_candidate_id is null or v_stage_instance_id is null or v_expected_updated_at is null or v_result is null or v_outcome_date is null then
     raise exception 'PIPELINE_INVALID_PAYLOAD: candidate, stage instance, expected timestamp, and corrected Outcome are required.';
@@ -1724,7 +1744,7 @@ begin
   if not found then raise exception 'PIPELINE_CANDIDATE_NOT_FOUND: Candidate does not exist.'; end if;
 
   select * into v_row from public.recruitment_logs
-  where candidate_id = v_candidate_id and stage_instance_id = v_stage_instance_id and superseded_at is null
+  where candidate_id = v_candidate_id and application_id = app_private.current_application_id() and stage_instance_id = v_stage_instance_id and superseded_at is null
   for update;
   if not found or v_row.result is null then raise exception 'PIPELINE_NOT_FOUND: A canonical completed stage is required.'; end if;
   if v_row.updated_at <> v_expected_updated_at then raise exception 'PIPELINE_STALE_WRITE: The Outcome changed after it was opened.'; end if;
@@ -1740,12 +1760,12 @@ begin
   end if;
   select outcome_date into v_previous_outcome_date
   from public.recruitment_logs
-  where candidate_id = v_candidate_id and superseded_at is null and result is not null and log_id < v_row.log_id
-  order by log_id desc limit 1;
+  where candidate_id = v_candidate_id and application_id = app_private.current_application_id() and superseded_at is null and result is not null and (app_private.pipeline_stage_index(recruitment_process), round) < (app_private.pipeline_stage_index(v_row.recruitment_process), v_row.round)
+  order by app_private.pipeline_stage_index(recruitment_process) desc, round desc, log_id desc limit 1;
   select log_date into v_next_opened_date
   from public.recruitment_logs
-  where candidate_id = v_candidate_id and superseded_at is null and log_id > v_row.log_id
-  order by log_id limit 1;
+  where candidate_id = v_candidate_id and application_id = app_private.current_application_id() and superseded_at is null and (app_private.pipeline_stage_index(recruitment_process), round) > (app_private.pipeline_stage_index(v_row.recruitment_process), v_row.round)
+  order by app_private.pipeline_stage_index(recruitment_process), round, log_id limit 1;
   if v_outcome_date > app_private.pipeline_business_date()
     or v_outcome_date < v_row.log_date
     or (v_previous_outcome_date is not null and v_row.log_date < v_previous_outcome_date)
@@ -1805,10 +1825,11 @@ declare
   v_expected timestamptz := nullif(payload ->> 'expected_updated_at', '')::timestamptz;
   v_today date := (now() at time zone 'Asia/Bangkok')::date;
 begin
+  perform app_private.resolve_application(payload);
   perform app_private.assert_recruitment_writer();
   select * into v_offer from public.offers where offer_id = nullif(payload ->> 'offer_id', '')::bigint for update;
   if not found then raise exception 'OFFER_NOT_FOUND: Offer not found.'; end if;
-  if not app_private.can_manage_requisition(v_offer.doc_id) or not app_private.can_manage_candidate(v_offer.candidate_id) then raise exception 'OFFER_PERMISSION_DENIED: You cannot confirm this offer.'; end if;
+  if not app_private.can_manage_application(v_offer.application_id) then raise exception 'OFFER_PERMISSION_DENIED: You cannot confirm this offer.'; end if;
   if v_expected is null or v_offer.updated_at <> v_expected then raise exception 'OFFER_STALE_WRITE: This offer changed after it was opened.'; end if;
   if v_outcome not in ('started', 'did_not_start') then raise exception 'OFFER_CONFIRMATION_INVALID: Select Started or Did not start.'; end if;
   if v_offer.accepted_date is null or v_offer.first_working_date is null or v_offer.first_working_date > v_today then raise exception 'OFFER_CONFIRMATION_NOT_DUE: Confirmation is available on or after the first working date.'; end if;
@@ -1849,6 +1870,7 @@ declare
   v_next_opened_date date;
   v_failure_snapshot jsonb;
 begin
+  perform app_private.resolve_application(payload);
   if app_private.current_app_role() not in ('system_admin', 'admin_recruiter') then
     raise exception 'PIPELINE_ADMIN_REQUIRED: System admin or admin recruiter role is required.';
   end if;
@@ -1859,7 +1881,7 @@ begin
   if not found then raise exception 'PIPELINE_CANDIDATE_NOT_FOUND: Candidate does not exist.'; end if;
 
   select * into v_row from public.recruitment_logs
-  where candidate_id = v_candidate_id and stage_instance_id = v_stage_instance_id and superseded_at is null
+  where candidate_id = v_candidate_id and application_id = app_private.current_application_id() and stage_instance_id = v_stage_instance_id and superseded_at is null
   for update;
   if not found then raise exception 'PIPELINE_NOT_FOUND: A canonical pipeline record is required.'; end if;
   if v_row.updated_at <> v_expected_updated_at then raise exception 'PIPELINE_STALE_WRITE: The pipeline record changed after it was opened.'; end if;
@@ -1878,8 +1900,8 @@ begin
   end if;
 
   select outcome_date into v_previous_outcome_date from public.recruitment_logs
-  where candidate_id = v_candidate_id and superseded_at is null and result is not null and log_id < v_row.log_id
-  order by log_id desc limit 1;
+  where candidate_id = v_candidate_id and application_id = app_private.current_application_id() and superseded_at is null and result is not null and (app_private.pipeline_stage_index(recruitment_process), round) < (app_private.pipeline_stage_index(v_row.recruitment_process), v_row.round)
+  order by app_private.pipeline_stage_index(recruitment_process) desc, round desc, log_id desc limit 1;
   if v_opened_date > app_private.pipeline_business_date()
     or (v_previous_outcome_date is not null and v_opened_date < v_previous_outcome_date)
     or (v_estimated_action_date is not null and v_estimated_action_date < v_opened_date)
@@ -1934,6 +1956,7 @@ declare
   v_next_stage text;
   v_next jsonb := null;
 begin
+  perform app_private.resolve_application(payload);
   perform app_private.lock_pipeline_candidate(v_candidate_id);
   perform app_private.assert_candidate_pipeline_open(v_candidate_id);
   if v_event_date is null then raise exception 'PIPELINE_INVALID_PAYLOAD: Date is required.'; end if;
@@ -1942,12 +1965,12 @@ begin
   end if;
 
   select * into v_current from public.recruitment_logs
-  where candidate_id = v_candidate_id and superseded_at is null and result is null
-  order by log_id desc limit 1 for update;
+  where candidate_id = v_candidate_id and application_id = app_private.current_application_id() and superseded_at is null and result is null
+  order by app_private.pipeline_stage_index(recruitment_process) desc, round desc, log_id desc limit 1 for update;
 
   if not found then
     if v_stage <> 'Phone Screen' or v_result is not null
-      or exists (select 1 from public.recruitment_logs where candidate_id = v_candidate_id and superseded_at is null)
+      or exists (select 1 from public.recruitment_logs where candidate_id = v_candidate_id and application_id = app_private.current_application_id() and superseded_at is null)
     then
       raise exception 'PIPELINE_INVALID_TRANSITION: A candidate without canonical activity must start at Phone Screen Pending.';
     end if;
@@ -2017,11 +2040,12 @@ declare
   v_last_date date;
   v_i integer;
 begin
+  perform app_private.resolve_application(payload);
   perform app_private.lock_pipeline_candidate(v_candidate_id);
   perform app_private.assert_candidate_pipeline_open(v_candidate_id);
   select * into v_current from public.recruitment_logs
-  where candidate_id = v_candidate_id and superseded_at is null and result is null
-  order by log_id desc limit 1 for update;
+  where candidate_id = v_candidate_id and application_id = app_private.current_application_id() and superseded_at is null and result is null
+  order by app_private.pipeline_stage_index(recruitment_process) desc, round desc, log_id desc limit 1 for update;
   if not found then raise exception 'PIPELINE_NOT_CURRENT: A current Pending stage is required.'; end if;
   if jsonb_array_length(v_stages) < 1 then raise exception 'PIPELINE_INVALID_PAYLOAD: At least one passed stage is required.'; end if;
 
@@ -2065,11 +2089,12 @@ declare
   v_next_test jsonb := coalesce(payload -> 'next_test', '{}'::jsonb);
   v_current public.recruitment_logs%rowtype;
 begin
+  perform app_private.resolve_application(payload);
   perform app_private.lock_pipeline_candidate(v_candidate_id);
   perform app_private.assert_candidate_pipeline_open(v_candidate_id);
   select * into v_current from public.recruitment_logs
-  where candidate_id = v_candidate_id and superseded_at is null and result is null
-  order by log_id desc limit 1 for update;
+  where candidate_id = v_candidate_id and application_id = app_private.current_application_id() and superseded_at is null and result is null
+  order by app_private.pipeline_stage_index(recruitment_process) desc, round desc, log_id desc limit 1 for update;
   if not found or v_current.recruitment_process <> 'Test' then raise exception 'PIPELINE_NOT_CURRENT: Candidate must be in a Pending Test round.'; end if;
   if coalesce(nullif(v_current_test ->> 'round', '')::integer, v_current.round) <> v_current.round then
     raise exception 'PIPELINE_INVALID_TRANSITION: Current Test round does not match.';
@@ -2109,6 +2134,7 @@ declare
   v_item jsonb;
   v_current public.recruitment_logs%rowtype;
 begin
+  perform app_private.resolve_application(payload);
   if jsonb_array_length(v_extra) > 0 then
     raise exception 'PIPELINE_INVALID_TRANSITION: Complete additional Test rounds with Test maintenance before exiting Test.';
   end if;
@@ -2119,8 +2145,8 @@ begin
   perform app_private.lock_pipeline_candidate(v_candidate_id);
   perform app_private.assert_candidate_pipeline_open(v_candidate_id);
   select * into v_current from public.recruitment_logs
-  where candidate_id = v_candidate_id and superseded_at is null and result is null
-  order by log_id desc limit 1 for update;
+  where candidate_id = v_candidate_id and application_id = app_private.current_application_id() and superseded_at is null and result is null
+  order by app_private.pipeline_stage_index(recruitment_process) desc, round desc, log_id desc limit 1 for update;
   if not found or v_current.recruitment_process <> 'Test' or coalesce(nullif(v_item ->> 'round', '')::integer, 0) <> v_current.round then
     raise exception 'PIPELINE_NOT_CURRENT: Test exit must use the current Pending Test round.';
   end if;
@@ -2167,7 +2193,8 @@ declare
   v_other_label text := nullif(btrim(coalesce(payload ->> 'other_channel_label', '')), '');
   v_row public.candidate_references%rowtype;
 begin
-  perform app_private.lock_pipeline_candidate(v_candidate_id);
+  perform app_private.assert_recruitment_writer();
+  if not app_private.can_manage_candidate(v_candidate_id) then raise exception 'PROFILE_NOT_AUTHORIZED'; end if;
   if nullif(btrim(coalesce(payload ->> 'reference_name', '')), '') is null
     or nullif(btrim(coalesce(payload ->> 'relationship', '')), '') is null
     or nullif(btrim(coalesce(payload ->> 'channel_value', '')), '') is null
@@ -2220,7 +2247,8 @@ declare
   v_reason text := nullif(btrim(coalesce(payload ->> 'reason', '')), '');
   v_row public.candidate_references%rowtype;
 begin
-  perform app_private.lock_pipeline_candidate(v_candidate_id);
+  perform app_private.assert_recruitment_writer();
+  if not app_private.can_manage_candidate(v_candidate_id) then raise exception 'PROFILE_NOT_AUTHORIZED'; end if;
   if v_reference_id is null or v_expected_updated_at is null or v_status not in ('available', 'unavailable', 'archived') then
     raise exception 'REFERENCE_INVALID_PAYLOAD: reference, expected timestamp, and a valid status are required.';
   end if;
@@ -2258,6 +2286,7 @@ declare
   v_reference public.candidate_references%rowtype;
   v_check public.candidate_reference_checks%rowtype;
 begin
+  perform app_private.resolve_application(payload);
   perform app_private.lock_pipeline_candidate(v_candidate_id);
   if v_reference_id is null or v_checked_date is null or v_duration is null or v_duration <= 0 or v_summary is null then
     raise exception 'REFERENCE_CHECK_INVALID_PAYLOAD: reference, checked date, positive duration, and summary are required.';
@@ -2269,7 +2298,7 @@ begin
   where reference_id = v_reference_id and candidate_id = v_candidate_id for update;
   if not found then raise exception 'REFERENCE_NOT_FOUND: Reference does not belong to this candidate.'; end if;
   if v_reference.status <> 'available' then raise exception 'REFERENCE_NOT_AVAILABLE: Only Available references can receive a saved check.'; end if;
-  select * into v_check from public.candidate_reference_checks where reference_id = v_reference_id for update;
+  select * into v_check from public.candidate_reference_checks where reference_id = v_reference_id and application_id = app_private.current_application_id() for update;
   if found then
     if v_expected_updated_at is null or v_check.updated_at <> v_expected_updated_at then
       raise exception 'REFERENCE_STALE_WRITE: The saved check changed after it was opened.';
@@ -2277,7 +2306,7 @@ begin
     perform set_config('app.action', 'candidate-reference-check:edit', true);
     update public.candidate_reference_checks
     set checked_date = v_checked_date, duration_minutes = v_duration, conversation_summary = v_summary, checked_by = auth.uid()
-    where reference_id = v_reference_id returning * into v_check;
+    where reference_id = v_reference_id and application_id = app_private.current_application_id() returning * into v_check;
   else
     if v_expected_updated_at is not null then raise exception 'REFERENCE_STALE_WRITE: No saved check exists for the supplied timestamp.'; end if;
     perform set_config('app.action', 'candidate-reference-check:save', true);

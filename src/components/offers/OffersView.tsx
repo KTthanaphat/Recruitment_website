@@ -8,11 +8,13 @@ import { SortableFilterHeader, TableToolbar, TruncatedTableText, type TableColum
 import { Tag } from "@/components/ui/Tag";
 import { RecordQuickActions, type RecordQuickAction } from "@/components/ui/Operations";
 import { BulkActionToolbar, BulkReviewModal } from "@/components/ui/Workflow";
-import { formatDate, formatRequisitionTitle } from "@/lib/format";
+import { formatDate, formatRecruitmentId, formatRequisitionTitle } from "@/lib/format";
 import { offerStatusLabel, translate } from "@/lib/i18n/dictionary";
 import { bulkActionDisabledReason, offerImpact, offerStatus, type BulkActionResult } from "@/lib/operations";
 import { readTableUrlState, writeTableUrlValues } from "@/lib/table-url-state";
 import { updateWorkspaceUrlState } from "@/lib/workspace-url-state";
+import { useRecruitmentList } from "@/lib/recruitment-list";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { EnrichedOffer, EnrichedRequisition, Language, Offer, Profile } from "@/types/recruitment";
 
 export function OffersView({
@@ -23,7 +25,10 @@ export function OffersView({
   allOffers,
   onNew,
   onOpenCandidate,
-  requisitions
+  requisitions,
+  client,
+  accessScope,
+  listScope = {}
 }: {
   language: Language;
   rows: EnrichedOffer[];
@@ -31,14 +36,18 @@ export function OffersView({
   profile: Profile | null;
   allOffers: Offer[];
   onNew: () => void;
-  onOpenCandidate: (candidateId: string) => void;
+  onOpenCandidate: (candidateId: string, applicationId?: string) => void;
   requisitions: EnrichedRequisition[];
+  client: SupabaseClient | null;
+  accessScope: string;
+  listScope?: Record<string, unknown>;
 }) {
   const initialTableState = useMemo(() => readTableUrlState("offer"), []);
   const [page, setPage] = useState(initialTableState.page);
   const [pageSize, setPageSize] = useState<number>((PAGE_SIZE_OPTIONS as readonly number[]).includes(initialTableState.pageSize) ? initialTableState.pageSize : PAGE_SIZE_OPTIONS[0]);
   const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(Object.keys(initialTableState.filters ?? {}).length > 0);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectedRowCache, setSelectedRowCache] = useState<Record<string, EnrichedOffer>>({});
   const [bulkReviewOpen, setBulkReviewOpen] = useState(false);
   const [bulkResult, setBulkResult] = useState<BulkActionResult | null>(null);
   const tableInitialized = useRef(false);
@@ -53,9 +62,10 @@ export function OffersView({
     { key: "age", label: "Age", value: (row) => ageLabel(row), sortValue: (row) => offerStatus(row).ageDays ?? Number.POSITIVE_INFINITY }
   ];
   const table = useTableControls(rows, columns, initialTableState);
-  const paginated = paginateRows(table.controlledRows, page, pageSize);
-  const visibleRows = paginated.rows;
-  const selectedRows = rows.filter((row) => selectedIds.includes(String(row.offer_id)));
+  const list = useRecruitmentList<EnrichedOffer>({ client, accessScope, entity: "offers", filters: { ...listScope, ...table.filters }, sort: table.sortKey ?? "accepted", direction: table.sortDirection ?? "desc", initialPageSize: pageSize === 25 || pageSize === 50 || pageSize === 100 ? pageSize : 50, enabled: Boolean(client && accessScope), searchInput: { value: table.search, setValue: table.setSearch } });
+  const paginated = { page: list.page };
+  const visibleRows = client && accessScope ? list.items : paginateRows(table.controlledRows, page, pageSize).rows;
+  const selectedRows = selectedIds.map(id => selectedRowCache[id] ?? [...rows, ...list.items].find(row => String(row.offer_id) === id)).filter((row): row is EnrichedOffer => Boolean(row));
   const bulkDisabledReason = bulkActionDisabledReason({ entity: "offer", ids: selectedIds }, "open offer links", profile);
 
   useEffect(() => {
@@ -69,17 +79,18 @@ export function OffersView({
   useEffect(() => {
     updateWorkspaceUrlState(writeTableUrlValues("offer", {
       filters: table.filters,
-      page: paginated.page,
-      pageSize,
-      search: table.search,
+      page: list.page,
+      pageSize: list.pageSize,
+      search: list.search,
       sortDirection: table.sortDirection,
       sortKey: table.sortKey
     }));
-  }, [pageSize, paginated.page, table.filters, table.search, table.sortDirection, table.sortKey]);
+  }, [list.page, list.pageSize, list.search, table.filters, table.sortDirection, table.sortKey]);
 
   return (
     <Panel>
-      {rows.length === 0 ? (
+      {list.error ? <div role="alert" className="mb-3 flex items-center gap-3 text-sm text-scarlet"><span>Could not load offers.</span><Button type="button" variant="secondary" onClick={list.retry}>Retry</Button></div> : null}
+      {list.loading && client ? <p role="status" className="py-4 text-sm text-slate">Loading offers…</p> : !client && rows.length === 0 ? (
         <>{canWrite ? <div className="mb-4 flex justify-end"><Button type="button" size="sm" icon={<Plus size={17} />} onClick={onNew}>{translate(language, "newOffer")}</Button></div> : null}<EmptyState message={translate(language, "noData")} /></>
       ) : (
         <>
@@ -87,18 +98,19 @@ export function OffersView({
           advancedFiltersOpen={advancedFiltersOpen}
           language={language}
           onAdvancedFiltersToggle={() => setAdvancedFiltersOpen((open) => !open)}
-          onSearch={table.setSearch}
-          resultCount={table.controlledRows.length}
-          searchValue={table.search}
+          onSearch={list.setSearch}
+          resultCount={client ? list.totalCount : table.controlledRows.length}
+          searchValue={list.search}
           trailingActions={canWrite ? <Button type="button" size="sm" icon={<Plus size={17} />} onClick={onNew}>{translate(language, "newOffer")}</Button> : null}
-          totalCount={rows.length}
+          totalCount={client ? list.totalCount : rows.length}
         />
+        {client && list.totalCount === 0 ? <EmptyState variant="quiet" message={translate(language, "noData")} /> : null}
         <div className="grid gap-3 md:hidden">
           {visibleRows.map((row) => (
             <article key={row.offer_id} className="ats-card p-3">
               <div className="mb-2 flex items-center justify-between gap-2">
                 <strong className="font-bold text-navy">
-                  {row.candidate_name ?? row.candidate_id}
+                  {row.candidate_name ?? formatRecruitmentId(row.candidate_id)}
                 </strong>
                 {row.accepted_date ? <Tag tone="success">{formatDate(row.accepted_date, language)}</Tag> : <Tag tone="muted">{translate(language, "pending")}</Tag>}
               </div>
@@ -121,7 +133,7 @@ export function OffersView({
                     aria-label={translate(language, "selectVisibleOffers")}
                     type="checkbox"
                     checked={visibleRows.length > 0 && visibleRows.every((row) => selectedIds.includes(String(row.offer_id)))}
-                    onChange={(event) => setSelectedIds(event.target.checked ? Array.from(new Set([...selectedIds, ...visibleRows.map((row) => String(row.offer_id))])) : selectedIds.filter((id) => !visibleRows.some((row) => String(row.offer_id) === id)))}
+                    onChange={(event) => { setSelectedIds(event.target.checked ? Array.from(new Set([...selectedIds, ...visibleRows.map((row) => String(row.offer_id))])) : selectedIds.filter((id) => !visibleRows.some((row) => String(row.offer_id) === id))); setSelectedRowCache(current => { const next={...current}; for(const row of visibleRows){const id=String(row.offer_id); if(event.target.checked) next[id]=row; else delete next[id];} return next; }); }}
                   />
                 </th>
                 {columns.map((column) => (
@@ -151,11 +163,11 @@ export function OffersView({
                       aria-label={translate(language, "selectOffer", { id: row.offer_id })}
                       type="checkbox"
                       checked={selectedIds.includes(String(row.offer_id))}
-                      onChange={(event) => setSelectedIds((current) => event.target.checked ? [...current, String(row.offer_id)] : current.filter((id) => id !== String(row.offer_id)))}
+                      onChange={(event) => { const id=String(row.offer_id); setSelectedIds((current) => event.target.checked ? [...new Set([...current,id])] : current.filter((value) => value !== id)); setSelectedRowCache(current=>{const next={...current};if(event.target.checked)next[id]=row;else delete next[id];return next;}); }}
                     />
                   </td>
                   <td className="px-3 py-3">
-                    <TruncatedTableText value={row.candidate_name ?? row.candidate_id} className="font-bold text-navy" />
+                    <TruncatedTableText value={row.candidate_name ?? formatRecruitmentId(row.candidate_id)} className="font-bold text-navy" />
                   </td>
                   <td className="px-3 py-3 font-semibold text-navy">{row.doc_id}</td>
                   <td className="px-3 py-3 text-slate"><TruncatedTableText value={formatRequisitionTitle(row)} /></td>
@@ -174,7 +186,7 @@ export function OffersView({
             </tbody>
           </table>
         </div>
-        <Pagination language={language} page={paginated.page} pageSize={pageSize} totalRows={table.controlledRows.length} onPageChange={setPage} onPageSizeChange={setPageSize} />
+        {client ? <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-[#D7DEE8] pt-3 text-sm"><span>Page {list.page} · {list.countLabel} offers{list.countError?<Button type="button" size="sm" variant="secondary" onClick={list.retryCount}>Retry count</Button>:null}</span><div className="flex gap-2"><Button type="button" variant="secondary" disabled={!list.canPrevious} onClick={list.goPrevious}>Previous</Button><Button type="button" variant="secondary" disabled={!list.canNext} onClick={list.goNext}>Next</Button><select aria-label="Rows per page" value={list.pageSize} onChange={event=>list.setPageSize(Number(event.target.value))} className="min-h-10 rounded-md border border-[#C9D5E6] bg-white px-2">{PAGE_SIZE_OPTIONS.map(size=><option key={size} value={size}>{size}</option>)}</select></div></div> : <Pagination language={language} page={paginated.page} pageSize={pageSize} totalRows={table.controlledRows.length} onPageChange={setPage} onPageSizeChange={setPageSize} />}
         <BulkActionToolbar
           disabledReason={bulkDisabledReason}
           entityLabel={translate(language, "offers")}
@@ -182,6 +194,7 @@ export function OffersView({
           selectedCount={selectedIds.length}
           onClear={() => {
             setSelectedIds([]);
+            setSelectedRowCache({});
             setBulkResult(null);
           }}
           onExport={() => exportOffers(selectedRows, allOffers, requisitions)}
@@ -217,9 +230,9 @@ function exportOffers(rows: EnrichedOffer[], allOffers: Offer[], requisitions: E
   })));
 }
 
-function offerActions(row: EnrichedOffer, language: Language, onOpenCandidate: (candidateId: string) => void): RecordQuickAction[] {
+function offerActions(row: EnrichedOffer, language: Language, onOpenCandidate: (candidateId: string, applicationId?: string) => void): RecordQuickAction[] {
   return [
-    { id: "view", label: translate(language, "viewOfferCandidateDetailFor", { name: row.candidate_name ?? row.candidate_id }), icon: <Search size={16} aria-hidden="true" />, iconOnly: true, onSelect: () => onOpenCandidate(row.candidate_id) }
+    { id: "view", label: translate(language, "viewOfferCandidateDetailFor", { name: row.candidate_name ?? row.candidate_id }), icon: <Search size={16} aria-hidden="true" />, iconOnly: true, onSelect: () => onOpenCandidate(row.candidate_id, row.application_id) }
   ];
 }
 

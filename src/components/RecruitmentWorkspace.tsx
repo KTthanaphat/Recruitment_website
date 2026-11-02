@@ -1,13 +1,29 @@
 "use client";
+import { candidateCanUseGroup, profileCapabilities, canManageApplicationGroup, eligibleApplicationGroups, canManageCandidateJourney } from "@/lib/applications";
 
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import type { Requisition } from "@/types/recruitment";
-import { Activity, AlertTriangle, Bookmark, BriefcaseBusiness, Building2, CalendarDays, CalendarPlus, CheckCircle2, ContactRound, Copy, CopyCheck, Factory, EyeOff, Files, Hash, Info, LampDesk, Layers3, Mail, Network, Pencil, Phone, Plus, RefreshCw, Send, UserRound, UsersRound, X } from "lucide-react";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { Activity, AlertTriangle, Bookmark, BriefcaseBusiness, Building2, CalendarDays, CalendarPlus, CheckCircle2, ContactRound, Copy, Factory, EyeOff, Files, Hash, Info, LampDesk, Layers3, Mail, Network, Pencil, Phone, Plus, RefreshCw, Send, UserRound, UsersRound, X } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { CandidatesView } from "@/components/candidates/CandidatesView";
+import { CandidateRegistry } from "@/components/candidates/CandidateRegistry";
+import { clearRecruitmentListCache, invalidateRecruitmentListsForMutation, useRecruitmentList } from "@/lib/recruitment-list";
+import { loadCandidateDetail } from "@/lib/candidate-detail-loader";
+import { clearScopedDetailCache } from "@/lib/scoped-detail-cache";
+import { loadAuthorizedRecruiterOptions } from "@/lib/recruiter-options-client";
+import { loadScopedRequisitionDetail } from "@/lib/requisition-detail-loader";
+import { fetchApplicationDestinations, type ApplicationDestination } from "@/lib/application-destinations";
+import { fetchOfferCandidates, type OfferCandidateCursor, type OfferCandidateOption } from "@/lib/offer-candidates";
+import { readScopedInPages } from "@/lib/scoped-detail-read";
+import { clearPipelineSummaryCache } from "@/lib/pipeline-summary-loader";
+import { clearDashboardSummaryCache, loadDashboardFilterOptions, loadHomeBannerSummary, loadWelcomeSummary, type HomeBannerSummary, type WelcomeSummary } from "@/lib/dashboard-summary-client";
+import { DetailGrid, SectionHeading } from "@/components/ui/RecordDetailFields";
+import { CandidateProfilePanel, CandidateApplicationDetailsExtras } from "@/components/candidates/CandidateProfilePanel";
+import { applicationLogs, belongsToApplication, selectedApplication, applicationKey } from "@/lib/applications";
 import { HomeView } from "@/components/dashboard/HomeView";
-import { clearDashboardReportCache, hydrateReportCandidate, readReportPages } from "@/lib/dashboard-report-loader";
+import { WelcomeBackPrompt } from "@/components/dashboard/WelcomeBackPrompt";
+import { clearDashboardReportCache, readReportPages } from "@/lib/dashboard-report-loader";
 import { DASHBOARD_SESSION_PREFIX } from "@/lib/dashboard-filters";
 import { DesktopInteractionContext } from "@/components/layout/DesktopInteractionContext";
 import { DesktopRequiredNotice } from "@/components/layout/DesktopRequiredNotice";
@@ -22,6 +38,7 @@ import { TeamsInterviewComposer } from "@/components/interviews/TeamsInterviewCo
 import { RequisitionPriorityButton } from "@/components/requisitions/RequisitionPriorityButton";
 import { canManageRequisitionPriority, priorityRequisitionScope } from "@/lib/requisition-priority";
 import { RequisitionsView } from "@/components/requisitions/RequisitionsView";
+import { AuthorizedRequisitionLookup } from "@/components/requisitions/AuthorizedRequisitionLookup";
 import { EmbeddedSourcingEditor, SourcingView } from "@/components/sourcing/SourcingView";
 import { WorkspaceOfferSection } from "@/components/workspace/WorkspaceOfferSection";
 import { HiringWorkspaceView } from "@/components/workspace/HiringWorkspaceView";
@@ -54,11 +71,9 @@ import {
   type PipelineDisplayStage
 } from "@/lib/constants";
 import { currentLocalSourcingCycleSaturday, formatLocalDateInput, sourcingCycleSaturday } from "@/lib/dates";
-import { dailyWelcomeMessage } from "@/lib/daily-messages";
 import { appendLegacyOption, departmentOptions, sectionOptionsForDepartment, type DepartmentSectionRow } from "@/lib/department-section-data";
 import {
   emptyDashboardData,
-  loadCompanyDashboardReport,
   enrichCandidates,
   enrichOffers,
   enrichRequisitions,
@@ -66,13 +81,13 @@ import {
   filterChangeLogsByText,
   filterByText,
   latestLogsForCandidate,
-  loadDashboardData,
+  loadRecruitmentBootstrap,
   sourcingChannelsForGroup,
   sourcingGroupsInScope,
   staleOpenSourcingGroups,
   uniqueValues
 } from "@/lib/data";
-import { boolFromForm, emptyToNull, formatCandidateName, formatDate, formatDateTime, formatNumber, formatRequisitionOptionLabel, formatRequisitionTitle, formatThaiMobilePhone, resultText, statusTone } from "@/lib/format";
+import { boolFromForm, emptyToNull, formatCandidateName, formatDate, formatDateTime, formatNumber, formatRecruitmentId, formatRequisitionOptionLabel, formatRequisitionTitle, formatThaiMobilePhone, resultText, statusTone } from "@/lib/format";
 import { sourcingLinkReadinessLabel, sourcingLinkReadinessReason, requisitionStatusLabel, requestTypeLabel, roleLabel, translate } from "@/lib/i18n/dictionary";
 import { activeProcessStage, candidatePipelineCapability, candidateProcessDisabledReason, deriveDataQualityIssues, latestSuccessfulOfferPassDate, pipelineMoveDisabledReason, pipelineStageRecords, requisitionSourcingLinkReadiness, type SourcingLinkReadiness } from "@/lib/operations";
 import { getRequisitionAgeDays, getRequisitionSlaState } from "@/lib/sla";
@@ -86,6 +101,7 @@ import type {
   CandidateReferenceCheck,
   EnrichedCandidate,
   EnrichedRequisition,
+  EnrichedSourcingGroup,
   InterviewInvitationTemplate,
   InterviewMeeting,
   Language,
@@ -145,6 +161,7 @@ type DestructiveAction = {
 };
 
 type ProcessDefaults = {
+  application_id?: string;
   candidate_id?: string;
   recruitment_process?: string;
   result?: string;
@@ -188,6 +205,7 @@ type ProcessDefaults = {
 };
 
 type ModalDefaults = {
+  application_id?: string;
   mode?: "new" | "change";
   selectedId?: string;
   candidate_id?: string;
@@ -220,18 +238,6 @@ type GuideContext = {
   candidate_id?: string;
 };
 
-type WelcomeSummary = {
-  openRequisitions: number;
-  openVacancy: number;
-  activeCandidates: number;
-  offerFinalizationNeeded: number;
-  filledThisMonth: number;
-  responsibleVacancyTotal: number;
-  filledResponsibleVacancyRatio: number;
-  filledResponsibleVacancyBucket: WelcomeRatioBucket;
-};
-
-type WelcomeRatioBucket = 0 | 25 | 50 | 75 | 100;
 type WorkspaceLoadState = "checking_session" | "redirecting_to_login" | "loading_data" | "ready" | "error";
 type ParsedWorkspaceUrlState = {
   detailId: string | null;
@@ -265,7 +271,7 @@ function parseStoredFilters(value: string | null) {
 const rpcByModal: Record<Exclude<ModalName, null | "user">, string> = {
   requisition: "app_upsert_requisition",
   status: "app_insert_requisition_log",
-  candidate: "app_upsert_candidate",
+  candidate: "app_upsert_candidate_profile_v2",
   candidate_reference: "app_upsert_candidate_reference_v1",
   reference_status: "app_set_candidate_reference_status_v1",
   reference_check: "app_save_candidate_reference_check_v1",
@@ -297,6 +303,15 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const [updateDenial, setUpdateDenial] = useState<string | null>(null);
   const [filters, setFilters] = useState({ site: "", owner: "", priorityOnly: false });
   const [sourcingWeek, setSourcingWeek] = useState(currentWeekStart());
+  const [duplicateReview,setDuplicateReview]=useState<{matches:Array<{candidate_id:string;phone:boolean;email:boolean}>;payload:Record<string,unknown>;summary:string}|null>(null);
+  const [candidateReviewBusy,setCandidateReviewBusy]=useState(false);
+  const [candidateReviewError,setCandidateReviewError]=useState<string|null>(null);
+  const [selectedApplicationId, setSelectedApplicationId] = useState<string | null>(null);
+  const [candidateDetail, setCandidateDetail] = useState<{ key: string; data: DashboardData | null; loading: boolean; error: string | null }>({ key: "", data: null, loading: false, error: null });
+  const [candidateDetailRetry, setCandidateDetailRetry] = useState(0);
+  const [candidateActionContext, setCandidateActionContext] = useState<{ key: string; scopeKey: string; candidate: EnrichedCandidate; data: DashboardData } | null>(null);
+  const [requisitionDetail, setRequisitionDetail] = useState<{ key: string; loading: boolean; error: string | null; result: Awaited<ReturnType<typeof loadScopedRequisitionDetail>> | null }>({ key: "", loading: false, error: null, result: null });
+  const [requisitionDetailRetry, setRequisitionDetailRetry] = useState(0);
   const [activeModal, setActiveModal] = useState<ModalName>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [destructiveAction, setDestructiveAction] = useState<DestructiveAction | null>(null);
@@ -312,6 +327,14 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const [currentStageActionCandidateId, setCurrentStageActionCandidateId] = useState<string | null>(null);
   const [workspaceTarget, setWorkspaceTarget] = useState<{ type: "requisition" | "group" | null; id: string | null }>({ type: null, id: null });
   const [welcomeOpen, setWelcomeOpen] = useState(false);
+  const [welcomeSummary, setWelcomeSummary] = useState<WelcomeSummary | null>(null);
+  const [welcomeSummaryLoading, setWelcomeSummaryLoading] = useState(false);
+  const [welcomeSummaryError, setWelcomeSummaryError] = useState<string | null>(null);
+  const [welcomeSummaryRetry, setWelcomeSummaryRetry] = useState(0);
+  const [homeBannerSummary, setHomeBannerSummary] = useState<HomeBannerSummary | null>(null);
+  const [homeBannerLoading, setHomeBannerLoading] = useState(false);
+  const [homeBannerError, setHomeBannerError] = useState<string | null>(null);
+  const [homeBannerRetry, setHomeBannerRetry] = useState(0);
   const [busy, setBusy] = useState(false);
   const [urlStateReady, setUrlStateReady] = useState(false);
 
@@ -394,10 +417,10 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
         setData(minimal); setWorkspaceLoadState("ready"); setStatus("Recruitment records loaded.");
         return minimal;
       }
-      const [loaded, dashboardReport] = await Promise.all([loadDashboardData(supabase), loadScope === "mobile" ? Promise.resolve(null) : loadCompanyDashboardReport(supabase)]);
+      const [loaded, dashboardReport] = await Promise.all([loadRecruitmentBootstrap(supabase), Promise.resolve(null)]);
       if (!currentRequest()) return null;
       loadedScopeRef.current = loadScope;
-      if (refreshReports) clearDashboardReportCache();
+      if (refreshReports) { clearDashboardReportCache(); clearDashboardSummaryCache(); }
       setData(loaded);
       setReportRefreshKey(value => value + 1);
       setCompanyDashboardReport(dashboardReport);
@@ -422,6 +445,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     void loadData(false);
     return () => { loadGeneration.current += 1; };
   }, [layoutMode, loadScope, loadData]);
+
 
   const refreshRejectionReasons = useCallback(async () => {
     if (!supabase) throw new Error("Supabase is not configured.");
@@ -455,6 +479,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       localStorage.removeItem("recruitment_filters");
     }
     if (urlState.sourcingWeek) setSourcingWeek(sourcingCycleSaturday(urlState.sourcingWeek));
+    setSelectedApplicationId(new URLSearchParams(window.location.search).get("applicationId"));
     if (urlState.detailType && urlState.detailId) setDetail({ type: urlState.detailType, id: urlState.detailId });
     setWorkspaceTarget({ type: urlState.workspaceType, id: urlState.workspaceId });
     setUrlStateReady(true);
@@ -472,6 +497,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       }
       if (urlState.sourcingWeek) setSourcingWeek(sourcingCycleSaturday(urlState.sourcingWeek));
       setDetail((current) => {
+        setSelectedApplicationId(new URLSearchParams(window.location.search).get("applicationId"));
         const next = urlState.detailType && urlState.detailId ? { type: urlState.detailType, id: urlState.detailId } : null;
         if (!current && !next) return current;
         return current?.type === next?.type && current?.id === next?.id ? current : next;
@@ -506,11 +532,113 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       type: initialView === "workspace" ? workspaceTarget.type : undefined,
       id: initialView === "workspace" ? workspaceTarget.id : undefined,
       detailType: detail?.type,
-      detailId: detail?.id
+      detailId: detail?.id,
+      applicationId: selectedApplicationId
     });
-  }, [detail, filters, initialView, language, sourcingWeek, urlStateReady, workspaceTarget, layoutMode, desktopRequired]);
+  }, [detail, filters, initialView, language, sourcingWeek, urlStateReady, workspaceTarget, layoutMode, desktopRequired, selectedApplicationId]);
 
   const role = data.profile?.role ?? "viewer";
+  const workspaceDataRef = useRef(data);
+  workspaceDataRef.current = data;
+  const detailAccessScope = `${process.env.NEXT_PUBLIC_SUPABASE_URL ?? "local"}:${data.profile?.id ?? "anonymous"}:${data.profile?.role ?? "viewer"}:${data.profile?.site ?? ""}:${data.profile?.updated_at ?? ""}`;
+  useEffect(() => {
+    if (initialView !== "home" || workspaceLoadState !== "ready" || !supabase || !data.profile) {
+      setWelcomeSummary(null); setWelcomeSummaryLoading(false); setWelcomeSummaryError(null); setHomeBannerSummary(null); setHomeBannerLoading(false); setHomeBannerError(null);
+      return;
+    }
+    let active = true;
+    const scope = { headerSite: filters.site, headerPic: filters.owner, priorityOnly: filters.priorityOnly };
+    setWelcomeSummary(null); setWelcomeSummaryLoading(true); setWelcomeSummaryError(null);
+    setHomeBannerSummary(null); setHomeBannerLoading(true); setHomeBannerError(null);
+    void loadWelcomeSummary(supabase, detailAccessScope, reportRefreshKey + welcomeSummaryRetry).then(value => {
+      if (active) { setWelcomeSummary(value); setWelcomeSummaryError(null); }
+    }).catch(loadError => {
+      if (active) setWelcomeSummaryError(loadError instanceof Error ? loadError.message : "Could not load the welcome summary.");
+    }).finally(() => { if (active) setWelcomeSummaryLoading(false); });
+    void loadHomeBannerSummary(supabase, scope, detailAccessScope, reportRefreshKey + homeBannerRetry).then(value => {
+      if (active) { setHomeBannerSummary(value); setHomeBannerError(null); }
+    }).catch(loadError => {
+      if (active) setHomeBannerError(loadError instanceof Error ? loadError.message : "Could not load the home banner summary.");
+    }).finally(() => { if (active) setHomeBannerLoading(false); });
+    return () => { active = false; };
+  }, [data.profile, detailAccessScope, filters.owner, filters.priorityOnly, filters.site, homeBannerRetry, initialView, reportRefreshKey, welcomeSummaryRetry, workspaceLoadState]);
+  useEffect(() => { if (supabase) clearScopedDetailCache(supabase); }, [detailAccessScope, supabase]);
+  const currentDetailAccessScope = useRef(detailAccessScope);
+  currentDetailAccessScope.current = detailAccessScope;
+  useEffect(() => { setCandidateActionContext(null); }, [detailAccessScope]);
+  const candidateDetailKey = detail?.type === "candidate" ? JSON.stringify([detailAccessScope, detail.id, selectedApplicationId ?? ""]) : "";
+  const candidateActionGeneration = useRef(0);
+  useEffect(() => { candidateActionGeneration.current += 1; }, [detailAccessScope]);
+  useEffect(() => {
+    const activeProfileId = workspaceDataRef.current.profile?.id;
+    if (!candidateDetailKey || !supabase || workspaceLoadState !== "ready" || !activeProfileId) {
+      setCandidateDetail({ key: candidateDetailKey, data: null, loading: false, error: null });
+      return;
+    }
+    let cancelled = false;
+    const candidateId = detail?.type === "candidate" ? detail.id : "";
+    setCandidateDetail({ key: candidateDetailKey, data: null, loading: true, error: null });
+    void loadCandidateDetail(supabase, { profileId: activeProfileId, key: detailAccessScope }, candidateId, selectedApplicationId, workspaceDataRef.current)
+      .then(result => { if (!cancelled) setCandidateDetail({ key: candidateDetailKey, data: result, loading: false, error: null }); })
+      .catch(loadError => { if (!cancelled) setCandidateDetail({ key: candidateDetailKey, data: null, loading: false, error: loadError instanceof Error ? loadError.message : "Could not load candidate details." }); });
+    return () => { cancelled = true; };
+  // Do not depend on candidateDetail: setting loading state here must not clean up
+  // the request that produced it. The request is scoped by the key/retry/auth inputs.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [candidateDetailKey, candidateDetailRetry, detail, detailAccessScope, selectedApplicationId, supabase, workspaceLoadState]);
+  const candidateDetailContext = candidateDetail.key === candidateDetailKey ? candidateDetail.data : null;
+  const refreshMutationCaches = useCallback((endpoint: string) => {
+    invalidateRecruitmentListsForMutation(endpoint);
+    clearPipelineSummaryCache();
+    clearDashboardSummaryCache();
+    clearDashboardReportCache();
+    if (supabase) clearScopedDetailCache(supabase, detailAccessScope);
+    if (detail?.type === "candidate") setCandidateDetailRetry(value => value + 1);
+    setCandidateActionContext(null);
+    setReportRefreshKey(value => value + 1);
+  }, [detail, detailAccessScope, supabase]);
+  const requisitionDetailKey = detail?.type === "requisition" ? JSON.stringify([detailAccessScope, detail.id, reportRefreshKey]) : "";
+  useEffect(() => {
+    if (!requisitionDetailKey || detail?.type !== "requisition" || !supabase || !data.profile) {
+      setRequisitionDetail({ key: requisitionDetailKey, loading: false, error: null, result: null });
+      return;
+    }
+    let cancelled = false;
+    setRequisitionDetail({ key: requisitionDetailKey, loading: true, error: null, result: null });
+    void loadScopedRequisitionDetail(supabase, { docId: detail.id, accessScope: { profileId: data.profile.id, key: detailAccessScope } })
+      .then(result => { if (!cancelled) setRequisitionDetail({ key: requisitionDetailKey, loading: false, error: null, result }); })
+      .catch(loadError => { if (!cancelled) setRequisitionDetail({ key: requisitionDetailKey, loading: false, error: loadError instanceof Error ? loadError.message : "Could not load requisition details.", result: null }); });
+    return () => { cancelled = true; };
+  }, [data.profile, detail, detailAccessScope, requisitionDetailKey, requisitionDetailRetry, supabase]);
+  const requisitionDetailResult = requisitionDetail.key === requisitionDetailKey ? requisitionDetail.result : null;
+  const loadedRequisition = requisitionDetailResult?.status === "ready" ? requisitionDetailResult : null;
+  const actionDataFor = useCallback((candidateId: string) => {
+    if (detail?.type === "candidate" && detail.id === candidateId && candidateDetailContext) return candidateDetailContext;
+    const actionMatches = candidateActionContext?.scopeKey === detailAccessScope && candidateActionContext.candidate.candidate_id === candidateId && (!selectedApplicationId || candidateActionContext.candidate.application_id === selectedApplicationId);
+    return actionMatches ? candidateActionContext.data : data;
+  }, [candidateActionContext, candidateDetailContext, data, detail, detailAccessScope, selectedApplicationId]);
+  const ensureCandidateActionContext = useCallback(async (candidate: EnrichedCandidate) => {
+    if (detail?.type === "candidate" && detail.id === candidate.candidate_id && candidateDetailContext) {
+      const resolved = enrichCandidates(candidateDetailContext).find(row => row.candidate_id === candidate.candidate_id && row.application_id === candidate.application_id);
+      return resolved ? { data: candidateDetailContext, candidate: resolved } : null;
+    }
+    if (!supabase || !data.profile) { showUpdateDenial("Candidate details are unavailable. Reopen the record and try again."); return null; }
+    const generation = ++candidateActionGeneration.current;
+    const applicationId = candidate.application_id ?? null;
+    try {
+      const hydrated = await loadCandidateDetail(supabase, { profileId: data.profile.id, key: detailAccessScope }, candidate.candidate_id, applicationId, data);
+      if (generation !== candidateActionGeneration.current || detailAccessScope !== currentDetailAccessScope.current) return null;
+      const resolved = enrichCandidates(hydrated).find(row => row.candidate_id === candidate.candidate_id && row.application_id === applicationId);
+      if (!resolved) throw new Error("The selected application is no longer available.");
+      setCandidateActionContext({ key: JSON.stringify([detailAccessScope, candidate.candidate_id, applicationId ?? ""]), scopeKey: detailAccessScope, candidate: resolved, data: hydrated });
+      return { data: hydrated, candidate: resolved };
+    } catch (loadError) {
+      if (generation !== candidateActionGeneration.current) return null;
+      const message = loadError instanceof Error ? loadError.message : "Could not load candidate details.";
+      showUpdateDenial(message);
+      return null;
+    }
+  }, [candidateDetailContext, data, detail, detailAccessScope]);
   const canWrite = canWriteRole(role);
   const canManageSetup = canManageSetupRole(role);
   const canManageUsers = canManageUsersRole(role);
@@ -522,8 +650,8 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const enrichedRequisitions = useMemo(() => enrichRequisitions(data), [data]);
   const enrichedCandidates = useMemo(() => enrichCandidates(data), [data]);
   const enrichedOffers = useMemo(() => enrichOffers(data), [data]);
-  const offeredCandidateIds = useMemo(() => new Set(data.offers.map((offer) => offer.candidate_id)), [data.offers]);
-  const rejectionLetterSentCandidateIds = useMemo(() => new Set(data.rejection_letter_drafts.filter((draft) => draft.status === "sent").map((draft) => draft.candidate_id)), [data.rejection_letter_drafts]);
+  const offeredCandidateIds = useMemo(() => new Set(data.offers.map((offer) => offer.application_id ?? offer.candidate_id)), [data.offers]);
+  const rejectionLetterSentCandidateIds = useMemo(() => new Set(data.rejection_letter_drafts.filter((draft) => draft.status === "sent").map((draft) => data.recruitment_logs.find(log=>log.stage_instance_id===draft.failed_stage_instance_id)?.application_id ?? draft.candidate_id)), [data.rejection_letter_drafts, data.recruitment_logs]);
   const enrichedSourcingGroups = useMemo(() => enrichSourcingGroups(data, sourcingWeek), [data, sourcingWeek]);
   const homeSourcingGroups = useMemo(
     () => sourcingGroupsInScope(enrichedSourcingGroups.filter(group => !filters.priorityOnly || group.doc_ids.some(id => data.requisitions.some(req => req.doc_id === id && req.is_priority))), data.profile, filters.site, filters.owner),
@@ -531,11 +659,6 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   );
   const staleSourcingGroups = useMemo(() => staleOpenSourcingGroups(priorityData), [priorityData]);
   const dataQualityIssues = useMemo(() => deriveDataQualityIssues(priorityData), [priorityData]);
-  const welcomeSummary = useMemo(
-    () => buildWelcomeSummary(enrichedRequisitions, enrichedCandidates, data.offers, data.requisition_logs, data.profile),
-    [data.offers, data.profile, data.requisition_logs, enrichedCandidates, enrichedRequisitions]
-  );
-
   const priorityRequisitions = useMemo(() => enrichRequisitions(priorityData), [priorityData]);
   const priorityCandidates = useMemo(() => enrichCandidates(priorityData), [priorityData]);
   const priorityOffers = useMemo(() => enrichOffers(priorityData), [priorityData]);
@@ -557,21 +680,32 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   );
   const filteredChangeLogs = useMemo(() => filterChangeLogsByText(priorityData, filters), [priorityData, filters]);
   useEffect(() => {
-    if (initialView !== "workspace" || workspaceLoadState !== "ready" || workspaceTarget.type !== "requisition" || !workspaceTarget.id) return;
+    if (initialView !== "workspace" || workspaceLoadState !== "ready" || workspaceTarget.type !== "requisition" || !workspaceTarget.id || !supabase || !data.profile) return;
+    let cancelled = false;
     const docId = workspaceTarget.id;
-    const visibleOpen = new Set(enrichRequisitions(data).filter((row) => row.status === "ongoing" && row.open_headcount > 0 && (!filters.site || row.site === filters.site) && (!filters.owner || row.person_in_charge === filters.owner) && (data.profile?.role !== "site_recruiter" || row.site === data.profile.site || row.person_in_charge === data.profile.nickname)).map((row) => row.doc_id));
-    const eligible = [...new Set(data.document_groups.filter((row) => row.doc_id === docId && row.group_id).map((row) => row.group_id!))]
-      .filter((groupId) => data.document_groups.some((row) => row.group_id === groupId && visibleOpen.has(row.doc_id)))
-      .sort();
-    if (eligible.length === 1) {
-      setWorkspaceTarget({ type: "group", id: eligible[0] });
-      updateWorkspaceUrlState({ type: "group", id: eligible[0], doc: null, detailType: null, detailId: null });
-    } else {
-      setWorkspaceTarget({ type: null, id: null });
-      updateWorkspaceUrlState({ type: null, id: null, doc: null, detailType: eligible.length === 0 ? "requisition" : null, detailId: eligible.length === 0 ? docId : null, groupChoices: eligible.length > 1 ? eligible.join(",") : null });
-      if (eligible.length === 0) setDetail({ type: "requisition", id: docId });
-    }
-  }, [data, filters.owner, filters.site, initialView, workspaceLoadState, workspaceTarget]);
+    const identity = { profileId: data.profile.id, key: detailAccessScope };
+    void loadScopedRequisitionDetail(supabase, { docId, accessScope: identity }).then(result => {
+      if (cancelled || workspaceTarget.id !== docId || result.status !== "ready" || result.scopeKey !== detailAccessScope) return;
+      const requisition = result.requisition;
+      const inHeaderScope = (!filters.site || requisition.site === filters.site)
+        && (!filters.owner || requisition.person_in_charge === filters.owner)
+        && (data.profile?.role !== "site_recruiter" || requisition.site === data.profile.site || requisition.person_in_charge === data.profile.nickname);
+      const eligible = inHeaderScope && requisition.status === "ongoing" && result.metrics.openHeadcount > 0
+        ? [...new Set(result.documentGroups.map(row => row.group_id).filter((id): id is string => Boolean(id)))].sort()
+        : [];
+      if (eligible.length === 1) {
+        setWorkspaceTarget({ type: "group", id: eligible[0] });
+        updateWorkspaceUrlState({ type: "group", id: eligible[0], doc: null, detailType: null, detailId: null });
+      } else {
+        setWorkspaceTarget({ type: null, id: null });
+        updateWorkspaceUrlState({ type: null, id: null, doc: null, detailType: "requisition", detailId: docId, groupChoices: eligible.length > 1 ? eligible.join(",") : null });
+        setDetail({ type: "requisition", id: docId });
+      }
+    }).catch(() => {
+      if (!cancelled) { setWorkspaceTarget({ type: null, id: null }); setDetail({ type: "requisition", id: docId }); }
+    });
+    return () => { cancelled = true; };
+  }, [data.profile, detailAccessScope, filters.owner, filters.site, initialView, supabase, workspaceLoadState, workspaceTarget]);
 
   useEffect(() => {
     if (initialView === "workspace" && workspaceUrlState.params.has("doc")) updateWorkspaceUrlState({ doc: null });
@@ -581,20 +715,22 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     if (initialView !== "workspace" || workspaceLoadState !== "ready" || activeModal) return;
     const candidateId = workspaceUrlState.params.get("offerCandidate");
     if (!candidateId) return;
-    const candidate = enrichedCandidates.find((row) => row.candidate_id === candidateId);
+    const handoffApplicationId = workspaceUrlState.params.get("offerApplication") ?? selectedApplication(data, candidateId)?.application_id;
+    const candidate = enrichedCandidates.find((row) => row.candidate_id === candidateId && row.application_id === handoffApplicationId);
     const docId = workspaceUrlState.params.get("offerDoc")
       ?? data.document_groups.find((row) => row.group_id === candidate?.group_id)?.doc_id;
     setModalDefaults({
       mode: "new",
       candidate_id: candidateId,
+      application_id: handoffApplicationId,
       doc_id: docId,
       accepted_date: workspaceUrlState.params.get("offerDate") ?? undefined,
       offer_candidate_ids: enrichedCandidates.filter((row) => row.group_id === candidate?.group_id).map((row) => row.candidate_id),
       offer_doc_ids: docId ? [docId] : undefined
     });
     setActiveModal("offer");
-    updateWorkspaceUrlState({ offerCandidate: null, offerDate: null, offerDoc: null });
-  }, [activeModal, data.document_groups, enrichedCandidates, initialView, workspaceLoadState, workspaceUrlState.params]);
+    updateWorkspaceUrlState({ offerApplication: null, offerCandidate: null, offerDate: null, offerDoc: null });
+  }, [activeModal, data, enrichedCandidates, initialView, workspaceLoadState, workspaceUrlState.params]);
   const workspaceScope = useMemo(() => {
     const docIds = new Set<string>();
     const groupIds = new Set<string>();
@@ -632,7 +768,74 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     && !workspaceScope.requisitions.some((row) => row.status === "ongoing" && row.open_headcount > 0);
 
   const siteOptions = SITE_OPTIONS;
-  const ownerOptions = recruiterNicknameOptions(data.profiles);
+  const [authorizedOwnerOptions, setAuthorizedOwnerOptions] = useState<string[]>([]);
+  const [ownerOptionsError, setOwnerOptionsError] = useState<string | null>(null);
+  const [ownerOptionsRetry, setOwnerOptionsRetry] = useState(0);
+  const [invitationTemplateError, setInvitationTemplateError] = useState<string | null>(null);
+  const [rejectionTemplateError, setRejectionTemplateError] = useState<string | null>(null);
+  const [invitationProfiles, setInvitationProfiles] = useState<Profile[]>([]);
+  const [invitationProfilesError, setInvitationProfilesError] = useState<string | null>(null);
+  const [invitationProfilesRetry, setInvitationProfilesRetry] = useState(0);
+  const ownerOptions = useMemo(() => [...new Set([
+    ...recruiterNicknameOptions(data.profiles),
+    ...authorizedOwnerOptions,
+    ...(filters.owner ? [filters.owner] : [])
+  ])].sort((left, right) => left.localeCompare(right)), [authorizedOwnerOptions, data.profiles, filters.owner]);
+  useEffect(() => {
+    if (!supabase || !data.profile || workspaceLoadState !== "ready" || desktopRequired) return;
+    let active = true;
+    setOwnerOptionsError(null);
+    void loadDashboardFilterOptions(supabase, {
+      headerSite: filters.site,
+      headerPic: filters.owner,
+      priorityOnly: filters.priorityOnly,
+      sites: []
+    }, detailAccessScope).then(options => {
+      if (!active) return;
+      setAuthorizedOwnerOptions(options.owners);
+    }).catch(loadError => {
+      if (!active) return;
+      setOwnerOptionsError(loadError instanceof Error ? loadError.message : "Could not load owner options.");
+    });
+    return () => { active = false; };
+  }, [data.profile, desktopRequired, detailAccessScope, filters.owner, filters.priorityOnly, filters.site, ownerOptionsRetry, supabase, workspaceLoadState]);
+  useEffect(() => {
+    if (!supabase || !currentStageActionCandidateId) return;
+    let active = true;
+    setInvitationTemplateError(null);
+    void Promise.resolve(supabase.from("interview_invitation_templates").select("*")).then(({ data: rows, error: queryError }) => {
+      if (!active) return;
+      if (queryError) throw queryError;
+      setData(current => ({ ...current, interview_invitation_templates: (rows ?? []) as DashboardData["interview_invitation_templates"] }));
+    }).catch(loadError => {
+      if (active) setInvitationTemplateError(loadError instanceof Error ? loadError.message : "Could not load invitation templates.");
+    });
+    return () => { active = false; };
+  }, [currentStageActionCandidateId, detailAccessScope, supabase]);
+  useEffect(() => {
+    if (!supabase || !currentStageActionCandidateId || !data.profile) { setInvitationProfiles([]); setInvitationProfilesError(null); return; }
+    let active = true;
+    setInvitationProfiles([]); setInvitationProfilesError(null);
+    void loadAuthorizedRecruiterOptions(supabase, { profileId: data.profile.id, key: detailAccessScope }).then(rows => {
+      if (active) setInvitationProfiles(rows);
+    }).catch(loadError => {
+      if (active) setInvitationProfilesError(loadError instanceof Error ? loadError.message : "Could not load authorized interviewer options.");
+    });
+    return () => { active = false; };
+  }, [currentStageActionCandidateId, data.profile, detailAccessScope, invitationProfilesRetry, supabase]);
+  useEffect(() => {
+    if (!supabase || !rejectionLetterCandidateId) return;
+    let active = true;
+    setRejectionTemplateError(null);
+    void Promise.resolve(supabase.from("rejection_letter_templates").select("*")).then(({ data: rows, error: queryError }) => {
+      if (!active) return;
+      if (queryError) throw queryError;
+      setData(current => ({ ...current, rejection_letter_templates: (rows ?? []) as DashboardData["rejection_letter_templates"] }));
+    }).catch(loadError => {
+      if (active) setRejectionTemplateError(loadError instanceof Error ? loadError.message : "Could not load rejection templates.");
+    });
+    return () => { active = false; };
+  }, [detailAccessScope, rejectionLetterCandidateId, supabase]);
   useEffect(() => {
     if (initialView !== "home" || loading || !data.profile) return;
     const key = welcomeStorageKey(data.profile.id ?? data.profile.email ?? "unknown");
@@ -642,6 +845,9 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
 
   async function signOut() {
     clearDashboardReportCache();
+    clearDashboardSummaryCache();
+    clearRecruitmentListCache();
+    if (supabase) clearScopedDetailCache(supabase);
     try { for (const key of Object.keys(sessionStorage)) if (key.startsWith(DASHBOARD_SESSION_PREFIX)) sessionStorage.removeItem(key); } catch { /* Optional preferences storage. */ }
     if (supabase) await supabase.auth.signOut();
     router.replace("/login");
@@ -689,7 +895,11 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   }
 
   function openProcessForMove(candidate: EnrichedCandidate, nextStage: ProcessStage) {
-    const logs = latestLogsForCandidate(data, candidate.candidate_id);
+    void ensureCandidateActionContext(candidate).then(resolved => {
+      if (!resolved) return;
+      const candidate = resolved.candidate;
+      const context = resolved.data;
+    const logs = applicationLogs(context, candidate);
     const blockedReason = processUpdateBlockReason(logs);
     if (blockedReason) {
       showUpdateDenial(blockedReason);
@@ -706,7 +916,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     const currentRound = latestRoundForStage(logs, candidate.latest_process as ProcessStage);
     const currentPending = logs.find((row) => row.result === null);
     setProcessDefaults({
-      candidate_id: candidate.candidate_id,
+      candidate_id: candidate.candidate_id, application_id: candidate.application_id,
       target_stage: nextStage,
       source: "pipeline",
       passed_stages: passedStages,
@@ -720,25 +930,36 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       remark: `Progressed from ${processLabel(candidate.latest_process)} to ${processLabel(nextStage)} by pipeline drag and drop`
     });
     setActiveModal("pipeline_pass");
+    });
   }
 
   const openPendingEdit = useCallback((candidate: EnrichedCandidate) => {
-    const logs = latestLogsForCandidate(data, candidate.candidate_id);
+    void ensureCandidateActionContext(candidate).then(resolved => {
+      if (!resolved) return;
+      candidate = resolved.candidate;
+      const context = resolved.data;
+    const logs = applicationLogs(context, candidate);
     const active = activeProcessStage(logs);
     if (!active) return;
     const pending = logs.find((row) => row.stage_instance_id === active.stageInstanceId);
-    if (!pending || !candidatePipelineCapability(candidate, logs, data.profile).canWrite) {
+    if (!pending || !candidatePipelineCapability(candidate, logs, context.profile).canWrite) {
       showUpdateDenial("This pending stage is outside your update responsibility.");
       return;
     }
-    setProcessDefaults({ candidate_id: candidate.candidate_id, recruitment_process: active.stage, round: active.round, pending_log_id: active.pendingLogId, stage_instance_id: active.stageInstanceId, expected_updated_at: active.updatedAt, pending_log_date: pending.log_date, pending_estimated_action_date: pending.estimated_action_date, pending_interviewer: pending.interviewer, pending_remark: pending.remark });
+    setProcessDefaults({ candidate_id: candidate.candidate_id, application_id: candidate.application_id, recruitment_process: active.stage, round: active.round, pending_log_id: active.pendingLogId, stage_instance_id: active.stageInstanceId, expected_updated_at: active.updatedAt, pending_log_date: pending.log_date, pending_estimated_action_date: pending.estimated_action_date, pending_interviewer: pending.interviewer, pending_remark: pending.remark });
     setActiveModal("pending_edit");
-  }, [data]);
+    });
+  }, [ensureCandidateActionContext]);
 
   function openPipelineRecordCorrection(candidate: EnrichedCandidate, log: RecruitmentLog) {
-    if (!data.profile || !["system_admin", "admin_recruiter"].includes(data.profile.role)) return;
+    void ensureCandidateActionContext(candidate).then(resolved => {
+    if (!resolved) return;
+    candidate = resolved.candidate;
+    log = resolved.data.recruitment_logs.find(row => row.log_id === log.log_id && row.application_id === candidate.application_id) ?? log;
+    const context = resolved.data;
+    if (!context.profile || !["system_admin", "admin_recruiter"].includes(context.profile.role)) return;
     setProcessDefaults({
-      candidate_id: candidate.candidate_id,
+      candidate_id: candidate.candidate_id, application_id: candidate.application_id,
       recruitment_process: log.recruitment_process,
       round: log.round,
       stage_instance_id: log.stage_instance_id ?? String(log.log_id),
@@ -756,21 +977,31 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       failure_detail_reason_id: log.failure_detail_reason_id
     });
     setActiveModal("pipeline_record_correction");
+    });
   }
 
   function openStageOutcome(candidate: EnrichedCandidate, outcome: "pass" | "fail") {
-    const logs = latestLogsForCandidate(data, candidate.candidate_id);
+    void ensureCandidateActionContext(candidate).then(resolved => {
+    if (!resolved) return;
+    candidate = resolved.candidate;
+    const context = resolved.data;
+    const logs = applicationLogs(context, candidate);
     const active = activeProcessStage(logs);
-    if (!active || !candidatePipelineCapability(candidate, logs, data.profile).canWrite) return;
+    if (!active || !candidatePipelineCapability(candidate, logs, context.profile).canWrite) return;
     const nextIndex = ACTIVE_PIPELINE_STAGES.indexOf(active.stage) + 1;
     const nextStage = outcome === "pass" && active.stage !== "Offer" ? ACTIVE_PIPELINE_STAGES[nextIndex] : undefined;
     const pending = logs.find((row) => row.stage_instance_id === active.stageInstanceId);
-    setProcessDefaults({ candidate_id: candidate.candidate_id, recruitment_process: active.stage, round: active.round, pending_log_id: active.pendingLogId, stage_instance_id: active.stageInstanceId, expected_updated_at: active.updatedAt, pending_log_date: pending?.log_date, pending_estimated_action_date: pending?.estimated_action_date, pending_interviewer: pending?.interviewer, pending_remark: pending?.remark, outcome, target_stage: nextStage, source: "pipeline" });
+    setProcessDefaults({ candidate_id: candidate.candidate_id, application_id: candidate.application_id, recruitment_process: active.stage, round: active.round, pending_log_id: active.pendingLogId, stage_instance_id: active.stageInstanceId, expected_updated_at: active.updatedAt, pending_log_date: pending?.log_date, pending_estimated_action_date: pending?.estimated_action_date, pending_interviewer: pending?.interviewer, pending_remark: pending?.remark, outcome, target_stage: nextStage, source: "pipeline" });
     setActiveModal("stage_outcome");
+    });
   }
 
   function openMaintainTest(candidate: EnrichedCandidate) {
-    const logs = latestLogsForCandidate(data, candidate.candidate_id);
+    void ensureCandidateActionContext(candidate).then(resolved => {
+    if (!resolved) return;
+    candidate = resolved.candidate;
+    const context = resolved.data;
+    const logs = applicationLogs(context, candidate);
     const blockedReason = processUpdateBlockReason(logs);
     if (blockedReason) {
       showUpdateDenial(blockedReason);
@@ -780,28 +1011,35 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     const pending = active ? logs.find((row) => row.stage_instance_id === active.stageInstanceId) : null;
     if (!(["Test", "Line Interview"] as ProcessStage[]).includes(candidate.latest_process as ProcessStage) || !active || !pending) return;
     const stage = active.stage;
-    setProcessDefaults({ candidate_id: candidate.candidate_id, recruitment_process: stage, round: active.round, pending_log_id: pending.log_id, stage_instance_id: active.stageInstanceId, expected_updated_at: active.updatedAt, pending_log_date: pending.log_date, pending_estimated_action_date: pending.estimated_action_date, pending_interviewer: pending.interviewer, pending_remark: pending.remark, outcome: "pass", target_stage: stage, current_round: active.round });
+    setProcessDefaults({ candidate_id: candidate.candidate_id, application_id: candidate.application_id, recruitment_process: stage, round: active.round, pending_log_id: pending.log_id, stage_instance_id: active.stageInstanceId, expected_updated_at: active.updatedAt, pending_log_date: pending.log_date, pending_estimated_action_date: pending.estimated_action_date, pending_interviewer: pending.interviewer, pending_remark: pending.remark, outcome: "pass", target_stage: stage, current_round: active.round });
     setActiveModal("stage_outcome");
+    });
   }
 
   function openOfferUpdate(candidate: EnrichedCandidate) {
-    if (candidate.latest_process !== "Offer") return;
-    const active = activeProcessStage(latestLogsForCandidate(data, candidate.candidate_id));
-    if (active) openStageOutcome(candidate, "pass");
+    void ensureCandidateActionContext(candidate).then(resolved => {
+      if (!resolved || resolved.candidate.latest_process !== "Offer") return;
+      const active = activeProcessStage(applicationLogs(resolved.data, resolved.candidate));
+      if (active) openStageOutcome(resolved.candidate, "pass");
+    });
   }
 
   function openInitialProcessUpdate(candidate: EnrichedCandidate) {
+    void ensureCandidateActionContext(candidate).then(resolved => {
+      if (!resolved) return;
+      candidate = resolved.candidate;
     if (!candidate.first_contact_date) {
       showUpdateDenial("Add First Contact Date in Candidate Detail before starting Phone Screen.");
       return;
     }
     setProcessDefaults({
-      candidate_id: candidate.candidate_id,
+      candidate_id: candidate.candidate_id, application_id: candidate.application_id,
       recruitment_process: "Phone Screen",
       pending_log_date: candidate.first_contact_date,
       pending_remark: "Started from pipeline no-activity lane"
     });
     setActiveModal("pipeline_start");
+    });
   }
 
   const openProcessFromDetail = useCallback((candidateId: string) => setJourneyActionCandidateId(candidateId), []);
@@ -817,7 +1055,13 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   }, []);
 
   const openCandidateReference = useCallback((candidateId: string, referenceId?: string) => {
-    const reference = data.candidate_references.find((row) => row.reference_id === referenceId);
+    const sourceContext = actionDataFor(candidateId);
+    const sourceCandidate = enrichCandidates(sourceContext).find(row => row.candidate_id === candidateId && (!selectedApplicationId || row.application_id === selectedApplicationId));
+    if (!sourceCandidate) return;
+    void ensureCandidateActionContext(sourceCandidate).then(resolved => {
+    if (!resolved) return;
+    const context = resolved.data;
+    const reference = context.candidate_references.find((row) => row.reference_id === referenceId);
     setProcessDefaults({
       candidate_id: candidateId,
       reference_id: reference?.reference_id,
@@ -829,20 +1073,34 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       reference_other_channel_label: reference?.other_channel_label
     });
     setActiveModal("candidate_reference");
-  }, [data.candidate_references]);
+    });
+  }, [actionDataFor, ensureCandidateActionContext, selectedApplicationId]);
 
   const openCandidateReferenceStatus = useCallback((candidateId: string, referenceId: string) => {
-    const reference = data.candidate_references.find((row) => row.reference_id === referenceId);
+    const sourceContext = actionDataFor(candidateId);
+    const sourceCandidate = enrichCandidates(sourceContext).find(row => row.candidate_id === candidateId && (!selectedApplicationId || row.application_id === selectedApplicationId));
+    if (!sourceCandidate) return;
+    void ensureCandidateActionContext(sourceCandidate).then(resolved => {
+    if (!resolved) return;
+    const reference = resolved.data.candidate_references.find((row) => row.reference_id === referenceId);
     if (!reference) return;
     setProcessDefaults({ candidate_id: candidateId, reference_id: reference.reference_id, reference_expected_updated_at: reference.updated_at, reference_status: reference.status, reference_status_reason: reference.status_reason });
     setActiveModal("reference_status");
-  }, [data.candidate_references]);
+    });
+  }, [actionDataFor, ensureCandidateActionContext, selectedApplicationId]);
 
   const openCandidateReferenceCheck = useCallback((candidateId: string, referenceId: string) => {
-    const check = data.candidate_reference_checks.find((row) => row.reference_id === referenceId);
-    setProcessDefaults({ candidate_id: candidateId, reference_id: referenceId, reference_check_expected_updated_at: check?.updated_at, reference_checked_date: check?.checked_date, reference_duration_minutes: check?.duration_minutes, reference_conversation_summary: check?.conversation_summary });
+    const sourceContext = actionDataFor(candidateId);
+    const sourceCandidate = enrichCandidates(sourceContext).find(row => row.candidate_id === candidateId && (!selectedApplicationId || row.application_id === selectedApplicationId));
+    if (!sourceCandidate) return;
+    void ensureCandidateActionContext(sourceCandidate).then(resolved => {
+    if (!resolved) return;
+    const context = resolved.data;
+    const check = context.candidate_reference_checks.find((row) => row.reference_id === referenceId && row.application_id === selectedApplicationId);
+    setProcessDefaults({ candidate_id: candidateId, application_id: selectedApplicationId ?? undefined, reference_id: referenceId, reference_check_expected_updated_at: check?.updated_at, reference_checked_date: check?.checked_date, reference_duration_minutes: check?.duration_minutes, reference_conversation_summary: check?.conversation_summary });
     setActiveModal("reference_check");
-  }, [data.candidate_reference_checks]);
+    });
+  }, [actionDataFor, ensureCandidateActionContext, selectedApplicationId]);
 
   function dispatchWorkspaceAction(request: WorkspaceActionRequest) {
     if (request.kind === "record.open") {
@@ -873,10 +1131,9 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       return;
     }
     if (request.kind === "group.create") {
-      const requisition = data.requisitions.find((row) => row.doc_id === request.docId);
-      setGuideContext({ doc_id: request.docId, position: requisition?.position, level: requisition?.level, site: requisition?.site, person_in_charge: requisition?.person_in_charge ?? undefined });
+      setGuideContext({ doc_id: request.docId });
       setGuideStep(request.docId ? "create_group" : null);
-      setModalDefaults({ mode: "new", group_position: requisition?.position ?? "" });
+      setModalDefaults({ mode: "new", group_position: "", doc_id: request.docId ?? "" });
       setActiveModal("group_match");
       return;
     }
@@ -902,7 +1159,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       return;
     }
     if (request.kind === "candidate.process") {
-      const candidate = enrichedCandidates.find((row) => row.candidate_id === request.candidateId);
+      const candidate = enrichedCandidates.find((row) => row.candidate_id === request.candidateId && row.application_id === (request.applicationId ?? selectedApplicationId ?? selectedApplication(data, request.candidateId ?? "")?.application_id));
       if (!candidate) {
         showUpdateDenial("Candidate not found in this workspace.");
         return;
@@ -919,16 +1176,17 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       return;
     }
     if (request.kind === "offer.upsert") {
-      const candidate = enrichedCandidates.find((row) => row.candidate_id === request.candidateId);
+      const candidate = enrichedCandidates.find((row) => row.candidate_id === request.candidateId && row.application_id === (request.applicationId ?? selectedApplicationId ?? selectedApplication(data, request.candidateId ?? "")?.application_id));
       const candidateDocId = request.docId
         ?? data.document_groups.find((row) => row.group_id === candidate?.group_id)?.doc_id;
       const proposedAcceptedDate = request.proposedAcceptedDate
-        ?? latestSuccessfulOfferPassDate(request.candidateId ?? "", data.recruitment_logs)
+        ?? latestSuccessfulOfferPassDate(request.candidateId ?? "", candidate ? applicationLogs(data, candidate) : [])
         ?? undefined;
       setModalDefaults({
         mode: request.offerId ? "change" : "new",
         selectedId: request.offerId ? String(request.offerId) : "",
         candidate_id: request.candidateId,
+        application_id: candidate?.application_id,
         doc_id: candidateDocId,
         accepted_date: proposedAcceptedDate,
         offer_candidate_ids: initialView === "workspace" ? workspaceScope.candidates.map((row) => row.candidate_id) : undefined,
@@ -940,10 +1198,28 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
 
   function prepareAction(modal: Exclude<ModalName, null>, form: HTMLFormElement) {
     const formData = new FormData(form);
-    const payload = buildPayload(modal, formData);
+    const payload = modal === "candidate" && formData.get("existing_candidate_id") ? {} : buildPayload(modal, formData);
     const actionPayload = payload as Record<string, unknown>;
+    const formApplicationId = String(formData.get("application_id") ?? "");
+    if (modal !== "candidate" && (processDefaults.application_id || modalDefaults.application_id || selectedApplicationId)) actionPayload.application_id = formApplicationId || processDefaults.application_id || modalDefaults.application_id || selectedApplicationId;
+    if (modal === "candidate" && formData.get("existing_candidate_id")) {
+      prepareRpcAction("app_create_candidate_application_v1", { candidate_id: String(formData.get("existing_candidate_id")), group_id: String(formData.get("group_id")) }, `Add application: ${formData.get("existing_candidate_id")} → ${formData.get("group_id")}`);
+      return;
+    }
     if (modal === "candidate") validateCandidatePayload(payload, language);
     const summary = buildSummary(modal, payload);
+    if(modal === "candidate") {
+      if(!supabase||candidateReviewBusy) return;
+      const original=JSON.stringify(Array.from(new FormData(form).entries()));
+      setCandidateReviewBusy(true);setCandidateReviewError(null);
+      Promise.resolve(supabase.rpc("app_candidate_duplicate_matches_v1",{payload:actionPayload})).then(({data:matches,error:matchError})=>{
+        if(matchError) throw new Error(matchError.message);
+        if(!form.isConnected||original!==JSON.stringify(Array.from(new FormData(form).entries()))) throw new Error(language==="th"?"ข้อมูลเปลี่ยนแปลง โปรดตรวจสอบอีกครั้ง":"The form changed. Review the current values again.");
+        if(Array.isArray(matches)&&matches.length) setDuplicateReview({matches,payload:actionPayload,summary});
+        else setPendingAction({title:"Confirm Save",summary,endpoint:"app_upsert_candidate_profile_v2",payload:actionPayload,modal,route:"rpc"});
+      }).catch(reviewError=>setCandidateReviewError(reviewError instanceof Error?reviewError.message:"Could not check duplicate profiles.")).finally(()=>setCandidateReviewBusy(false));
+      return;
+    }
     const endpoint = modal === "user"
       ? "/api/admin/users"
       : rpcByModal[modal];
@@ -990,6 +1266,11 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
         if (!response.ok || result.error) throw new Error(result.error ?? "User creation failed.");
       } else {
         const { data: rpcResult, error: rpcError } = await supabase.rpc(pendingAction.endpoint, { payload: pendingAction.payload });
+        if(rpcError && pendingAction.endpoint==="app_upsert_candidate_profile_v2" && rpcError.message.includes("PROFILE_DUPLICATE_REVIEW_REQUIRED")) {
+          const latest=await supabase.rpc("app_candidate_duplicate_matches_v1",{payload:pendingAction.payload});
+          if(latest.error) throw new Error(latest.error.message);
+          setPendingAction(null);setDuplicateReview({matches:Array.isArray(latest.data)?latest.data:[],payload:pendingAction.payload,summary:pendingAction.summary});return;
+        }
         if (rpcError) throw new Error(rpcError.message);
         result = (rpcResult ?? { ok: true }) as RpcResult;
       }
@@ -1004,8 +1285,13 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
         setDetail((current) => current?.type === "requisition" && current.id === previousDocId ? { ...current, id: nextDocId } : current);
         setWorkspaceTarget((current) => current.type === "requisition" && current.id === previousDocId ? { ...current, id: nextDocId } : current);
       }
-      const reloadedData = await loadData();
-      const handoff = offerPassHandoffFromResult(result, reloadedData ?? data);
+      refreshMutationCaches(savedAction.endpoint);
+      const changedCandidateId = String(savedAction.payload.candidate_id ?? "");
+      if (detail?.type === "candidate" && detail.id === changedCandidateId) {
+        setCandidateDetail({ key: candidateDetailKey, data: null, loading: true, error: null });
+        setCandidateDetailRetry(value => value + 1);
+      }
+      const handoff = offerPassHandoffFromResult(result, candidateDetailContext ?? data);
       if (handoff) {
         setOfferPassHandoff(handoff);
         setStatus("Offer stage passed. Review and create the offer record when ready.");
@@ -1015,7 +1301,8 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       }
     } catch (saveError) {
       setPendingAction(null);
-      showUpdateDenial(saveError instanceof Error ? saveError.message : translate(language, "updateDeniedFallback"));
+      const message = saveError instanceof Error ? saveError.message : translate(language, "updateDeniedFallback");
+      showUpdateDenial(message.includes("APPLICATION_GROUP_ALREADY_USED") ? (language === "th" ? "ผู้สมัครมีเส้นทางใบสมัครสำหรับกลุ่มนี้แล้ว โปรดเลือกกลุ่มอื่น หรือย้ายเส้นทางเดิมกลับมา" : "This candidate already has a journey for this group. Choose another group, or return the original journey.") : message);
     } finally {
       setBusy(false);
     }
@@ -1044,7 +1331,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
         setWorkspaceTarget({ type: null, id: null });
         pushWorkspaceUrlState({ type: null, id: null, doc: null, section: "overview", focusType: null, focusId: null });
       }
-      await loadData();
+      refreshMutationCaches(savedAction.endpoint);
       setStatus(translate(language, "destructiveActionSucceeded"));
     } catch (saveError) {
       setDestructiveAction(null);
@@ -1115,6 +1402,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     const groupId = data.document_groups.find((row) => row.doc_id === offerPassHandoff.docId)?.group_id ?? null;
     const defaults = {
       candidate_id: offerPassHandoff.candidateId,
+      application_id: offerPassHandoff.applicationId,
       doc_id: offerPassHandoff.docId,
       accepted_date: offerPassHandoff.passedDate,
       offer_candidate_ids: initialView === "workspace" ? workspaceScope.candidates.map((row) => row.candidate_id) : undefined,
@@ -1129,7 +1417,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       setActiveModal("offer");
       return;
     }
-    const path = `/workspace?type=${groupId ? "group" : "requisition"}&id=${encodeURIComponent(groupId ?? handoff.docId)}&section=offer&offerCandidate=${encodeURIComponent(handoff.candidateId)}&offerDoc=${encodeURIComponent(handoff.docId)}&offerDate=${encodeURIComponent(handoff.passedDate)}`;
+    const path = `/workspace?type=${groupId ? "group" : "requisition"}&id=${encodeURIComponent(groupId ?? handoff.docId)}&section=offer&offerApplication=${encodeURIComponent(handoff.applicationId ?? "")}&offerCandidate=${encodeURIComponent(handoff.candidateId)}&offerDoc=${encodeURIComponent(handoff.docId)}&offerDate=${encodeURIComponent(handoff.passedDate)}`;
     router.push(buildContextualHref(path, { language, site: filters.site, owner: filters.owner, sourcingWeek, priority: filters.priorityOnly ? "only" : "all" }));
   }
 
@@ -1146,22 +1434,28 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     });
   }, [language]);
   const openDetailOffer = useCallback((offer: Offer) => {
-    setModalDefaults({ mode: "change", selectedId: String(offer.offer_id), candidate_id: offer.candidate_id, doc_id: offer.doc_id });
+    setModalDefaults({ mode: "change", application_id: offer.application_id, selectedId: String(offer.offer_id), candidate_id: offer.candidate_id, doc_id: offer.doc_id });
     setActiveModal("offer");
   }, []);
-  const openCandidateDetail = useCallback((candidateId: string) => {
+  const openCandidateDetail = useCallback((candidateId: string, applicationId?: string) => {
+    setSelectedApplicationId(applicationId ?? null);
+    setCandidateDetail({ key: "", data: null, loading: true, error: null });
     setDetail({ type: "candidate", id: candidateId });
   }, []);
-  const openRejectionLetter = useCallback((candidate: EnrichedCandidate, retryDraftId?: string) => { setRejectionLetterCandidateId(candidate.candidate_id); setRejectionLetterRetryDraftId(retryDraftId ?? null); }, []);
-  const openCurrentStageEdit = useCallback((candidate: EnrichedCandidate, _stage: ProcessStage) => setCurrentStageActionCandidateId(candidate.candidate_id), []);
+  const openRejectionLetter = useCallback((candidate: EnrichedCandidate, retryDraftId?: string) => {
+    void ensureCandidateActionContext(candidate).then(resolved => { if (!resolved) return; setSelectedApplicationId(resolved.candidate.application_id ?? null); setRejectionLetterCandidateId(resolved.candidate.candidate_id); setRejectionLetterRetryDraftId(retryDraftId ?? null); });
+  }, [ensureCandidateActionContext]);
+  const openCurrentStageEdit = useCallback((candidate: EnrichedCandidate, _stage: ProcessStage) => {
+    void ensureCandidateActionContext(candidate).then(resolved => { if (!resolved) return; setSelectedApplicationId(resolved.candidate.application_id ?? null); setCurrentStageActionCandidateId(resolved.candidate.candidate_id); });
+  }, [ensureCandidateActionContext]);
   const saveTeamsInterview = useCallback(async (payload: Record<string, unknown>) => {
     if (!supabase) throw new Error("Sign in before scheduling a Teams interview."); setBusy(true);
-    try { const { data: session } = await supabase.auth.getSession(); const response = await fetch("/api/interview-meetings", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${session.session?.access_token ?? ""}` }, body: JSON.stringify(payload) }); const result = await response.json() as { ok?: boolean; error?: string }; if (!response.ok || !result.ok) throw new Error(result.error ?? "Could not update Teams interview."); setStatus(payload.operation === "cancel" ? "Teams interview cancelled." : "Teams interview scheduled and invitations sent."); setCurrentStageActionCandidateId(null); await loadData(); } finally { setBusy(false); }
-  }, [loadData]);
+    try { const { data: session } = await supabase.auth.getSession(); const response = await fetch("/api/interview-meetings", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${session.session?.access_token ?? ""}` }, body: JSON.stringify(payload) }); const result = await response.json() as { ok?: boolean; error?: string }; if (!response.ok || !result.ok) throw new Error(result.error ?? "Could not update Teams interview."); setStatus(payload.operation === "cancel" ? "Teams interview cancelled." : "Teams interview scheduled and invitations sent."); setCurrentStageActionCandidateId(null); refreshMutationCaches("app_interview_meetings"); if (detail?.type === "candidate" && detail.id === payload.candidate_id) { setCandidateDetail({ key: candidateDetailKey, data: null, loading: true, error: null }); setCandidateDetailRetry(value => value + 1); } } finally { setBusy(false); }
+  }, [detail, candidateDetailKey, refreshMutationCaches]);
   const saveCurrentStageEstimate = useCallback(async (payload: Record<string, unknown>) => {
     if (!supabase) throw new Error("Sign in before updating the pending stage."); setBusy(true);
-    try { const { data: rpcResult, error: rpcError } = await supabase.rpc("app_update_pipeline_pending_v2", { payload }); if (rpcError) throw new Error(rpcError.message); const result = (rpcResult ?? { ok: true }) as RpcResult; if (result.error) throw new Error(result.error); setStatus("Estimated action date updated."); setCurrentStageActionCandidateId(null); await loadData(); } finally { setBusy(false); }
-  }, [loadData]);
+    try { const { data: rpcResult, error: rpcError } = await supabase.rpc("app_update_pipeline_pending_v2", { payload }); if (rpcError) throw new Error(rpcError.message); const result = (rpcResult ?? { ok: true }) as RpcResult; if (result.error) throw new Error(result.error); setStatus("Estimated action date updated."); setCurrentStageActionCandidateId(null); refreshMutationCaches("app_update_pipeline_pending_v2"); if (detail?.type === "candidate" && detail.id === payload.candidate_id) { setCandidateDetail({ key: candidateDetailKey, data: null, loading: true, error: null }); setCandidateDetailRetry(value => value + 1); } } finally { setBusy(false); }
+  }, [detail, candidateDetailKey, refreshMutationCaches]);
   const createRejectionLetterDraft = useCallback(async (payload: { candidate_id: string; failed_stage_instance_id: string; template_id: string; language: "th" | "en"; recipient_email: string; subject: string; body: string; retry_of_draft_id?: string }) => {
     if (!supabase) throw new Error("Sign in before sending a rejection letter.");
     setBusy(true);
@@ -1172,9 +1466,9 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       if (!response.ok || !result.ok) throw new Error(result.error ?? "Could not send rejection letter.");
       setStatus(`Rejection letter sent from ${result.shared_mailbox ?? "the shared HR mailbox"}.`);
       setRejectionLetterCandidateId(null); setRejectionLetterRetryDraftId(null);
-      await loadData();
+      refreshMutationCaches("app_rejection_letter_draft");
     } finally { setBusy(false); }
-  }, [loadData]);
+  }, [refreshMutationCaches]);
   const toggleRequisitionPriority = useCallback(async (requisition: Requisition) => {
     if (!supabase || !canManageRequisitionPriority(data.profile, requisition)) throw new Error("Permission denied");
     const { data: result, error: rpcError } = await supabase.rpc("app_set_requisition_priority_v1", { payload: {
@@ -1184,13 +1478,54 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     const patch = (rows: Requisition[]) => rows.map(row => row.doc_id === requisition.doc_id ? { ...row, is_priority: result.is_priority, updated_at: result.updated_at } : row);
     setData(current => ({ ...current, requisitions: patch(current.requisitions) }));
     setCompanyDashboardReport(current => current ? { ...current, requisitions: patch(current.requisitions) } : current);
+    refreshMutationCaches("app_set_requisition_priority_v1");
     setStatus(translate(language, "prioritySaved"));
-  }, [data.profile, language]);
+  }, [data.profile, language, refreshMutationCaches]);
 
-  const detailBody = useMemo(
-    () => buildDetailBodyV2(detail, data, language, canWrite, canDeleteRecords, openProcessFromDetail, openCurrentStageEdit, openDetailOffer, (offer) => { setProcessDefaults({ offer_id: offer.offer_id, offer_expected_updated_at: offer.updated_at, offer_start_confirmation: offer.start_confirmation }); setActiveModal("start_confirmation"); }, navigationContext, openDetailRequisitionChange, openDetailCandidateChange, openCandidateReference, openCandidateReferenceStatus, openCandidateReferenceCheck, prepareDestructiveRpcAction, openRejectionLetter, toggleRequisitionPriority),
-    [canDeleteRecords, canWrite, detail, data, language, navigationContext, openCandidateReference, openCandidateReferenceCheck, openCandidateReferenceStatus, openDetailCandidateChange, openDetailRequisitionChange, openDetailOffer, openCurrentStageEdit, openProcessFromDetail, prepareDestructiveRpcAction, openRejectionLetter, toggleRequisitionPriority]
+  const hydratedCandidateData = candidateDetail.key === candidateDetailKey ? candidateDetail.data : null;
+  const detailSource: DashboardData = detail?.type === "candidate" ? hydratedCandidateData ?? data : detail?.type === "requisition" && loadedRequisition ? {
+    ...data,
+    requisitions: [loadedRequisition.requisition],
+    document_groups: loadedRequisition.documentGroups,
+    position_groups: loadedRequisition.groups,
+    offers: loadedRequisition.offers,
+    requisition_logs: loadedRequisition.history,
+  } : data;
+  const selectedJourney = detail?.type === "candidate" ? selectedApplication(detailSource, detail.id, selectedApplicationId) : null;
+  const detailData: DashboardData = detail?.type === "candidate" && detailSource.candidate_applications ? {
+    ...detailSource, candidate_applications: selectedJourney ? [selectedJourney] : [],
+    recruitment_logs: selectedJourney ? detailSource.recruitment_logs.filter(row => row.application_id === selectedJourney.application_id) : [],
+    candidate_reference_checks: selectedJourney ? detailSource.candidate_reference_checks.filter(row => row.application_id === selectedJourney.application_id) : []
+  } : detail?.type === "requisition" ? detailSource : data;
+  const applicationAwareCandidate = (candidateId: string) => {
+    const context = actionDataFor(candidateId);
+    const journey = selectedApplication(context, candidateId, selectedApplicationId);
+    const candidates = context === data ? enrichedCandidates : enrichCandidates(context);
+    return candidates.find(row => row.candidate_id === candidateId && (journey ? row.application_id === journey.application_id : !context.candidate_applications));
+  };
+  const rejectionActionData = actionDataFor(rejectionLetterCandidateId ?? "");
+  const currentStageActionData = actionDataFor(currentStageActionCandidateId ?? "");
+  const legacyDetailBody = useMemo(
+    () => buildDetailBodyV2(detail, detailData, language, canWrite && (detail?.type !== "candidate" || Boolean(selectedJourney && canManageApplicationGroup(detailSource,selectedJourney.group_id))), canDeleteRecords, openProcessFromDetail, openCurrentStageEdit, openDetailOffer, (offer) => { setProcessDefaults({ offer_id: offer.offer_id, offer_expected_updated_at: offer.updated_at, offer_start_confirmation: offer.start_confirmation }); setActiveModal("start_confirmation"); }, navigationContext, openDetailRequisitionChange, openDetailCandidateChange, openCandidateReference, openCandidateReferenceStatus, openCandidateReferenceCheck, prepareDestructiveRpcAction, openRejectionLetter, toggleRequisitionPriority),
+    [canDeleteRecords, canWrite, detailSource, detail, detailData, selectedJourney, language, navigationContext, openCandidateReference, openCandidateReferenceCheck, openCandidateReferenceStatus, openDetailCandidateChange, openDetailRequisitionChange, openDetailOffer, openCurrentStageEdit, openProcessFromDetail, prepareDestructiveRpcAction, openRejectionLetter, toggleRequisitionPriority]
   );
+
+  const detailBody: DetailBodyResult = detail?.type === "candidate" ? {
+    title: `${formatRecruitmentId(detail.id)} / ${hydratedCandidateData?.candidates.find(row => row.candidate_id === detail.id)?.name ?? "Candidate"}`,
+    body: candidateDetail.loading || candidateDetail.key !== candidateDetailKey
+      ? <p role="status" className="py-6 text-sm text-slate">{translate(language, "loadingRecruitmentRecords")}</p>
+      : candidateDetail.error
+        ? <div role="alert" className="grid gap-3 py-4 text-sm text-slate"><p>{candidateDetail.error}</p><Button type="button" variant="secondary" onClick={() => setCandidateDetailRetry(value => value + 1)}>{translate(language, "retry")}</Button></div>
+        : hydratedCandidateData ? <CandidateProfilePanel key={detail.id} candidateId={detail.id} applicationId={selectedJourney?.application_id ?? null} data={hydratedCandidateData} language={language} client={supabase} accessScope={detailAccessScope} onSelect={(id)=>{setSelectedApplicationId(id);const url=new URL(window.location.href);url.searchParams.set("applicationId",id);window.history.pushState({},"",url);}} onEdit={() => openDetailCandidateChange(detail.id)} onAction={prepareRpcAction}>{selectedJourney ? legacyDetailBody.body : null}</CandidateProfilePanel>
+        : <p>{translate(language, "candidateUnavailable")}</p>
+  } : detail?.type === "requisition" ? {
+    title: loadedRequisition ? formatRequisitionTitle(enrichRequisitions(detailSource)[0]) : detail.id,
+    body: requisitionDetail.loading || requisitionDetail.key !== requisitionDetailKey
+      ? <p role="status" className="py-6 text-sm text-slate">{translate(language, "loadingRecruitmentRecords")}</p>
+      : requisitionDetail.error || requisitionDetailResult?.status !== "ready"
+        ? <div role="alert" className="grid gap-3 py-4 text-sm text-slate"><p>{requisitionDetail.error ?? translate(language, "loadFailed")}</p><Button type="button" variant="secondary" onClick={() => setRequisitionDetailRetry(value => value + 1)}>{translate(language, "retry")}</Button></div>
+        : legacyDetailBody.body
+  } : legacyDetailBody;
 
   if (!hasSupabaseConfig) {
     return (
@@ -1241,6 +1576,8 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const loadedStatus = translate(language, "recruitmentRecordsLoaded");
   const showOperationalStatus = !loading && !busy && !error && status !== "Recruitment records loaded." && status !== loadedStatus;
 
+  const journeyActionData = journeyActionCandidateId ? actionDataFor(journeyActionCandidateId) : data;
+
   return (
     <DesktopInteractionContext.Provider value={registerDesktopLock}><AppShell
       layoutMode={layoutMode}
@@ -1251,6 +1588,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
         <>
           <CommandSelector ariaLabel={translate(language, "site")} density="compact" emptyLabel={translate(language, "allSites")} options={[{ value: "", label: translate(language, "allSites") }, ...siteOptions.map((value) => ({ value, label: value }))]} value={filters.site} onValueChange={(value) => setFilters((old) => ({ ...old, site: value }))} className="w-full min-w-[8.5rem] sm:w-36" />
           <CommandSelector ariaLabel={translate(language, "personInCharge")} density="compact" emptyLabel={translate(language, "allOwners")} options={[{ value: "", label: translate(language, "allOwners") }, ...ownerOptions.map((value) => ({ value, label: value }))]} value={filters.owner} onValueChange={(value) => setFilters((old) => ({ ...old, owner: value }))} className="w-full min-w-[11rem] sm:w-48" />
+          {ownerOptionsError ? <Button type="button" size="sm" variant="secondary" title={ownerOptionsError} onClick={() => setOwnerOptionsRetry(value => value + 1)}>Retry owners</Button> : null}
           <Button type="button" size={initialView === "dashboard" ? "icon-toolbar" : "icon-sm"} variant="secondary" className={initialView === "dashboard" ? filters.priorityOnly ? "!bg-[#E8F0FF] !text-[#0A3CDC] !ring-[#9FBFFF]" : "!text-[#0A3CDC]" : filters.priorityOnly ? "min-h-11 min-w-11 !bg-[#E8F0FF] !text-[#0A3CDC] !ring-[#9FBFFF] sm:min-h-9 sm:min-w-9" : "min-h-11 min-w-11 !text-[#0A3CDC] sm:min-h-9 sm:min-w-9"}
             icon={<Bookmark size={initialView === "dashboard" ? 16 : 18} fill={filters.priorityOnly ? "currentColor" : "none"} aria-hidden="true" />}
             aria-label={translate(language, "priorityRequisitionFilter")} aria-pressed={filters.priorityOnly}
@@ -1262,7 +1600,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       navigationContext={navigationContext}
       profile={data.profile}
       onLanguageChange={() => setLanguage((current) => (current === "en" ? "th" : "en"))}
-      onRefresh={desktopRequired ? undefined : () => { clearDashboardReportCache(); void loadData(); }}
+      onRefresh={desktopRequired ? undefined : () => { clearDashboardReportCache(); clearDashboardSummaryCache(); clearRecruitmentListCache(); void loadData(); }}
       onSignOut={signOut}
     >
       {desktopRequired ? <DesktopRequiredNotice view={initialView} language={language} navigationContext={navigationContext} /> : <>
@@ -1275,14 +1613,14 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       ) : null}
 
       {initialView === "home" ? (
-        <HomeView language={language} profile={data.profile} requisitions={filteredRequisitions} candidates={filteredCandidates} offers={filteredOffers} recruitmentLogs={data.recruitment_logs} sourcingGroups={homeSourcingGroups} sourcingHref={buildContextualHref("/sourcing", { language, site: filters.site, owner: filters.owner, sourcingWeek, priority: filters.priorityOnly ? "only" : "all" })} staleSourcingGroups={staleSourcingGroups} changeLogs={filteredChangeLogs} dataQualityIssues={dataQualityIssues} canViewRecentActivity={canWrite} onConfirmStart={(offer) => { setProcessDefaults({ offer_id: offer.offer_id, offer_expected_updated_at: offer.updated_at, offer_start_confirmation: offer.start_confirmation }); setActiveModal("start_confirmation"); }} onEditPending={openPendingEdit} onOpenRequisition={(id) => setDetail({ type: "requisition", id })} onOpenCandidate={openCandidateDetail} />
+        <HomeView refreshKey={reportRefreshKey} bannerSummary={homeBannerSummary} bannerSummaryLoading={homeBannerLoading} bannerSummaryError={homeBannerError} onRetryBannerSummary={() => setHomeBannerRetry(value => value + 1)} listClient={supabase} accessScope={detailAccessScope} summaryScope={{ headerSite: filters.site, headerPic: filters.owner, priorityOnly: filters.priorityOnly }} language={language} profile={data.profile} requisitions={filteredRequisitions} candidates={filteredCandidates} offers={filteredOffers} recruitmentLogs={data.recruitment_logs} sourcingGroups={homeSourcingGroups} sourcingHref={buildContextualHref("/sourcing", { language, site: filters.site, owner: filters.owner, sourcingWeek, priority: filters.priorityOnly ? "only" : "all" })} staleSourcingGroups={staleSourcingGroups} changeLogs={filteredChangeLogs} dataQualityIssues={dataQualityIssues} canViewRecentActivity={canWrite} onConfirmStart={(offer) => { setProcessDefaults({ offer_id: offer.offer_id, offer_expected_updated_at: offer.updated_at, offer_start_confirmation: offer.start_confirmation }); setActiveModal("start_confirmation"); }} onEditPending={openPendingEdit} onOpenRequisition={(id) => setDetail({ type: "requisition", id })} onOpenCandidate={openCandidateDetail} />
       ) : null}
 
       {initialView === "dashboard" ? (
         <div className="grid min-w-0 gap-6">
           <DashboardPortal language={language} data={dashboardReportData} requisitions={dashboardRequisitions} offers={dashboardOffers} candidateOffers={priorityData.offers} globalSite={filters.site} globalOwner={filters.owner} globalPriorityOnly={filters.priorityOnly}
             refreshKey={reportRefreshKey}
-            onOpenCandidate={id => { if (!supabase) return; setBusy(true); setError(null); hydrateReportCandidate(supabase, id, data).then(hydrated => { setData(hydrated); openCandidateDetail(id); }).catch(() => setError(language === "th" ? "โหลดรายละเอียดผู้สมัครไม่สำเร็จ โปรดลองใหม่" : "Could not load candidate details. Please retry.")).finally(() => setBusy(false)); }}
+            onOpenCandidate={(id, applicationId) => openCandidateDetail(id, applicationId)}
             onOpenRequisition={async row => { if (!supabase) return false; setBusy(true); setError(null); try {
               const authorized = await readReportPages<DashboardData["requisitions"][number]>(supabase, "requisitions", "doc_id", "*", ["doc_id", row.doc_id]);
               if (!authorized.length) return false;
@@ -1300,6 +1638,10 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
           language={language}
           siteFilter={filters.site}
           ownerFilter={filters.owner}
+          listClient={supabase}
+          accessScope={detailAccessScope}
+          priorityOnly={filters.priorityOnly}
+          refreshKey={reportRefreshKey}
           onDispatchAction={dispatchWorkspaceAction}
           offerSlot={(
             <WorkspaceOfferSection
@@ -1317,6 +1659,11 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
           pipelineSlot={(
             <PipelineBoardView
               embedded
+              listClient={supabase}
+              mutationRevision={reportRefreshKey}
+              accessScope={`${process.env.NEXT_PUBLIC_SUPABASE_URL ?? "local"}:${data.profile?.id ?? "anonymous"}:${data.profile?.role ?? "viewer"}:${data.profile?.site ?? ""}:${data.profile?.updated_at ?? ""}`}
+              listScope={{ headerSite: filters.site, headerPic: filters.owner, priorityOnly: filters.priorityOnly, groupId: workspaceTarget.type === "group" ? workspaceTarget.id : null }}
+              onEnsureActionContext={ensureCandidateActionContext}
               canWrite={canWrite && !historicalWorkspace}
               dataQualityIssues={dataQualityIssues}
               language={language}
@@ -1327,7 +1674,14 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
               rows={workspaceScope.candidates}
               offeredCandidateIds={offeredCandidateIds}
               rejectionLetterSentCandidateIds={rejectionLetterSentCandidateIds}
-              onNewCandidate={!historicalWorkspace && eligibleCandidateGroups(data, data.profile, workspaceScope.groupIds).length > 0 ? () => dispatchWorkspaceAction({ kind: "candidate.create", docGroupIds: eligibleCandidateGroups(data, data.profile, workspaceScope.groupIds).flatMap((group) => data.document_groups.filter((match) => match.group_id === group.group_id).slice(0, 1).map((match) => match.doc_group_id)) }) : undefined}
+              onNewCandidate={!historicalWorkspace && canWrite ? () => {
+                const eligible = eligibleCandidateGroups(data, data.profile, workspaceScope.groupIds);
+                if (eligible.length) dispatchWorkspaceAction({ kind: "candidate.create", docGroupIds: eligible.flatMap(group => data.document_groups.filter(match => match.group_id === group.group_id).slice(0, 1).map(match => match.doc_group_id)) });
+                else if (workspaceTarget.type === "group" && workspaceTarget.id) {
+                  setModalDefaults({ mode: "new", group_id: workspaceTarget.id, lock_group_id: true, first_contact_date: today() });
+                  setActiveModal("candidate");
+                }
+              } : undefined}
               onOpen={openCandidateDetail}
               onMove={openProcessForMove}
               onFailCurrentStage={(candidate) => openStageOutcome(candidate, "fail")}
@@ -1335,8 +1689,8 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
               onStartProcess={openInitialProcessUpdate}
               onEditPending={openPendingEdit}
               onPassStage={(candidate) => openStageOutcome(candidate, "pass")}
-              onManageReferenceChecks={(candidate) => openCandidateDetail(candidate.candidate_id)}
-              onCreateOffer={(candidate) => dispatchWorkspaceAction({ kind: "offer.upsert", candidateId: candidate.candidate_id })}
+              onManageReferenceChecks={(candidate) => openCandidateDetail(candidate.candidate_id, candidate.application_id)}
+              onCreateOffer={(candidate) => dispatchWorkspaceAction({ kind: "offer.upsert", candidateId: candidate.candidate_id, applicationId: candidate.application_id })}
               onUpdateOffer={openOfferUpdate}
               onCreateRejectionLetter={openRejectionLetter}
             />
@@ -1347,6 +1701,10 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
               canManageSetup={canManageSetup && !historicalWorkspace}
               canWrite={canWrite}
               data={priorityData}
+              client={supabase}
+              accessScope={detailAccessScope}
+              priorityOnly={filters.priorityOnly}
+              refreshKey={reportRefreshKey}
               docIds={workspaceScope.requisitions.map((row) => row.doc_id)}
               groupIds={workspaceScope.groupIds}
               language={language}
@@ -1371,26 +1729,30 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       ) : null}
 
       {initialView === "requisitions" ? (
-        <RequisitionsView language={language} rows={filteredRequisitions} candidates={filteredCandidates} profile={data.profile} canWrite={canWrite} onNew={() => setActiveModal("requisition")} onStatus={() => setActiveModal("status")} onOpen={(id) => setDetail({ type: "requisition", id })} />
+        <RequisitionsView language={language} rows={filteredRequisitions} candidates={filteredCandidates} profile={data.profile} canWrite={canWrite} client={supabase} accessScope={detailAccessScope} listScope={{ headerSite: filters.site, headerPic: filters.owner, priorityOnly: filters.priorityOnly }} onNew={() => setActiveModal("requisition")} onStatus={() => setActiveModal("status")} onOpen={(id) => setDetail({ type: "requisition", id })} />
       ) : null}
 
       {initialView === "candidates" ? (
-        <CandidatesView language={language} rows={filteredCandidates} profile={data.profile} canWrite={canWrite} onNew={() => setActiveModal("candidate")} onOpen={openCandidateDetail} />
+        <CandidateRegistry data={data} client={supabase} language={language} canWrite={canWrite} site={filters.site} owner={filters.owner} onNew={() => { setModalDefaults({}); setActiveModal("candidate"); }} onOpen={openCandidateDetail} />
       ) : null}
 
       {initialView === "pipeline" ? (
-        <PipelineBoardView language={language} rows={filteredCandidates} recruitmentLogs={data.recruitment_logs} recruitmentLogHistory={data.recruitment_log_history} candidateReferences={data.candidate_references} candidateReferenceChecks={data.candidate_reference_checks} profile={data.profile} dataQualityIssues={dataQualityIssues} canWrite={canWrite} offeredCandidateIds={offeredCandidateIds} rejectionLetterSentCandidateIds={rejectionLetterSentCandidateIds} onNewCandidate={() => setActiveModal("candidate")} onOpen={openCandidateDetail} onMove={openProcessForMove} onFailCurrentStage={(candidate) => openStageOutcome(candidate, "fail")} onMaintainTest={openMaintainTest} onStartProcess={openInitialProcessUpdate} onEditPending={openPendingEdit} onPassStage={(candidate) => openStageOutcome(candidate, "pass")} onManageReferenceChecks={(candidate) => openCandidateDetail(candidate.candidate_id)} onCreateOffer={(candidate) => dispatchWorkspaceAction({ kind: "offer.upsert", candidateId: candidate.candidate_id })} onUpdateOffer={openOfferUpdate} onEditCandidate={openDetailCandidateChange} onCorrectPipelineRecord={openPipelineRecordCorrection} onCreateRejectionLetter={openRejectionLetter} />
+        <PipelineBoardView listClient={supabase} mutationRevision={reportRefreshKey} accessScope={`${process.env.NEXT_PUBLIC_SUPABASE_URL ?? "local"}:${data.profile?.id ?? "anonymous"}:${data.profile?.role ?? "viewer"}:${data.profile?.site ?? ""}:${data.profile?.updated_at ?? ""}`} listScope={{ headerSite: filters.site, headerPic: filters.owner, priorityOnly: filters.priorityOnly }} onEnsureActionContext={ensureCandidateActionContext} language={language} rows={filteredCandidates} recruitmentLogs={data.recruitment_logs} recruitmentLogHistory={data.recruitment_log_history} candidateReferences={data.candidate_references} candidateReferenceChecks={data.candidate_reference_checks} profile={data.profile} dataQualityIssues={dataQualityIssues} canWrite={canWrite} offeredCandidateIds={offeredCandidateIds} rejectionLetterSentCandidateIds={rejectionLetterSentCandidateIds} onNewCandidate={() => setActiveModal("candidate")} onOpen={openCandidateDetail} onMove={openProcessForMove} onFailCurrentStage={(candidate) => openStageOutcome(candidate, "fail")} onMaintainTest={openMaintainTest} onStartProcess={openInitialProcessUpdate} onEditPending={openPendingEdit} onPassStage={(candidate) => openStageOutcome(candidate, "pass")} onManageReferenceChecks={(candidate) => openCandidateDetail(candidate.candidate_id, candidate.application_id)} onCreateOffer={(candidate) => dispatchWorkspaceAction({ kind: "offer.upsert", candidateId: candidate.candidate_id, applicationId: candidate.application_id })} onUpdateOffer={openOfferUpdate} onEditCandidate={openDetailCandidateChange} onCorrectPipelineRecord={openPipelineRecordCorrection} onCreateRejectionLetter={openRejectionLetter} />
       ) : null}
 
-      {initialView === "offers" ? <OffersView language={language} rows={filteredOffers} allOffers={data.offers} requisitions={filteredRequisitions} profile={data.profile} canWrite={canWrite} onNew={() => setActiveModal("offer")} onOpenCandidate={openCandidateDetail} /> : null}
+      {initialView === "offers" ? <OffersView language={language} rows={filteredOffers} allOffers={data.offers} requisitions={filteredRequisitions} profile={data.profile} canWrite={canWrite} client={supabase} accessScope={detailAccessScope} listScope={{ headerSite: filters.site, headerPic: filters.owner, priorityOnly: filters.priorityOnly }} onNew={() => setActiveModal("offer")} onOpenCandidate={openCandidateDetail} /> : null}
 
       {initialView === "sourcing" ? (
         <SourcingView
+          client={supabase}
+          accessScope={detailAccessScope}
           language={language}
           data={priorityData}
           profile={data.profile}
           siteFilter={filters.site}
           ownerFilter={filters.owner}
+          priorityOnly={filters.priorityOnly}
+          refreshKey={reportRefreshKey}
           canWrite={canWrite}
           canManageSetup={canManageSetup}
           onCreateGroup={() => {
@@ -1412,22 +1774,35 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
 
       {initialView === "configuration" ? <ConfigurationView language={language} data={data} canManageRejectionTemplates={canManageRejectionTemplates} onTemplatesChanged={refreshConfigurationTemplates} onReasonsChanged={refreshRejectionReasons} /> : null}
 
-      {initialView === "admin" ? <AdminView language={language} data={data} canManageUsers={canManageUsers} onInvite={() => setActiveModal("user")} /> : null}
+      {initialView === "admin" ? <AdminView language={language} data={data} canManageUsers={canManageUsers} onInvite={() => setActiveModal("user")} client={supabase} accessScope={detailAccessScope} refreshKey={reportRefreshKey} /> : null}
 
-      {initialView === "audit" ? <AuditView language={language} rows={data.change_logs} /> : null}
+      {initialView === "audit" ? <AuditView language={language} rows={data.change_logs} client={supabase} accessScope={detailAccessScope} /> : null}
 
       <RecordModal
         modal={activeModal}
+        client={supabase}
+        accessScope={detailAccessScope}
         language={language}
         data={data}
         profile={data.profile}
         canManageUsers={canManageUsers}
         processDefaults={processDefaults}
         modalDefaults={modalDefaults}
+        selectedRequisition={detail?.type === "requisition" ? loadedRequisition?.requisition ?? null : null}
+        lookupScope={{ headerSite: filters.site, headerPic: filters.owner, priorityOnly: filters.priorityOnly }}
         onClose={closeRecordModal}
         onSubmit={prepareAction}
         onValidationError={showUpdateDenial}
+        reviewBusy={candidateReviewBusy}
+        reviewError={activeModal==="candidate"?candidateReviewError:null}
       />
+
+      <Modal open={Boolean(duplicateReview)} title={language==="th"?"พบข้อมูลติดต่อซ้ำ":"Matching candidate contacts"} onClose={()=>setDuplicateReview(null)}>
+        <div className="grid gap-4 p-5"><p className="text-sm text-slate">{language==="th"?"ตรวจสอบรหัสผู้สมัครที่ตรงกันก่อนบันทึกเป็นคนละราย":"Review these matching candidate IDs before saving a separate person."}</p>
+          {duplicateReview?.matches.map(match=><div key={match.candidate_id} className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-[#D7DEE8] p-3"><p className="text-sm font-semibold text-navy">{formatRecruitmentId(match.candidate_id)}<span className="block text-xs font-normal text-slate">{[match.phone?(language==="th"?"โทรศัพท์":"Phone"):null,match.email?(language==="th"?"อีเมล":"Email"):null].filter(Boolean).join(" + ")}</span></p><a className="inline-flex min-h-11 items-center text-sm font-semibold text-primary underline" href={`/candidates?detailType=candidate&detailId=${encodeURIComponent(match.candidate_id)}`} target="_blank" rel="noreferrer">{language==="th"?"เปิดข้อมูลเดิม":"Open existing profile"}</a></div>)}
+          <div className="flex flex-wrap gap-2"><Button type="button" variant="secondary" onClick={()=>setDuplicateReview(null)}>{language==="th"?"กลับไปแก้ไข":"Back to form"}</Button><Button type="button" onClick={()=>{if(!duplicateReview)return;const {payload,matches,summary}=duplicateReview;setDuplicateReview(null);setPendingAction({title:"Confirm Save",summary,endpoint:"app_upsert_candidate_profile_v2",payload:{...payload,duplicate_review:{phone:String(payload.phone_no??"").trim(),email:String(payload.email??"").trim().toLowerCase(),matches}},modal:"candidate",route:"rpc"});}}>{language==="th"?"ดำเนินการเป็นคนละราย":"Continue as a separate candidate"}</Button></div>
+        </div>
+      </Modal>
 
       <GuidePrompt
         language={language}
@@ -1443,8 +1818,11 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
         open={welcomeOpen}
         profile={data.profile}
         summary={welcomeSummary}
+        loading={welcomeSummaryLoading}
+        error={welcomeSummaryError}
         onClose={closeWelcomeSummary}
         onPipeline={openWelcomePipeline}
+        onRetry={() => setWelcomeSummaryRetry(value => value + 1)}
       />
 
       <ConfirmModal
@@ -1474,11 +1852,11 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       />
 
       <CandidateJourneyActions
-        candidate={enrichedCandidates.find((candidate) => candidate.candidate_id === journeyActionCandidateId) ?? null}
+        candidate={applicationAwareCandidate(journeyActionCandidateId ?? "") ?? null}
         language={language}
-        logs={journeyActionCandidateId ? latestLogsForCandidate(data, journeyActionCandidateId) : []}
-        references={data.candidate_references.filter((reference) => reference.candidate_id === journeyActionCandidateId)}
-        checks={data.candidate_reference_checks}
+        logs={journeyActionCandidateId ? latestLogsForCandidate(journeyActionData, journeyActionCandidateId, selectedJourney?.application_id ?? selectedApplicationId) : []}
+        references={journeyActionData.candidate_references.filter((reference) => reference.candidate_id === journeyActionCandidateId)}
+        checks={journeyActionData.candidate_reference_checks.filter(row => row.application_id === (selectedJourney?.application_id ?? selectedApplicationId))}
         profile={data.profile}
         onClose={() => setJourneyActionCandidateId(null)}
         onStart={(candidate) => { setJourneyActionCandidateId(null); openInitialProcessUpdate(candidate); }}
@@ -1505,8 +1883,11 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       >
         {detailBody.body}
       </Drawer>
-      <RejectionLetterComposer open={Boolean(rejectionLetterCandidateId)} candidate={enrichCandidates(data).find((candidate) => candidate.candidate_id === rejectionLetterCandidateId) ?? null} failedLog={data.recruitment_logs.find((log) => log.candidate_id === rejectionLetterCandidateId && log.result === 0 && !log.superseded_at) ?? null} language={language} templates={data.rejection_letter_templates} drafts={data.rejection_letter_drafts} retryOf={data.rejection_letter_drafts.find((draft) => draft.draft_id === rejectionLetterRetryDraftId) ?? null} recruiterName={data.profile?.nickname ?? data.profile?.full_name ?? data.profile?.email ?? "Recruitment"} busy={busy} onClose={() => { setRejectionLetterCandidateId(null); setRejectionLetterRetryDraftId(null); }} onCreate={createRejectionLetterDraft} />
-      <CurrentStageEditModal candidate={enrichCandidates(data).find((candidate) => candidate.candidate_id === currentStageActionCandidateId) ?? null} stage={data.recruitment_logs.find((log) => log.candidate_id === currentStageActionCandidateId && log.result === null && !log.superseded_at) ?? null} meeting={data.interview_meetings.find((meeting) => meeting.candidate_id === currentStageActionCandidateId && meeting.status !== "cancelled") ?? null} templates={data.interview_invitation_templates} profiles={data.profiles} language={language} recruiterName={data.profile?.nickname ?? data.profile?.full_name ?? data.profile?.email ?? "Recruitment"} busy={busy} onClose={() => setCurrentStageActionCandidateId(null)} onSaveEstimate={saveCurrentStageEstimate} onSaveTeams={saveTeamsInterview} />
+      <RejectionLetterComposer open={Boolean(rejectionLetterCandidateId)} candidate={applicationAwareCandidate(rejectionLetterCandidateId ?? "") ?? null} failedLog={rejectionActionData.recruitment_logs.find((log) => log.candidate_id === rejectionLetterCandidateId && (!selectedApplicationId || log.application_id === selectedApplicationId) && log.result === 0 && !log.superseded_at) ?? null} language={language} templates={data.rejection_letter_templates} drafts={rejectionActionData.rejection_letter_drafts} retryOf={rejectionActionData.rejection_letter_drafts.find((draft) => draft.draft_id === rejectionLetterRetryDraftId) ?? null} recruiterName={data.profile?.nickname ?? data.profile?.full_name ?? data.profile?.email ?? "Recruitment"} busy={busy} onClose={() => { setRejectionLetterCandidateId(null); setRejectionLetterRetryDraftId(null); }} onCreate={createRejectionLetterDraft} />
+      {rejectionLetterCandidateId && rejectionTemplateError ? <p role="alert" className="fixed bottom-4 right-4 z-[90] rounded-md bg-white p-3 text-sm text-scarlet shadow-lg">Could not load rejection templates: {rejectionTemplateError}</p> : null}
+      <CurrentStageEditModal candidate={applicationAwareCandidate(currentStageActionCandidateId ?? "") ?? null} stage={currentStageActionData.recruitment_logs.find((log) => log.candidate_id === currentStageActionCandidateId && log.application_id === selectedApplicationId && log.result === null && !log.superseded_at) ?? null} meeting={currentStageActionData.interview_meetings.find((meeting) => meeting.candidate_id === currentStageActionCandidateId && currentStageActionData.recruitment_logs.some(log => log.stage_instance_id === meeting.stage_instance_id && log.application_id === selectedApplicationId) && meeting.status !== "cancelled") ?? null} templates={data.interview_invitation_templates} profiles={invitationProfiles} language={language} recruiterName={data.profile?.nickname ?? data.profile?.full_name ?? data.profile?.email ?? "Recruitment"} busy={busy} onClose={() => setCurrentStageActionCandidateId(null)} onSaveEstimate={saveCurrentStageEstimate} onSaveTeams={saveTeamsInterview} />
+      {currentStageActionCandidateId && invitationTemplateError ? <p role="alert" className="fixed bottom-4 right-4 z-[90] rounded-md bg-white p-3 text-sm text-scarlet shadow-lg">Could not load interview templates: {invitationTemplateError}</p> : null}
+      {currentStageActionCandidateId && invitationProfilesError ? <p role="alert" className="fixed bottom-4 right-4 z-[90] rounded-md bg-white p-3 text-sm text-scarlet shadow-lg">Could not load interviewer options: {invitationProfilesError} <button type="button" onClick={() => setInvitationProfilesRetry(value => value + 1)}>{translate(language, "retry")}</button></p> : null}
       </>}
     </AppShell></DesktopInteractionContext.Provider>
   );
@@ -1571,6 +1952,8 @@ function buildPayload(modal: Exclude<ModalName, null>, formData: FormData) {
       phone_no: emptyToNull(formData.get("phone_no")),
       email: emptyToNull(formData.get("email")),
       group_id: emptyToNull(formData.get("group_id")),
+      position_interests: emptyToNull(formData.get("position_interests")),
+      ...(formData.has("note") ? {note: emptyToNull(formData.get("note")),expected_note_id:emptyToNull(formData.get("expected_note_id")),expected_note_version:emptyToNull(formData.get("expected_note_version"))}:{}),
       channel,
       ref_name: channel === "Referral" ? emptyToNull(formData.get("ref_name")) : null,
       first_contact_date: emptyToNull(formData.get("first_contact_date")),
@@ -1827,7 +2210,6 @@ function validateCandidatePayload(payload: Record<string, unknown>, language: La
     ...(valueAsString(payload.mode) === "change" ? ["candidate_id"] : []),
     "name",
     ...(valueAsString(payload.mode) === "change" ? ["phone_no"] : []),
-    "group_id",
     "channel",
     "first_contact_date",
     ...(valueAsString(payload.channel) === "Referral" ? ["ref_name"] : [])
@@ -1947,40 +2329,133 @@ function valueAsString(value: unknown) {
 
 function RecordModal({
   modal,
+  client,
+  accessScope,
   language,
   data,
   profile,
   canManageUsers,
   processDefaults,
   modalDefaults,
+  selectedRequisition = null,
+  lookupScope = {},
   onClose,
   onSubmit,
-  onValidationError
+  onValidationError,
+  reviewBusy=false,
+  reviewError=null
 }: {
   modal: ModalName;
+  client: SupabaseClient | null;
+  accessScope: string;
   language: Language;
   data: DashboardData;
   profile: DashboardData["profile"];
   canManageUsers: boolean;
   processDefaults: ProcessDefaults;
   modalDefaults: ModalDefaults;
+  selectedRequisition?: Requisition | null;
+  lookupScope?: Record<string, unknown>;
   onClose: () => void;
   onSubmit: (modal: Exclude<ModalName, null>, form: HTMLFormElement) => void;
   onValidationError: (message: string) => void;
+  reviewBusy?: boolean;
+  reviewError?: string|null;
 }) {
   const [mode, setMode] = useState<"new" | "change">("new");
   const [selectedId, setSelectedId] = useState("");
+  const [selectedRequisitionRow, setSelectedRequisitionRow] = useState<EnrichedRequisition | null>(null);
+  const [exactRequisitionState, setExactRequisitionState] = useState<{ id: string; scope: string; client: SupabaseClient | null; status: "loading" | "ready" | "missing" | "error"; row: EnrichedRequisition | null; error?: string } | null>(null);
+  const [exactRequisitionRetry, setExactRequisitionRetry] = useState(0);
+  const [groupSeedStatus, setGroupSeedStatus] = useState<{ scope: string; client: SupabaseClient | null; status: "none" | "loading" | "ready" | "missing" | "error" }>({ scope: "", client: null, status: "none" });
+  const reportGroupSeedState = useCallback((status: "none" | "loading" | "ready" | "missing" | "error") => setGroupSeedStatus({ scope: accessScope, client, status }), [accessScope, client]);
+  const [assignableProfiles, setAssignableProfiles] = useState<Profile[]>([]);
+  const [ownerOptionsLoading, setOwnerOptionsLoading] = useState(false);
+  const [ownerOptionsError, setOwnerOptionsError] = useState<string | null>(null);
+  const [ownerOptionsRetry, setOwnerOptionsRetry] = useState(0);
 
   useEffect(() => {
     setMode(modalDefaults.mode ?? "new");
     setSelectedId(modalDefaults.selectedId ?? processDefaults.candidate_id ?? "");
+    setSelectedRequisitionRow(null);
   }, [modal, modalDefaults.mode, modalDefaults.selectedId, processDefaults.candidate_id]);
+
+  useEffect(() => {
+    if (selectedRequisition && selectedRequisition.doc_id === selectedId) {
+      const enriched = enrichRequisitions({ ...data, requisitions: [selectedRequisition] })[0];
+      if (enriched) setSelectedRequisitionRow(enriched);
+    } else if (!selectedId) setSelectedRequisitionRow(null);
+  }, [data, selectedId, selectedRequisition]);
+
+  useEffect(() => {
+    setSelectedRequisitionRow(null);
+    setExactRequisitionState(null);
+    setGroupSeedStatus({ scope: accessScope, client, status: "none" });
+  }, [accessScope, client]);
+
+  useEffect(() => {
+    const needsExactTarget = (modal === "status" || (modal === "requisition" && mode === "change")) && Boolean(selectedId);
+    if (!needsExactTarget) { setExactRequisitionState(null); return; }
+    if (selectedRequisitionRow?.doc_id === selectedId) {
+      setExactRequisitionState({ id: selectedId, scope: accessScope, client, status: "ready", row: selectedRequisitionRow });
+      return;
+    }
+    if (selectedRequisition?.doc_id === selectedId) {
+      const row = enrichRequisitions({ ...data, requisitions: [selectedRequisition] })[0] ?? null;
+      setExactRequisitionState({ id: selectedId, scope: accessScope, client, status: row ? "ready" : "missing", row });
+      return;
+    }
+    if (!client) { setExactRequisitionState({ id: selectedId, scope: accessScope, client, status: "error", row: null, error: "Database connection is unavailable." }); return; }
+    let active = true;
+    setExactRequisitionState({ id: selectedId, scope: accessScope, client, status: "loading", row: null });
+    void (async () => {
+      try {
+        const { data: raw, error } = await client.from("requisitions").select("*").eq("doc_id", selectedId).maybeSingle();
+        if (!active) return;
+        if (error) { setExactRequisitionState({ id: selectedId, scope: accessScope, client, status: "error", row: null, error: error.message }); return; }
+        if (!raw || raw.doc_id !== selectedId) { setExactRequisitionState({ id: selectedId, scope: accessScope, client, status: "missing", row: null }); return; }
+        const row = enrichRequisitions({ ...data, requisitions: [raw as Requisition] })[0] ?? null;
+        setExactRequisitionState({ id: selectedId, scope: accessScope, client, status: row ? "ready" : "missing", row });
+      } catch (error) {
+        if (active) setExactRequisitionState({ id: selectedId, scope: accessScope, client, status: "error", row: null, error: error instanceof Error ? error.message : "Could not load the selected requisition." });
+      }
+    })();
+    return () => { active = false; };
+  }, [accessScope, client, data, exactRequisitionRetry, modal, mode, selectedId, selectedRequisition, selectedRequisitionRow]);
+
+  useEffect(() => {
+    if ((modal !== "requisition" && modal !== "user") || !client || !profile || (modal === "user" && !canManageUsers)) return;
+    if (modal === "requisition" && profile.role === "site_recruiter") { setAssignableProfiles([profile]); setOwnerOptionsError(null); setOwnerOptionsLoading(false); return; }
+    let active = true;
+    setOwnerOptionsLoading(true); setOwnerOptionsError(null);
+    void loadAuthorizedRecruiterOptions(client, { profileId: profile.id, key: accessScope }).then(rows => {
+      if (active) setAssignableProfiles(rows);
+    }).catch(loadError => {
+      if (active) setOwnerOptionsError(loadError instanceof Error ? loadError.message : "Could not load authorized recruiter options.");
+    }).finally(() => { if (active) setOwnerOptionsLoading(false); });
+    return () => { active = false; };
+  }, [accessScope, canManageUsers, client, modal, ownerOptionsRetry, profile]);
 
   if (!modal) return null;
   const selectedRecords = selectedModalRecords(data, selectedId);
+  const exactStateMatches = exactRequisitionState?.id === selectedId && exactRequisitionState.scope === accessScope && exactRequisitionState.client === client;
+  const scopedSelectedRequisition = selectedRequisitionRow?.doc_id === selectedId ? selectedRequisitionRow : selectedRequisition?.doc_id === selectedId ? enrichRequisitions({ ...data, requisitions: [selectedRequisition] })[0] ?? null : exactStateMatches && exactRequisitionState.status === "ready" ? exactRequisitionState.row : null;
+  const exactTargetRequired = Boolean(selectedId && (modal === "status" || (modal === "requisition" && mode === "change")));
+  const exactGroupSeedRequired = Boolean(modal === "group_match" && modalDefaults.doc_id);
+  const groupSeedMatches = groupSeedStatus.scope === accessScope && groupSeedStatus.client === client;
+  const exactTargetPending = (exactTargetRequired && (!exactStateMatches || exactRequisitionState.status === "loading")) || (exactGroupSeedRequired && (!groupSeedMatches || groupSeedStatus.status === "none" || groupSeedStatus.status === "loading"));
+  const exactTargetUnavailable = (exactTargetRequired && exactStateMatches && (exactRequisitionState.status === "missing" || exactRequisitionState.status === "error")) || (exactGroupSeedRequired && groupSeedMatches && (groupSeedStatus.status === "missing" || groupSeedStatus.status === "error"));
+  const selectedProfile = assignableProfiles.find(row => row.id === selectedId) ?? selectedRecords.profile;
+  const profileFormData = assignableProfiles.length ? { ...data, profiles: assignableProfiles } : data;
   function handleModeChange(nextMode: "new" | "change") {
     setMode(nextMode);
     setSelectedId("");
+    setSelectedRequisitionRow(null);
+  }
+
+  function selectRequisition(row: EnrichedRequisition | null) {
+    setSelectedRequisitionRow(row);
+    setSelectedId(row?.doc_id ?? "");
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -1996,9 +2471,11 @@ function RecordModal({
     <Modal closeLabel={translate(language, "close")} open={Boolean(modal)} title={modalDialogTitle(language, modal, mode)} onClose={onClose}>
       <form key={`${modal}-${mode}-${selectedId}`} className="grid gap-4" onSubmit={handleSubmit}>
         {["requisition", "candidate", "offer", "group", "user"].includes(modal) ? <ModeRow mode={mode} onModeChange={handleModeChange} /> : null}
-        {modal === "requisition" ? <RequisitionFields data={data} language={language} profile={profile} mode={mode} selectedId={selectedId} selected={selectedRecords.requisition} onSelect={setSelectedId} /> : null}
-        {modal === "status" ? <StatusFields data={data} language={language} selectedId={selectedId} selected={selectedRecords.requisition} onSelect={setSelectedId} /> : null}
-        {modal === "candidate" ? <CandidatePrefillFields data={data} language={language} profile={profile} mode={mode} selectedId={selectedId} selected={selectedRecords.candidate} defaults={modalDefaults} onSelect={setSelectedId} /> : null}
+        {modal === "requisition" ? <RequisitionFields key={`${selectedId}-${scopedSelectedRequisition?.updated_at ?? "pending"}`} data={data} client={client} accessScope={accessScope} lookupScope={lookupScope} language={language} profile={profile} ownerProfiles={assignableProfiles} ownerOptionsLoading={ownerOptionsLoading} ownerOptionsError={ownerOptionsError} onRetryOwnerOptions={() => setOwnerOptionsRetry(value => value + 1)} mode={mode} selectedId={selectedId} selected={scopedSelectedRequisition} onSelect={setSelectedId} onSelectRow={selectRequisition} /> : null}
+        {modal === "status" ? <StatusFields key={`${selectedId}-${scopedSelectedRequisition?.status ?? "pending"}`} client={client} accessScope={accessScope} lookupScope={lookupScope} language={language} selectedId={selectedId} selected={scopedSelectedRequisition} onSelect={selectRequisition} /> : null}
+        {exactTargetPending ? <p role="status" className="text-sm text-slate">{translate(language, "loading")}</p> : null}
+        {exactTargetUnavailable ? <div className="flex items-center gap-2 text-sm text-danger" role="alert"><span>{exactRequisitionState?.error ?? translate(language, "recordUnavailable")}</span><Button type="button" variant="secondary" onClick={() => setExactRequisitionRetry(value => value + 1)}>{translate(language, "retry")}</Button></div> : null}
+        {modal === "candidate" ? <CandidatePrefillFields data={data} language={language} profile={profile} mode={mode} selectedId={selectedId} selected={selectedRecords.candidate} defaults={modalDefaults} onSelect={setSelectedId} client={client} accessScope={accessScope} /> : null}
         {modal === "candidate_reference" ? <CandidateReferenceFields defaults={processDefaults} language={language} /> : null}
         {modal === "reference_status" ? <CandidateReferenceStatusFields defaults={processDefaults} language={language} /> : null}
         {modal === "reference_check" ? <CandidateReferenceCheckFields defaults={processDefaults} language={language} /> : null}
@@ -2007,20 +2484,40 @@ function RecordModal({
         {modal === "pipeline_record_correction" ? <PipelineRecordCorrectionFields canEditPendingDate={data.profile?.role === "system_admin"} defaults={processDefaults} language={language} reasons={data.rejection_reasons} /> : null}
         {modal === "stage_outcome" ? <StageOutcomeFields defaults={processDefaults} language={language} reasons={data.rejection_reasons} /> : null}
         {modal === "pipeline_pass" ? <PipelinePassFields data={data} defaults={processDefaults} language={language} /> : null}
-        {modal === "offer" ? <OfferPrefillFields data={data} language={language} mode={mode} selectedId={selectedId} selected={selectedRecords.offer} defaults={modalDefaults} onSelect={setSelectedId} /> : null}
+        {modal === "offer" ? <OfferPrefillFields data={data} language={language} mode={mode} selectedId={selectedId} selected={selectedRecords.offer} defaults={modalDefaults} onSelect={setSelectedId} client={client} accessScope={accessScope} /> : null}
         {modal === "start_confirmation" ? <StartConfirmationFields defaults={processDefaults} language={language} /> : null}
-        {modal === "group" ? <GroupPrefillFields data={data} language={language} mode={mode} selectedId={selectedId} selected={selectedRecords.group} defaults={modalDefaults} onSelect={setSelectedId} /> : null}
-        {modal === "group_match" ? <CreateAndMatchGroupFields data={data} defaults={modalDefaults} language={language} profile={profile} /> : null}
-        {modal === "match" ? <MatchFields data={data} defaults={modalDefaults} language={language} /> : null}
+        {modal === "group" ? <GroupPrefillFields data={data} language={language} mode={mode} selectedId={selectedId} selected={selectedRecords.group} defaults={modalDefaults} onSelect={setSelectedId} client={client} accessScope={accessScope} /> : null}
+        {modal === "group_match" ? <CreateAndMatchGroupFields client={client} accessScope={accessScope} lookupScope={lookupScope} profile={profile} defaults={modalDefaults} language={language} onLookupState={reportGroupSeedState} /> : null}
+        {modal === "match" ? <MatchFields client={client} accessScope={accessScope} lookupScope={lookupScope} defaults={modalDefaults} language={language} /> : null}
         {modal === "snapshot" ? <SnapshotFields data={data} language={language} /> : null}
-        {modal === "user" ? <UserPrefillFields canManageUsers={canManageUsers} data={data} language={language} mode={mode} selectedId={selectedId} selected={selectedRecords.profile} onSelect={setSelectedId} /> : null}
+        {modal === "user" ? <UserPrefillFields canManageUsers={canManageUsers} data={profileFormData} profiles={assignableProfiles} profilesLoading={ownerOptionsLoading} profilesError={ownerOptionsError} onRetryProfiles={() => setOwnerOptionsRetry(value => value + 1)} language={language} mode={mode} selectedId={selectedId} selected={selectedProfile} onSelect={setSelectedId} /> : null}
         <div className="sticky bottom-0 -mx-4 flex justify-end gap-2 border-t border-[#D7DEE8] bg-white px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 sm:static sm:mx-0 sm:bg-transparent sm:px-0 sm:pb-0 sm:pt-4">
           <Button type="button" variant="secondary" className="min-h-11 flex-1 sm:flex-none" onClick={onClose}>{translate(language, "cancel")}</Button>
-          <Button type="submit" className="min-h-11 flex-1 sm:flex-none">{translate(language, "reviewChanges")}</Button>
+          {reviewError?<p role="alert" className="text-sm text-scarlet">{reviewError}</p>:null}<Button type="submit" disabled={reviewBusy || exactTargetPending || exactTargetUnavailable || (exactTargetRequired && !scopedSelectedRequisition) || (exactGroupSeedRequired && (!groupSeedMatches || groupSeedStatus.status !== "ready"))} className="min-h-11 flex-1 sm:flex-none">{translate(language, "reviewChanges")}</Button>
         </div>
       </form>
     </Modal>
   );
+}
+
+function AuthorizedPositionGroupLookup({ client, accessScope, scope, language, value, selectedRow = null, onSelect, label, name }: { client: SupabaseClient | null; accessScope: string; scope: Record<string, unknown>; language: Language; value: string; selectedRow?: EnrichedSourcingGroup | null; onSelect: (row: EnrichedSourcingGroup | null) => void; label: string; name: string }) {
+  const [search, setSearch] = useState("");
+  const [retained, setRetained] = useState<{ id: string; row: EnrichedSourcingGroup } | null>(null);
+  const page = useRecruitmentList<EnrichedSourcingGroup>({ client, accessScope, entity: "position_groups", filters: { ...scope, scope: "all" }, sort: "name", direction: "asc", searchInput: { value: search, setValue: setSearch }, enabled: Boolean(client && accessScope) });
+  const visibleRow = page.items.find(row => row.group_id === value) ?? null;
+  useEffect(() => { if (visibleRow) setRetained({ id: visibleRow.group_id, row: visibleRow }); }, [visibleRow]);
+  useEffect(() => { if (selectedRow) setRetained({ id: selectedRow.group_id, row: selectedRow }); else if (!value) setRetained(null); }, [selectedRow, value]);
+  useEffect(() => { if (value && !visibleRow && selectedRow?.group_id !== value && !retained) setSearch(value); }, [retained, selectedRow, value, visibleRow]);
+  const effectiveSelected = value ? visibleRow ?? (selectedRow?.group_id === value ? selectedRow : null) ?? (retained?.id === value ? retained.row : null) : null;
+  const rows = effectiveSelected && !page.items.some(row => row.group_id === effectiveSelected.group_id) ? [effectiveSelected, ...page.items] : page.items;
+  return <div className="grid gap-2" data-testid="authorized-group-lookup">
+    <Field label={language === "th" ? "ค้นหากลุ่มตำแหน่ง" : "Search position groups"}><TextInput value={search} onChange={event => setSearch(event.target.value)} placeholder={language === "th" ? "รหัสกลุ่ม ตำแหน่ง หรือไซต์" : "Group ID, position, or site"} aria-label={language === "th" ? "ค้นหากลุ่มตำแหน่ง" : "Search position groups"} /></Field>
+    <Field label={label}><SelectInput name={name} aria-label={label} value={value} required onChange={event => { const row = rows.find(candidate => candidate.group_id === event.target.value) ?? null; setRetained(row ? { id: row.group_id, row } : null); onSelect(row); }}>{[<option key="" value="">{language === "th" ? "เลือกกลุ่ม" : "Select group"}</option>, ...rows.map(row => <option key={row.group_id} value={row.group_id}>{formatRecruitmentId(row.group_id)} · {row.group_position}{row.sites.length ? ` · ${row.sites.join(", ")}` : ""}</option>)]}</SelectInput></Field>
+    <div className="flex items-center justify-between gap-2 text-xs text-slate"><span>{page.countLabel} · {language === "th" ? "กลุ่ม" : "groups"}</span>{page.countError ? <Button type="button" size="sm" variant="secondary" onClick={page.retryCount}>{translate(language, "retry")}</Button> : null}</div>
+    {page.loading ? <p role="status" className="text-sm text-slate">{translate(language, "loading")}</p> : null}
+    {page.error ? <div role="alert" className="flex items-center justify-between gap-2 text-sm text-danger"><span>{translate(language, "recordUnavailableOrLoadFailed")}</span><Button type="button" size="sm" variant="secondary" onClick={page.retry}>{translate(language, "retry")}</Button></div> : null}
+    {!page.error ? <div className="flex items-center justify-end gap-2"><SelectInput aria-label={translate(language, "rowsPerPage")} value={page.pageSize} onChange={event => page.setPageSize(Number(event.target.value))}><option value={25}>25</option><option value={50}>50</option><option value={100}>100</option></SelectInput><Button type="button" size="sm" variant="secondary" disabled={!page.canPrevious} onClick={page.goPrevious}>{translate(language, "previous")}</Button><span className="text-xs tabular-nums">{page.page}</span><Button type="button" size="sm" variant="secondary" disabled={!page.canNext} onClick={page.goNext}>{translate(language, "next")}</Button></div> : null}
+  </div>;
 }
 
 function selectedModalRecords(data: DashboardData, selectedId: string) {
@@ -2045,20 +2542,20 @@ function requisitionOptionLabel(row: DashboardData["requisitions"][number]) {
 }
 
 function candidateOptionLabel(row: DashboardData["candidates"][number]) {
-  return optionLabel([row.candidate_id, formatCandidateName(row)]);
+  return optionLabel([formatRecruitmentId(row.candidate_id), formatCandidateName(row)]);
 }
 
 function documentGroupOptionLabel(row: DashboardData["document_groups"][number]) {
   return optionLabel([row.doc_group_id, row.group_position]);
 }
 
-function positionGroupOptionLabel(row: DashboardData["position_groups"][number]) {
-  return optionLabel([row.group_id, row.group_position]);
+function positionGroupOptionLabel(row: Pick<DashboardData["position_groups"][number], "group_id" | "group_position">) {
+  return optionLabel([formatRecruitmentId(row.group_id), row.group_position]);
 }
 
 function offerOptionLabel(data: DashboardData, offer: DashboardData["offers"][number]) {
   const candidate = data.candidates.find((row) => row.candidate_id === offer.candidate_id);
-  return optionLabel([offer.candidate_id, candidate?.name, offer.doc_id]);
+  return optionLabel([formatRecruitmentId(offer.candidate_id), candidate?.name, offer.doc_id]);
 }
 
 function userOptionLabel(profile: DashboardData["profiles"][number], language: Language = "en") {
@@ -2082,26 +2579,42 @@ function ModeRow({
 
 function RequisitionFields({
   data,
+  client,
+  accessScope,
+  lookupScope,
   language,
   profile,
+  ownerProfiles,
+  ownerOptionsLoading,
+  ownerOptionsError,
+  onRetryOwnerOptions,
   mode,
   selectedId,
   selected,
-  onSelect
+  onSelect,
+  onSelectRow
 }: {
   data: DashboardData;
+  client: SupabaseClient | null;
+  accessScope: string;
+  lookupScope: Record<string, unknown>;
   language: Language;
   profile: DashboardData["profile"];
+  ownerProfiles: Profile[];
+  ownerOptionsLoading: boolean;
+  ownerOptionsError: string | null;
+  onRetryOwnerOptions: () => void;
   mode: "new" | "change";
   selectedId: string;
-  selected: DashboardData["requisitions"][number] | null;
+  selected: EnrichedRequisition | null;
   onSelect: (value: string) => void;
+  onSelectRow: (row: EnrichedRequisition | null) => void;
 }) {
   const isSiteRecruiter = profile?.role === "site_recruiter";
   const forceAssignedScope = isSiteRecruiter && mode === "new";
   const nickname = profile?.nickname ?? profile?.full_name ?? "";
   const assignedSite = profile?.site ?? "";
-  const personOptions = recruiterNicknameOptions(data.profiles);
+  const personOptions = [...new Set([...recruiterNicknameOptions(ownerProfiles), ...(selected?.person_in_charge ? [selected.person_in_charge] : [])])].sort((left,right)=>left.localeCompare(right));
   const siteValue = forceAssignedScope ? assignedSite : selected?.site;
   const ownerValue = forceAssignedScope ? nickname : selected?.person_in_charge;
   const initialSiteValue = siteValue ?? "";
@@ -2169,12 +2682,7 @@ function RequisitionFields({
     <div className="grid gap-4 md:grid-cols-2">
       {mode === "change" ? (
         <>
-          <Field label={translate(language, "selectRequisitionOption")}>
-          <SelectInput required value={selectedId} onChange={(event) => onSelect(event.target.value)}>
-            <option value="">{translate(language, "selectRequisitionOption")}</option>
-            {data.requisitions.map((row) => <option key={row.doc_id} value={row.doc_id}>{requisitionOptionLabel(row)}</option>)}
-          </SelectInput>
-          </Field>
+          <AuthorizedRequisitionLookup client={client} accessScope={accessScope} language={language} filters={{ ...lookupScope, managedOnly: true }} value={selectedId} selectedRow={selected} onSelect={onSelectRow} label={translate(language, "selectRequisitionOption")} name="selected_doc_id" />
           <Field label={translate(language, "docId")}>
           <TextInput name="doc_id" required value={docId} disabled={!selected} onChange={(event) => setDocId(event.target.value)} />
           {selected ? <input type="hidden" name="previous_doc_id" value={selected.doc_id} /> : null}
@@ -2243,10 +2751,12 @@ function RequisitionFields({
       <Field label={translate(language, "headCount")}><TextInput name="head_count" type="number" min={1} value={headCount} onChange={(event) => changeHeadCount(event.target.value)} required /></Field>
       <Field label={translate(language, "personInCharge")}>
         {forceAssignedScope ? <input type="hidden" name="person_in_charge" value={nickname} /> : null}
-        <CreateSelectInput name={forceAssignedScope ? undefined : "person_in_charge"} defaultValue={ownerValue ?? ""} disabled={isSiteRecruiter}>
+        <CreateSelectInput name={forceAssignedScope ? undefined : "person_in_charge"} defaultValue={ownerValue ?? ""} disabled={isSiteRecruiter || ownerOptionsLoading || Boolean(ownerOptionsError) || ownerProfiles.length === 0}>
           <option value="">{translate(language, "unassigned")}</option>
           {personOptions.map((person) => <option key={person} value={person}>{person}</option>)}
         </CreateSelectInput>
+        {!isSiteRecruiter && ownerOptionsLoading ? <p className="text-xs text-slate" role="status">Loading authorized recruiter options…</p> : null}
+        {!isSiteRecruiter && ownerOptionsError ? <p className="text-xs text-scarlet" role="alert">Could not load recruiter options. <button type="button" className="font-semibold underline" onClick={onRetryOwnerOptions}>Retry</button></p> : null}
       </Field>
       <Field label={translate(language, "lineManager")}><TextInput name="line_manager" list="manager-options" placeholder={mode === "new" ? translate(language, "lineManagerPlaceholder") : undefined} defaultValue={selected?.line_manager ?? ""} /></Field>
       <Field label={translate(language, "status")}>
@@ -2269,27 +2779,30 @@ function RequisitionFields({
           </div>
         </div>
       ) : null}
-      <DataLists data={data} />
     </div>
   );
 }
 
 function StatusFields({
-  data,
+  client,
+  accessScope,
+  lookupScope,
   language,
   selectedId,
   selected,
   onSelect
 }: {
-  data: DashboardData;
+  client: SupabaseClient | null;
+  accessScope: string;
+  lookupScope: Record<string, unknown>;
   language: Language;
   selectedId: string;
-  selected: DashboardData["requisitions"][number] | null;
-  onSelect: (value: string) => void;
+  selected: EnrichedRequisition | null;
+  onSelect: (row: EnrichedRequisition | null) => void;
 }) {
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      <Field label={translate(language, "docId")}><SelectInput name="doc_id" required value={selectedId} onChange={(event) => onSelect(event.target.value)}><option value="">{translate(language, "selectRequisitionOption")}</option>{data.requisitions.map((row) => <option key={row.doc_id} value={row.doc_id}>{requisitionOptionLabel(row)}</option>)}</SelectInput></Field>
+      <AuthorizedRequisitionLookup client={client} accessScope={accessScope} language={language} filters={{ ...lookupScope, managedOnly: true }} value={selectedId} selectedRow={selected} onSelect={onSelect} label={translate(language, "docId")} name="doc_id" />
       <Field label={translate(language, "date")}><TextInput name="log_date" type="date" required defaultValue={today()} /></Field>
       <Field label={translate(language, "status")}><SelectInput name="status" defaultValue={selected?.status ?? "ongoing"}>{["ongoing", "filled", "cancel"].map((status) => <option key={status} value={status}>{requisitionStatusLabel(language, status)}</option>)}</SelectInput></Field>
       <Field label={translate(language, "remark")} className="md:col-span-2"><TextArea name="remark" rows={3} /></Field>
@@ -2337,7 +2850,7 @@ function CandidateFields({ data }: { data: DashboardData }) {
 
 function ProcessFields({ data, defaults }: { data: DashboardData; defaults: ProcessDefaults }) {
   const candidate = data.candidates.find((row) => row.candidate_id === defaults.candidate_id);
-  const logs = candidate ? latestLogsForCandidate(data, candidate.candidate_id) : [];
+  const logs = candidate ? applicationLogs(data, candidate) : [];
   const latest = logs[0];
   const blockedReason = processUpdateBlockReason(logs);
   const availableStages = availableProcessUpdateStages(logs);
@@ -2366,15 +2879,42 @@ function ProcessFields({ data, defaults }: { data: DashboardData; defaults: Proc
 }
 
 function eligibleCandidateGroups(data: DashboardData, profile: DashboardData["profile"], limitIds?: readonly string[]) {
-  const requisitions = new Map(enrichRequisitions(data).map((row) => [row.doc_id, row]));
-  const allowedIds = limitIds ? new Set(limitIds) : null;
-  return data.position_groups.filter((group) => {
-    if (allowedIds && !allowedIds.has(group.group_id)) return false;
-    return data.document_groups.some((match) => match.group_id === group.group_id && (() => {
-      const requisition = requisitions.get(match.doc_id);
-      return Boolean(requisition && requisition.status === "ongoing" && requisition.open_headcount > 0 && siteRecruiterCanManageRequisition(requisition, profile));
-    })());
-  });
+  return eligibleApplicationGroups(data).filter(group=>!limitIds||limitIds.includes(group.group_id));
+}
+
+function useApplicationDestinationOptions(client: SupabaseClient | null, accessScope: string, enabled: boolean) {
+  const [search, setSearch] = useState("");
+  const [items, setItems] = useState<ApplicationDestination[]>([]);
+  const [nextGroupId, setNextGroupId] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
+  const [retry, setRetry] = useState(0);
+  useEffect(() => {
+    if (!enabled || !client || !accessScope) { setItems([]); setNextGroupId(null); setHasMore(false); setLoading(false); return; }
+    let cancelled = false;
+    setItems([]); setNextGroupId(null); setHasMore(false); setLoading(true); setError(false);
+    const timer = setTimeout(() => {
+      fetchApplicationDestinations(client, { search, limit: 50 })
+        .then(page => { if (!cancelled) { setItems(page.items); setNextGroupId(page.next_cursor?.group_id ?? null); setHasMore(page.has_more); } })
+        .catch(() => { if (!cancelled) { setItems([]); setError(true); } })
+        .finally(() => { if (!cancelled) setLoading(false); });
+    }, 180);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [accessScope, client, enabled, retry, search]);
+  async function loadMore() {
+    if (!client || !enabled || !hasMore || !nextGroupId || loading) return;
+    setLoading(true); setError(false);
+    try { const page = await fetchApplicationDestinations(client, { search, afterGroupId: nextGroupId, limit: 50 }); setItems(current => [...current, ...page.items.filter(row => !current.some(item => item.group_id === row.group_id))]); setNextGroupId(page.next_cursor?.group_id ?? null); setHasMore(page.has_more); }
+    catch { setError(true); }
+    finally { setLoading(false); }
+  }
+  return { search, setSearch, items, hasMore, loading, error, retry: () => setRetry(value => value + 1), loadMore };
+}
+
+function DestinationControls({ language, name, label, emptyLabel, value, onChange, options, locked = false }: { language: Language; name?: string; label: string; emptyLabel: string; value: string; onChange: (value: string) => void; options: ReturnType<typeof useApplicationDestinationOptions>; locked?: boolean }) {
+  const rows = options.items.some(row => row.group_id === value) || !value ? options.items : [{ group_id: value, group_position: value, sites: [], owners: [], doc_ids: [] }, ...options.items];
+  return <div className="grid gap-2">{!locked ? <TextInput aria-label={language === "th" ? `ค้นหา${label}` : `Search ${label}`} value={options.search} onChange={event => options.setSearch(event.target.value)} placeholder={language === "th" ? "ค้นหารหัสหรือชื่อตำแหน่ง" : "Search ID or position"} /> : null}<SelectInput aria-label={locked ? (language === "th" ? "กลุ่มใบสมัครที่เลือก" : "Locked application group") : undefined} name={locked ? undefined : name} disabled={locked} value={value} onChange={event => onChange(event.target.value)}>{locked ? null : <option value="">{emptyLabel}</option>}{(locked ? rows.filter(row => row.group_id === value) : rows).map(row => <option key={row.group_id} value={row.group_id}>{formatRecruitmentId(row.group_id)} · {row.group_position}</option>)}</SelectInput>{!locked && options.loading ? <p role="status" className="text-xs text-slate">{translate(language,"loading")}</p> : null}{!locked && options.error ? <p role="alert" className="flex items-center gap-2 text-xs text-danger">{translate(language,"loadFailed")} <Button type="button" variant="secondary" size="sm" onClick={options.retry}>{translate(language,"retry")}</Button></p> : null}{!locked && options.hasMore ? <Button type="button" variant="secondary" size="sm" disabled={options.loading} onClick={options.loadMore}>{language === "th" ? "โหลดตัวเลือกเพิ่ม" : "Load more options"}</Button> : null}</div>;
 }
 
 function CandidatePrefillFields({
@@ -2385,7 +2925,9 @@ function CandidatePrefillFields({
   selectedId,
   selected,
   defaults,
-  onSelect
+  onSelect,
+  client,
+  accessScope
 }: {
   data: DashboardData;
   language: Language;
@@ -2395,18 +2937,37 @@ function CandidatePrefillFields({
   selected: DashboardData["candidates"][number] | null;
   defaults: ModalDefaults;
   onSelect: (value: string) => void;
+  client: SupabaseClient | null;
+  accessScope: string;
 }) {
-  const groupValue = mode === "new" ? defaults.group_id ?? "" : selected?.group_id ?? "";
+  const groupValue = mode === "new" ? defaults.group_id ?? "" : "";
+  const groupLocked = mode === "new" && Boolean(defaults.lock_group_id);
   const firstContactDate = mode === "new" ? defaults.first_contact_date ?? "" : selected?.first_contact_date ?? "";
   const [selectedGroupId, setSelectedGroupId] = useState(groupValue);
+  const [existingCandidateId, setExistingCandidateId] = useState("");
+  const [authorizedExistingCandidateId, setAuthorizedExistingCandidateId] = useState("");
+  const [existingCandidateSearch, setExistingCandidateSearch] = useState("");
+  const [existingCandidateAccess, setExistingCandidateAccess] = useState<"idle"|"loading"|"denied"|"error">("idle");
+  const [contactPhone, setContactPhone] = useState(selected?.phone_no ?? "");
+  const [contactEmail, setContactEmail] = useState(selected?.email ?? "");
   const [selectedChannel, setSelectedChannel] = useState(selected?.channel ?? "");
   const [referenceRows, setReferenceRows] = useState<number[]>([]);
   const [referenceChannelTypes, setReferenceChannelTypes] = useState<Record<number, string>>({});
-  const eligibleGroups = useMemo(
-    () => mode === "new" ? eligibleCandidateGroups(data, profile, defaults.eligible_group_ids) : data.position_groups,
-    [data, defaults.eligible_group_ids, mode, profile]
-  );
-  const availableChannels = useMemo(() => sourcingChannelsForGroup(data, selectedGroupId), [data, selectedGroupId]);
+  const destinationOptions = useApplicationDestinationOptions(client, accessScope, !groupLocked);
+  const existingCandidates = useRecruitmentList<{candidate_id:string;name:string|null;nickname:string|null;home_site:string|null}>({client,accessScope,entity:"candidate_registry",filters:{scope:"all"},sort:"updated_at",direction:"desc",initialPageSize:50,enabled:mode==="new"&&Boolean(client&&accessScope),searchInput:{value:existingCandidateSearch,setValue:setExistingCandidateSearch}});
+  const [selectedGroupProjection,setSelectedGroupProjection]=useState<{id:string;row:DashboardData["position_groups"][number]|null;loading:boolean;error:boolean}>({id:"",row:null,loading:false,error:false});
+  useEffect(()=>{
+    if(!selectedGroupId||!client||!accessScope){setSelectedGroupProjection({id:selectedGroupId,row:null,loading:false,error:false});return;}
+    const bootstrap=data.position_groups.find(row=>row.group_id===selectedGroupId);
+    if(bootstrap){setSelectedGroupProjection({id:selectedGroupId,row:bootstrap,loading:false,error:false});return;}
+    let cancelled=false;setSelectedGroupProjection({id:selectedGroupId,row:null,loading:true,error:false});
+    Promise.resolve(client.from("position_groups").select("*").eq("group_id",selectedGroupId).maybeSingle()).then(({data:row,error})=>{
+      if(!cancelled)setSelectedGroupProjection({id:selectedGroupId,row:error||!row?null:row as DashboardData["position_groups"][number],loading:false,error:Boolean(error||!row)});
+    }).catch(()=>{if(!cancelled)setSelectedGroupProjection({id:selectedGroupId,row:null,loading:false,error:true});});
+    return()=>{cancelled=true;};
+  },[accessScope,client,data.position_groups,selectedGroupId]);
+  const projectedGroup=selectedGroupProjection.id===selectedGroupId?selectedGroupProjection.row:null;
+  const availableChannels = useMemo(() => selectedGroupId ? (projectedGroup ? SOURCING_CHANNELS.filter(channel=>Boolean(projectedGroup[channel.enabled])) : []) : SOURCING_CHANNELS, [projectedGroup, selectedGroupId]);
   const showReferenceName = selectedChannel === "Referral";
 
   useEffect(() => {
@@ -2422,9 +2983,26 @@ function CandidatePrefillFields({
     }
   }, [availableChannels, selectedChannel]);
 
+  useEffect(() => {
+    if (!existingCandidateId || !client || !accessScope || mode !== "new") { setAuthorizedExistingCandidateId(""); setExistingCandidateAccess("idle"); return; }
+    let cancelled=false;setAuthorizedExistingCandidateId("");setExistingCandidateAccess("loading");
+    Promise.resolve(client.rpc("app_candidate_profile_detail_v1",{p_candidate_id:existingCandidateId})).then(({data:projection,error})=>{
+      if(cancelled)return;
+      if(error){setExistingCandidateAccess("error");return;}
+      const capabilities=(projection as {capabilities?:{can_add_application?:unknown}|null}|null)?.capabilities;
+      if(capabilities?.can_add_application===true){setAuthorizedExistingCandidateId(existingCandidateId);setExistingCandidateAccess("idle");}
+      else{setExistingCandidateId("");setExistingCandidateAccess("denied");}
+    }).catch(()=>{if(!cancelled)setExistingCandidateAccess("error");});
+    return()=>{cancelled=true;};
+  },[accessScope,client,existingCandidateId,mode]);
+
+  const existingPicker = mode === "new" ? <Field label={language === "th" ? "ใช้ข้อมูลผู้สมัครเดิม" : "Use existing candidate"}><TextInput aria-label={language==="th"?"ค้นหาผู้สมัครเดิม":"Search existing candidates"} value={existingCandidateSearch} onChange={event=>setExistingCandidateSearch(event.target.value)} placeholder={language==="th"?"ค้นหารหัสหรือชื่อ":"Search ID or name"}/><SelectInput name="existing_candidate_id" value={existingCandidateId} onChange={event => {setExistingCandidateId(event.target.value);setAuthorizedExistingCandidateId("");setExistingCandidateAccess("idle");}}><option value="">{language === "th" ? "สร้างข้อมูลผู้สมัครใหม่" : "Create a new profile"}</option>{existingCandidates.items.map(row => <option key={row.candidate_id} value={row.candidate_id}>{`${formatRecruitmentId(row.candidate_id)} · ${[row.name,row.nickname].filter(Boolean).join(" ")}`}</option>)}</SelectInput>{existingCandidateAccess==="loading"?<p role="status" className="text-xs text-slate">{translate(language,"loading")}</p>:null}{existingCandidateAccess==="denied"?<p role="alert" className="text-xs text-danger">{language==="th"?"ไม่มีสิทธิ์เพิ่มใบสมัครให้ผู้สมัครรายนี้":"You cannot add an application for this candidate."}</p>:null}{existingCandidateAccess==="error"?<p role="alert" className="text-xs text-danger">{translate(language,"loadFailed")}</p>:null}{existingCandidates.error?<p role="alert" className="text-xs text-danger">{translate(language,"loadFailed")} <Button type="button" variant="secondary" size="sm" onClick={existingCandidates.retry}>{translate(language,"retry")}</Button></p>:null}{existingCandidates.canNext?<Button type="button" variant="secondary" size="sm" disabled={existingCandidates.loading} onClick={existingCandidates.goNext}>{language==="th"?"ถัดไป":"Next candidates"}</Button>:null}</Field> : null;
+  if (authorizedExistingCandidateId) return <div className="grid gap-4">{existingPicker}<Field label={translate(language, "groupId")}><DestinationControls language={language} name="group_id" label={translate(language,"groupId")} emptyLabel={translate(language,"selectGroup")} value={groupLocked ? groupValue : selectedGroupId} onChange={setSelectedGroupId} options={destinationOptions} locked={groupLocked}/>{groupLocked ? <input type="hidden" name="group_id" value={groupValue}/> : null}{groupLocked ? <span className="text-xs font-medium text-slate">{translate(language, "groupLockedToWorkspace")}</span> : null}</Field><p className="text-sm text-slate">{language === "th" ? "เพิ่มใบสมัครใหม่โดยใช้ข้อมูลเดิม ไม่สร้างผู้สมัครซ้ำ" : "Create an application using this profile; no duplicate person is created."}</p></div>;
   return (
     <div className="grid gap-4 md:grid-cols-2">
+      {existingPicker}
       <Field label={translate(language, "candidateId")}>
+
         {mode === "change" ? (
           <SelectInput name="candidate_id" required value={selectedId} onChange={(event) => onSelect(event.target.value)}>
             <option value="">{translate(language, "selectCandidateOption")}</option>
@@ -2434,23 +3012,24 @@ function CandidatePrefillFields({
           <SelectInput name="candidate_id"><option value="">{translate(language, "autoInNewMode")}</option>{data.candidates.map((row) => <option key={row.candidate_id} value={row.candidate_id}>{candidateOptionLabel(row)}</option>)}</SelectInput>
         )}
       </Field>
-      <Field label={translate(language, "name")}><TextInput name="name" required placeholder={translate(language, "candidateNamePlaceholder")} defaultValue={selected?.name ?? ""} /></Field>
-      <Field label={translate(language, "nickname")}><TextInput name="nickname" defaultValue={selected?.nickname ?? ""} /></Field>
-      <Field label={translate(language, "phoneNo")}><TextInput name="phone_no" type="tel" inputMode="numeric" maxLength={10} pattern="0[0-9]{9}" required={mode === "change"} placeholder={translate(language, "candidatePhonePlaceholder")} defaultValue={selected?.phone_no ?? ""} /></Field>
-      <Field label={translate(language, "email")}><TextInput name="email" type="text" inputMode="email" autoComplete="email" placeholder={translate(language, "candidateEmailPlaceholder")} defaultValue={selected?.email ?? ""} /></Field>
-      <Field label={translate(language, "groupId")}>
-        <CreateSelectInput name={mode === "new" && defaults.lock_group_id ? undefined : "group_id"} required value={selectedGroupId} disabled={mode === "new" && (defaults.lock_group_id || eligibleGroups.length === 0)} onChange={(event) => setSelectedGroupId(event.target.value)}>
-          <option value="">{eligibleGroups.length === 0 ? translate(language, "noEligibleGroups") : translate(language, "selectGroup")}</option>
-          {eligibleGroups.map((row) => <option key={row.group_id} value={row.group_id}>{positionGroupOptionLabel(row)}</option>)}
-        </CreateSelectInput>
-        {mode === "new" && defaults.lock_group_id ? <input type="hidden" name="group_id" value={selectedGroupId} /> : null}
+      <div className="grid gap-4 md:col-span-2 md:grid-cols-2"><Field label={translate(language, "name")}><TextInput name="name" required placeholder={translate(language, "candidateNamePlaceholder")} defaultValue={selected?.name ?? ""} /></Field><Field label={translate(language, "nickname")}><TextInput name="nickname" defaultValue={selected?.nickname ?? ""} /></Field></div>
+      <Field label={language === "th" ? "ตำแหน่งที่สนใจ" : "Position interests"}><TextInput name="position_interests" defaultValue={selected?.position_interests ?? ""}/></Field>
+      {mode==="new"||selected&&profileCapabilities(data,selected.candidate_id).can_edit_note?<Field label={language === "th" ? "บันทึก" : "Profile note"}><textarea name="note" defaultValue={data.candidate_notes?.find(row=>row.candidate_id===selected?.candidate_id)?.body??""} className="min-h-24 rounded-md border border-[#C9D5E6] p-2 text-sm text-navy"/><input type="hidden" name="expected_note_id" value={data.candidate_notes?.find(row=>row.candidate_id===selected?.candidate_id)?.note_id??""}/><input type="hidden" name="expected_note_version" value={data.candidate_notes?.find(row=>row.candidate_id===selected?.candidate_id)?.version??""}/></Field>:null}
+
+      <Field label={translate(language, "phoneNo")}><TextInput name="phone_no" type="tel" inputMode="numeric" maxLength={10} pattern="0[0-9]{9}" required={mode === "change"} placeholder={translate(language, "candidatePhonePlaceholder")} value={contactPhone} onChange={event => setContactPhone(event.target.value)} /></Field>
+      <Field label={translate(language, "email")}><TextInput name="email" type="text" inputMode="email" autoComplete="email" placeholder={translate(language, "candidateEmailPlaceholder")} value={contactEmail} onChange={event => setContactEmail(event.target.value)} /></Field>
+      <Field label={language === "th" ? "กลุ่มใบสมัคร (ไม่บังคับ)" : "Application group (optional)"}>
+        <DestinationControls language={language} name={groupLocked ? undefined : "group_id"} label={language === "th"?"กลุ่มใบสมัคร":"Application group"} emptyLabel={language === "th" ? "เก็บในฐานผู้สมัคร (ยังไม่มีกลุ่ม)" : "Talent pool (no application yet)"} value={groupLocked ? groupValue : selectedGroupId} onChange={setSelectedGroupId} options={destinationOptions} locked={groupLocked}/>
+        {groupLocked ? <input type="hidden" name="group_id" value={groupValue} /> : null}
         {mode === "new" && defaults.lock_group_id ? <span className="text-xs font-medium text-slate">{translate(language, "groupLockedToWorkspace")}</span> : null}
       </Field>
       <Field label={translate(language, "channel")}>
-        <CreateSelectInput name="channel" required value={selectedChannel} onChange={(event) => setSelectedChannel(event.target.value)} disabled={!selectedGroupId || availableChannels.length === 0}>
+        <CreateSelectInput name="channel" required value={selectedChannel} onChange={(event) => setSelectedChannel(event.target.value)} disabled={availableChannels.length === 0}>
           <option value="">{availableChannels.length === 0 ? translate(language, "noSourcingChannelsForGroup") : translate(language, "selectChannel")}</option>
           {availableChannels.map((channel) => <option key={channel.enabled} value={channel.label}>{channel.label}</option>)}
         </CreateSelectInput>
+        {selectedGroupId&&selectedGroupProjection.loading?<p role="status" className="text-xs text-slate">{translate(language,"loading")}</p>:null}
+        {selectedGroupId&&selectedGroupProjection.error?<p role="alert" className="text-xs text-danger">{translate(language,"loadFailed")}</p>:null}
       </Field>
       {showReferenceName ? (
         <Field label={translate(language, "referenceName")}><TextInput name="ref_name" required list="ref-options" defaultValue={selected?.ref_name ?? ""} /></Field>
@@ -2766,16 +3345,17 @@ function GroupFields({ data }: { data: DashboardData }) {
   );
 }
 
-function MatchFields({ data, defaults, language }: { data: DashboardData; defaults: ModalDefaults; language: Language }) {
-  const matchedDocIds = new Set(data.document_groups.map((group) => group.doc_id));
-  const docOptions = data.requisitions.filter((row) => !matchedDocIds.has(row.doc_id) || row.doc_id === defaults.doc_id);
-
-  return (
-    <div className="grid gap-4 md:grid-cols-2">
-      <Field label={translate(language, "docId")}><SelectInput name="doc_id" required defaultValue={defaults.doc_id ?? ""}>{docOptions.map((row) => <option key={row.doc_id} value={row.doc_id}>{requisitionOptionLabel(row)}</option>)}</SelectInput></Field>
-      <Field label={translate(language, "groupId")}><SelectInput name="group_id" required defaultValue={defaults.group_id ?? ""}>{data.position_groups.map((row) => <option key={row.group_id} value={row.group_id}>{positionGroupOptionLabel(row)}</option>)}</SelectInput></Field>
-    </div>
-  );
+function MatchFields({ client, accessScope, lookupScope, defaults, language }: { client: SupabaseClient | null; accessScope: string; lookupScope: Record<string, unknown>; defaults: ModalDefaults; language: Language }) {
+  const [group, setGroup] = useState<EnrichedSourcingGroup | null>(null);
+  const [groupId, setGroupId] = useState(defaults.group_id ?? "");
+  const [requisition, setRequisition] = useState<EnrichedRequisition | null>(null);
+  const [docId, setDocId] = useState(defaults.doc_id ?? "");
+  const scopeKey = JSON.stringify([accessScope, lookupScope]);
+  useEffect(() => { setGroup(null); setGroupId(defaults.group_id ?? ""); setRequisition(null); setDocId(defaults.doc_id ?? ""); }, [defaults.doc_id, defaults.group_id, scopeKey]);
+  return <div className="grid gap-4 md:grid-cols-2">
+    <AuthorizedRequisitionLookup client={client} accessScope={accessScope} language={language} filters={{ ...lookupScope, managedOnly: true, unmatchedOnly: true, ...(groupId ? { linkToGroupId: groupId } : {}) }} value={docId} selectedRow={requisition} onSelect={row => { setRequisition(row); setDocId(row?.doc_id ?? ""); }} label={translate(language, "docId")} name="doc_id" />
+    <AuthorizedPositionGroupLookup client={client} accessScope={accessScope} scope={lookupScope} language={language} value={groupId} selectedRow={group} onSelect={row => { setGroup(row); setGroupId(row?.group_id ?? ""); setRequisition(null); setDocId(""); }} label={translate(language, "groupId")} name="group_id" />
+  </div>;
 }
 
 function SnapshotFields({ data, language }: { data: DashboardData; language: Language }) {
@@ -2847,7 +3427,9 @@ function OfferPrefillFields({
   mode,
   selectedId,
   selected,
-  onSelect
+  onSelect,
+  client,
+  accessScope
 }: {
   data: DashboardData;
   defaults: ModalDefaults;
@@ -2856,39 +3438,92 @@ function OfferPrefillFields({
   selectedId: string;
   selected: DashboardData["offers"][number] | null;
   onSelect: (value: string) => void;
+  client: SupabaseClient | null;
+  accessScope: string;
 }) {
-  const offeredCandidateIds = new Set(data.offers.map((offer) => offer.candidate_id));
+  const offeredCandidateIds = new Set(data.offers.map((offer) => offer.application_id ?? offer.candidate_id));
   const allowedCandidateIds = defaults.offer_candidate_ids ? new Set(defaults.offer_candidate_ids) : null;
-  const eligibleCandidates = data.candidates.filter((candidate) => (
-    (!allowedCandidateIds || allowedCandidateIds.has(candidate.candidate_id))
-    && hasLatestOfferPass(data, candidate.candidate_id)
-    && !offeredCandidateIds.has(candidate.candidate_id)
+  const eligibleCandidates = enrichCandidates(data).filter((candidate) => (
+    canManageCandidateJourney(candidate,data.profile) && (!allowedCandidateIds || allowedCandidateIds.has(candidate.candidate_id))
+    && applicationLogs(data, candidate).some(log => log.recruitment_process === "Offer" && log.result === 1)
+    && !offeredCandidateIds.has(applicationKey(candidate))
   ));
-  const selectedCandidate = selected ? data.candidates.find((candidate) => candidate.candidate_id === selected.candidate_id) : null;
-  const candidateOptions = selectedCandidate && !eligibleCandidates.some((candidate) => candidate.candidate_id === selectedCandidate.candidate_id)
+  const selectedCandidate = selected ? enrichCandidates(data).find(candidate => candidate.application_id === selected.application_id) : null;
+  const candidateOptions = selectedCandidate && !eligibleCandidates.some((candidate) => applicationKey(candidate) === applicationKey(selectedCandidate))
     ? [...eligibleCandidates, selectedCandidate]
     : eligibleCandidates;
+  const [offerApplicationId, setOfferApplicationId] = useState(selected?.application_id ?? defaults.application_id ?? "");
   const [selectedCandidateId, setSelectedCandidateId] = useState(selected?.candidate_id ?? defaults.candidate_id ?? "");
   const [selectedDocId, setSelectedDocId] = useState(selected?.doc_id ?? defaults.doc_id ?? "");
   const allowedDocIds = defaults.offer_doc_ids ? new Set(defaults.offer_doc_ids) : null;
+  const [search, setSearch] = useState(defaults.candidate_id ?? "");
+  const [remoteCandidates, setRemoteCandidates] = useState<OfferCandidateOption[]>([]);
+  const [selectedOfferCandidate, setSelectedOfferCandidate] = useState<OfferCandidateOption | null>(null);
+  const [cursor, setCursor] = useState<OfferCandidateCursor | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingCandidates, setLoadingCandidates] = useState(false);
+  const [candidateError, setCandidateError] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const [remoteRequisitions, setRemoteRequisitions] = useState<DashboardData["requisitions"]>([]);
+  const [loadingRequisitions, setLoadingRequisitions] = useState(false);
+  const [requisitionError, setRequisitionError] = useState(false);
+  const selectedRemote = remoteCandidates.find(row => row.application_id === offerApplicationId) ?? (selectedOfferCandidate?.application_id === offerApplicationId ? selectedOfferCandidate : null);
+  const docIdsForSelection = selectedRemote?.doc_ids ?? [];
+  const remoteDocIds = mode === "new" ? docIdsForSelection.filter(id => !allowedDocIds || allowedDocIds.has(id)) : [];
   const docOptions = mode === "change" && selected?.doc_id
     ? data.requisitions.filter((row) => row.doc_id === selected.doc_id)
-    : availableOfferDocOptions(data, selectedCandidateId, selectedDocId).filter((row) => !allowedDocIds || allowedDocIds.has(row.doc_id));
+    : mode === "new" ? remoteRequisitions.filter(row => remoteDocIds.includes(row.doc_id)) : availableOfferDocOptions(data, selectedCandidateId, selectedDocId, offerApplicationId).filter((row) => !allowedDocIds || allowedDocIds.has(row.doc_id));
 
   useEffect(() => {
+    if (mode !== "new" || !client || !accessScope) return;
+    let cancelled = false;
+    setLoadingCandidates(true); setCandidateError(false); setRemoteCandidates([]); setCursor(null); setHasMore(false);
+    const timer = setTimeout(() => {
+      fetchOfferCandidates(client, { search, limit: 50 })
+      .then(page => { if (!cancelled) { setRemoteCandidates(page.items); setCursor(page.next_cursor); setHasMore(page.has_more); const preselected=page.items.find(row=>row.application_id===(defaults.application_id??"")||row.candidate_id===(defaults.candidate_id??"")); if(preselected){setSelectedOfferCandidate(preselected);setOfferApplicationId(preselected.application_id);setSelectedCandidateId(preselected.candidate_id);if(defaults.doc_id&&preselected.doc_ids.includes(defaults.doc_id))setSelectedDocId(defaults.doc_id);} } })
+        .catch(() => { if (!cancelled) setCandidateError(true); })
+        .finally(() => { if (!cancelled) setLoadingCandidates(false); });
+    }, 180);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [accessScope, client, defaults.application_id, defaults.candidate_id, mode, retry, search]);
+
+  useEffect(() => {
+    if (mode !== "new" || !client || !offerApplicationId || !docIdsForSelection.length) { setRemoteRequisitions([]); setLoadingRequisitions(false); return; }
+    let cancelled = false;
+    setLoadingRequisitions(true); setRequisitionError(false);
+    readScopedInPages<DashboardData["requisitions"][number]>(client, "requisitions", "doc_id", docIdsForSelection, "doc_id", "eligible offer requisitions")
+      .then(rows => { if (!cancelled) setRemoteRequisitions(rows); })
+      .catch(() => { if (!cancelled) { setRemoteRequisitions([]); setRequisitionError(true); } })
+      .finally(() => { if (!cancelled) setLoadingRequisitions(false); });
+    return () => { cancelled = true; };
+  }, [accessScope, client, docIdsForSelection.join("\u001f"), mode, offerApplicationId]);
+
+  async function loadMoreCandidates() {
+    if (!client || !cursor || !hasMore || loadingCandidates) return;
+    setLoadingCandidates(true); setCandidateError(false);
+    try { const page = await fetchOfferCandidates(client, { search, cursor, limit: 50 }); setRemoteCandidates(rows => [...rows, ...page.items.filter(item => !rows.some(row => row.application_id === item.application_id))]); setCursor(page.next_cursor); setHasMore(page.has_more); }
+    catch { setCandidateError(true); }
+    finally { setLoadingCandidates(false); }
+  }
+
+  useEffect(() => {
+    setOfferApplicationId(selected?.application_id ?? defaults.application_id ?? "");
     setSelectedCandidateId(selected?.candidate_id ?? defaults.candidate_id ?? "");
     setSelectedDocId(selected?.doc_id ?? defaults.doc_id ?? "");
-  }, [defaults.candidate_id, defaults.doc_id, selected?.candidate_id, selected?.doc_id]);
+    setSelectedOfferCandidate(null);
+  }, [defaults.application_id, defaults.candidate_id, defaults.doc_id, selected?.application_id, selected?.candidate_id, selected?.doc_id]);
 
   useEffect(() => {
     if (mode === "change") return;
-    if (selectedDocId && !docOptions.some((row) => row.doc_id === selectedDocId)) {
+    if (selectedRemote && selectedDocId && !docOptions.some((row) => row.doc_id === selectedDocId) && !remoteDocIds.includes(selectedDocId)) {
       setSelectedDocId("");
     }
-  }, [docOptions, mode, selectedDocId]);
+  }, [docOptions, mode, remoteDocIds, selectedDocId, selectedRemote]);
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
+      <input type="hidden" name="application_id" value={offerApplicationId}/>
+      {mode === "new" ? <input type="hidden" name="candidate_id" value={selectedCandidateId}/> : null}
       {mode === "change" ? (
         <Field label={translate(language, "existingOffer")}>
           <SelectInput name="offer_selector" required value={selectedId} onChange={(event) => onSelect(event.target.value)}>
@@ -2898,21 +3533,15 @@ function OfferPrefillFields({
         </Field>
       ) : null}
       {mode === "change" ? <input type="hidden" name="candidate_id" value={selected?.candidate_id ?? ""} /> : null}
-      <Field label={translate(language, "candidate")}>
-        <CreateSelectInput name={mode === "change" ? undefined : "candidate_id"} required value={selectedCandidateId} disabled={mode === "change"} onChange={(event) => {
-          setSelectedCandidateId(event.target.value);
-          setSelectedDocId("");
-        }}>
-          <option value="">{translate(language, "selectOfferPassCandidate")}</option>
-          {candidateOptions.map((row) => <option key={row.candidate_id} value={row.candidate_id}>{candidateOptionLabel(row)}</option>)}
-        </CreateSelectInput>
-      </Field>
+      {mode === "new" ? <Field label={translate(language, "candidate")}><TextInput aria-label={language === "th" ? "ค้นหาผู้สมัครที่ผ่าน Offer" : "Search Offer-pass candidates"} value={search} onChange={event => setSearch(event.target.value)} placeholder={language === "th" ? "ค้นหาด้วยรหัสหรือชื่อ" : "Search by ID or name"} /><div className="grid gap-2"><CreateSelectInput name={undefined} required value={offerApplicationId} onChange={event => { const chosen = remoteCandidates.find(row => row.application_id === event.target.value); setSelectedOfferCandidate(chosen ?? null); setOfferApplicationId(chosen?.application_id ?? ""); setSelectedCandidateId(chosen?.candidate_id ?? ""); setSelectedDocId(chosen && defaults.doc_id && chosen.doc_ids.includes(defaults.doc_id) ? defaults.doc_id : chosen?.doc_ids.length === 1 ? chosen.doc_ids[0] : ""); }}><option value="">{translate(language, "selectOfferPassCandidate")}</option>{selectedRemote && !remoteCandidates.some(row => row.application_id === selectedRemote.application_id) ? <option value={selectedRemote.application_id}>{`${formatRecruitmentId(selectedRemote.candidate_id)} · ${selectedRemote.name} · ${selectedRemote.group_position}`}</option> : null}{remoteCandidates.map(row => <option key={row.application_id} value={row.application_id}>{`${formatRecruitmentId(row.candidate_id)} · ${row.name} · ${row.group_position}`}</option>)}</CreateSelectInput>{loadingCandidates ? <p role="status" className="text-xs text-slate">{translate(language, "loading")}</p> : null}{candidateError ? <p role="alert" className="text-xs text-danger">{translate(language, "loadFailed")} <Button type="button" variant="secondary" size="sm" onClick={() => setRetry(value => value + 1)}>{translate(language, "retry")}</Button></p> : null}{hasMore ? <Button type="button" variant="secondary" size="sm" disabled={loadingCandidates} onClick={() => void loadMoreCandidates()}>{language === "th" ? "โหลดเพิ่ม" : "Load more"}</Button> : null}</div></Field> : null}
+      {mode === "change" ? <Field label={translate(language, "candidate")}><p className="rounded-md border border-[#D7DEE8] bg-lightgray px-3 py-2 text-sm text-navy">{selectedCandidate ? `${formatRecruitmentId(selectedCandidate.candidate_id)} · ${formatCandidateName(selectedCandidate)}` : formatRecruitmentId(selected?.candidate_id)}</p></Field> : null}
       {mode === "change" ? <input type="hidden" name="doc_id" value={selected?.doc_id ?? ""} /> : null}
       <Field label={translate(language, "docId")}>
         <CreateSelectInput name={mode === "change" ? undefined : "doc_id"} required value={selectedDocId} disabled={mode === "change" || !selectedCandidateId} onChange={(event) => setSelectedDocId(event.target.value)}>
           <option value="">{selectedCandidateId ? translate(language, "selectRequisitionOption") : translate(language, "selectCandidateFirst")}</option>
-          {docOptions.map((row) => <option key={row.doc_id} value={row.doc_id}>{requisitionOptionLabel(row)}</option>)}
+          {mode === "new" ? remoteDocIds.map(docId => { const row=docOptions.find(option=>option.doc_id===docId); return <option key={docId} value={docId}>{row?requisitionOptionLabel(row):docId}</option>; }) : docOptions.map((row) => <option key={row.doc_id} value={row.doc_id}>{requisitionOptionLabel(row)}</option>)}
         </CreateSelectInput>
+        {mode === "new" && loadingRequisitions ? <p role="status" className="text-xs text-slate">{translate(language, "loading")}</p> : null}{mode === "new" && requisitionError ? <p role="alert" className="text-xs text-danger">{translate(language, "loadFailed")}</p> : null}
       </Field>
       <Field label={translate(language, "acceptedDateField")}><TextInput name="accepted_date" type="date" defaultValue={selected?.accepted_date ?? defaults.accepted_date ?? ""} /></Field>
       <Field label={translate(language, "firstWorkingDate")}><TextInput name="first_working_date" type="date" defaultValue={selected?.first_working_date ?? ""} /></Field>
@@ -2922,9 +3551,10 @@ function OfferPrefillFields({
   );
 }
 
-function availableOfferDocOptions(data: DashboardData, candidateId: string, currentDocId = "") {
+function availableOfferDocOptions(data: DashboardData, candidateId: string, currentDocId = "", applicationId?: string) {
   if (!candidateId) return [];
-  const candidate = data.candidates.find((row) => row.candidate_id === candidateId);
+  const journey = selectedApplication(data, candidateId, applicationId);
+  const candidate = enrichCandidates(data).find(row => row.candidate_id === candidateId && (journey ? row.application_id === journey.application_id : !data.candidate_applications));
   if (!candidate) return [];
   const candidateGroupId = candidate.group_id ?? data.document_groups.find((row) => row.doc_group_id === candidate.doc_group_id)?.group_id;
   if (!candidateGroupId) return [];
@@ -2933,7 +3563,7 @@ function availableOfferDocOptions(data: DashboardData, candidateId: string, curr
       .filter((row) => row.group_id === candidateGroupId)
       .map((row) => row.doc_id)
   );
-  const existingOfferDocIds = new Set(data.offers.filter((offer) => offer.candidate_id === candidateId).map((offer) => offer.doc_id));
+  const existingOfferDocIds = new Set(data.offers.filter((offer) => offer.candidate_id === candidateId && (!applicationId || offer.application_id === applicationId)).map((offer) => offer.doc_id));
   return enrichRequisitions(data)
     .filter((row) => matchedDocIds.has(row.doc_id))
     .filter((row) => row.status !== "filled" && row.status !== "cancel" && row.open_headcount > 0)
@@ -2948,7 +3578,9 @@ function GroupPrefillFields({
   selectedId,
   selected,
   defaults,
-  onSelect
+  onSelect,
+  client,
+  accessScope
 }: {
   data: DashboardData;
   language: Language;
@@ -2957,21 +3589,15 @@ function GroupPrefillFields({
   selected: DashboardData["position_groups"][number] | null;
   defaults: ModalDefaults;
   onSelect: (value: string) => void;
+  client: SupabaseClient | null;
+  accessScope: string;
 }) {
   const groupPositionValue = mode === "new" ? defaults.group_position ?? "" : selected?.group_position ?? "";
+  const destinationOptions = useApplicationDestinationOptions(client, accessScope, true);
 
   return (
     <div className="grid gap-4">
-      <Field label={translate(language, "groupId")}>
-        {mode === "change" ? (
-          <SelectInput name="group_id" required value={selectedId} onChange={(event) => onSelect(event.target.value)}>
-            <option value="">{translate(language, "selectGroup")}</option>
-            {data.position_groups.map((row) => <option key={row.group_id} value={row.group_id}>{positionGroupOptionLabel(row)}</option>)}
-          </SelectInput>
-        ) : (
-          <CreateSelectInput name="group_id"><option value="">{translate(language, "autoInNewMode")}</option>{data.position_groups.map((row) => <option key={row.group_id} value={row.group_id}>{positionGroupOptionLabel(row)}</option>)}</CreateSelectInput>
-        )}
-      </Field>
+      <Field label={translate(language, "groupId")}><DestinationControls language={language} name="group_id" label={translate(language,"groupId")} emptyLabel={mode === "change" ? translate(language,"selectGroup") : translate(language,"autoInNewMode")} value={selectedId} onChange={onSelect} options={destinationOptions}/></Field>
       <Field label={translate(language, "groupPosition")}><TextInput name="group_position" list="group-position-options" required defaultValue={groupPositionValue} /></Field>
       <div className="grid gap-2 rounded-md border border-[#D7DEE8] bg-lightgray p-3 text-sm font-bold text-navy md:grid-cols-4">
         {SOURCING_CHANNELS.map((channel) => (
@@ -2988,6 +3614,10 @@ function GroupPrefillFields({
 function UserPrefillFields({
   canManageUsers,
   data,
+  profiles,
+  profilesLoading,
+  profilesError,
+  onRetryProfiles,
   language,
   mode,
   selectedId,
@@ -2996,6 +3626,10 @@ function UserPrefillFields({
 }: {
   canManageUsers: boolean;
   data: DashboardData;
+  profiles: Profile[];
+  profilesLoading: boolean;
+  profilesError: string | null;
+  onRetryProfiles: () => void;
   language: Language;
   mode: "new" | "change";
   selectedId: string;
@@ -3009,11 +3643,13 @@ function UserPrefillFields({
       {mode === "change" ? <Field label={translate(language, "existingUser")}>
         <SelectInput name="user_id" required={mode === "change"} value={selectedId} onChange={(event) => onSelect(event.target.value)}>
           <option value="">{translate(language, "selectUser")}</option>
-          {data.profiles.map((profile) => (
+          {profiles.map((profile) => (
             <option key={profile.id} value={profile.id}>{userOptionLabel(profile, language)}</option>
           ))}
         </SelectInput>
       </Field> : null}
+      {profilesLoading ? <p role="status" className="text-sm text-slate">{translate(language, "loading")}</p> : null}
+      {profilesError ? <p role="alert" className="text-sm text-danger">{translate(language, "recordUnavailableOrLoadFailed")} <Button type="button" size="sm" variant="secondary" onClick={onRetryProfiles}>{translate(language, "retry")}</Button></p> : null}
       <Field label={translate(language, "email")}><TextInput name="email" type="email" defaultValue={selected?.email ?? ""} /></Field>
       <Field label={translate(language, "temporaryPassword")}><TextInput name="password" type="password" minLength={8} /></Field>
       <Field label={translate(language, "nicknameAccountName")}><TextInput name="nickname" list="pic-options-form" required defaultValue={selected?.nickname ?? ""} /></Field>
@@ -3049,128 +3685,6 @@ function DataLists({ data }: { data: DashboardData }) {
   );
 }
 
-function WelcomeBackPrompt({
-  language,
-  open,
-  profile,
-  summary,
-  onClose,
-  onPipeline
-}: {
-  language: Language;
-  open: boolean;
-  profile: DashboardData["profile"];
-  summary: WelcomeSummary;
-  onClose: () => void;
-  onPipeline: () => void;
-}) {
-  const name = profile?.nickname ?? profile?.full_name ?? profile?.email ?? translate(language, "system");
-  const fallbackMessage = translate(language, welcomeRatioMessageKey(summary.filledResponsibleVacancyBucket));
-  const message = dailyWelcomeMessage({
-    language,
-    ratio: summary.filledResponsibleVacancyRatio,
-    name,
-    fallback: fallbackMessage
-  });
-  const progressWidth = `${Math.min(summary.filledResponsibleVacancyRatio, 100)}%`;
-
-  return (
-    <Modal open={open} title={translate(language, "welcomeBack")} onClose={onClose} width="max-w-xl">
-      <div className="grid gap-4">
-        <div className="overflow-hidden rounded-lg border border-[#D7DEE8] bg-[#F8FBFF]">
-          <div className="border-l-4 border-primary px-4 py-4">
-            <p className="text-sm font-semibold leading-6 text-navy">{message}</p>
-            <div className="mt-4 grid gap-2">
-              <div className="flex flex-wrap items-end justify-between gap-2">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-normal text-slate">{translate(language, "welcomeFilledRatioLabel")}</p>
-                  <p className="mt-0.5 text-xs font-medium text-slate">
-                    {translate(language, "welcomeFilledRatioHelper")
-                      .replace("{filled}", formatNumber(summary.filledThisMonth, language))
-                      .replace("{total}", formatNumber(summary.responsibleVacancyTotal, language))}
-                  </p>
-                </div>
-                <p className="text-2xl font-semibold tabular-nums text-navy">{formatNumber(summary.filledResponsibleVacancyRatio, language)}%</p>
-              </div>
-              <div className="h-2 overflow-hidden rounded-full bg-[#D7DEE8]" aria-hidden="true">
-                <div className="h-full rounded-full bg-primary" style={{ width: progressWidth }} />
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <WelcomeSummaryItem language={language} label={translate(language, "welcomeOpenRequisitions")} value={summary.openRequisitions} />
-          <WelcomeSummaryItem language={language} label={translate(language, "welcomeOpenVacancy")} value={summary.openVacancy} />
-          <WelcomeSummaryItem language={language} label={translate(language, "welcomeActiveCandidates")} value={summary.activeCandidates} />
-          <WelcomeSummaryItem language={language} label={translate(language, "welcomeOfferFinalization")} value={summary.offerFinalizationNeeded} />
-        </div>
-        <div className="flex flex-wrap justify-end gap-2 border-t border-[#D7DEE8] pt-4">
-          <Button type="button" variant="secondary" onClick={onClose}>{translate(language, "close")}</Button>
-          <Button type="button" onClick={onPipeline}>{translate(language, "viewPipeline")}</Button>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
-function WelcomeSummaryItem({ language, label, value }: { language: Language; label: string; value: number }) {
-  return (
-    <div className="relative overflow-hidden rounded-md border border-[#D7DEE8] bg-white p-3 shadow-sm">
-      <p className="text-xs font-medium uppercase tracking-normal text-slate">{label}</p>
-      <p className="mt-1 text-2xl font-semibold text-navy">{formatNumber(value, language)}</p>
-    </div>
-  );
-}
-
-function buildWelcomeSummary(
-  requisitions: EnrichedRequisition[],
-  candidates: EnrichedCandidate[],
-  offers: DashboardData["offers"],
-  requisitionLogs: DashboardData["requisition_logs"],
-  profile: DashboardData["profile"]
-): WelcomeSummary {
-  const responsibleRequisitions = responsibleRows(requisitions, profile);
-  const responsibleCandidates = responsibleRows(candidates, profile);
-  const offerCandidateIds = new Set(offers.map((offer) => offer.candidate_id));
-  const actionableRequisitions = responsibleRequisitions.filter((row) => row.status !== "filled" && row.status !== "cancel" && row.open_headcount > 0);
-  const responsibleVacancyRequisitions = responsibleRequisitions.filter((row) => isPimEligible(row, offers, requisitionLogs));
-  const responsibleDocIds = new Set(responsibleVacancyRequisitions.map((row) => row.doc_id));
-  const responsibleVacancyTotal = responsibleVacancyRequisitions.reduce((sum, row) => sum + row.head_count, 0);
-  const filledThisMonth = offers.filter((offer) =>
-    responsibleDocIds.has(offer.doc_id) && isAcceptedThisCalendarMonth(offer.accepted_date)
-  ).length;
-  const filledResponsibleVacancyRatio = responsibleVacancyTotal > 0
-    ? Math.floor((filledThisMonth / responsibleVacancyTotal) * 100)
-    : 0;
-  const activeCandidates = responsibleCandidates.filter(
-    (row) => row.latest_process !== "No activity"
-      && ACTIVE_PIPELINE_STAGES.includes(row.latest_process)
-      && row.latest_result !== 0
-      && !offerCandidateIds.has(row.candidate_id)
-  );
-  const offerFinalizationNeeded = activeCandidates.filter((row) => row.latest_process === "Offer" && row.latest_result === 1).length;
-
-  return {
-    openRequisitions: actionableRequisitions.length,
-    openVacancy: actionableRequisitions.reduce((sum, row) => sum + row.open_headcount, 0),
-    activeCandidates: activeCandidates.length,
-    offerFinalizationNeeded,
-    filledThisMonth,
-    responsibleVacancyTotal,
-    filledResponsibleVacancyRatio,
-    filledResponsibleVacancyBucket: welcomeRatioBucket(filledResponsibleVacancyRatio)
-  };
-}
-
-function isAcceptedThisCalendarMonth(value: string | null | undefined) {
-  if (!value || !/^\d{4}-\d{2}-\d{2}(?:$|T)/.test(value)) return false;
-  const acceptedDate = dateOnly(value);
-  if (!acceptedDate || !isValidCalendarDate(acceptedDate)) return false;
-  const today = todayDate();
-  const monthStart = `${today.slice(0, 7)}-01`;
-  return acceptedDate >= monthStart && acceptedDate <= today;
-}
-
 function PipelineRecordCorrectionFields({ canEditPendingDate, defaults, language, reasons }: { canEditPendingDate: boolean; defaults: ProcessDefaults; language: Language; reasons: DashboardData["rejection_reasons"] }) {
   const completed = Boolean(defaults.outcome_result);
   return <div className="grid gap-4 md:grid-cols-2">
@@ -3195,83 +3709,89 @@ function PipelineRecordCorrectionFields({ canEditPendingDate, defaults, language
   </div>;
 }
 
-function CreateAndMatchGroupFields({ data, defaults, language, profile }: { data: DashboardData; defaults: ModalDefaults; language: Language; profile: DashboardData["profile"] }) {
-  const matchedDocIds = new Set(data.document_groups.map((group) => group.doc_id));
-  const allEligibleRequisitions = enrichRequisitions(data).filter((row) => (
-    row.status === "ongoing"
-      && row.open_headcount > 0
-      && !matchedDocIds.has(row.doc_id)
-      && siteRecruiterCanManageRequisition(row, profile)
-  ));
-  const [selectedDocIds, setSelectedDocIds] = useState<string[]>(() => defaults.doc_id ? [defaults.doc_id] : []);
-  const [pendingDocId, setPendingDocId] = useState("");
+function CreateAndMatchGroupFields({ client, accessScope, lookupScope, profile, defaults, language, onLookupState }: { client: SupabaseClient | null; accessScope: string; lookupScope: Record<string, unknown>; profile: DashboardData["profile"]; defaults: ModalDefaults; language: Language; onLookupState: (state: "none" | "loading" | "ready" | "missing" | "error") => void }) {
+  const [selectedRequisitions, setSelectedRequisitions] = useState<EnrichedRequisition[]>([]);
+  const [pendingRequisition, setPendingRequisition] = useState<EnrichedRequisition | null>(null);
+  const [pendingDocId, setPendingDocId] = useState(defaults.doc_id ?? "");
+  const [groupPosition, setGroupPosition] = useState(String(defaults.group_position ?? ""));
+  const [preselectedState, setPreselectedState] = useState<{ id: string; scope: string; client: SupabaseClient | null; status: "loading" | "ready" | "missing" | "error"; row: EnrichedRequisition | null; error?: string } | null>(null);
+  const [preselectedRetry, setPreselectedRetry] = useState(0);
+  const seededPositionFor = useRef<{ key: string; client: SupabaseClient | null } | null>(null);
+  const eligibilityScopeKey = JSON.stringify([accessScope, lookupScope]);
   useEffect(() => {
-    setSelectedDocIds(defaults.doc_id ? [defaults.doc_id] : []);
+    setSelectedRequisitions([]);
+    setPendingRequisition(null);
+    setPendingDocId(defaults.doc_id ?? "");
+    setGroupPosition(String(defaults.group_position ?? ""));
+    seededPositionFor.current = null;
+  }, [accessScope, defaults.doc_id, defaults.group_position, eligibilityScopeKey]);
+  useEffect(() => {
+    if (!defaults.doc_id) { setPreselectedState(null); return; }
+    if (!client || !profile) { setPreselectedState({ id: defaults.doc_id, scope: eligibilityScopeKey, client, status: "error", row: null, error: "Database connection is unavailable." }); return; }
+    let active = true;
+    setPreselectedState({ id: defaults.doc_id, scope: eligibilityScopeKey, client, status: "loading", row: null });
+    void (async () => {
+      try {
+        const result = await loadScopedRequisitionDetail(client, { docId: defaults.doc_id!, accessScope: { profileId: profile.id, key: eligibilityScopeKey } });
+        if (!active) return;
+        if (result.status !== "ready") { setPreselectedState({ id: defaults.doc_id!, scope: eligibilityScopeKey, client, status: "missing", row: null }); return; }
+        const raw = result.requisition;
+        const exactSite = typeof lookupScope.headerSite === "string" ? lookupScope.headerSite : "";
+        const exactOwner = typeof lookupScope.headerPic === "string" ? lookupScope.headerPic.trim().toLocaleLowerCase() : "";
+        const eligible = raw.doc_id === defaults.doc_id && raw.status === "ongoing" && result.metrics.openHeadcount > 0
+          && result.documentGroups.length === 0 && canManageRequisitionPriority(profile, raw)
+          && (!exactSite || raw.site === exactSite)
+          && (!exactOwner || String(raw.person_in_charge ?? "").trim().toLocaleLowerCase() === exactOwner)
+          && (lookupScope.priorityOnly !== true || raw.is_priority);
+        if (!eligible) { setPreselectedState({ id: defaults.doc_id!, scope: eligibilityScopeKey, client, status: "missing", row: null }); return; }
+        const row = enrichRequisitions({ ...emptyDashboardData, requisitions: [raw] })[0] ?? null;
+        if (!row) { setPreselectedState({ id: defaults.doc_id!, scope: eligibilityScopeKey, client, status: "missing", row: null }); return; }
+        setPreselectedState({ id: defaults.doc_id!, scope: eligibilityScopeKey, client, status: "ready", row });
+      } catch (error) {
+        if (active) setPreselectedState({ id: defaults.doc_id!, scope: eligibilityScopeKey, client, status: "error", row: null, error: error instanceof Error ? error.message : "Could not load the selected requisition." });
+      }
+    })();
+    return () => { active = false; };
+  }, [accessScope, client, defaults.doc_id, eligibilityScopeKey, lookupScope, preselectedRetry, profile]);
+  useEffect(() => {
+    onLookupState(preselectedState && preselectedState.id === defaults.doc_id && preselectedState.scope === eligibilityScopeKey && preselectedState.client === client ? preselectedState.status : defaults.doc_id ? "loading" : "none");
+  }, [client, defaults.doc_id, eligibilityScopeKey, onLookupState, preselectedState]);
+  useEffect(() => {
+    const row = preselectedState?.scope === eligibilityScopeKey && preselectedState.client === client && preselectedState.status === "ready" ? preselectedState.row : null;
+    const seedKey = JSON.stringify([eligibilityScopeKey, defaults.doc_id]);
+    if (!row || row.doc_id !== defaults.doc_id || seededPositionFor.current?.key === seedKey && seededPositionFor.current.client === client) return;
+    seededPositionFor.current = { key: seedKey, client };
+    setSelectedRequisitions(current => current.some(item => item.doc_id === row.doc_id) ? current : [row]);
     setPendingDocId("");
-  }, [defaults.doc_id]);
-  const selectedRequisitions = selectedDocIds.map((docId) => allEligibleRequisitions.find((row) => row.doc_id === docId)).filter((row): row is ReturnType<typeof enrichRequisitions>[number] => Boolean(row));
+    setPendingRequisition(null);
+    setGroupPosition(current => current || row.position);
+  }, [client, defaults.doc_id, eligibilityScopeKey, preselectedState]);
+  const scopeKey = JSON.stringify([accessScope, lookupScope]);
+  useEffect(() => { setSelectedRequisitions([]); setPendingRequisition(null); setPendingDocId(""); }, [scopeKey]);
   const selectedSite = selectedRequisitions[0]?.site;
-  const eligibleRequisitions = allEligibleRequisitions.filter((row) => !selectedDocIds.includes(row.doc_id) && (!selectedSite || row.site === selectedSite));
   const addRequisition = () => {
-    if (!pendingDocId || !eligibleRequisitions.some((row) => row.doc_id === pendingDocId)) return;
-    setSelectedDocIds((ids) => [...ids, pendingDocId]);
+    if (!pendingRequisition || pendingRequisition.doc_id !== pendingDocId || selectedRequisitions.some(row => row.doc_id === pendingDocId)) return;
+    setSelectedRequisitions(rows => [...rows, pendingRequisition]);
+    setPendingRequisition(null);
     setPendingDocId("");
   };
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <Field label={translate(language, "groupId")}><TextInput value={translate(language, "autoInNewMode")} readOnly /></Field>
-      <Field label={translate(language, "groupPosition")}><TextInput name="group_position" list="group-position-options" required defaultValue={defaults.group_position ?? ""} /></Field>
+      {defaults.doc_id && preselectedState && preselectedState.scope === eligibilityScopeKey && preselectedState.client === client && preselectedState.status === "loading" ? <p role="status" className="text-sm text-slate md:col-span-2">{translate(language, "loading")}</p> : null}
+      {defaults.doc_id && preselectedState && preselectedState.scope === eligibilityScopeKey && preselectedState.client === client && (preselectedState.status === "error" || preselectedState.status === "missing") ? <div role="alert" className="flex items-center gap-2 text-sm text-danger md:col-span-2"><span>{preselectedState.error ?? translate(language, "recordUnavailable")}</span><Button type="button" variant="secondary" onClick={() => setPreselectedRetry(value => value + 1)}>{translate(language, "retry")}</Button></div> : null}
+      <Field label={translate(language, "groupPosition")}><TextInput name="group_position" list="group-position-options" required value={groupPosition} onChange={event => setGroupPosition(event.target.value)} /></Field>
       <div className="grid gap-2 rounded-md border border-[#D7DEE8] bg-lightgray p-3 text-sm font-bold text-navy md:col-span-2 md:grid-cols-4">
         {SOURCING_CHANNELS.map((channel) => <label key={channel.enabled} className="flex items-center gap-2"><input name={channel.enabled} type="checkbox" /> {channel.label}</label>)}
       </div>
       <section className="grid gap-3 rounded-md border border-[#C9D5E6] bg-[#F8FAFD] p-3 md:col-span-2">
         <div><h3 className="font-semibold text-navy">{translate(language, "linkRequisitions")}</h3><p className="mt-1 text-sm text-slate">{translate(language, "groupRequisitionSiteHint")}</p></div>
-        <div className="flex flex-wrap items-end gap-2"><Field className="min-w-[16rem] flex-1" label={translate(language, "docId")}><CreateSelectInput value={pendingDocId} onChange={(event) => setPendingDocId(event.target.value)}><option value="">{translate(language, "selectRequisitionOption")}</option>{eligibleRequisitions.map((row) => <option key={row.doc_id} value={row.doc_id}>{requisitionOptionLabel(row)}</option>)}</CreateSelectInput></Field><Button type="button" size="icon-sm" variant="secondary" icon={<Plus size={17} />} aria-label={translate(language, "addRequisition")} title={translate(language, "addRequisition")} onClick={addRequisition} disabled={!pendingDocId} /></div>
-        <div className="grid gap-2">{selectedRequisitions.map((row) => <div key={row.doc_id} className="flex min-w-0 items-center gap-2 rounded border border-[#D7DEE8] bg-white px-3 py-2"><input type="hidden" name="doc_ids" value={row.doc_id} /><p className="min-w-0 flex-1 truncate text-sm font-semibold text-navy" title={`${row.doc_id} · ${row.position} · ${row.site} · ${row.person_in_charge ?? translate(language, "unassigned")}`}>{row.doc_id} · {row.position} · {row.site} · {row.person_in_charge ?? translate(language, "unassigned")}</p><Button type="button" size="icon-sm" variant="ghost" className="text-danger hover:bg-danger/10 hover:text-danger" icon={<X size={16} />} onClick={() => setSelectedDocIds((ids) => ids.filter((id) => id !== row.doc_id))} aria-label={translate(language, "removeRequisition", { docId: row.doc_id })} /></div>)}</div>
+        <div className="flex flex-wrap items-end gap-2"><div className="min-w-[16rem] flex-1"><AuthorizedRequisitionLookup client={client} accessScope={accessScope} language={language} filters={{ ...lookupScope, ...(selectedSite ? { headerSite: selectedSite } : {}), status: "ongoing", homeTab: "open_headcount", managedOnly: true, unmatchedOnly: true }} value={pendingDocId} selectedRow={pendingRequisition} onSelect={row => { setPendingRequisition(row); setPendingDocId(row?.doc_id ?? ""); }} label={translate(language, "docId")} name="pending_doc_id" /></div><Button type="button" size="icon-sm" variant="secondary" icon={<Plus size={17} />} aria-label={translate(language, "addRequisition")} title={translate(language, "addRequisition")} onClick={addRequisition} disabled={!pendingDocId || !pendingRequisition || selectedRequisitions.some(row => row.doc_id === pendingDocId)} /></div>
+        <div className="grid gap-2">{selectedRequisitions.map((row) => <div key={row.doc_id} className="flex min-w-0 items-center gap-2 rounded border border-[#D7DEE8] bg-white px-3 py-2"><input type="hidden" name="doc_ids" value={row.doc_id} /><p className="min-w-0 flex-1 truncate text-sm font-semibold text-navy" title={`${row.doc_id} · ${row.position} · ${row.site} · ${row.person_in_charge ?? translate(language, "unassigned")}`}>{row.doc_id} · {row.position} · {row.site} · {row.person_in_charge ?? translate(language, "unassigned")}</p><Button type="button" size="icon-sm" variant="ghost" className="text-danger hover:bg-danger/10 hover:text-danger" icon={<X size={16} />} onClick={() => setSelectedRequisitions(rows => rows.filter(item => item.doc_id !== row.doc_id))} aria-label={translate(language, "removeRequisition", { docId: row.doc_id })} /></div>)}</div>
         {selectedRequisitions.length === 0 ? <p className="text-sm font-medium text-danger">{translate(language, "selectAtLeastOneRequisition")}</p> : null}
       </section>
-      <DataLists data={data} />
     </div>
   );
-}
-
-function siteRecruiterCanManageRequisition(requisition: Pick<EnrichedRequisition, "site" | "person_in_charge">, profile: DashboardData["profile"]) {
-  if (profile?.role !== "site_recruiter") return true;
-  const site = (profile.site ?? "").trim().toLocaleLowerCase();
-  const nickname = (profile.nickname ?? profile.full_name ?? "").trim().toLocaleLowerCase();
-  return Boolean(site && requisition.site.trim().toLocaleLowerCase() === site)
-    || Boolean(nickname && (requisition.person_in_charge ?? "").trim().toLocaleLowerCase() === nickname);
-}
-
-function isPimEligible(requisition: EnrichedRequisition, offers: DashboardData["offers"], logs: DashboardData["requisition_logs"]) {
-  const today = todayDate();
-  const monthStart = `${today.slice(0, 7)}-01`;
-  const monthEnd = `${today.slice(0, 7)}-${new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 0)).getUTCDate()}`;
-  const prDate = dateOnly(requisition.pr_approved_date);
-  if (!prDate || requisition.status === "cancel" || prDate > monthEnd) return false;
-  const filledLogDate = logs.filter((log) => log.doc_id === requisition.doc_id && log.status === "filled").map((log) => dateOnly(log.log_date)).filter(Boolean).sort().at(-1);
-  const closeDate = filledLogDate ?? offers.filter((offer) => offer.doc_id === requisition.doc_id).map((offer) => dateOnly(offer.accepted_date)).filter(Boolean).sort().at(-1) ?? null;
-  return !closeDate || closeDate >= monthStart;
-}
-
-function isValidCalendarDate(value: string) {
-  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return false;
-  const [, year, month, day] = match.map(Number);
-  const parsed = new Date(Date.UTC(year, month - 1, day));
-  return parsed.getUTCFullYear() === year && parsed.getUTCMonth() === month - 1 && parsed.getUTCDate() === day;
-}
-
-function welcomeRatioBucket(ratio: number): WelcomeRatioBucket {
-  if (ratio >= 100) return 100;
-  if (ratio >= 75) return 75;
-  if (ratio >= 50) return 50;
-  if (ratio >= 25) return 25;
-  return 0;
-}
-
-function welcomeRatioMessageKey(bucket: WelcomeRatioBucket) {
-  return `welcomeFilledRatioMessage${bucket}`;
 }
 
 function todayDate() {
@@ -3489,7 +4009,7 @@ function CurrentStageEditModal({ candidate, stage, meeting, templates, profiles,
   const [mode, setMode] = useState<"estimate" | "teams">("estimate");
   const [estimate, setEstimate] = useState(""), [interviewer, setInterviewer] = useState(""), [remark, setRemark] = useState(""), [error, setError] = useState<string | null>(null);
   useEffect(() => { setMode("estimate"); setEstimate(stage?.estimated_action_date ?? ""); setInterviewer(stage?.interviewer ?? ""); setRemark(stage?.remark ?? ""); setError(null); }, [stage?.estimated_action_date, stage?.interviewer, stage?.remark, stage?.stage_instance_id]);
-  async function saveEstimate() { if (!candidate || !stage?.stage_instance_id || !stage.updated_at) return; try { setError(null); await onSaveEstimate({ candidate_id: candidate.candidate_id, stage_instance_id: stage.stage_instance_id, expected_updated_at: stage.updated_at, pending: { opened_date: stage.log_date, estimated_action_date: estimate || null, interviewer: interviewer.trim() || null, remark: remark.trim() || null } }); } catch (saveError) { setError(saveError instanceof Error ? saveError.message : "Could not update the estimated date."); } }
+  async function saveEstimate() { if (!candidate || !stage?.stage_instance_id || !stage.updated_at) return; try { setError(null); await onSaveEstimate({ candidate_id: candidate.candidate_id, application_id: candidate.application_id, stage_instance_id: stage.stage_instance_id, expected_updated_at: stage.updated_at, pending: { opened_date: stage.log_date, estimated_action_date: estimate || null, interviewer: interviewer.trim() || null, remark: remark.trim() || null } }); } catch (saveError) { setError(saveError instanceof Error ? saveError.message : "Could not update the estimated date."); } }
   return <Modal open={Boolean(candidate && stage)} title="Edit current stage" onClose={onClose} width="max-w-4xl"><div className="grid gap-4"><div className="inline-flex w-full rounded-lg border border-[#D7DEE8] bg-[#F8FAFD] p-1 sm:w-auto"><button type="button" className={`min-h-10 flex-1 rounded-md px-3 text-sm font-semibold transition ${mode === "estimate" ? "bg-white text-navy shadow-sm" : "text-slate"}`} onClick={() => setMode("estimate")}>Estimated action date</button>{teamsAvailable ? <button type="button" className={`min-h-10 flex-1 rounded-md px-3 text-sm font-semibold transition ${mode === "teams" ? "bg-white text-primary shadow-sm" : "text-slate"}`} onClick={() => setMode("teams")}>Teams meeting</button> : null}</div>{mode === "estimate" ? <div className="grid gap-4"><p className="text-sm text-slate">Update the pending-stage estimate without scheduling a meeting.</p><div className="grid gap-4 md:grid-cols-2"><Field label={translate(language, "estimatedActionDate")}><TextInput type="date" value={estimate} onChange={(event) => setEstimate(event.target.value)} /></Field><Field label={translate(language, "interviewer")}><TextInput value={interviewer} onChange={(event) => setInterviewer(event.target.value)} /></Field></div><Field label={translate(language, "remark")}><TextArea rows={3} value={remark} onChange={(event) => setRemark(event.target.value)} /></Field>{error ? <p role="alert" className="text-sm font-semibold text-scarlet">{error}</p> : null}<div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="button" disabled={busy} onClick={saveEstimate}>{busy ? "Saving..." : "Save estimated date"}</Button></div></div> : <TeamsInterviewComposer embedded candidate={candidate} stage={stage} meeting={meeting?.stage_instance_id === stage?.stage_instance_id ? meeting : null} templates={templates} profiles={profiles} language={language} recruiterName={recruiterName} busy={busy} onClose={onClose} onSave={onSaveTeams} />}</div></Modal>;
 }
 
@@ -3618,8 +4138,8 @@ function buildDetailBodyV2(
           </DetailDisclosure>
           <DetailDisclosure title={<SectionHeading icon={<UsersRound size={18} />} title={translate(language, "relatedRecords")} />} summary={`${candidates.length} ${translate(language, "candidatesUnit")} / ${offers.length} ${translate(language, "offersDetail")}`}>
             <div className="grid gap-4">
-              <div><SectionHeading icon={<UserRound size={18} />} title={translate(language, "candidates")} /><div className="mt-2 divide-y divide-[#E7EDF5]">{candidates.length ? candidates.map(row => <a key={row.candidate_id} href={href(`/candidates?detailType=candidate&detailId=${encodeURIComponent(row.candidate_id)}`)} className="block min-w-0 rounded px-1 py-3 hover:bg-[#F1F6FC] focus:outline-none focus:ring-2 focus:ring-primary"><strong className="break-words text-sm font-semibold text-navy">{formatCandidateName(row)}</strong><span className="mt-1 block text-xs text-slate">{row.candidate_id} · {processLabel(row.latest_process, language)}</span></a>) : <p className="py-3 text-sm text-slate">{language === "th" ? "ไม่มีผู้สมัครที่เกี่ยวข้อง" : "No related candidates"}</p>}</div></div>
-              <div><SectionHeading icon={<Files size={18} />} title={translate(language, "offers")} /><div className="mt-2 divide-y divide-[#E7EDF5]">{offers.length ? offers.map(row => <a key={row.offer_id} href={href(`/offers?offerSearch=${encodeURIComponent(row.candidate_id)}`)} className="block rounded px-1 py-3 hover:bg-[#F1F6FC] focus:outline-none focus:ring-2 focus:ring-primary"><strong className="text-sm font-semibold text-navy">{row.candidate_id}</strong><span className="mt-1 block text-xs text-slate">#{row.offer_id} · {translate(language, "accepted")}: {formatDate(row.accepted_date, language)}{row.start_confirmation === "did_not_start" ? ` · ${language === "th" ? "ไม่มาทำงาน" : "Did not start"}` : ""}</span></a>) : <p className="py-3 text-sm text-slate">{language === "th" ? "ไม่มีข้อเสนอที่เกี่ยวข้อง" : "No related offers"}</p>}</div></div>
+               <div><SectionHeading icon={<UserRound size={18} />} title={translate(language, "candidates")} /><div className="mt-2 divide-y divide-[#E7EDF5]">{candidates.length ? candidates.map(row => <a key={row.candidate_id} href={href(`/candidates?detailType=candidate&detailId=${encodeURIComponent(row.candidate_id)}`)} className="block min-w-0 rounded px-1 py-3 hover:bg-[#F1F6FC] focus:outline-none focus:ring-2 focus:ring-primary"><strong className="break-words text-sm font-semibold text-navy">{formatCandidateName(row)}</strong><span className="mt-1 block text-xs text-slate">{formatRecruitmentId(row.candidate_id)} · {processLabel(row.latest_process, language)}</span></a>) : <p className="py-3 text-sm text-slate">{language === "th" ? "ไม่มีผู้สมัครที่เกี่ยวข้อง" : "No related candidates"}</p>}</div></div>
+               <div><SectionHeading icon={<Files size={18} />} title={translate(language, "offers")} /><div className="mt-2 divide-y divide-[#E7EDF5]">{offers.length ? offers.map(row => <a key={row.offer_id} href={href(`/offers?offerSearch=${encodeURIComponent(row.candidate_id)}`)} className="block rounded px-1 py-3 hover:bg-[#F1F6FC] focus:outline-none focus:ring-2 focus:ring-primary"><strong className="text-sm font-semibold text-navy">{formatRecruitmentId(row.candidate_id)}</strong><span className="mt-1 block text-xs text-slate">#{row.offer_id} · {translate(language, "accepted")}: {formatDate(row.accepted_date, language)}{row.start_confirmation === "did_not_start" ? ` · ${language === "th" ? "ไม่มาทำงาน" : "Did not start"}` : ""}</span></a>) : <p className="py-3 text-sm text-slate">{language === "th" ? "ไม่มีข้อเสนอที่เกี่ยวข้อง" : "No related offers"}</p>}</div></div>
             </div>
           </DetailDisclosure>
           <DetailDisclosure title={<SectionHeading icon={<Activity size={18} />} title={translate(language, "history")} />} summary={String(history.length)}>
@@ -3632,7 +4152,7 @@ function buildDetailBodyV2(
 
   const candidate = enrichCandidates(data).find((row) => row.candidate_id === detail.id);
   if (!candidate) return { title: "Candidate", body: <p className="text-sm font-bold text-slate">Record not found.</p> };
-  const logs = latestLogsForCandidate(data, candidate.candidate_id);
+  const logs = applicationLogs(data, candidate);
   const stageRecords = pipelineStageRecords(logs, data.change_logs).sort((a, b) => {
     const stageOrder = ACTIVE_PIPELINE_STAGES.indexOf(a.stage) - ACTIVE_PIPELINE_STAGES.indexOf(b.stage);
     return stageOrder || a.round - b.round || a.logId - b.logId;
@@ -3641,18 +4161,10 @@ function buildDetailBodyV2(
   const recentCompletedStageRecords = completedStageRecords.slice(-3).reverse();
   const olderCompletedStageRecords = completedStageRecords.slice(0, -3).reverse();
   const canEditCurrentPending = candidatePipelineCapability(candidate, logs, data.profile).canWrite;
-  const canEditOffers = canWrite && (
-    data.profile?.role === "system_admin" ||
-    data.profile?.role === "admin_recruiter" ||
-    (data.profile?.role === "site_recruiter" &&
-      candidate.site?.trim().toLowerCase() === data.profile.site?.trim().toLowerCase() &&
-      [data.profile.nickname, data.profile.full_name]
-        .filter((name): name is string => Boolean(name?.trim()))
-        .some((name) => candidate.person_in_charge?.trim().toLowerCase() === name.trim().toLowerCase()))
-  );
-  const offers = data.offers.filter((row) => row.candidate_id === candidate.candidate_id);
+  const canEditOffers = canWrite && Boolean(candidate.group_id && canManageApplicationGroup(data,candidate.group_id));
+  const offers = data.offers.filter((row) => belongsToApplication(row, candidate));
   const references = data.candidate_references.filter((row) => row.candidate_id === candidate.candidate_id);
-  const referenceChecks = new Map(data.candidate_reference_checks.map((row) => [row.reference_id, row]));
+  const referenceChecks = new Map(data.candidate_reference_checks.filter(row => !candidate.application_id || row.application_id === candidate.application_id).map((row) => [row.reference_id, row]));
   const availableReferenceCount = references.filter((row) => row.status === "available").length;
   const checkedReferenceCount = references.filter((row) => row.status === "available" && referenceChecks.has(row.reference_id)).length;
   const updateDisabledReason = candidateProcessDisabledReason(candidate, logs, data.profile);
@@ -3665,7 +4177,7 @@ function buildDetailBodyV2(
   const rejectionLetterAlreadySent = Boolean(failedLog && data.rejection_letter_drafts.some((draft) => draft.candidate_id === candidate.candidate_id && draft.failed_stage_instance_id === failedLog.stage_instance_id && draft.status === "sent"));
 
   return {
-    title: `${candidate.candidate_id} / ${formatCandidateName(candidate)}`,
+    title: `${formatRecruitmentId(candidate.candidate_id)} / ${formatCandidateName(candidate)}`,
     headerContent: <CandidateDetailHeader candidate={candidate} language={language} />,
       headerActions: (
         <div className="flex items-center gap-1">
@@ -3681,7 +4193,7 @@ function buildDetailBodyV2(
               id: "delete-record",
               label: translate(language, "deleteRecord"),
               tone: "danger" as const,
-              onSelect: () => onDeleteRecord("app_delete_recruitment_record", { entity: "candidate", id: candidate.candidate_id }, translate(language, "deleteRecordSummary", { entity: translate(language, "candidate"), id: candidate.candidate_id }))
+              onSelect: () => onDeleteRecord("app_delete_recruitment_record", { entity: "candidate", id: candidate.candidate_id }, translate(language, "deleteRecordSummary", { entity: translate(language, "candidate"), id: formatRecruitmentId(candidate.candidate_id) }))
             }] : []),
             ...(candidate.doc_ids[0] ? [{ id: "requisition", href: href(`/requisitions?detailType=requisition&detailId=${encodeURIComponent(candidate.doc_ids[0])}`), label: "View requisition" }] : []),
             { id: "same-group", href: href(`/candidates?candSearch=${encodeURIComponent(candidate.group_position ?? candidate.doc_group_id ?? "")}`), label: "Same group" },
@@ -3694,14 +4206,14 @@ function buildDetailBodyV2(
       <div className="candidate-detail-workspace grid min-w-0 gap-5">
         <InlineDataQualityIssues
           canResolve={(issue) => canEditOffers && issue.entity === "offer" && offers.some((offer) => String(offer.offer_id) === issue.entityId && offer.accepted_date && offer.first_working_date && offer.first_working_date <= today() && offer.start_confirmation === null)}
-          issues={issues}
+          issues={issues.filter(issue => issue.workspaceCode !== "duplicateCandidate")}
           language={language}
           onResolve={(issue) => {
             const offer = offers.find((row) => String(row.offer_id) === issue.entityId);
             if (offer) onConfirmOfferStart(offer);
           }}
         />
-        <section className="rounded-xl border border-[#D7DEE8] bg-white p-4 shadow-[0_10px_28px_rgba(11,19,43,0.035)] sm:p-5">
+        <section className="min-w-0 rounded-xl border border-[#D7DEE8] bg-white p-4 shadow-[0_10px_28px_rgba(11,19,43,0.035)] sm:p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <SectionHeading icon={<JourneyTrendIcon />} title="Candidate Pipeline Journey" />
             {!updateDisabledReason.blocked ? <Button type="button" size="sm" variant="primary" icon={<BriefcaseBusiness size={17} />} disabled={!canWrite} onClick={() => onUpdateCandidate(candidate.candidate_id)}>Update</Button> : null}
@@ -3709,29 +4221,25 @@ function buildDetailBodyV2(
           {updateDisabledReason.blocked ? <div className="mt-3"><DisabledReasonHint language={language} reason={updateDisabledReason} /></div> : null}
           <div className="mt-4"><CandidateJourney language={language} logs={logs} /></div>
         </section>
-        {pendingInterview ? <section className="rounded-xl border border-[#D7DEE8] bg-white p-4 shadow-[0_10px_28px_rgba(11,19,43,0.035)] sm:p-5">
+        {pendingInterview ? <section className="min-w-0 rounded-xl border border-[#D7DEE8] bg-white p-4 shadow-[0_10px_28px_rgba(11,19,43,0.035)] sm:p-5">
           <div className="flex flex-wrap items-start justify-between gap-3"><div><SectionHeading icon={<CalendarPlus size={19} />} title="Teams interview" /><p className="mt-1 text-sm text-slate">{processLabel(pendingInterview.recruitment_process, language)} · {interviewMeeting ? interviewMeeting.status === "scheduled" ? "Scheduled" : interviewMeeting.status === "failed" ? "Scheduling failed — use Current Stage Edit to retry." : "Updating meeting…" : "No meeting scheduled"}</p></div></div>
           {interviewMeeting ? <div className="mt-3 grid gap-1 rounded-lg bg-[#F8FAFD] p-3 text-sm text-slate"><p><strong className="text-navy">Bangkok time:</strong> {formatBangkokMeetingDateTime(interviewMeeting.starts_at, language)}</p><p><strong className="text-navy">Organizer:</strong> {interviewMeeting.organizer_mailbox ?? "Shared HR mailbox"}</p><p><strong className="text-navy">Attendees:</strong> {interviewMeeting.interviewer_emails.join(", ")}</p>{interviewMeeting.join_url ? <a className="mt-1 w-fit font-semibold text-primary underline" href={interviewMeeting.join_url} target="_blank" rel="noreferrer">Join Teams meeting</a> : null}{interviewMeeting.failure_summary ? <p role="alert" className="mt-1 font-semibold text-scarlet">{interviewMeeting.failure_summary}</p> : null}</div> : null}
         </section> : null}
-        <section className="rounded-xl border border-[#D7DEE8] bg-white p-4 shadow-[0_10px_28px_rgba(11,19,43,0.035)] sm:p-5">
-          <SectionHeading className="mb-3" icon={<ContactRound size={19} />} title="Candidate profile" />
+        <section className="min-w-0 rounded-xl border border-[#D7DEE8] bg-white p-4 shadow-[0_10px_28px_rgba(11,19,43,0.035)] sm:p-5">
+          <SectionHeading className="mb-3" icon={<ContactRound size={19} />} title={language === "th" ? "รายละเอียดใบสมัคร" : "Application details"} />
         <DetailGrid workspace language={language} rows={[
-          { label: translate(language, "phoneNo"), value: formatThaiMobilePhone(candidate.phone_no), copyValue: candidate.phone_no, icon: <Phone size={18} /> },
-          { label: translate(language, "email"), value: candidate.email ?? "-", copyValue: candidate.email, icon: <Mail size={18} /> },
-          { label: translate(language, "nickname"), value: candidate.nickname ?? "-", copyValue: candidate.nickname, icon: <UserRound size={18} /> },
           { label: "Group ID", value: candidate.group_id ?? candidate.doc_group_id ?? "-", copyValue: candidate.group_id ?? candidate.doc_group_id, icon: <UsersRound size={18} /> },
           { label: "Doc IDs", value: candidate.doc_ids.join(", ") || "-", copyValue: candidate.doc_ids.join(", ") || undefined, icon: <Files size={18} /> },
           { label: "Group Position", value: candidate.group_position ?? "-", copyValue: candidate.group_position, icon: <BriefcaseBusiness size={18} /> },
           { label: "Site", value: candidate.site ?? "-", copyValue: candidate.site, icon: <Building2 size={18} /> },
           { label: "Owner", value: candidate.person_in_charge ?? "-", copyValue: candidate.person_in_charge, icon: <UserRound size={18} /> },
-          { label: "Channel", value: candidate.channel ?? "-", copyValue: candidate.channel, icon: <Send size={18} /> },
-          { label: "Reference", value: candidate.ref_name ?? "-", copyValue: candidate.ref_name, icon: <Bookmark size={18} /> }
         ]} />
+          <CandidateApplicationDetailsExtras />
         </section>
-        {failedLog ? <DetailDisclosure title="Rejection letters" summary={`${data.rejection_letter_drafts.filter((draft) => draft.candidate_id === candidate.candidate_id).length} recorded`}>
+        {failedLog ? <DetailDisclosure title="Rejection letters" summary={`${data.rejection_letter_drafts.filter((draft) => draft.candidate_id === candidate.candidate_id && logs.some(log=>log.stage_instance_id===draft.failed_stage_instance_id)).length} recorded`}>
           <div className="grid gap-2">
-            {data.rejection_letter_drafts.filter((draft) => draft.candidate_id === candidate.candidate_id).map((draft) => <div key={draft.draft_id} className="rounded-md border border-[#D7DEE8] bg-white p-3 text-sm"><strong className="text-navy">{draft.status === "sent" ? "Email sent" : draft.status === "draft_created" ? "Outlook draft created" : draft.status === "creating" ? "Creating Outlook draft" : draft.status === "failed" ? "Email delivery failed" : "Sending email"}</strong><p className="mt-1 text-slate">{draft.recipient_email} · {formatDate(draft.created_at.slice(0, 10), language)}</p>{draft.shared_mailbox ? <p className="text-xs text-slate">Shared mailbox: {draft.shared_mailbox}</p> : null}{draft.failure_summary ? <p className="mt-1 text-xs text-scarlet">{draft.failure_summary}</p> : null}{draft.status === "failed" && canWrite ? <Button type="button" size="sm" variant="secondary" className="mt-2" onClick={() => onCreateRejectionLetter(candidate, draft.draft_id)}>Retry email</Button> : null}</div>)}
-            {data.rejection_letter_drafts.filter((draft) => draft.candidate_id === candidate.candidate_id).length === 0 ? <p className="text-sm text-slate">No rejection letters have been sent.</p> : null}
+            {data.rejection_letter_drafts.filter((draft) => draft.candidate_id === candidate.candidate_id && logs.some(log=>log.stage_instance_id===draft.failed_stage_instance_id)).map((draft) => <div key={draft.draft_id} className="rounded-md border border-[#D7DEE8] bg-white p-3 text-sm"><strong className="text-navy">{draft.status === "sent" ? "Email sent" : draft.status === "draft_created" ? "Outlook draft created" : draft.status === "creating" ? "Creating Outlook draft" : draft.status === "failed" ? "Email delivery failed" : "Sending email"}</strong><p className="mt-1 text-slate">{draft.recipient_email} · {formatDate(draft.created_at.slice(0, 10), language)}</p>{draft.shared_mailbox ? <p className="text-xs text-slate">Shared mailbox: {draft.shared_mailbox}</p> : null}{draft.failure_summary ? <p className="mt-1 text-xs text-scarlet">{draft.failure_summary}</p> : null}{draft.status === "failed" && canWrite ? <Button type="button" size="sm" variant="secondary" className="mt-2" onClick={() => onCreateRejectionLetter(candidate, draft.draft_id)}>Retry email</Button> : null}</div>)}
+            {data.rejection_letter_drafts.filter((draft) => draft.candidate_id === candidate.candidate_id && logs.some(log=>log.stage_instance_id===draft.failed_stage_instance_id)).length === 0 ? <p className="text-sm text-slate">No rejection letters have been sent.</p> : null}
           </div>
         </DetailDisclosure> : null}
         <DetailDisclosure title={<SectionHeading icon={<UsersRound size={18} />} title={translate(language, "contactReferences")} />} summary={translate(language, "referenceProgress", { checked: checkedReferenceCount, available: availableReferenceCount })} defaultOpen>
@@ -3912,7 +4420,7 @@ function buildDetailBody(detail: { type: "requisition" | "candidate"; id: string
             totalValue={applicantTotal}
           />
           <DetailList title={translate(language, "candidates")} rows={candidates.map((row) => optionLabel([row.candidate_id, formatCandidateName(row), processLabel(row.latest_process, language)]))} />
-          <DetailList title={translate(language, "offers")} rows={offers.map((row) => `${row.candidate_id} - ${translate(language, "acceptedLower")} ${formatDate(row.accepted_date, language)}`)} />
+          <DetailList title={translate(language, "offers")} rows={offers.map((row) => `${formatRecruitmentId(row.candidate_id)} - ${translate(language, "acceptedLower")} ${formatDate(row.accepted_date, language)}`)} />
         </div>
       )
     };
@@ -3920,13 +4428,13 @@ function buildDetailBody(detail: { type: "requisition" | "candidate"; id: string
 
   const candidate = enrichCandidates(data).find((row) => row.candidate_id === detail.id);
   if (!candidate) return { title: "Candidate", body: <p className="text-sm font-bold text-slate">Record not found.</p> };
-  const logs = latestLogsForCandidate(data, candidate.candidate_id);
-  const offers = data.offers.filter((row) => row.candidate_id === candidate.candidate_id);
+  const logs = applicationLogs(data, candidate);
+  const offers = data.offers.filter((row) => belongsToApplication(row, candidate));
   const updateDisabledReason = candidateProcessDisabledReason(candidate, logs, data.profile);
   const issues = deriveDataQualityIssues(data).filter((issue) => issue.entityId === candidate.candidate_id || offers.some((offer) => String(offer.offer_id) === issue.entityId));
 
   return {
-    title: `${candidate.candidate_id} · ${formatCandidateName(candidate)}`,
+    title: `${formatRecruitmentId(candidate.candidate_id)} · ${formatCandidateName(candidate)}`,
     body: (
       <div className="grid gap-5">
         {!updateDisabledReason.blocked ? (
@@ -4093,7 +4601,7 @@ function CandidateDetailHeader({ candidate, language }: { candidate: EnrichedCan
     <div className="flex min-w-0 items-center gap-3">
       <span className="grid size-16 shrink-0 place-items-center rounded-full bg-[#F1F6FC] text-primary" aria-hidden="true"><UserRound size={31} strokeWidth={1.8} /></span>
       <div className="min-w-0">
-        <p className="break-words text-xl font-semibold leading-tight text-navy">{formatCandidateName(candidate)} / {candidate.candidate_id}</p>
+        <p className="break-words text-xl font-semibold leading-tight text-navy">{formatCandidateName(candidate)} / {formatRecruitmentId(candidate.candidate_id)}</p>
         <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2">
           <Tag appearance="soft" tone={stageTone}>{processLabel(candidate.latest_process, language)}</Tag>
           <Tag appearance="soft" tone={resultTone}>{resultText(candidate.latest_result, language)}</Tag>
@@ -4149,59 +4657,6 @@ function buildPipelineFunnelRows(applicantTotal: number, stageCounts: PipelineFu
       barRatio: applicantTotal > 0 ? Math.min(row.count / applicantTotal, 1) : null
     };
   });
-}
-
-type DetailGridRow = [string, string] | { label: string; value: string; copyValue?: string | null; icon?: ReactNode; action?: ReactNode };
-
-function DetailGrid({ rows, workspace = false, language = "en" }: { rows: DetailGridRow[]; workspace?: boolean; language?: Language }) {
-  const [copiedLabel, setCopiedLabel] = useState<string | null>(null);
-  async function copyValue(value: string, label: string) {
-    try {
-      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(value);
-      else {
-        const input = document.createElement("textarea");
-        input.value = value;
-        input.style.position = "fixed";
-        input.style.opacity = "0";
-        document.body.appendChild(input);
-        input.select();
-        document.execCommand("copy");
-        input.remove();
-      }
-      setCopiedLabel(label);
-      window.setTimeout(() => setCopiedLabel((current) => current === label ? null : current), 1500);
-    } catch {
-      setCopiedLabel(null);
-    }
-  }
-  return (
-    <div>
-    <dl className={`grid min-w-0 gap-x-6 gap-y-0 ${workspace ? "sm:grid-cols-2" : "rounded-lg border border-[#D7DEE8] bg-lightgray p-4 sm:grid-cols-2"}`}>
-      {rows.map((row, index) => {
-        const item = Array.isArray(row) ? { label: row[0], value: row[1] } : row;
-        const copyValueText = item.copyValue?.trim() || undefined;
-        const copied = copiedLabel === item.label;
-        return <div key={item.label} className={`min-w-0 ${workspace ? "grid grid-cols-[2.25rem_minmax(0,1fr)_auto] items-center gap-1.5 border-b border-[#E7EDF5] py-1.5 last:border-b-0 sm:[&:nth-last-child(-n+2)]:border-b-0" : ""}`}>
-          {workspace ? <span className="grid size-9 place-items-center rounded-lg bg-[#F1F6FC] text-primary" aria-hidden="true">{item.icon ?? detailFieldGlyph(index)}</span> : null}
-          <div className="min-w-0"><dt className="text-[11px] font-medium uppercase tracking-normal leading-tight text-slate">{item.label}</dt>
-          <dd className="mt-px break-words text-sm font-semibold leading-tight text-navy">{item.value}</dd></div>
-          {workspace ? item.action : null}
-          {workspace && copyValueText ? <Button type="button" size="icon-sm" variant="ghost" className="text-slate hover:text-primary" icon={copied ? <CopyCheck size={16} aria-hidden="true" /> : <Copy size={16} aria-hidden="true" />} aria-label={copied ? translate(language, "copied") : translate(language, "copyValue", { label: item.label })} title={copied ? translate(language, "copied") : translate(language, "copyValue", { label: item.label })} onClick={() => void copyValue(copyValueText, item.label)} /> : null}
-        </div>
-      })}
-    </dl>
-      <p className="sr-only" aria-live="polite">{copiedLabel ? translate(language, "copied") : ""}</p>
-    </div>
-  );
-}
-
-function detailFieldGlyph(index: number) {
-  const glyphs = ["☎", "✉", "◌", "◎", "▤", "▣", "⌂", "◉", "↪", "⌑"];
-  return <span className="text-base leading-none">{glyphs[index] ?? "•"}</span>;
-}
-
-function SectionHeading({ className = "", icon, title }: { className?: string; icon: ReactNode; title: string }) {
-  return <h4 className={`inline-flex items-center gap-2 text-lg font-semibold text-navy ${className}`}><span className="text-primary" aria-hidden="true">{icon}</span>{title}</h4>;
 }
 
 function DetailList({ title, rows }: { title: string; rows: string[] }) {
@@ -4281,7 +4736,7 @@ function offerPassHandoffFromResult(result: RpcResult, data: DashboardData): Off
   const candidate = data.candidates.find((row) => row.candidate_id === handoff.candidate_id);
   const docId = handoff.requisitions?.[0]?.doc_id
     ?? data.document_groups.find((row) => row.doc_group_id === candidate?.doc_group_id)?.doc_id;
-  return docId ? { candidateId: handoff.candidate_id, docId, passedDate: handoff.passed_date } : null;
+  return docId ? { candidateId: handoff.candidate_id, applicationId: handoff.application_id, docId, passedDate: handoff.passed_date } : null;
 }
 
 function parseWorkspaceUrlState(): ParsedWorkspaceUrlState {

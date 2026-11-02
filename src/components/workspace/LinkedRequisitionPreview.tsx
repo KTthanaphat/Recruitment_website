@@ -19,6 +19,7 @@ export function LinkedRequisitionPreview({ groupName, language, requisitions, on
   const updatePosition = useCallback(() => {
     const rect = triggerRef.current?.getBoundingClientRect();
     if (!rect) return;
+    if (!rect.width || !rect.height) { setOpen(false); return; }
     const width = Math.min(360, window.innerWidth - 24);
     const top = window.innerHeight - rect.bottom >= 220 || rect.top < 220 ? rect.bottom + 6 : Math.max(12, rect.top - Math.min(320, window.innerHeight - 24) - 6);
     setPosition({ top, left: Math.max(12, Math.min(rect.left, window.innerWidth - width - 12)), width });

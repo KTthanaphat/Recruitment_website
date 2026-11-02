@@ -1,12 +1,12 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Info } from "lucide-react";
-import { SOURCING_CHANNELS, pipelineDisplayLabel } from "@/lib/constants";
+import { Button } from "@/components/ui/Button";
+import { SOURCING_CHANNELS, pipelineDisplayLabel, type PipelineDisplayStage } from "@/lib/constants";
 import { formatDate } from "@/lib/format";
 import { translate } from "@/lib/i18n/dictionary";
-import { sourcingApplicants } from "@/lib/operations";
 import { SOURCING_CHANNEL_COLORS, UNKNOWN_SOURCING_CHANNEL_COLOR } from "@/lib/sourcing-colors";
-import { deriveSourcingStageChannels, type StageChannelKey } from "@/lib/sourcing-stage-channels";
-import type { DashboardData, Language, SourcingLifecycleRow } from "@/types/recruitment";
+import type { SourcingSummary, SourcingStageChannelKey } from "@/lib/dashboard-summary-client";
+import type { Language } from "@/types/recruitment";
 
 type Point = { x: number; y: number };
 
@@ -54,34 +54,33 @@ function SummaryHelp({ label, description, language }: { label: string; descript
   </span>;
 }
 
-function stageChannelLabel(key: StageChannelKey, language: Language) {
+function stageChannelLabel(key: SourcingStageChannelKey, language: Language) {
   return key === "unknown"
     ? translate(language, "sourcingUnknownChannel")
     : SOURCING_CHANNELS.find((channel) => channel.enabled === key)?.label ?? key;
 }
 
-function stageChannelColor(key: StageChannelKey) {
+function stageChannelColor(key: SourcingStageChannelKey) {
   return key === "unknown" ? UNKNOWN_SOURCING_CHANNEL_COLOR : SOURCING_CHANNEL_COLORS[key];
 }
 
-export function SourcingSummaryCharts({ data, language, rows, selectedWeek, selectedRow }: {
-  data: DashboardData;
+export function SourcingSummaryCharts({ summary, language, loading = false, error = false, onRetry }: {
+  summary: SourcingSummary | null;
   language: Language;
-  rows: SourcingLifecycleRow[];
-  selectedWeek: string;
-  selectedRow: SourcingLifecycleRow | null;
+  loading?: boolean;
+  error?: boolean;
+  onRetry?: () => void;
 }) {
   const gradientId = useId().replaceAll(":", "");
   const trendRef = useRef<SVGSVGElement>(null);
   const [trendWidth, setTrendWidth] = useState(240);
 
-  const expectedRows = rows.filter((row) => row.week_start <= selectedWeek && (!selectedRow || row.group.group_id === selectedRow.group.group_id));
-  const completedRows = expectedRows.filter((row) => row.status === "saved");
-  const applicants = completedRows.length ? completedRows.reduce((sum, row) => sum + (sourcingApplicants(row.update) ?? 0), 0) : null;
-  const selectedApplicants = selectedRow?.week_start === selectedWeek && selectedRow.status === "saved" ? sourcingApplicants(selectedRow.update) : null;
-  const updatedWeeks = expectedRows.filter((row) => row.update !== null).length;
-  const completeness = expectedRows.length ? Math.round(updatedWeeks / expectedRows.length * 100) : 0;
-  const weeks = expectedRows.slice(0, 8).reverse();
+  const applicants = summary?.totalApplicants ?? null;
+  const selectedApplicants = summary?.selectedApplicants ?? null;
+  const expectedCount = summary?.expectedRows ?? 0;
+  const updatedWeeks = summary?.updatedWeeks ?? 0;
+  const completeness = summary?.completeness ?? 0;
+  const weeks = [...(summary?.weeks ?? [])].reverse();
   useEffect(() => {
     const chart = trendRef.current;
     if (!chart) return;
@@ -91,7 +90,7 @@ export function SourcingSummaryCharts({ data, language, rows, selectedWeek, sele
     observer.observe(chart);
     return () => observer.disconnect();
   }, [weeks.length]);
-  const values = weeks.map((row) => row.status === "saved" ? sourcingApplicants(row.update) : null);
+  const values = weeks.map((row) => row.applicants);
   const maximum = Math.max(0, ...values.filter((value): value is number => value !== null));
   const scale = maximum > 0 ? Math.ceil(maximum * 1.1 / 10) * 10 : 1;
   const ticks = maximum > 0 ? [0, scale / 2, scale] : [0];
@@ -112,7 +111,7 @@ export function SourcingSummaryCharts({ data, language, rows, selectedWeek, sele
     .map((channel, index) => ({
       key: channel.enabled,
       label: channel.label,
-      value: completedRows.reduce((sum, row) => sum + (row.update?.[channel.enabled] ? Number(row.update[channel.count] ?? 0) : 0), 0),
+      value: summary?.channels[channel.enabled] ?? 0,
       index,
       color: SOURCING_CHANNEL_COLORS[channel.enabled]
     }))
@@ -137,10 +136,14 @@ export function SourcingSummaryCharts({ data, language, rows, selectedWeek, sele
     };
   });
 
-  const stageData = selectedRow ? deriveSourcingStageChannels(data, selectedRow.group.group_id, selectedWeek) : null;
+  const stageData = summary?.stageChannels ?? null;
   const stageMax = Math.max(1, ...(stageData?.stages.map((stage) => stage.total) ?? []));
 
   const cardClass = "min-w-0 rounded-xl border border-[#D7DEE8] bg-white p-3 shadow-[0_8px_24px_rgba(11,19,43,0.05)]";
+
+  if (loading || !summary || error) return <section data-testid="workspace-sourcing-summary" className="mb-4 min-w-0 rounded-xl border border-[#D7DEE8] bg-white p-3">
+    {loading ? <p role="status" className="text-sm text-slate">{translate(language, "loading")}</p> : <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-danger"><span>{language === "th" ? "โหลดสรุปข้อมูลจัดหาไม่สำเร็จ" : "Could not load the sourcing summary."}</span>{onRetry ? <Button type="button" size="sm" variant="secondary" onClick={onRetry}>{translate(language, "retry")}</Button> : null}</div>}
+  </section>;
 
   return <section data-testid="workspace-sourcing-summary" className="mb-4 min-w-0">
     <div data-testid="workspace-sourcing-summary-row" className="grid min-w-0 gap-2 min-[1080px]:grid-cols-[minmax(0,30fr)_minmax(0,34fr)_minmax(0,36fr)]">
@@ -157,8 +160,8 @@ export function SourcingSummaryCharts({ data, language, rows, selectedWeek, sele
           <h3 className="mt-1 text-xs font-medium text-slate">{translate(language, "sourcingTrend")}</h3>
         </div>
         <div data-testid="workspace-sourcing-completeness" className="mt-2 border-t border-[#E4E9F2] pt-2">
-          <div className="mb-2 flex items-center justify-between gap-2 text-xs"><h3 className="font-medium text-slate">{translate(language, "sourcingWeeklyCompleteness")}</h3><span className="shrink-0 font-semibold tabular-nums text-navy">{updatedWeeks}/{expectedRows.length} ({completeness}%)</span></div>
-          <div className="h-1.5 overflow-hidden rounded-full bg-[#E4E9F2]" role="progressbar" aria-label={translate(language, "sourcingWeeklyCompleteness")} aria-valuemin={0} aria-valuemax={100} aria-valuenow={completeness} aria-valuetext={`${updatedWeeks}/${expectedRows.length} (${completeness}%)`}><div className="h-full rounded-full bg-primary" style={{ width: completeness + "%" }} /></div>
+          <div className="mb-2 flex items-center justify-between gap-2 text-xs"><h3 className="font-medium text-slate">{translate(language, "sourcingWeeklyCompleteness")}</h3><span className="shrink-0 font-semibold tabular-nums text-navy">{updatedWeeks}/{expectedCount} ({completeness}%)</span></div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-[#E4E9F2]" role="progressbar" aria-label={translate(language, "sourcingWeeklyCompleteness")} aria-valuemin={0} aria-valuemax={100} aria-valuenow={completeness} aria-valuetext={`${updatedWeeks}/${expectedCount} (${completeness}%)`}><div className="h-full rounded-full bg-primary" style={{ width: completeness + "%" }} /></div>
         </div>
       </div>
 
@@ -185,8 +188,8 @@ export function SourcingSummaryCharts({ data, language, rows, selectedWeek, sele
         <div className="flex min-w-0 items-center gap-1"><h2 className="min-w-0 text-base font-semibold text-navy">{translate(language, "sourcingStageChannels")}</h2><SummaryHelp label={translate(language, "sourcingStageChannels")} description={translate(language, "sourcingStageHelp")} language={language} /></div>
         <p className="mt-1 text-xs text-slate">{translate(language, "sourcingStageThrough", { date: formatDate(stageData?.cutoff, language) })}</p>
         <div data-testid="workspace-sourcing-stage-bars" className="mt-2 divide-y divide-dashed divide-[#E4E9F2]">
-          {stageData?.stages.map((stage) => <div key={stage.stage} data-stage={stage.stage} className="grid min-w-0 grid-cols-[8rem_minmax(0,1fr)_1.5rem] items-center gap-1.5 py-1.5 text-xs first:pt-0 last:pb-0" aria-label={pipelineDisplayLabel(stage.stage, language) + ": " + stage.total + " " + translate(language, "candidates") + "; " + stage.segments.map((segment) => stageChannelLabel(segment.key, language) + ": " + segment.count).join(", ")}>
-            <span className="min-w-0 truncate whitespace-nowrap text-slate" title={pipelineDisplayLabel(stage.stage, language)}>{pipelineDisplayLabel(stage.stage, language)}</span>
+          {stageData?.stages.map((stage) => <div key={stage.stage} data-stage={stage.stage} className="grid min-w-0 grid-cols-[8rem_minmax(0,1fr)_1.5rem] items-center gap-1.5 py-1.5 text-xs first:pt-0 last:pb-0" aria-label={pipelineDisplayLabel(stage.stage as PipelineDisplayStage, language) + ": " + stage.total + " " + translate(language, "candidates") + "; " + stage.segments.map((segment) => stageChannelLabel(segment.key, language) + ": " + segment.count).join(", ")}>
+            <span className="min-w-0 truncate whitespace-nowrap text-slate" title={pipelineDisplayLabel(stage.stage as PipelineDisplayStage, language)}>{pipelineDisplayLabel(stage.stage as PipelineDisplayStage, language)}</span>
             <div className="flex h-4 min-w-0 overflow-hidden bg-[#EEF2F7]">{stage.segments.map((segment) => <span key={segment.key} data-channel={segment.key} title={stageChannelLabel(segment.key, language) + ": " + segment.count} className="h-full" style={{ width: segment.count / stageMax * 100 + "%", backgroundColor: stageChannelColor(segment.key) }} />)}</div>
             <span className="text-right font-bold tabular-nums text-navy">{stage.total}</span>
           </div>)}

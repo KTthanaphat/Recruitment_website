@@ -22,8 +22,8 @@ test("pipeline board renders active, failed, passed, aging, and filtered candida
   await expect.poll(async () => phoneStage.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe("rgb(255, 255, 255)");
 
   await expect(page.getByText("Pat Phone")).toBeVisible();
-  await expect(page.locator("#pipeline-candidate-C-PHONE").getByText("Estimated: 25/07/2026")).toBeVisible();
-  await expect(page.locator("#pipeline-candidate-C-AGING").getByText(/Estimated: 20\/07\/2026.*Overdue/)).toBeVisible();
+  await expect(page.locator('[data-candidate-id="C-PHONE"]').getByText("Estimated: 25/07/2026")).toBeVisible();
+  await expect(page.locator('[data-candidate-id="C-AGING"]').getByText(/Estimated: 20\/07\/2026.*Overdue/)).toBeVisible();
   await expect(page.getByText("Nora No Activity")).toBeVisible();
   await expect(page.getByText("Active candidates")).toBeVisible();
   await expect(page.getByText("Aging", { exact: true })).toBeVisible();
@@ -34,10 +34,10 @@ test("pipeline board renders active, failed, passed, aging, and filtered candida
   await expect(page.getByText("Passed Offer - Last 7 Days")).toBeVisible();
   await expect(page.getByText("Olivia Offer Pass")).toBeVisible();
   await expect(page.getByText("Oscar Offer Needed")).toBeVisible();
-  await expect(page.locator("#pipeline-candidate-C-OFFER-NO-OFFER").getByRole("button", { name: "Create offer" })).toBeVisible();
-  await expect(page.locator("#pipeline-candidate-C-OFFER-PASS").getByRole("button", { name: "Create offer" })).toHaveCount(0);
-  await expect(page.locator("#pipeline-candidate-C-AGING").getByRole("button", { name: "Candidate actions for Avery Aging" })).toHaveCSS("color", "rgb(255, 59, 48)");
-  await expect(page.locator("#pipeline-candidate-C-PHONE").getByRole("button", { name: "Candidate actions for Pat Phone" })).toHaveCSS("color", "rgb(255, 59, 48)");
+  await expect(page.locator('[data-candidate-id="C-OFFER-NO-OFFER"]').getByRole("button", { name: "Create offer" })).toBeVisible();
+  await expect(page.locator('[data-candidate-id="C-OFFER-PASS"]').getByRole("button", { name: "Create offer" })).toHaveCount(0);
+  await expect(page.locator('[data-candidate-id="C-AGING"]').getByRole("button", { name: "Candidate actions for Avery Aging" })).toHaveCSS("color", "rgb(255, 59, 48)");
+  await expect(page.locator('[data-candidate-id="C-PHONE"]').getByRole("button", { name: "Candidate actions for Pat Phone" })).toHaveCSS("color", "rgb(255, 59, 48)");
 
   const filterButton = page.getByRole("button", { name: "Pipeline filters" });
   const siteGroupButton = page.locator('button[aria-pressed]').filter({ hasText: /^Site$/ });
@@ -63,6 +63,42 @@ test("pipeline board renders active, failed, passed, aging, and filtered candida
   await page.getByRole("listbox", { name: "Site" }).getByRole("option", { name: "KT1", exact: true }).click();
   await expect(page.getByText("Tina Test")).toBeVisible();
   await expect(page.getByText("Pat Phone")).toHaveCount(0);
+});
+
+test("pipeline actions hydrate and complete the selected application absent from bootstrap", async ({ page }) => {
+  const mock = await installMockSupabase(page, { role: "admin_recruiter" });
+  const source = mock.data.candidates.find(row => row.candidate_id === "C-PHONE")!;
+  const candidateId = "CAN-LAZY-BOARD";
+  const applicationId = "00000000-0000-4000-8000-999999999996";
+  mock.data.candidates.push({ ...source, candidate_id: candidateId, name: "Lazy Board Action", nickname: "Lazy", phone_no: "0812222222", email: "lazy-board@example.com" });
+  mock.data.candidate_applications?.push({ application_id: applicationId, candidate_id: candidateId, group_id: "GRP-ENG", state: "active", closure_reason: null, closed_at: null, created_by: mock.data.profile?.id ?? null, version: 2, created_at: "2026-07-20T00:00:00.000Z", updated_at: "2026-07-24T00:00:00.000Z" });
+  mock.data.candidate_application_assignments?.push({ assignment_id: "10000000-0000-4000-8000-999999999996", application_id: applicationId, group_id: "GRP-ENG", from_group_id: null, started_at: "2026-07-20T00:00:00.000Z", ended_at: null, actor_id: mock.data.profile?.id ?? null, reason: null, attribution_inferred: false });
+  const pending = { application_id: applicationId, log_id: 70002, candidate_id: candidateId, log_date: "2026-07-20", recruitment_process: "Phone Screen" as const, round: 1, interviewer: "Lazy interviewer", result: null, remark: "Lazy pending", estimated_action_date: "2026-07-25", created_at: "2026-07-20T00:00:00.000Z", updated_at: "2026-07-24T00:00:00.000Z", stage_instance_id: "lazy-board-stage", superseded_at: null };
+  mock.data.recruitment_logs.push(pending);
+  mock.excludeBootstrapCandidate(candidateId);
+
+  await page.goto("/pipeline");
+  await expectWorkspaceReady(page);
+  const bootstrapCandidateRead = mock.restReads.find(read => read.table === "candidates" && !read.scopedCandidate);
+  expect(bootstrapCandidateRead?.candidateIds).not.toContain(candidateId);
+  const card = page.locator(`[data-candidate-id="${candidateId}"]`);
+  await expect(card).toBeVisible();
+  await card.getByRole("button", { name: /Candidate actions for Lazy Board Action/ }).click();
+  await expect.poll(() => mock.rpcCalls.some(call => call.endpoint === "app_candidate_profile_detail_v1" && call.payload.p_candidate_id === candidateId)).toBe(true);
+  await expect.poll(() => mock.rpcCalls.some(call => call.endpoint === "app_recruitment_list_v1" && call.payload.p_entity === "pipeline_history" && (call.payload.p_filters as Record<string, unknown>)?.applicationId === applicationId)).toBe(true);
+  const actions = page.getByRole("menu", { name: /Candidate actions for Lazy Board Action/ });
+  await actions.getByRole("menuitem", { name: /Pass Phone Screening for Lazy Board Action/ }).click();
+  const outcome = page.getByRole("dialog", { name: "Complete Stage" });
+  await expect(outcome).toBeVisible();
+  await outcome.getByRole("button", { name: "Review changes" }).click();
+  const confirm = page.getByRole("dialog", { name: "Confirm Save" });
+  await expect(confirm).toBeVisible();
+  expect(mock.data.recruitment_logs.find(row => row.log_id === pending.log_id)?.application_id).toBe(applicationId);
+  await confirm.getByRole("button", { name: "Save changes" }).click();
+  const completed = mock.rpcCalls.find(call => call.endpoint === "app_complete_pipeline_stage_v2");
+  expect(completed?.payload.candidate_id).toBe(candidateId);
+  expect(completed?.payload.stage_instance_id).toBe(pending.stage_instance_id);
+  await expect.poll(() => mock.data.recruitment_logs.find(row => row.log_id === pending.log_id)?.result).toBe(1);
 });
 
 test("pipeline search, grouping, and board filters narrow by pipeline context", async ({ page }) => {
@@ -123,15 +159,19 @@ test("pipeline table shows every stage record and opens the admin correction mod
 });
 
 test("passed Offer card without an offer opens offer creation flow", async ({ page }) => {
-  await installMockSupabase(page, { role: "admin_recruiter" });
+  const mock = await installMockSupabase(page, { role: "admin_recruiter" });
+  const targetApplication = mock.data.candidate_applications?.find(row => row.candidate_id === "C-OFFER-NO-OFFER");
+  expect(targetApplication).toBeTruthy();
   await page.goto("/pipeline");
   await expectWorkspaceReady(page);
 
-  await page.locator("#pipeline-candidate-C-OFFER-NO-OFFER").getByRole("button", { name: "Create offer" }).click();
+  await page.locator('[data-candidate-id="C-OFFER-NO-OFFER"]').getByRole("button", { name: "Create offer" }).click();
   const dialog = page.getByRole("dialog", { name: /Offer/ });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByLabel("Candidate")).toHaveValue("C-OFFER-NO-OFFER");
-  await expect(dialog.getByLabel("Accepted Date")).toHaveValue("2026-07-18");
+  await expect(dialog.locator('input[name="candidate_id"]')).toHaveValue("C-OFFER-NO-OFFER");
+  await expect(dialog.locator('input[name="application_id"]')).toHaveValue(targetApplication!.application_id);
+  await expect(dialog.getByRole("button", { name: "Accepted Date" })).toContainText("18/07/2026");
+  await expect(dialog.locator('input[name="accepted_date"]')).toHaveValue("2026-07-18");
 });
 
 test("viewer can inspect pipeline but cannot update stages or create offers", async ({ page }) => {
@@ -141,8 +181,8 @@ test("viewer can inspect pipeline but cannot update stages or create offers", as
 
   await expect(page.getByText("Pat Phone")).toBeVisible();
   await expect(page.getByRole("button", { name: "Candidate actions for Pat Phone" })).toHaveCount(0);
-  await expect(page.locator("#pipeline-candidate-C-OFFER-NO-OFFER").getByRole("button", { name: "Create offer" })).toHaveCount(0);
-  await page.locator("#pipeline-candidate-C-OFFER-NO-OFFER").getByRole("button", { name: /Oscar Offer Needed/ }).click();
+  await expect(page.locator('[data-candidate-id="C-OFFER-NO-OFFER"]').getByRole("button", { name: "Create offer" })).toHaveCount(0);
+  await page.locator('[data-candidate-id="C-OFFER-NO-OFFER"]').getByRole("button", { name: /Oscar Offer Needed/ }).click();
   await expect(page.getByRole("dialog", { name: /C-OFFER-NO-OFFER/ })).toBeVisible();
   await expect(page.getByRole("dialog", { name: /C-OFFER-NO-OFFER/ }).getByRole("button", { name: /Update process/ })).toHaveCount(0);
 });
@@ -170,7 +210,8 @@ test("candidate card opens detail drawer and can be closed by Escape", async ({ 
   await expect(page.getByRole("dialog", { name: /C-PHONE/ })).toBeVisible();
   await expect(page.getByText("Current stage")).toBeVisible();
   await expect(page.getByText("Pending details")).toBeVisible();
-  await expect(page.getByText("Awaiting outcome")).toBeVisible();
+  await expect(page.getByRole("dialog", { name: /C-PHONE/ }).getByText("Phone Screening / Round 1")).toBeVisible();
+  await expect(page.getByRole("dialog", { name: /C-PHONE/ }).getByText(/Pending details: 09\/07\/2026.*QA Interviewer/)).toBeVisible();
   await expect(page.getByText("Resume Screening")).toBeVisible();
   await expect(page.locator('[data-stage-connector="Resume Screening->Phone Screen"]').first()).toHaveAttribute("data-stage-connector-state", "pending");
   await expect(page.locator('[data-stage-connector="Phone Screen->HR Interview"]').first()).toHaveAttribute("data-stage-connector-state", "unreached");

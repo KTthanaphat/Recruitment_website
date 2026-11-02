@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { assignmentGroup, reassignmentCounts, groupCandidateCount } from "@/lib/applications";
 import { ArrowLeft, BarChart3, BriefcaseBusiness, CheckCircle2, Clock3, FileText, Plus, Send, UserRound, UsersRound } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Button } from "@/components/ui/Button";
@@ -9,14 +10,17 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { RecordActionGroup } from "@/components/ui/Operations";
 import { Panel, SectionTitle } from "@/components/ui/Panel";
 import { Tag } from "@/components/ui/Tag";
+import { SourcingSummaryCharts } from "@/components/sourcing/SourcingSummaryCharts";
+import { loadHomeQualityPage, loadSourcingSummary, type HomeQualityPage, type SourcingSummary } from "@/lib/dashboard-summary-client";
 import { DataQualityIssueCard, SourcingConversionPanel } from "@/components/ui/Workflow";
 import { localizeWorkspaceIssue } from "@/lib/workspace-quality-copy";
 import { ACTIVE_PIPELINE_STAGES, processLabel, SOURCING_CHANNELS } from "@/lib/constants";
 import { enrichCandidates, enrichOffers, enrichRequisitions, enrichSourcingGroups, enrichWorkspaceLinkedGroups } from "@/lib/data";
-import { formatDate, formatDateTime, formatRequisitionCardTitle, formatRequisitionCompactParts, formatRequisitionOptionLabel, formatRequisitionTitle, resultText, statusTone } from "@/lib/format";
+import { formatDate, formatDateTime, formatRecruitmentId, formatRequisitionCardTitle, formatRequisitionCompactParts, formatRequisitionOptionLabel, formatRequisitionTitle, resultText, statusTone } from "@/lib/format";
 import { actionToneLabel, fillReadinessLabel, offerStatusLabel, requisitionStatusLabel, translate } from "@/lib/i18n/dictionary";
 import {
   deriveDataQualityIssues,
+  type DataQualityIssue,
   deriveHiringJourney,
   deriveSourcingConversionMetrics,
   isCandidateAging,
@@ -31,6 +35,10 @@ import { getRequisitionSlaState } from "@/lib/sla";
 import { buildContextualHref, pushWorkspaceUrlState, readWorkspaceUrlState } from "@/lib/workspace-url-state";
 import { WorkspaceBreadcrumbs } from "@/components/workspace/WorkspaceBreadcrumbs";
 import { LinkedRequisitionPreview } from "@/components/workspace/LinkedRequisitionPreview";
+import { useRecruitmentList } from "@/lib/recruitment-list";
+import { loadScopedRequisitionDetail, type ScopedRequisitionDetailResult } from "@/lib/requisition-detail-loader";
+import { loadScopedGroupWorkspace, type ScopedGroupWorkspaceResult } from "@/lib/group-workspace-loader";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
   DashboardData,
   EnrichedCandidate,
@@ -100,7 +108,11 @@ export function HiringWorkspaceView({
   sourcingSlot,
   offerSlot,
   siteFilter = "",
-  ownerFilter = ""
+  ownerFilter = "",
+  listClient = null,
+  accessScope = "",
+  priorityOnly = false,
+  refreshKey = 0
 }: {
   data: DashboardData;
   language: Language;
@@ -117,36 +129,112 @@ export function HiringWorkspaceView({
   offerSlot?: ReactNode;
   siteFilter?: string;
   ownerFilter?: string;
+  listClient?: SupabaseClient | null;
+  accessScope?: string;
+  priorityOnly?: boolean;
+  refreshKey?: number;
 }) {
   const [urlState, setUrlState] = useState(() => readWorkspaceSelection(target));
   const [pickerOpen, setPickerOpen] = useState(() => !readWorkspaceSelection(target).target.type);
   const [pickerScope, setPickerScope] = useState<"ongoing" | "all">("ongoing");
   const [contextCompact, setContextCompact] = useState(false);
+  const [targetDetail, setTargetDetail] = useState<{ key: string; loading: boolean; error: boolean; result: ScopedRequisitionDetailResult | ScopedGroupWorkspaceResult | null }>({ key: "", loading: false, error: false, result: null });
+  const [detailRetry, setDetailRetry] = useState(0);
+  const [qualityRetry, setQualityRetry] = useState(0);
+  const [qualityState, setQualityState] = useState<{ key: string; loading: boolean; error: boolean; page: HomeQualityPage | null }>({ key: "", loading: false, error: false, page: null });
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
+  const selectedTarget = urlState.target;
+  const detailRequestKey = JSON.stringify([selectedTarget.type, selectedTarget.id, weekStart, siteFilter, ownerFilter, priorityOnly, accessScope, refreshKey, detailRetry]);
+  useEffect(() => {
+    if (!selectedTarget.type || !selectedTarget.id || !listClient || !profile?.id || !accessScope) {
+      setTargetDetail({ key: detailRequestKey, loading: false, error: false, result: null });
+      return;
+    }
+    let cancelled = false;
+    setTargetDetail({ key: detailRequestKey, loading: true, error: false, result: null });
+    const identity = { profileId: profile.id, key: accessScope };
+    const request = selectedTarget.type === "requisition"
+      ? loadScopedRequisitionDetail(listClient, { docId: selectedTarget.id, accessScope: identity })
+      : loadScopedGroupWorkspace(listClient, { groupId: selectedTarget.id, selectedWeek: weekStart, scope: { headerSite: siteFilter, headerPic: ownerFilter, priorityOnly }, accessScope: identity });
+    void request.then(result => {
+      if (!cancelled && result.status === "ready" && result.scopeKey === accessScope) setTargetDetail({ key: detailRequestKey, loading: false, error: false, result });
+      else if (!cancelled) setTargetDetail({ key: detailRequestKey, loading: false, error: true, result: null });
+    }).catch(() => { if (!cancelled) setTargetDetail({ key: detailRequestKey, loading: false, error: true, result: null }); });
+    return () => { cancelled = true; };
+  }, [accessScope, detailRequestKey, detailRetry, listClient, ownerFilter, priorityOnly, profile?.id, selectedTarget.id, selectedTarget.type, siteFilter, weekStart]);
+  const matchingDetail = targetDetail.key === detailRequestKey ? targetDetail.result : null;
+  const qualityScope = { headerSite: siteFilter, headerPic: ownerFilter, priorityOnly };
+  const qualityToday = workspaceTodayBangkok();
+  const qualityRequestKey = JSON.stringify([selectedTarget.type, selectedTarget.id, accessScope, qualityScope, qualityToday, refreshKey, qualityRetry]);
+  useEffect(() => {
+    if (!selectedTarget.type || !selectedTarget.id || !listClient || !profile?.id || !accessScope) {
+      setQualityState({ key: qualityRequestKey, loading: false, error: false, page: null });
+      return;
+    }
+    let cancelled = false;
+    setQualityState({ key: qualityRequestKey, loading: true, error: false, page: null });
+    void loadHomeQualityPage(listClient, { scope: qualityScope, groupId: selectedTarget.type === "group" ? selectedTarget.id : null, docId: selectedTarget.type === "requisition" ? selectedTarget.id : null, today: qualityToday, profileKey: accessScope, limit: 25 })
+      .then(page => { if (!cancelled) setQualityState({ key: qualityRequestKey, loading: false, error: false, page }); })
+      .catch(() => { if (!cancelled) setQualityState({ key: qualityRequestKey, loading: false, error: true, page: null }); });
+    return () => { cancelled = true; };
+  }, [accessScope, listClient, profile?.id, qualityRequestKey, qualityRetry, selectedTarget.id, selectedTarget.type, siteFilter, ownerFilter, priorityOnly]);
+  const matchingQualityPage = qualityState.key === qualityRequestKey ? qualityState.page : null;
+  const qualityIssues = matchingQualityPage?.items.map(issue => ({ ...issue, workspaceCode: issue.workspaceCode as DataQualityIssue["workspaceCode"] }) as DataQualityIssue & { cursorId: string }) ?? null;
+  const workspaceData = useMemo(() => {
+    if (!matchingDetail || matchingDetail.status !== "ready") return data;
+    if ("requisition" in matchingDetail) return {
+      ...data,
+      requisitions: [matchingDetail.requisition],
+      document_groups: matchingDetail.documentGroups,
+      position_groups: matchingDetail.groups,
+      offers: matchingDetail.offers,
+      requisition_logs: matchingDetail.history,
+    };
+    return {
+      ...data,
+      requisitions: matchingDetail.requisitions,
+      document_groups: matchingDetail.documentGroups,
+      position_groups: [matchingDetail.group],
+      sourcing_weekly_updates: matchingDetail.sourcingUpdates,
+      offers: matchingDetail.offers,
+    };
+  }, [data, matchingDetail]);
+
   const scopedData = useMemo(() => {
-    const visibleDocIds = new Set(data.requisitions.filter((row) => (
+    const visibleDocIds = new Set(workspaceData.requisitions.filter((row) => (
       canSiteRecruiterViewRequisition(row, profile)
       && (!siteFilter || row.site === siteFilter)
       && (!ownerFilter || row.person_in_charge === ownerFilter)
     )).map((row) => row.doc_id));
-    const documentGroups = data.document_groups.filter((row) => visibleDocIds.has(row.doc_id));
+    const documentGroups = workspaceData.document_groups.filter((row) => visibleDocIds.has(row.doc_id));
     const documentGroupIds = new Set(documentGroups.map((row) => row.doc_group_id));
-    const candidateIds = new Set(data.candidates.filter((row) => Boolean(row.doc_group_id && documentGroupIds.has(row.doc_group_id))).map((row) => row.candidate_id));
+    const candidateIds = new Set(workspaceData.candidates.filter((row) => Boolean(row.doc_group_id && documentGroupIds.has(row.doc_group_id))).map((row) => row.candidate_id));
     return {
-      ...data,
-      requisitions: data.requisitions.filter((row) => visibleDocIds.has(row.doc_id)),
+      ...workspaceData,
+      requisitions: workspaceData.requisitions.filter((row) => visibleDocIds.has(row.doc_id)),
       document_groups: documentGroups,
-      candidates: data.candidates.filter((row) => candidateIds.has(row.candidate_id)),
-      offers: data.offers.filter((row) => visibleDocIds.has(row.doc_id)),
-      recruitment_logs: data.recruitment_logs.filter((row) => candidateIds.has(row.candidate_id))
+      candidates: workspaceData.candidates.filter((row) => candidateIds.has(row.candidate_id)),
+      offers: workspaceData.offers.filter((row) => visibleDocIds.has(row.doc_id)),
+      recruitment_logs: workspaceData.recruitment_logs.filter((row) => candidateIds.has(row.candidate_id))
     };
-  }, [data, ownerFilter, profile, siteFilter]);
+  }, [workspaceData, ownerFilter, profile, siteFilter]);
   const requisitions = useMemo(() => enrichRequisitions(scopedData), [scopedData]);
   const candidates = useMemo(() => enrichCandidates(scopedData), [scopedData]);
   const offers = useMemo(() => enrichOffers(scopedData), [scopedData]);
   const groups = useMemo(() => enrichSourcingGroups(scopedData, weekStart), [scopedData, weekStart]);
-  const allGroups = useMemo(() => enrichWorkspaceLinkedGroups(scopedData, weekStart), [scopedData, weekStart]);
+  const allGroups = useMemo(() => {
+    const rows = enrichWorkspaceLinkedGroups(scopedData, weekStart);
+    if (matchingDetail?.status !== "ready" || !("metrics" in matchingDetail) || !("group" in matchingDetail)) return rows;
+    return rows.map(row => row.group_id === matchingDetail.group.group_id ? {
+      ...row,
+      open_headcount: matchingDetail.metrics.openHeadcount,
+      candidate_count: matchingDetail.metrics.candidateCount,
+      demand_count: matchingDetail.metrics.demandCount,
+      filled_count: matchingDetail.metrics.filledCount,
+      latest_update: matchingDetail.sourcingUpdates.find(update => update.week_start === weekStart || update.week_start === addDays(weekStart, 2)) ?? null,
+    } : row);
+  }, [matchingDetail, scopedData, weekStart]);
   const latestSavedByGroup = useMemo(() => {
     const latest = new Map<string, string>();
     for (const update of scopedData.sourcing_weekly_updates) {
@@ -160,7 +248,6 @@ export function HiringWorkspaceView({
     return groups.filter((group) => group.open_headcount > 0 && group.doc_ids.some((docId) => activeDocIds.has(docId)));
   }, [activeOpenRequisitions, groups]);
   const allIssues = useMemo(() => deriveDataQualityIssues(scopedData), [scopedData]);
-  const selectedTarget = urlState.target;
   useEffect(() => {
     if (selectedTarget.type === "group" && selectedTarget.id && allGroups.some((row) => row.group_id === selectedTarget.id) && !activeOpenGroups.some((row) => row.group_id === selectedTarget.id)) setPickerScope("all");
   }, [activeOpenGroups, allGroups, selectedTarget.id, selectedTarget.type]);
@@ -195,14 +282,15 @@ export function HiringWorkspaceView({
     : selectedTarget.type === "group" && selectedTarget.id
       ? contextForGroup(selectedTarget.id, scopedData, requisitions, candidates, offers, allGroups, contextualHref, language)
       : null;
+  const selectedMetrics = matchingDetail?.status === "ready" ? matchingDetail.metrics : null;
   const groupReadiness = context?.type === "group" ? summarizeGroupReadiness(context.requisitions, candidates) : null;
   const groupTerminalStatus = context?.type === "group" && !groupReadiness ? terminalGroupStatus(context.requisitions) : null;
   const groupSla = context?.type === "group" ? oldestGroupSla(context.requisitions) : null;
-  const activeCandidates = context?.candidates.filter((candidate) => candidate.latest_result !== 0 && !candidate.accepted_date && ACTIVE_PIPELINE_STAGES.includes(candidate.latest_process as never)) ?? [];
+  const activeCandidates = context?.candidates.filter((candidate) => candidate.application_state !== "closed" && candidate.latest_result !== 0 && !candidate.accepted_date && ACTIVE_PIPELINE_STAGES.includes(candidate.latest_process as never)) ?? [];
   const agingCandidates = activeCandidates.filter(isCandidateAging);
   const pendingOffers = context?.offers.filter((offer) => !offer.accepted_date) ?? [];
   const acceptedOffers = context?.offers.filter((offer) => Boolean(offer.accepted_date)) ?? [];
-  const contextIssues = context ? allIssues.filter((issue) =>
+  const contextIssues = context ? matchingDetail?.status === "ready" ? qualityIssues : allIssues.filter((issue) =>
     context.requisitions.some((row) => issue.entityId === row.doc_id)
       || context.candidates.some((row) => issue.entityId === row.candidate_id)
       || context.offers.some((row) => issue.entityId === String(row.offer_id))
@@ -216,15 +304,15 @@ export function HiringWorkspaceView({
     profile,
     weekStart,
     docGroupId: context.docGroupId,
-    issues: contextIssues
+    issues: contextIssues ?? []
   } : null;
   const journey = hiringContext ? context?.type === "group" ? deriveGroupJourney(hiringContext, context.requisitions, language) : deriveHiringJourney(hiringContext) : [];
   const nextJourneyStep = journey.find((step) => step.state === "attention") ?? journey.find((step) => step.state === "current") ?? journey.find((step) => step.state === "not_started");
   const summaryItems = context ? [
-    { label: translate(language, "openHeadcountShort"), value: context.openHeadcount, tone: context.openHeadcount > 0 ? "warning" as const : "success" as const, helper: translate(language, "remainingDemand") },
-    { label: translate(language, "active"), value: `${activeCandidates.length}/${context.candidates.length}`, tone: "teal" as const, helper: translate(language, "activeTotal") },
-    { label: translate(language, "agingCandidates"), value: agingCandidates.length, tone: agingCandidates.length > 0 ? "danger" as const : "success" as const, helper: translate(language, "lastTouchOlderThan7Days") },
-    { label: translate(language, "offersSummaryLabel"), value: `${pendingOffers.length}/${acceptedOffers.length}`, tone: pendingOffers.length > 0 ? "warning" as const : "success" as const, helper: translate(language, "pendingAccepted") }
+    { label: translate(language, "openHeadcountShort"), value: selectedMetrics && "openHeadcount" in selectedMetrics ? selectedMetrics.openHeadcount : context.openHeadcount, tone: (selectedMetrics && "openHeadcount" in selectedMetrics ? selectedMetrics.openHeadcount : context.openHeadcount) > 0 ? "warning" as const : "success" as const, helper: translate(language, "remainingDemand") },
+    { label: translate(language, "active"), value: selectedMetrics && "activeJourneyCount" in selectedMetrics ? `${selectedMetrics.activeJourneyCount}/${selectedMetrics.candidateCount}` : `${activeCandidates.length}/${context.type === "group" ? groupCandidateCount(data, context.id) : new Set(context.candidates.map(row => row.candidate_id)).size}`, tone: "teal" as const, helper: translate(language, "activeTotal") },
+    { label: translate(language, "agingCandidates"), value: selectedMetrics && "agingJourneyCount" in selectedMetrics ? selectedMetrics.agingJourneyCount : agingCandidates.length, tone: (selectedMetrics && "agingJourneyCount" in selectedMetrics ? selectedMetrics.agingJourneyCount : agingCandidates.length) > 0 ? "danger" as const : "success" as const, helper: translate(language, "lastTouchOlderThan7Days") },
+    { label: translate(language, "offersSummaryLabel"), value: selectedMetrics ? `${selectedMetrics.pendingOfferCount}/${selectedMetrics.acceptedOfferCount}` : `${pendingOffers.length}/${acceptedOffers.length}`, tone: (selectedMetrics?.pendingOfferCount ?? pendingOffers.length) > 0 ? "warning" as const : "success" as const, helper: translate(language, "pendingAccepted") }
   ] : [];
 
   useEffect(() => {
@@ -299,7 +387,7 @@ export function HiringWorkspaceView({
             flush={context.type === "group"}
             language={language}
             workspace={{ label: translate(language, "workspace"), href: contextualHref("/workspace"), onSelect: showWorkspaceCatalog }}
-            group={context.groups[0] ? { label: context.groups[0].group_id, href: contextualHref(`/workspace?type=group&id=${encodeURIComponent(context.groups[0].group_id)}&section=overview`), current: !context.primaryRequisition, onSelect: () => showGroup(context.groups[0].group_id) } : undefined}
+            group={context.groups[0] ? { label: formatRecruitmentId(context.groups[0].group_id), href: contextualHref(`/workspace?type=group&id=${encodeURIComponent(context.groups[0].group_id)}&section=overview`), current: !context.primaryRequisition, onSelect: () => showGroup(context.groups[0].group_id) } : undefined}
           /></div> : null}
           <div className={`flex min-w-0 items-start gap-2 md:col-span-2 md:row-start-2 ${contextCompact ? "lg:col-span-1 lg:col-start-1 lg:row-start-1" : "min-[1080px]:col-span-1"}`}>
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#E9F1FF] text-primary"><BriefcaseBusiness size={18} aria-hidden="true" /></span>
@@ -347,8 +435,10 @@ export function HiringWorkspaceView({
           </div>
         </div>
       </section>}
-      {pickerOpen || !context ? (
-        <WorkspacePicker canManageSetup={canManageSetup && Boolean(onDispatchAction)} groups={(pickerScope === "all" ? allGroups : activeOpenGroups).filter((group) => { const choices = readWorkspaceUrlState().get("groupChoices"); return !choices || choices.split(",").includes(group.group_id); })} scope={pickerScope} onScopeChange={setPickerScope} data={scopedData} requisitions={requisitions} candidates={candidates} latestSavedByGroup={latestSavedByGroup} invalidTarget={Boolean(selectedTarget.type && selectedTarget.id && !context)} language={language} onCreateGroup={() => onDispatchAction?.({ kind: "group.create" })} onCreateRequisition={() => onDispatchAction?.({ kind: "requisition.create" })} onOpenRequisition={onOpenRequisition} onSelect={selectTarget} />
+      {selectedTarget.type && (!matchingDetail || matchingDetail.status !== "ready") ? (
+        <Panel><p role={targetDetail.loading ? "status" : "alert"} className={`text-sm ${targetDetail.loading ? "text-slate" : "text-danger"}`}>{targetDetail.loading ? translate(language, "loading") : translate(language, "loadFailed")}</p>{!targetDetail.loading ? <Button type="button" variant="secondary" className="mt-3" onClick={() => setDetailRetry(value => value + 1)}>{translate(language, "retry")}</Button> : null}</Panel>
+      ) : pickerOpen || !context ? (
+        <WorkspacePicker canManageSetup={canManageSetup && Boolean(onDispatchAction)} groups={(pickerScope === "all" ? allGroups : activeOpenGroups).filter((group) => { const choices = readWorkspaceUrlState().get("groupChoices"); return !choices || choices.split(",").includes(group.group_id); })} scope={pickerScope} onScopeChange={setPickerScope} data={scopedData} requisitions={requisitions} candidates={candidates} latestSavedByGroup={latestSavedByGroup} invalidTarget={Boolean(selectedTarget.type && selectedTarget.id && !context)} language={language} onCreateGroup={() => onDispatchAction?.({ kind: "group.create" })} onCreateRequisition={() => onDispatchAction?.({ kind: "requisition.create" })} onOpenRequisition={onOpenRequisition} onSelect={selectTarget} client={listClient} accessScope={accessScope} weekStart={weekStart} siteFilter={siteFilter} ownerFilter={ownerFilter} priorityOnly={priorityOnly} />
       ) : (
         <section data-testid="workspace-tabs-panel" className="min-w-0 overflow-hidden rounded-xl border border-[#E4E9F2] bg-white shadow-[0_2px_8px_rgba(11,19,43,0.03)]">
         <div role="tablist" aria-label={translate(language, "hiringWorkspaceSections")} className="flex min-w-0 gap-5 overflow-x-auto border-b border-[#E4E9F2] px-4">
@@ -378,11 +468,20 @@ export function HiringWorkspaceView({
           })}
         </div>
         <div id={`workspace-panel-${urlState.section}`} role="tabpanel" aria-labelledby={`workspace-tab-${urlState.section}`} tabIndex={0} className="min-w-0 p-3 focus:outline-none md:p-4">
-          {urlState.section === "overview" ? <OverviewSection context={context} contextIssues={contextIssues} journey={journey} language={language} onOpenRequisition={onOpenRequisition} onSelectSection={selectSection} /> : null}
+          {urlState.section === "overview" ? <OverviewSection context={context} contextIssues={contextIssues} qualityLoading={qualityState.key === qualityRequestKey && qualityState.loading} qualityError={qualityState.key === qualityRequestKey && qualityState.error} qualityTotalCount={matchingQualityPage?.totalCount ?? null} qualityHasMore={Boolean(matchingQualityPage?.hasMore)} onQualityMore={async () => {
+            const current = matchingQualityPage;
+            if (!current?.hasMore || !current.nextCursor || !listClient || !selectedTarget.id || !selectedTarget.type) return;
+            const key = qualityRequestKey;
+            setQualityState(state => state.key === key ? { ...state, loading: true, error: false } : state);
+            try {
+              const next = await loadHomeQualityPage(listClient, { scope: qualityScope, groupId: selectedTarget.type === "group" ? selectedTarget.id : null, docId: selectedTarget.type === "requisition" ? selectedTarget.id : null, today: qualityToday, cursor: current.nextCursor, profileKey: accessScope, limit: 25 });
+              setQualityState(state => state.key === key && qualityRequestKey === key ? { key, loading: false, error: false, page: { ...next, items: [...(state.page?.items ?? []), ...next.items], totalCount: next.totalCount } } : state);
+            } catch { setQualityState(state => state.key === key ? { ...state, loading: false, error: true } : state); }
+          }} onQualityRetry={() => setQualityRetry(value => value + 1)} journey={journey} language={language} onOpenRequisition={onOpenRequisition} onSelectSection={selectSection} /> : null}
           {urlState.section === "pipeline" ? pipelineSlot : null}
-          {urlState.section === "sourcing" ? sourcingSlot ?? <SourcingFallbackSection data={scopedData} groups={context.groups} language={language} weekStart={weekStart} /> : null}
+          {urlState.section === "sourcing" ? sourcingSlot ?? <SourcingFallbackSection data={scopedData} groups={context.groups} language={language} weekStart={weekStart} client={listClient} accessScope={accessScope} siteFilter={siteFilter} ownerFilter={ownerFilter} priorityOnly={priorityOnly} /> : null}
           {urlState.section === "offer" ? offerSlot ?? <OfferSection context={context} data={scopedData} language={language} requisitions={requisitions} /> : null}
-          {urlState.section === "activity" ? <ActivitySection activity={context.activity} language={language} /> : null}
+          {urlState.section === "activity" ? <ActivitySection activity={context.activity} language={language} transfers={reassignmentCounts(data, context.groups.map(group => group.group_id))} /> : null}
         </div>
         </section>
       )}
@@ -390,9 +489,9 @@ export function HiringWorkspaceView({
   );
 }
 
-function OverviewSection({ context, contextIssues, journey, language, onOpenRequisition, onSelectSection }: { context: WorkspaceContext; contextIssues: ReturnType<typeof deriveDataQualityIssues>; journey: HiringJourneyStep[]; language: Language; onOpenRequisition: (docId: string) => void; onSelectSection: (section: WorkspaceSection) => void }) {
+function OverviewSection({ context, contextIssues, qualityLoading, qualityError, qualityTotalCount, qualityHasMore, onQualityMore, onQualityRetry, journey, language, onOpenRequisition, onSelectSection }: { context: WorkspaceContext; contextIssues: ReturnType<typeof deriveDataQualityIssues> | null; qualityLoading: boolean; qualityError: boolean; qualityTotalCount: number | null; qualityHasMore: boolean; onQualityMore: () => void; onQualityRetry: () => void; journey: HiringJourneyStep[]; language: Language; onOpenRequisition: (docId: string) => void; onSelectSection: (section: WorkspaceSection) => void }) {
   const nextStep = journey.find((step) => step.state === "attention") ?? journey.find((step) => step.state === "current") ?? journey.find((step) => step.state === "not_started");
-  const sortedIssues = [...contextIssues].sort((a, b) => ({ blocking: 0, warning: 1, info: 2 })[a.severity] - ({ blocking: 0, warning: 1, info: 2 })[b.severity]);
+  const sortedIssues = [...(contextIssues ?? [])].sort((a, b) => ({ blocking: 0, warning: 1, info: 2 })[a.severity] - ({ blocking: 0, warning: 1, info: 2 })[b.severity]);
   const overdueGroupRequests = context.requisitions.filter((row) => getRequisitionSlaState(row, { openOnly: true }).isOverdue).length;
 
   return (
@@ -409,11 +508,12 @@ function OverviewSection({ context, contextIssues, journey, language, onOpenRequ
       </section>
       <section data-testid="workspace-quality-panel" className="min-w-0 rounded-2xl border border-[#D7E4F5] bg-white p-4 md:p-5 lg:flex lg:h-[28rem] lg:flex-col">
         <div className="flex flex-wrap items-start justify-between gap-2">
-          <h2 className="text-lg font-semibold text-navy">{translate(language, "overviewDataQuality")} <span className="text-slate">({sortedIssues.length})</span></h2>
+          <h2 className="text-lg font-semibold text-navy">{translate(language, "overviewDataQuality")} <span className="text-slate">({qualityTotalCount ?? (contextIssues ? sortedIssues.length : "—")})</span></h2>
           {overdueGroupRequests > 0 ? <Tag appearance="soft" tone="danger">{translate(language, "workspaceOverdueShort", { count: overdueGroupRequests })}</Tag> : null}
         </div>
         <div data-testid="workspace-quality-list" className="mt-3 min-w-0 divide-y divide-[#E4E9F2] lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain lg:pr-2 lg:[scrollbar-gutter:stable]">
-          {sortedIssues.length === 0 ? <p className="text-sm text-slate">{translate(language, "noDataQualityIssues")}</p> : sortedIssues.map((issue) => <DataQualityIssueCard key={issue.id} issue={localizeWorkspaceIssue(issue, language)} language={language} row overview />)}
+          {qualityLoading && !contextIssues?.length ? <p role="status" className="text-sm text-slate">{translate(language, "loading")}</p> : qualityError ? <div role="alert" className="grid gap-2 py-2 text-sm text-danger"><p>{translate(language, "loadFailed")}</p><Button type="button" size="sm" variant="secondary" onClick={onQualityRetry}>{translate(language, "retry")}</Button></div> : contextIssues === null ? <p className="text-sm text-slate">{language === "th" ? "ยังไม่สามารถโหลดรายการตรวจสอบของกลุ่มนี้ได้" : "Data quality checks are unavailable for this scoped record."}</p> : sortedIssues.length === 0 ? <p className="text-sm text-slate">{translate(language, "noDataQualityIssues")}</p> : sortedIssues.map((issue) => <DataQualityIssueCard key={"cursorId" in issue ? String(issue.cursorId) : issue.id} issue={localizeWorkspaceIssue(issue, language)} language={language} row overview />)}
+          {qualityHasMore ? <Button type="button" size="sm" variant="secondary" disabled={qualityLoading} onClick={onQualityMore}>{language === "th" ? "โหลดรายการเพิ่ม" : "Load more issues"}</Button> : null}
         </div>
       </section>
     </div>
@@ -447,17 +547,35 @@ function JourneyGuide({ language, steps, nextStepId, onSelectSection, onOpenRequ
     </ol>
   );
 }
-function SourcingFallbackSection({ data, groups, language, weekStart }: { data: DashboardData; groups: EnrichedSourcingGroup[]; language: Language; weekStart: string }) {
+function SourcingFallbackSection({ data, groups, language, weekStart, client, accessScope, siteFilter, ownerFilter, priorityOnly }: { data: DashboardData; groups: EnrichedSourcingGroup[]; language: Language; weekStart: string; client: SupabaseClient | null; accessScope: string; siteFilter: string; ownerFilter: string; priorityOnly: boolean }) {
+  const [summary, setSummary] = useState<SourcingSummary | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState(false);
+  const [summaryRetry, setSummaryRetry] = useState(0);
+  const groupId = groups.length === 1 ? groups[0].group_id : null;
+  useEffect(() => {
+    let active = true;
+    setSummary(null);
+    setSummaryError(false);
+    if (!client || !accessScope) { setSummaryLoading(false); return () => { active = false; }; }
+    setSummaryLoading(true);
+    void loadSourcingSummary(client, { selectedWeek: weekStart, groupId, scope: { headerSite: siteFilter, headerPic: ownerFilter, priorityOnly }, profileKey: accessScope })
+      .then((value) => { if (active) setSummary(value); })
+      .catch(() => { if (active) setSummaryError(true); })
+      .finally(() => { if (active) setSummaryLoading(false); });
+    return () => { active = false; };
+  }, [client, accessScope, weekStart, groupId, siteFilter, ownerFilter, priorityOnly, summaryRetry]);
   return (
     <Panel>
       <SectionTitle title={translate(language, "sourcingCoverage")} eyebrow={translate(language, "readOnlyFallback")} />
+      {client && accessScope ? <SourcingSummaryCharts summary={summary} language={language} loading={summaryLoading} error={summaryError} onRetry={() => setSummaryRetry((value) => value + 1)} /> : null}
       <div className="grid min-w-0 gap-3">
         {groups.length === 0 ? <EmptyState message={translate(language, "noMatchedSourcingGroup")} /> : groups.map((group) => {
           const previous = sourcingPreviousUpdate(data, group.group_id, weekStart);
           const metrics = deriveSourcingConversionMetrics(data, group.group_id, weekStart);
           return (
             <article key={group.group_id} className="grid min-w-0 gap-3 rounded-md border border-[#D7DEE8] bg-white p-3">
-              <div className="flex min-w-0 flex-wrap items-start justify-between gap-2"><div className="min-w-0"><strong className="block break-words text-navy">{group.group_id} - {group.group_position}</strong><p className="text-sm font-medium text-slate">{group.sites.join(", ") || "-"} - {group.owners.join(", ") || translate(language, "unassigned")}</p></div><Tag tone={group.open_headcount > 0 ? "warning" : "success"}>{translate(language, "openCount", { count: group.open_headcount })}</Tag></div>
+              <div className="flex min-w-0 flex-wrap items-start justify-between gap-2"><div className="min-w-0"><strong className="block break-words text-navy">{formatRecruitmentId(group.group_id)} - {group.group_position}</strong><p className="text-sm font-medium text-slate">{group.sites.join(", ") || "-"} - {group.owners.join(", ") || translate(language, "unassigned")}</p></div><Tag tone={group.open_headcount > 0 ? "warning" : "success"}>{translate(language, "openCount", { count: group.open_headcount })}</Tag></div>
               <p className="text-sm font-medium text-slate">{translate(language, "sourcingWeekSummary", { applicants: sourcingApplicants(group.latest_update), previous: sourcingApplicants(previous), channels: SOURCING_CHANNELS.filter((channel) => group[channel.enabled]).length })}</p>
               <SourcingConversionPanel language={language} metrics={metrics} />
             </article>
@@ -475,7 +593,7 @@ function OfferSection({ context, data, language, requisitions }: { context: Work
       <div className="grid gap-2">
         {context.offers.length === 0 ? <EmptyState message={translate(language, "noOffersWorkspace")} /> : context.offers.map((offer) => (
           <article key={offer.offer_id} className="min-w-0 rounded-md border border-[#D7DEE8] bg-white p-3">
-            <div className="flex min-w-0 flex-wrap items-start justify-between gap-2"><div className="min-w-0"><strong className="block break-words text-navy">{offer.candidate_name ?? offer.candidate_id}</strong>{context.requisitions.length > 1 ? <p className="text-sm font-medium text-slate">{offer.doc_id}</p> : null}</div><Tag tone={offerStatus(offer).tone}>{offerStatusLabel(language, offerStatus(offer).label)}</Tag></div>
+            <div className="flex min-w-0 flex-wrap items-start justify-between gap-2"><div className="min-w-0"><strong className="block break-words text-navy">{offer.candidate_name ?? formatRecruitmentId(offer.candidate_id)}</strong>{context.requisitions.length > 1 ? <p className="text-sm font-medium text-slate">{offer.doc_id}</p> : null}</div><Tag tone={offerStatus(offer).tone}>{offerStatusLabel(language, offerStatus(offer).label)}</Tag></div>
             <p className="mt-2 break-words text-sm font-medium text-slate">{offerImpact(offer, data.offers, requisitions)}</p>
             <p className="text-xs font-medium text-cool">{translate(language, "acceptedStartSummary", { accepted: formatDate(offer.accepted_date, language), start: formatDate(offer.first_working_date, language) })}</p>
           </article>
@@ -485,10 +603,11 @@ function OfferSection({ context, data, language, requisitions }: { context: Work
   );
 }
 
-function ActivitySection({ activity, language }: { activity: WorkspaceActivity[]; language: Language }) {
+function ActivitySection({ activity, language, transfers }: { activity: WorkspaceActivity[]; language: Language; transfers: { in: number; out: number } }) {
   return (
     <section className="min-w-0">
       <SectionTitle title={translate(language, "workspaceRecentActivity")} eyebrow={translate(language, "workspaceNewestFirst")} />
+      <p className="mb-3 text-sm text-slate">{language === "th" ? "ย้ายเข้า" : "Reassigned in"}: {transfers.in} · {language === "th" ? "ย้ายออก" : "Reassigned out"}: {transfers.out}</p>
       <div className="min-w-0 md:max-h-[min(62dvh,44rem)] md:overflow-auto">
       <div className="min-w-0 divide-y divide-[#E4E9F2] border-y border-[#E4E9F2] md:min-w-[60rem]">
         {activity.length > 0 ? <div className="sticky top-0 z-10 hidden gap-3 bg-white py-2 text-xs font-medium text-slate md:grid md:grid-cols-[minmax(9rem,.8fr)_minmax(12rem,1.5fr)_minmax(12rem,1.3fr)_minmax(10rem,1fr)_minmax(7rem,.7fr)]"><span>{translate(language, "date")}</span><span>{translate(language, "workspaceEvent")}</span><span>{translate(language, "workspaceContext")}</span><span>{translate(language, "actor")}</span><span>{translate(language, "status")}</span></div> : null}
@@ -518,12 +637,26 @@ function terminalGroupStatus(requisitions: EnrichedRequisition[]) {
   return { key: "workspaceClosedGroup", tone: "muted" as const };
 }
 
-function WorkspacePicker({ canManageSetup, groups, scope, onScopeChange, data, requisitions, candidates, latestSavedByGroup, invalidTarget, language, onCreateGroup, onCreateRequisition, onOpenRequisition, onSelect }: { canManageSetup: boolean; groups: EnrichedSourcingGroup[]; scope: "ongoing" | "all"; onScopeChange: (scope: "ongoing" | "all") => void; data: DashboardData; requisitions: EnrichedRequisition[]; candidates: EnrichedCandidate[]; latestSavedByGroup: Map<string, string>; invalidTarget: boolean; language: Language; onCreateGroup: () => void; onCreateRequisition: () => void; onOpenRequisition: (docId: string) => void; onSelect: (target: SelectedWorkspaceTarget) => void }) {
+function WorkspacePicker({ canManageSetup, groups, scope, onScopeChange, data, requisitions, candidates, latestSavedByGroup, invalidTarget, language, onCreateGroup, onCreateRequisition, onOpenRequisition, onSelect, client, accessScope, weekStart, siteFilter, ownerFilter, priorityOnly }: { canManageSetup: boolean; groups: EnrichedSourcingGroup[]; scope: "ongoing" | "all"; onScopeChange: (scope: "ongoing" | "all") => void; data: DashboardData; requisitions: EnrichedRequisition[]; candidates: EnrichedCandidate[]; latestSavedByGroup: Map<string, string>; invalidTarget: boolean; language: Language; onCreateGroup: () => void; onCreateRequisition: () => void; onOpenRequisition: (docId: string) => void; onSelect: (target: SelectedWorkspaceTarget) => void; client: SupabaseClient | null; accessScope: string; weekStart: string; siteFilter: string; ownerFilter: string; priorityOnly: boolean }) {
   const [query, setQuery] = useState("");
+  const [view, setView] = useState<"table" | "cards">("table");
+  const preferenceKey = `recruitment:workspace:view:${data.profile?.id ?? "anonymous"}`;
+  useEffect(() => {
+    try { const saved = localStorage.getItem(preferenceKey); setView(saved === "cards" ? "cards" : "table"); }
+    catch { setView("table"); }
+  }, [preferenceKey]);
+  function selectView(next: "table" | "cards") {
+    setView(next);
+    try { localStorage.setItem(preferenceKey, next); } catch { /* Preference storage is optional. */ }
+  }
+
   const [sort, setSort] = useState<"attention" | "name" | "oldest">("attention");
+  const pickerList = useRecruitmentList<EnrichedSourcingGroup>({ client, accessScope, entity: "position_groups", filters: { scope, weekStart, headerSite: siteFilter, headerPic: ownerFilter, priorityOnly }, sort, direction: "asc", initialPageSize: 50, enabled: Boolean(client && accessScope), searchInput: { value: query, setValue: setQuery } });
+  const serverGroups = Boolean(client && accessScope);
+  const pickerGroups = serverGroups ? pickerList.items : groups;
   const normalizedQuery = query.trim().toLowerCase();
   const nameOrder = (a: string, b: string) => a.localeCompare(b, language === "th" ? "th" : "en", { numeric: true });
-  const rows = groups.map((group) => {
+  const rows = pickerGroups.map((group) => {
     const matches = data.document_groups.filter((match) => match.group_id === group.group_id);
     const docIds = new Set(matches.map((match) => match.doc_id));
     const docGroupIds = new Set(matches.map((match) => match.doc_group_id));
@@ -532,16 +665,16 @@ function WorkspacePicker({ canManageSetup, groups, scope, onScopeChange, data, r
     return {
       group,
       linkedRequisitions,
-      readiness: summarizeGroupReadiness(linkedRequisitions, linkedCandidates),
-      terminal: terminalGroupStatus(linkedRequisitions),
-      filled: linkedRequisitions.reduce((sum, row) => sum + Math.min(row.head_count, row.accepted_count), 0),
-      demand: linkedRequisitions.reduce((sum, row) => sum + row.head_count, 0),
-      active: linkedCandidates.filter((candidate) => candidate.latest_result !== 0 && !candidate.accepted_date && ACTIVE_PIPELINE_STAGES.includes(candidate.latest_process as never)).length,
-      candidateCount: linkedCandidates.length
+      readiness: group.readiness_label ? { label: group.readiness_label, tone: group.readiness_label === "No coverage" ? "danger" as const : group.readiness_label === "Needs candidate" || group.readiness_label === "Aging coverage" ? "warning" as const : group.readiness_label === "Late-stage coverage" ? "success" as const : "teal" as const, count: group.readiness_count ?? 0, total: group.readiness_total ?? 0 } : serverGroups ? null : summarizeGroupReadiness(linkedRequisitions, linkedCandidates),
+      terminal: serverGroups ? null : terminalGroupStatus(linkedRequisitions),
+      filled: serverGroups ? group.filled_count ?? 0 : group.filled_count ?? linkedRequisitions.reduce((sum, row) => sum + Math.min(row.head_count, row.accepted_count), 0),
+      demand: serverGroups ? group.demand_count ?? 0 : group.demand_count ?? linkedRequisitions.reduce((sum, row) => sum + row.head_count, 0),
+      active: serverGroups ? group.active_candidate_count ?? 0 : group.active_candidate_count ?? linkedCandidates.filter((candidate) => candidate.application_state !== "closed" && candidate.latest_result !== 0 && !candidate.accepted_date && ACTIVE_PIPELINE_STAGES.includes(candidate.latest_process as never)).length,
+      candidateCount: serverGroups ? group.candidate_count ?? 0 : group.candidate_count ?? groupCandidateCount(data, group.group_id)
     };
   });
   const priority: Record<string, number> = { "No coverage": 0, "Needs candidate": 1, "Aging coverage": 2, "Active coverage": 3, "Late-stage coverage": 4 };
-  const filteredGroups = rows.filter(({ group, linkedRequisitions }) => !normalizedQuery || [group.group_id, group.group_position, group.sites.join(" "), group.owners.join(" "), linkedRequisitions.map((row) => row.doc_id).join(" ")].join(" ").toLowerCase().includes(normalizedQuery)).sort((a, b) => {
+  const filteredGroups = serverGroups ? rows : rows.filter(({ group, linkedRequisitions }) => !normalizedQuery || [group.group_id, group.group_position, group.sites.join(" "), group.owners.join(" "), linkedRequisitions.map((row) => row.doc_id).join(" ")].join(" ").toLowerCase().includes(normalizedQuery)).sort((a, b) => {
     const groupA = a.group;
     const groupB = b.group;
     if (sort !== "name") {
@@ -559,30 +692,38 @@ function WorkspacePicker({ canManageSetup, groups, scope, onScopeChange, data, r
     }
     return nameOrder(groupA.group_position, groupB.group_position) || nameOrder(groupA.group_id, groupB.group_id);
   });
-  const count = filteredGroups.length;
-  const heading = "hidden md:grid md:min-w-[68rem] md:grid-cols-[minmax(11rem,1.45fr)_minmax(7rem,1fr)_minmax(6rem,.7fr)_minmax(7rem,.7fr)_minmax(9rem,1fr)_minmax(10rem,1fr)_minmax(8rem,.8fr)] md:gap-3 md:px-3 md:py-2 text-left text-xs font-semibold text-slate";
-  const rowClass = "grid min-w-0 gap-2 border-t border-[#E4E9F2] px-3 py-2 text-sm md:min-w-[68rem] md:grid-cols-[minmax(11rem,1.45fr)_minmax(7rem,1fr)_minmax(6rem,.7fr)_minmax(7rem,.7fr)_minmax(9rem,1fr)_minmax(10rem,1fr)_minmax(8rem,.8fr)] md:items-center md:gap-3";
+  const count = serverGroups ? pickerList.totalCount : filteredGroups.length;
+  function groupCells({ group, linkedRequisitions, readiness, terminal, filled, demand, active, candidateCount }: typeof filteredGroups[number]): ReactNode[] {
+    return [
+      <div key="identity" className="flex min-w-0 flex-col"><button type="button" title={group.group_position} aria-label={`${group.group_position}, ${formatRecruitmentId(group.group_id)}`} className="min-h-11 min-w-0 text-left font-semibold text-navy hover:text-primary hover:underline focus-visible:ring-2 focus-visible:ring-primary" onClick={() => onSelect({ type: "group", id: group.group_id })}><span className="block truncate">{group.group_position}</span></button><span className="break-all text-xs text-slate">{formatRecruitmentId(group.group_id)}</span></div>,
+      readiness ? <Tag key="readiness" appearance="soft" tone={readiness.tone}>{fillReadinessLabel(language, readiness.label)}</Tag> : terminal ? <Tag key="terminal" appearance="soft" tone={terminal.tone}>{translate(language, terminal.key)}</Tag> : "—",
+      <span key="demand" className="tabular-nums">{filled}/{demand}</span>,
+      <span key="candidates" className="tabular-nums">{active}/{candidateCount}</span>,
+      <span key="owner" className="break-words">{group.sites.join(", ") || "—"} / {group.owners.join(", ") || translate(language, "unassigned")}</span>,
+      <LinkedRequisitionPreview key="links" groupName={group.group_position} language={language} requisitions={linkedRequisitions} onOpenRequisition={onOpenRequisition}/>,
+      latestSavedByGroup.get(group.group_id) || group.latest_saved_at ? formatDate(latestSavedByGroup.get(group.group_id) ?? group.latest_saved_at ?? undefined, language) : "—"
+    ];
+  }
   return (
     <Panel className="min-w-0 border-[#D7DEE8] shadow-none">
       <div className="mb-4 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><p className="text-xs font-medium uppercase tracking-normal text-slate">{translate(language, "workspacePicker")}</p><h2 className="mt-1 text-lg font-semibold text-navy">{translate(language, "workspaceSelectTitle")}</h2>{invalidTarget ? <p className="mt-1 text-sm font-medium text-orange">{translate(language, "workspaceUrlNotFound")}</p> : null}</div><div className="flex min-w-0 w-full items-center justify-end gap-2 sm:w-auto"><div role="group" aria-label={translate(language, "workspaceGroupScope")} className="inline-flex min-w-0 rounded-lg border border-[#C9D5E6] bg-[#F8FAFD] p-0.5">{(["ongoing", "all"] as const).map((option) => <button key={option} type="button" aria-pressed={scope === option} onClick={() => onScopeChange(option)} className={`min-h-11 rounded-md px-2 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:min-h-9 ${scope === option ? "bg-white text-navy shadow-sm" : "text-slate hover:text-navy"}`}>{translate(language, option === "ongoing" ? "workspaceOngoingGroups" : "workspaceAllGroups")}</button>)}</div>{canManageSetup ? <WorkspaceCreateMenu language={language} onCreateGroup={onCreateGroup} onCreateRequisition={onCreateRequisition} /> : null}</div></div>
       <div className="grid min-w-0 gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
         <label className="grid gap-1 text-sm font-semibold text-navy">{translate(language, "workspaceSearch")}<input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={translate(language, "workspaceSearchPlaceholder")} className="min-h-11 w-full min-w-0 rounded-lg border border-[#C9D5E6] bg-white px-3 text-sm font-medium text-navy outline-none placeholder:text-cool focus:border-primary focus:ring-2 focus:ring-primary/20" /></label>
-        <label className="grid gap-1 text-sm font-medium text-slate">{translate(language, "sortBy")}<SelectInput value={sort} onChange={(event) => setSort(event.target.value as typeof sort)}><option value="attention">{translate(language, "workspaceNeedsAttention")}</option><option value="name">{translate(language, "workspaceNameSort")}</option><option value="oldest">{translate(language, "workspaceOldestSort")}</option></SelectInput></label>
+        <label className="grid gap-1 text-sm font-medium text-slate">{translate(language, "sortBy")}<SelectInput aria-label={translate(language,"sortBy")} value={sort} onChange={(event) => setSort(event.target.value as typeof sort)}><option value="attention">{translate(language, "workspaceNeedsAttention")}</option><option value="name">{translate(language, "workspaceNameSort")}</option><option value="oldest">{translate(language, "workspaceOldestSort")}</option></SelectInput></label>
       </div>
-      <p className="mt-4 text-sm font-medium text-slate" role="status">{translate(language, "workspaceMatches", { count })}</p>
-      <div className="mt-2 min-w-0 md:max-h-[min(60vh,36rem)] md:overflow-auto">
-        {count === 0 ? <EmptyState message={translate(language, "noMatchingWorkspaces")} /> : null}
-        {count > 0 ? <div className={heading}><span>{translate(language, "groupName")}</span><span>{translate(language, "readiness")}</span><span>{translate(language, "workspaceFilledDemand")}</span><span>{translate(language, "workspaceActiveCandidates")}</span><span>{translate(language, "siteOwner")}</span><span>{translate(language, "linkedRequisitions")}</span><span>{translate(language, "lastSaved")}</span></div> : null}
-        {filteredGroups.map(({ group, linkedRequisitions, readiness, terminal, filled, demand, active, candidateCount }) => <div key={group.group_id} className={rowClass}>
-          <div className="flex min-h-16 min-w-0 flex-col items-start justify-center self-center"><button type="button" title={group.group_position} aria-label={`${group.group_position}, ${group.group_id}`} className="flex min-h-11 min-w-0 max-w-full items-end pb-0.5 text-left font-semibold text-navy hover:text-primary hover:underline focus-visible:rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" onClick={() => onSelect({ type: "group", id: group.group_id })}><span className="truncate">{group.group_position}</span></button><span className="block break-all text-xs leading-4 text-slate">{group.group_id}</span></div>
-          <div><span className="md:hidden text-xs text-slate">{translate(language, "readiness")}: </span>{readiness ? <Tag appearance="soft" tone={readiness.tone}>{fillReadinessLabel(language, readiness.label)}</Tag> : terminal ? <Tag appearance="soft" tone={terminal.tone}>{translate(language, terminal.key)}</Tag> : "—"}</div>
-          <p className="tabular-nums"><span className="md:hidden text-xs text-slate">{translate(language, "workspaceFilledDemand")}: </span>{filled}/{demand}</p>
-          <p className="tabular-nums"><span className="md:hidden text-xs text-slate">{translate(language, "workspaceActiveCandidates")}: </span>{active}/{candidateCount}</p>
-          <p className="min-w-0 break-words" title={`${group.sites.join(", ")} / ${group.owners.join(", ")}`}><span className="md:hidden text-xs text-slate">{translate(language, "siteOwner")}: </span>{group.sites.join(", ") || "—"} / {group.owners.join(", ") || translate(language, "unassigned")}</p>
-          <div className="min-w-0"><span className="md:hidden text-xs text-slate">{translate(language, "linkedRequisitions")}: </span><LinkedRequisitionPreview groupName={group.group_position} language={language} requisitions={linkedRequisitions} onOpenRequisition={onOpenRequisition} /></div>
-          <p className="text-xs text-slate"><span className="md:hidden">{translate(language, "lastSaved")}: </span>{latestSavedByGroup.get(group.group_id) ? formatDate(latestSavedByGroup.get(group.group_id), language) : "—"}</p>
-        </div>)}
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-medium text-slate" role="status">{translate(language, "workspaceMatches", { count })}</p><div role="group" aria-label={language === "th" ? "รูปแบบมุมมองกลุ่ม" : "Group view"} className="inline-flex rounded-lg border border-[#C9D5E6] bg-[#F8FAFD] p-0.5">{(["table", "cards"] as const).map(option => <button key={option} type="button" aria-pressed={view === option} onClick={() => selectView(option)} className={`min-h-11 rounded-md px-3 text-sm font-medium focus-visible:ring-2 focus-visible:ring-primary ${view === option ? "bg-white text-navy shadow-sm" : "text-slate hover:text-navy"}`}>{option === "table" ? (language === "th" ? "ตาราง" : "Table") : (language === "th" ? "การ์ด" : "Cards")}</button>)}</div></div>
+      {pickerList.error ? <div role="alert" className="mb-2 flex items-center gap-3 text-sm text-scarlet"><span>{language === "th" ? "โหลดรายการกลุ่มไม่สำเร็จ" : "Could not load workspace groups."}</span><Button type="button" variant="secondary" onClick={pickerList.retry}>{translate(language, "retry")}</Button></div> : null}
+      {pickerList.loading && serverGroups ? <p role="status" className="py-4 text-sm text-slate">{language === "th" ? "กำลังโหลดกลุ่ม…" : "Loading groups…"}</p> : null}
+      <div data-workspace-picker-results className="mt-2 min-w-0 md:max-h-[min(60vh,36rem)] md:overflow-auto">
+        {count === 0 && !pickerList.loading ? <EmptyState message={translate(language, "noMatchingWorkspaces")} /> : null}
+        {view === "table" && (count === null || count > 0) ? <table className="hidden w-full min-w-[68rem] border-collapse text-left text-sm md:table"><thead className="sticky top-0 z-10 bg-white text-xs text-slate"><tr>{["groupName", "readiness", "workspaceFilledDemand", "workspaceActiveCandidates", "siteOwner", "linkedRequisitions", "lastSaved"].map(key => <th key={key} scope="col" className="px-3 py-2 font-semibold">{translate(language, key as Parameters<typeof translate>[1])}</th>)}</tr></thead><tbody>{filteredGroups.map(row => <tr key={row.group.group_id} className="border-t border-[#E4E9F2]">{groupCells(row).map((cell, index) => <td key={index} className={`px-3 py-2 align-middle ${index===0?"w-48 max-w-[15rem]":""}`}>{cell}</td>)}</tr>)}</tbody></table> : null}
+        <div className={view === "cards" ? "grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3" : "grid divide-y divide-[#E4E9F2] md:hidden"}>{filteredGroups.map(row => {
+          const cells = groupCells(row);
+          const labels = ["groupName", "readiness", "workspaceFilledDemand", "workspaceActiveCandidates", "siteOwner", "linkedRequisitions", "lastSaved"] as const;
+          return <article key={row.group.group_id} className={view === "cards" ? "ats-card min-w-0 p-4" : "min-w-0 py-3"}>{cells[0]}<dl className="mt-3 grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] gap-x-3 gap-y-2">{cells.slice(1).map((cell,index) => <div key={labels[index+1]} className="contents"><dt className="text-xs text-slate">{translate(language, labels[index+1])}</dt><dd className="min-w-0 break-words text-sm text-navy">{cell}</dd></div>)}</dl></article>;
+        })}</div>
       </div>
+      {serverGroups ? <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-[#D7DEE8] pt-3 text-sm"><span>Page {pickerList.page} · {pickerList.countLabel} groups</span>{pickerList.countError?<Button type="button" variant="secondary" onClick={pickerList.retryCount}>Retry count</Button>:null}<div className="flex gap-2"><Button type="button" variant="secondary" disabled={!pickerList.canPrevious} onClick={pickerList.goPrevious}>Previous</Button><Button type="button" variant="secondary" disabled={!pickerList.canNext} onClick={pickerList.goNext}>Next</Button><select aria-label="Rows per page" value={pickerList.pageSize} onChange={event=>pickerList.setPageSize(Number(event.target.value))} className="min-h-10 rounded-md border border-[#C9D5E6] bg-white px-2"><option value={25}>25</option><option value={50}>50</option><option value={100}>100</option></select></div></div> : null}
     </Panel>
   );
 }
@@ -632,7 +773,7 @@ function WorkspaceCreateMenu({ language, onCreateGroup, onCreateRequisition }: {
     { label: translate(language, "newGroup"), onSelect: onCreateGroup }
   ];
   return <div ref={root} className="relative z-40 shrink-0">
-    <Button ref={trigger} type="button" size="sm" className="ats-dropdown-trigger !min-h-11 text-navy sm:!min-h-9" icon={<Plus size={16} aria-hidden="true" />} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((value) => !value)} onKeyDown={(event) => { if (event.key === "Escape" && open) { event.preventDefault(); setOpen(false); } if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); setOpen(true); requestAnimationFrame(() => choices.current[event.key === "ArrowDown" ? 0 : 1]?.focus()); } }}>{translate(language, "workspaceCreateNew")}</Button>
+    <Button ref={trigger} type="button" variant="secondary" size="sm" className="ats-dropdown-trigger !min-h-11 text-navy sm:!min-h-9" icon={<Plus size={16} aria-hidden="true" />} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((value) => !value)} onKeyDown={(event) => { if (event.key === "Escape" && open) { event.preventDefault(); setOpen(false); } if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); setOpen(true); requestAnimationFrame(() => choices.current[event.key === "ArrowDown" ? 0 : 1]?.focus()); } }}>{translate(language, "workspaceCreateNew")}</Button>
     {open ? <div role="menu" aria-label={translate(language, "workspaceCreateNew")} className="ats-dropdown-menu absolute right-0 top-full z-50 mt-1 grid max-h-[min(70dvh,28rem)] w-[min(15rem,calc(100vw-2rem))] rounded-lg border" onKeyDown={(event) => {
       if (event.key === "Escape") { event.preventDefault(); setOpen(false); trigger.current?.focus(); }
       if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); const current = choices.current.indexOf(document.activeElement as HTMLButtonElement); choices.current[(current + (event.key === "ArrowDown" ? 1 : -1) + 2) % 2]?.focus(); }
@@ -684,7 +825,7 @@ function contextForGroup(id: string, data: DashboardData, requisitions: Enriched
   const groupDocGroupIds = new Set(matches.map((match) => match.doc_group_id));
   const relatedCandidates = candidates.filter((candidate) => candidate.group_id === id || Boolean(candidate.doc_group_id && groupDocGroupIds.has(candidate.doc_group_id)));
   const relatedOffers = offers.filter((offer) => linkedDocIds.has(offer.doc_id));
-  return { id, type: "group", title: `${group.group_id} - ${group.group_position}`, meta: `${group.sites.join(", ") || "-"} - ${group.owners.join(", ") || translate(language, "unassigned")}`, primaryRequisition: null, requisitions: relatedRequisitions, groups: [group], candidates: relatedCandidates, offers: relatedOffers, openHeadcount: group.open_headcount, docGroupId: null, activity: activityForContext(data, relatedCandidates.map((row) => row.candidate_id), [...linkedDocIds], [id], contextualHref, language) };
+  return { id, type: "group", title: `${formatRecruitmentId(group.group_id)} - ${group.group_position}`, meta: `${group.sites.join(", ") || "-"} - ${group.owners.join(", ") || translate(language, "unassigned")}`, primaryRequisition: null, requisitions: relatedRequisitions, groups: [group], candidates: relatedCandidates, offers: relatedOffers, openHeadcount: group.open_headcount, docGroupId: null, activity: activityForContext(data, relatedCandidates.map((row) => row.candidate_id), [...linkedDocIds], [id], contextualHref, language) };
 }
 
 function activityForContext(data: DashboardData, candidateIds: string[], docIds: string[], groupIds: string[], contextualHref: (path: string) => string, language: Language): WorkspaceActivity[] {
@@ -692,10 +833,15 @@ function activityForContext(data: DashboardData, candidateIds: string[], docIds:
   const docSet = new Set(docIds);
   const groupSet = new Set(groupIds);
   return [
-    ...data.recruitment_logs.filter((log) => candidateSet.has(log.candidate_id)).map((log) => ({ id: `log:${log.log_id}`, date: log.log_date, title: `${log.candidate_id} - ${processLabel(log.recruitment_process, language)}`, meta: `${translate(language, "round")} ${log.round} - ${resultText(log.result, language)}`, tone: resultText(log.result).toLowerCase(), href: contextualHref(`/pipeline?detailId=${encodeURIComponent(log.candidate_id)}`), actor: auditActor(data, "recruitment_logs", log.candidate_id, log.created_at, "log_id", log.log_id) })),
+    ...(data.candidate_application_assignments ?? []).filter(assignment => assignment.from_group_id && (groupSet.has(assignment.group_id) || groupSet.has(assignment.from_group_id))).map(assignment => {
+      const application = data.candidate_applications?.find(row => row.application_id === assignment.application_id);
+      const direction = groupSet.has(assignment.group_id) ? (language === "th" ? "เปลี่ยนกลุ่มเข้า" : "Reassigned in") : (language === "th" ? "เปลี่ยนกลุ่มออก" : "Reassigned out");
+      return { id: `assignment:${assignment.assignment_id}`, date: assignment.started_at, title: `${application?.candidate_id ? formatRecruitmentId(application.candidate_id) : ""} - ${direction}`, meta: `${formatRecruitmentId(assignment.from_group_id)} → ${formatRecruitmentId(assignment.group_id)}: ${assignment.reason}`, tone: "update", actor: data.profiles.find(row => row.id === assignment.actor_id)?.nickname ?? null, href: contextualHref(`/candidates?detailType=candidate&detailId=${encodeURIComponent(application?.candidate_id ?? "")}&applicationId=${assignment.application_id}`) };
+    }),
+    ...data.recruitment_logs.filter((log) => data.candidate_applications ? groupSet.has(assignmentGroup(data, log.result === null ? log.entry_assignment_id : log.outcome_assignment_id) ?? "") : candidateSet.has(log.candidate_id)).map((log) => ({ id: `log:${log.log_id}`, date: log.log_date, title: `${formatRecruitmentId(log.candidate_id)} - ${processLabel(log.recruitment_process, language)}`, meta: `${translate(language, "round")} ${log.round} - ${resultText(log.result, language)}`, tone: resultText(log.result).toLowerCase(), href: contextualHref(`/pipeline?detailType=candidate&detailId=${encodeURIComponent(log.candidate_id)}&applicationId=${encodeURIComponent(log.application_id ?? "")}`), actor: auditActor(data, "recruitment_logs", log.candidate_id, log.created_at, "log_id", log.log_id) })),
     ...data.requisition_logs.filter((log) => docSet.has(log.doc_id)).map((log) => ({ id: `reqlog:${log.log_id}`, date: log.log_date, title: `${log.doc_id} - ${translate(language, "statusUpdate")}`, meta: log.remark ?? translate(language, "noRemark"), tone: log.status, href: contextualHref(`/requisitions?detailId=${encodeURIComponent(log.doc_id)}`), actor: auditActor(data, "requisition_logs", log.doc_id, log.created_at, "log_id", log.log_id) })),
-    ...data.offers.filter((offer) => docSet.has(offer.doc_id) || candidateSet.has(offer.candidate_id)).map((offer) => ({ id: `offer:${offer.offer_id}`, date: offer.updated_at, title: `${offer.candidate_id} - ${translate(language, "offerLower")}`, meta: translate(language, "acceptedStartSummary", { accepted: formatDate(offer.accepted_date, language), start: formatDate(offer.first_working_date, language) }), tone: offer.accepted_date ? "accepted" : "pending", href: contextualHref(`/offers?offerSearch=${encodeURIComponent(offer.doc_id)}`), actor: auditActor(data, "offers", offer.doc_id, offer.updated_at, "offer_id", offer.offer_id) })),
-    ...data.sourcing_weekly_updates.filter((update) => groupSet.has(update.group_id)).map((update) => ({ id: `source:${update.group_id}:${update.week_start}`, date: update.updated_at, title: `${update.group_id} - ${translate(language, "sourcingUpdate")}`, meta: translate(language, "applicantsCount", { count: sourcingApplicants(update) }), tone: "update", href: contextualHref(`/sourcing?sourceSearch=${encodeURIComponent(update.group_id)}`), actor: update.updated_by }))
+    ...data.offers.filter((offer) => docSet.has(offer.doc_id) || candidateSet.has(offer.candidate_id)).map((offer) => ({ id: `offer:${offer.offer_id}`, date: offer.updated_at, title: `${formatRecruitmentId(offer.candidate_id)} - ${translate(language, "offerLower")}`, meta: translate(language, "acceptedStartSummary", { accepted: formatDate(offer.accepted_date, language), start: formatDate(offer.first_working_date, language) }), tone: offer.accepted_date ? "accepted" : "pending", href: contextualHref(`/offers?offerSearch=${encodeURIComponent(offer.doc_id)}`), actor: auditActor(data, "offers", offer.doc_id, offer.updated_at, "offer_id", offer.offer_id) })),
+    ...data.sourcing_weekly_updates.filter((update) => groupSet.has(update.group_id)).map((update) => ({ id: `source:${update.group_id}:${update.week_start}`, date: update.updated_at, title: `${formatRecruitmentId(update.group_id)} - ${translate(language, "sourcingUpdate")}`, meta: translate(language, "applicantsCount", { count: sourcingApplicants(update) }), tone: "update", href: contextualHref(`/sourcing?sourceSearch=${encodeURIComponent(update.group_id)}`), actor: update.updated_by }))
   ].sort((left, right) => right.date.localeCompare(left.date));
 }
 
@@ -727,6 +873,17 @@ function canSiteRecruiterViewRequisition(requisition: Pick<EnrichedRequisition, 
 
 function normalizeScopeValue(value: string | null | undefined) {
   return (value ?? "").trim().toLocaleLowerCase();
+}
+
+function addDays(value: string, amount: number) {
+  const date = new Date(`${value}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + amount);
+  return date.toISOString().slice(0, 10);
+}
+
+function workspaceTodayBangkok() {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+  return `${parts.find(part => part.type === "year")?.value ?? ""}-${parts.find(part => part.type === "month")?.value ?? ""}-${parts.find(part => part.type === "day")?.value ?? ""}`;
 }
 
 function journeyStepLabel(language: Language, step: HiringJourneyStep) {
