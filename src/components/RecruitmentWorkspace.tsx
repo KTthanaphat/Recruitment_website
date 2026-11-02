@@ -1576,6 +1576,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     const state = stateMessages[workspaceLoadState];
     return (
       <WorkspaceStatusScreen
+        language={language}
         title={state.title}
         message={state.message}
         busy={workspaceLoadState === "checking_session" || workspaceLoadState === "loading_data" || workspaceLoadState === "redirecting_to_login"}
@@ -2767,8 +2768,8 @@ function RequisitionFields({
           <option value="">{translate(language, "unassigned")}</option>
           {personOptions.map((person) => <option key={person} value={person}>{person}</option>)}
         </CreateSelectInput>
-        {!isSiteRecruiter && ownerOptionsLoading ? <LoadingSkeleton variant="lookup" label={<>Loading authorized recruiter options…</>} className="text-xs text-slate" /> : null}
-        {!isSiteRecruiter && ownerOptionsError ? <p className="text-xs text-scarlet" role="alert">Could not load recruiter options. <RetryIconButton type="button" className="font-semibold underline" onClick={onRetryOwnerOptions}>Retry</RetryIconButton></p> : null}
+        {!isSiteRecruiter && ownerOptionsLoading ? <LoadingSkeleton variant="lookup" label={<>{translate(language, "loading")}</>} className="text-xs text-slate" /> : null}
+        {!isSiteRecruiter && ownerOptionsError ? <p className="text-xs text-scarlet" role="alert">Could not load recruiter options. <RetryIconButton type="button" className="font-semibold underline" onClick={onRetryOwnerOptions}>{language === "th" ? "ลองอีกครั้ง" : "Retry"}</RetryIconButton></p> : null}
       </Field>
       <Field label={translate(language, "lineManager")}><TextInput name="line_manager" list="manager-options" placeholder={mode === "new" ? translate(language, "lineManagerPlaceholder") : undefined} defaultValue={selected?.line_manager ?? ""} /></Field>
       <Field label={translate(language, "status")}>
@@ -4775,12 +4776,14 @@ function parseWorkspaceUrlState(): ParsedWorkspaceUrlState {
 }
 
 function WorkspaceStatusScreen({
+  language = "en",
   busy,
   loginHref,
   message,
   onRetry,
   title
 }: {
+  language?: Language;
   busy: boolean;
   loginHref?: string;
   message: string;
@@ -4791,7 +4794,7 @@ function WorkspaceStatusScreen({
     <main className="grid min-h-screen place-items-center bg-offwhite p-6">
       <Panel className="w-full max-w-md">
         <div role={busy ? undefined : "status"} aria-live={busy ? undefined : "polite"} aria-busy={busy} className="grid gap-3 text-center">
-          {busy ? <LoadingSkeleton variant="detail" label={message} /> : null}
+          {busy ? <LoadingSkeleton variant="detail" language={language} /> : null}
           <h1 className="text-xl font-semibold text-navy">{title}</h1>
           <p className="text-sm font-medium text-slate">{message}</p>
           {loginHref ? (
@@ -4803,7 +4806,7 @@ function WorkspaceStatusScreen({
           ) : null}
           {onRetry ? (
             <div>
-              <RetryIconButton type="button"  onClick={onRetry}>Retry</RetryIconButton>
+              <RetryIconButton type="button"  onClick={onRetry}>{language === "th" ? "ลองอีกครั้ง" : "Retry"}</RetryIconButton>
             </div>
           ) : null}
         </div>
