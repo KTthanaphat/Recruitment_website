@@ -61,18 +61,12 @@ export async function readScopedInPages<T>(client: QueryClient, table: string, c
       label,
     );
     for (const row of rows) {
-      const key = rowKeyForTable(table, row);
+      const key = String((row as Record<string, unknown>)[order] ?? "");
       if (seen.has(key)) throw new ScopedReadError("incomplete", `Duplicate ${label} row across lookup chunks.`);
       seen.add(key); output.push(row);
     }
   }
   return output;
-}
-
-function rowKeyForTable(table: string, row: unknown) {
-  const value = row as Record<string, unknown>;
-  if (table === "sourcing_weekly_updates") return `${String(value.group_id ?? "")}\u001f${String(value.week_start ?? "")}`;
-  return String(value.doc_group_id ?? value.application_id ?? value.offer_id ?? value.log_id ?? value.group_id ?? value.doc_id ?? "");
 }
 
 const cursorDatePattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;

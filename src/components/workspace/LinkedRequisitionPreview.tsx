@@ -2,12 +2,33 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { loadScopedRequisitionPreview } from "@/lib/requisition-detail-loader";
+import type { ScopedAccessIdentity } from "@/lib/scoped-detail-read";
 import { formatRequisitionOptionLabel, formatRequisitionTitle } from "@/lib/format";
 import { requisitionStatusLabel, translate } from "@/lib/i18n/dictionary";
 import type { EnrichedRequisition, Language } from "@/types/recruitment";
 
-export function LinkedRequisitionPreview({ groupName, language, requisitions, onOpenRequisition }: { groupName: string; language: Language; requisitions: EnrichedRequisition[]; onOpenRequisition: (docId: string) => void }) {
+export function LinkedRequisitionPreview({ groupName, language, requisitions, docIds, client, accessScope, onOpenRequisition }: { groupName: string; language: Language; requisitions: EnrichedRequisition[]; docIds?: string[]; client?: SupabaseClient | null; accessScope?: ScopedAccessIdentity; onOpenRequisition: (docId: string) => void }) {
   const [open, setOpen] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const [remote, setRemote] = useState<{ key: string; rows: EnrichedRequisition[] | null; error: boolean }>({ key: "", rows: null, error: false });
+  const remoteEnabled = Boolean(client && accessScope && docIds);
+  const requestKey = JSON.stringify([accessScope, docIds, retry]);
+  useEffect(() => {
+    if (!open || !client || !accessScope || !docIds) return;
+    let cancelled = false;
+    setRemote({ key: requestKey, rows: null, error: false });
+    void loadScopedRequisitionPreview(client, { docIds, accessScope }).then(rows => {
+      if (!cancelled) setRemote({ key: requestKey, rows, error: false });
+    }).catch(() => { if (!cancelled) setRemote({ key: requestKey, rows: null, error: true }); });
+    return () => { cancelled = true; };
+    // The serialized key tracks projected IDs and authorization without unstable array dependencies.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, client, requestKey]);
+  const previewRows = remoteEnabled ? remote.key === requestKey ? remote.rows : null : requisitions;
+  const previewError = remoteEnabled && remote.key === requestKey && remote.error;
+  const count = docIds ? new Set(docIds).size : requisitions.length;
   const [position, setPosition] = useState({ top: 0, left: 0, width: 0 });
   const triggerRef = useRef<HTMLButtonElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
@@ -47,7 +68,7 @@ export function LinkedRequisitionPreview({ groupName, language, requisitions, on
   }, [open, updatePosition]);
   useEffect(() => () => { if (closeTimer.current) clearTimeout(closeTimer.current); }, []);
 
-  const label = translate(language, requisitions.length === 1 ? "workspaceRequisitionCountOne" : "workspaceRequisitionCountMany", { count: requisitions.length });
+  const label = translate(language, count === 1 ? "workspaceRequisitionCountOne" : "workspaceRequisitionCountMany", { count });
   return <>
     <button
       ref={triggerRef}
@@ -75,8 +96,9 @@ export function LinkedRequisitionPreview({ groupName, language, requisitions, on
         onPointerLeave={(event) => { if (event.pointerType === "mouse" && !triggerRef.current?.contains(event.relatedTarget as Node)) scheduleClose(); }}
       >
         <p className="px-2 py-1 text-xs font-semibold text-slate">{translate(language, "linkedRequisitions")}</p>
+        {previewError ? <p role="alert" className="px-2 py-1 text-sm text-danger">{translate(language, "loadError")} <button type="button" className="font-semibold underline" onClick={() => setRetry(value => value + 1)}>{translate(language, "retry")}</button></p> : previewRows === null ? <p role="status" className="px-2 py-1 text-sm text-slate">{translate(language, "loading")}</p> : null}
         <ul className="divide-y divide-[#E4E9F2]">
-          {requisitions.map((row) => <li key={row.doc_id} className="min-w-0 text-sm">
+          {(previewRows ?? []).map((row) => <li key={row.doc_id} className="min-w-0 text-sm">
             <button type="button" className="block min-h-11 w-full rounded-md px-2 py-2 text-left hover:bg-[#F1F6FC] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" aria-label={formatRequisitionOptionLabel(row)} onClick={() => { cancelClose(); setOpen(false); onOpenRequisition(row.doc_id); }}>
               <span className="block break-words font-semibold text-navy">{formatRequisitionTitle(row)}</span>
               <span className="block break-all text-xs text-slate">{row.doc_id}</span>

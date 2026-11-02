@@ -114,3 +114,14 @@ The before comparison used a transaction-local 45-second diagnostic budget; afte
 Direct verification without agents: dashboard rehearsal passed complete original/new JSON and cursor parity for 11 period/filter/access cases, all three requisition stage modes, and 1,001 extra historical stage records. The production-upgrade full-schema rehearsal passed with 1,132 fixture identities, actual RLS checks, preserved raw links/dates/audit rows, and the 53 shared dual-site profiles. Application source is unchanged from the preceding production build/type-check checkpoint.
 
 Live authenticated Edge verification also passed for both YTD views: Vacancy/Requisitions rendered 200 matching requisitions with 25 rows loaded, and Pipeline/Sources rendered 2,298 applicants plus the pipeline/source sections for January through October 2026.
+
+
+## Workspace linked-count and candidate display correction (2026-11-02)
+
+The picker displayed zero linked requisitions because it derived links from the empty operational startup arrays instead of the database group's `doc_ids`. Counts now use that authorized projection. Popup details load on demand with exact requisition IDs, session-bound caching, stale-result guards, and loading/retry states. No broad startup fetch or database change is introduced.
+
+The scoped IN reader also incorrectly preferred an offer's `application_id` over its `offer_id` when checking duplicate rows. It now uses the same table identity column as its stable paginated reads; multiple offers for one application remain distinct while duplicate primary keys still fail retrieval.
+
+Direct verification: all 13 scoped-loader checks passed; 10 focused Workspace checks passed, including empty bootstrap, retry, site-scoped popup contents, existing popup interactions, selected group metadata, candidate cards and opening the correct candidate profile. Native production authenticated reads under the eight-second budget found 85 candidates and two linked requisitions for the sampled populated group; all returned stage rows had candidate IDs/names and only the selected group. Production contains 1,132 profiles/applications and 223 links across 154 groups. These are read-only aggregate checks, not an all-role/full-record audit. Browser interaction with the user's session was stopped when the user stopped Computer Use; final live verification uses service/build and HTTP checks.
+
+Final type checking and the isolated production build passed (22/22 static pages, about 376 kB first-load application JS). Existing unrelated lint and optional-sharp warnings remain. No Supabase migration or authorization change is needed for this correction.

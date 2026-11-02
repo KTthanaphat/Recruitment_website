@@ -700,7 +700,7 @@ function WorkspacePicker({ canManageSetup, groups, scope, onScopeChange, data, r
       <span key="demand" className="tabular-nums">{filled}/{demand}</span>,
       <span key="candidates" className="tabular-nums">{active}/{candidateCount}</span>,
       <span key="owner" className="break-words">{group.sites.join(", ") || "—"} / {group.owners.join(", ") || translate(language, "unassigned")}</span>,
-      <LinkedRequisitionPreview key="links" groupName={group.group_position} language={language} requisitions={linkedRequisitions} onOpenRequisition={onOpenRequisition}/>,
+      <LinkedRequisitionPreview key="links" groupName={group.group_position} language={language} requisitions={linkedRequisitions} docIds={serverGroups ? group.doc_ids : undefined} client={client} accessScope={data.profile ? { profileId: data.profile.id, key: accessScope } : undefined} onOpenRequisition={onOpenRequisition}/>,
       latestSavedByGroup.get(group.group_id) || group.latest_saved_at ? formatDate(latestSavedByGroup.get(group.group_id) ?? group.latest_saved_at ?? undefined, language) : "—"
     ];
   }

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { loadScopedRequisitionDetail } from "@/lib/requisition-detail-loader";
+import { loadScopedRequisitionDetail, loadScopedRequisitionPreview } from "@/lib/requisition-detail-loader";
 import { loadScopedGroupWorkspace } from "@/lib/group-workspace-loader";
 import { readCompleteScopedPages, readScopedActivityPage, ScopedReadError, verifyScopedIdentity } from "@/lib/scoped-detail-read";
 import { clearDashboardSummaryCache, loadHomeQualityPage } from "@/lib/dashboard-summary-client";
@@ -249,4 +249,18 @@ test("Home quality loader sends exact detail scope keys and keeps combined filte
     { ...scope, groupId: "GRP-10", docId: "REQ-10" },
   ]);
   expect(calls.every(call => call.p_limit === 25 && call.p_after_id === null)).toBe(true);
+});
+
+
+test("workspace preview reads exact projected requisitions and offers only, and rejects missing or stale access", async () => {
+  const fixture = baseFixture(), client = mockClient(fixture);
+  fixture.tables.offers.push({ ...fixture.tables.offers[0], offer_id: 3 });
+  const rows = await loadScopedRequisitionPreview(client, { docIds: ["REQ-1"], accessScope });
+  expect(rows.map(row => row.doc_id)).toEqual(["REQ-1"]);
+  expect(rows[0].accepted_count).toBe(2);
+  expect(fixture.calls.every(call => ["requisitions", "offers"].includes(call.table ?? ""))).toBe(true);
+  expect(fixture.calls.every(call => JSON.stringify(call.filters.doc_id) === JSON.stringify(["REQ-1"]))).toBe(true);
+  await expect(loadScopedRequisitionPreview(client, { docIds: ["REQ-1", "REQ-MISSING"], accessScope })).rejects.toThrow();
+  client.__authState.profileId = "other";
+  await expect(loadScopedRequisitionPreview(client, { docIds: ["REQ-1"], accessScope })).rejects.toThrow();
 });

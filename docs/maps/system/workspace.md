@@ -62,3 +62,8 @@ Owner: `WorkspacePicker`, `groupCells`, `selectView` in [HiringWorkspaceView](..
 ## Candidate matching and ownership
 
 Cross-site candidate destinations use the minimal application directory; matching permission does not grant journey management. Workspace create-existing/new-person flows use [profile/application capabilities](pipeline.md#creator-privacy-and-profileapplication-layout). PIC/admin gates apply to selected journey writes; creator/PIC/admin may add applications. Checks: [profile browser](../../../tests/e2e/candidate-profile-redesign.spec.ts), [Workspace](../../../tests/e2e/workspace.spec.ts).
+
+
+## Bounded picker data correctness
+
+The paginated picker counts linked requisitions from each group row's authorized `doc_ids`, independently of the small startup dataset. `LinkedRequisitionPreview` loads only those exact requisitions and their offers when opened, through `loadScopedRequisitionPreview`; loading and retry states preserve the projected count. Scoped relation readers deduplicate by the requested table primary key, so multiple offers sharing one application remain distinct. Candidate stage cards and profile drawers continue using their scoped database reads. Regression coverage: [workspace data display](../../../tests/e2e/workspace-data-display.spec.ts) and [scoped loaders](../../../tests/e2e/scoped-detail-loaders.spec.ts).
