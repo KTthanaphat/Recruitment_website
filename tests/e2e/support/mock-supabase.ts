@@ -629,8 +629,14 @@ function offerListRows(data: DashboardData, filters: Record<string, unknown>, se
 
 function workspaceGroupRows(data: DashboardData, filters: Record<string, unknown>, search: string) {
   const week=String(filters.weekStart??"2026-07-18");
-  return enrichWorkspaceLinkedGroups(data,week).map(group=>{
-    const reqs=enrichRequisitions(data).filter(req=>group.doc_ids.includes(req.doc_id));
+  // Match the group RPC's permission/header-scoped linked-requisition projection.
+  const profile=data.profile;
+  const visibleReqs=data.requisitions.filter(req=>(profile?.role!=="site_recruiter"||req.site===profile.site||req.person_in_charge===profile.nickname)
+    &&(!filters.headerSite||req.site===filters.headerSite)&&(!filters.headerPic||req.person_in_charge===filters.headerPic)&&(!filters.priorityOnly||req.is_priority));
+  const visibleIds=new Set(visibleReqs.map(req=>req.doc_id));
+  const projected={...data,requisitions:visibleReqs,document_groups:data.document_groups.filter(link=>visibleIds.has(link.doc_id))};
+  return enrichWorkspaceLinkedGroups(projected,week).map(group=>{
+    const reqs=enrichRequisitions(projected).filter(req=>group.doc_ids.includes(req.doc_id));
     const people=enrichCandidates(data).filter(candidate=>candidate.group_id===group.group_id);
     const active=people.filter(candidate=>candidate.application_state!=="closed"&&candidate.latest_result!==0&&!candidate.accepted_date&&ACTIVE_PIPELINE_STAGES.includes(candidate.latest_process as never));
     const open=reqs.filter(req=>req.status==="ongoing"&&req.open_headcount>0);

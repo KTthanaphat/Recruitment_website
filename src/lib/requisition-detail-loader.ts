@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { emptyDashboardData, enrichRequisitions } from "@/lib/data";
 import type { CandidateApplication, DocumentGroup, Offer, PositionGroup, Requisition, RequisitionLog } from "@/types/recruitment";
 import { countsTowardHeadcount } from "@/lib/offer-headcount";
 import { loadCachedScopedDetail } from "@/lib/scoped-detail-cache";
@@ -24,6 +25,18 @@ export type ScopedRequisitionDetail = {
   activity: ScopedActivityPage;
 };
 export type ScopedRequisitionDetailResult = ScopedRequisitionDetail | { status: "unavailable"; reason: ScopedUnavailableReason };
+
+/** Load only the requisitions projected by the current group page, on popup demand. */
+export async function loadScopedRequisitionPreview(client: SupabaseClient, input: { docIds: string[]; accessScope: ScopedAccessIdentity }) {
+  const docIds = [...new Set(input.docIds)].sort();
+  return loadCachedScopedDetail(client, input.accessScope, `requisition-preview:${JSON.stringify(docIds)}`, async () => {
+    await verifyScopedIdentity(client, input.accessScope);
+    const requisitions = await readScopedInPages<Requisition>(client, "requisitions", "doc_id", docIds, "doc_id", "workspace requisition preview", "*");
+    if (requisitions.length !== docIds.length || requisitions.some(row => !docIds.includes(row.doc_id))) throw new Error("The linked requisitions changed or are unavailable.");
+    const offers = await readScopedInPages<Offer>(client, "offers", "doc_id", docIds, "offer_id", "workspace requisition preview offers", "*");
+    return enrichRequisitions({ ...emptyDashboardData, requisitions, offers });
+  });
+}
 
 /** Resolve exactly one authorized requisition, then read only its linked group, offer, and history records. */
 export async function loadScopedRequisitionDetail(
