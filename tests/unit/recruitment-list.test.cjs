@@ -1,3 +1,4 @@
+require("./register-typescript.cjs");
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const { fetchRecruitmentList, fetchRecruitmentListCount, invalidateRecruitmentLists, invalidateRecruitmentListsForMutation, recruitmentListDependenciesForMutation, clearRecruitmentListCache, subscribeRecruitmentLists } = require("../../src/lib/recruitment-list.ts");

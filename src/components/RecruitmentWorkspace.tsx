@@ -1,4 +1,5 @@
 "use client";
+import { clearRecruitmentReadQueue } from "@/lib/recruitment-read-scheduler";
 import { candidateCanUseGroup, profileCapabilities, canManageApplicationGroup, eligibleApplicationGroups, canManageCandidateJourney } from "@/lib/applications";
 
 import dynamic from "next/dynamic";
@@ -541,6 +542,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const workspaceDataRef = useRef(data);
   workspaceDataRef.current = data;
   const detailAccessScope = `${process.env.NEXT_PUBLIC_SUPABASE_URL ?? "local"}:${data.profile?.id ?? "anonymous"}:${data.profile?.role ?? "viewer"}:${data.profile?.site ?? ""}:${data.profile?.updated_at ?? ""}`;
+  useEffect(() => () => { if (supabase) clearRecruitmentReadQueue(supabase); }, [detailAccessScope, supabase]);
   useEffect(() => {
     if (initialView !== "home" || workspaceLoadState !== "ready" || !supabase || !data.profile) {
       setWelcomeSummary(null); setWelcomeSummaryLoading(false); setWelcomeSummaryError(null); setHomeBannerSummary(null); setHomeBannerLoading(false); setHomeBannerError(null);

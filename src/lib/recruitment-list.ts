@@ -1,3 +1,4 @@
+import { scheduleRecruitmentRead, clearRecruitmentReadQueue } from "./recruitment-read-scheduler";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
@@ -63,7 +64,7 @@ export async function fetchRecruitmentList<T>(client: RpcClient, request: Recrui
   let cached = pageCache.get(key);
   if (cached && cached.expiresAt <= Date.now()) { pageCache.delete(key); cached = undefined; }
   if (!cached) {
-    const created: Promise<RecruitmentListPage<unknown>> = Promise.resolve(client.rpc("app_recruitment_list_v1", {
+    const created: Promise<RecruitmentListPage<unknown>> = scheduleRecruitmentRead(client, () => client.rpc("app_recruitment_list_v1", {
       p_entity: normalized.entity,
       p_search: normalized.search,
       p_filters: normalized.filters,
@@ -73,7 +74,7 @@ export async function fetchRecruitmentList<T>(client: RpcClient, request: Recrui
       p_cursor_value: normalized.cursor?.value ?? null,
       p_cursor_id: normalized.cursor?.id ?? null,
       p_before: normalized.before ?? false
-    })).then(({ data, error }) => {
+    }), 0).then(({ data, error }) => {
       if (error) throw new Error(error.message);
       const result = data as Partial<RecruitmentListPage<unknown>> | null;
       const limit = normalized.limit ?? 50;
@@ -100,9 +101,9 @@ export async function fetchRecruitmentListCount(client: RpcClient, request: Recr
   let cached = countCache.get(key);
   if (cached && cached.expiresAt <= Date.now()) { countCache.delete(key); cached = undefined; }
   if (!cached) {
-    const created = Promise.resolve(client.rpc("app_recruitment_list_count_v1", {
+    const created = scheduleRecruitmentRead(client, () => client.rpc("app_recruitment_list_count_v1", {
       p_entity: normalized.entity, p_search: normalized.search, p_filters: normalized.filters
-    })).then(({ data, error }) => {
+    }), 10).then(({ data, error }) => {
       if (error) throw new Error(error.message);
       if (typeof data !== "number" || !Number.isInteger(data) || data < 0) throw new Error("Recruitment list count returned an invalid response");
       return data;
@@ -158,6 +159,7 @@ export function invalidateRecruitmentListsForMutation(endpoint: string) {
 }
 
 export function clearRecruitmentListCache() {
+  clearRecruitmentReadQueue();
   pageCache.clear();
   countCache.clear();
   for (const entity of listeners.keys()) { revision.set(entity, (revision.get(entity) ?? 0) + 1); listeners.get(entity)?.forEach(listener => listener()); }
@@ -195,13 +197,14 @@ export function useRecruitmentList<T>({ client, accessScope, entity, filters = {
   const [countRetry, setCountRetry] = useState(0);
   useEffect(() => {
     if (!enabled || !client || !accessScope) { setCountState({ key: countCriteriaKey, value: null, loading: false, error: false }); return; }
+    if (loadedKey !== requestKey || !result || error) return;
     let cancelled = false;
     setCountState({ key: countCriteriaKey, value: null, loading: true, error: false });
     fetchRecruitmentListCount(client, { accessScope, entity, search: debouncedSearch, filters })
       .then(value => { if (!cancelled) setCountState({ key: countCriteriaKey, value, loading: false, error: false }); })
       .catch(() => { if (!cancelled) setCountState({ key: countCriteriaKey, value: null, loading: false, error: true }); });
     return () => { cancelled = true; };
-  }, [accessScope, client, countCriteriaKey, countRetry, debouncedSearch, enabled, entity, filterKey, listRevision]);
+  }, [accessScope, client, countCriteriaKey, countRetry, debouncedSearch, enabled, entity, filterKey, listRevision, loadedKey, requestKey, result, error]);
   const current = loadedKey === requestKey ? result : null;
   const currentCount = countState.key === countCriteriaKey ? countState : null;
   function goNext() {
