@@ -125,3 +125,12 @@ The scoped IN reader also incorrectly preferred an offer's `application_id` over
 Direct verification: all 13 scoped-loader checks passed; 10 focused Workspace checks passed, including empty bootstrap, retry, site-scoped popup contents, existing popup interactions, selected group metadata, candidate cards and opening the correct candidate profile. Native production authenticated reads under the eight-second budget found 85 candidates and two linked requisitions for the sampled populated group; all returned stage rows had candidate IDs/names and only the selected group. Production contains 1,132 profiles/applications and 223 links across 154 groups. These are read-only aggregate checks, not an all-role/full-record audit. Browser interaction with the user's session was stopped when the user stopped Computer Use; final live verification uses service/build and HTTP checks.
 
 Final type checking and the isolated production build passed (22/22 static pages, about 376 kB first-load application JS). Existing unrelated lint and optional-sharp warnings remain. No Supabase migration or authorization change is needed for this correction.
+
+
+## Candidate detail reference-check key correction (2026-11-02)
+
+Both live databases define `candidate_reference_checks.check_id` as the reference-check identity. The scoped candidate loader incorrectly ordered by `reference_check_id`, so the selected-application hydration failed even for an empty check set and the drawer showed an error instead of the profile/application detail. It now orders and verifies row identity by `check_id`. Scoped order keys are constrained to `keyof T` so this DTO mismatch fails type checking. No schema, record, permission, or API-timeout change is required.
+
+Two browser regressions passed with empty and saved checks. Their mock rejects every reference-check query not ordered by `check_id.asc`, asserts the exact selected application, and verifies the loaded Contact references section, contact identity and saved conversation text. Both database column inventories and authenticated, application-scoped ordered reads validate the corrected key. Type checking passed.
+
+The final production build passed with 22/22 static pages. Existing unrelated lint/optional-sharp warnings remain.
