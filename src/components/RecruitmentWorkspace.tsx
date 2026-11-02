@@ -1,4 +1,6 @@
 "use client";
+import { RetryIconButton } from "@/components/ui/RetryIconButton";
+import { LoadingSkeleton, RefreshIndicator } from "@/components/ui/LoadingSkeleton";
 import { clearRecruitmentReadQueue } from "@/lib/recruitment-read-scheduler";
 import { candidateCanUseGroup, profileCapabilities, canManageApplicationGroup, eligibleApplicationGroups, canManageCandidateJourney } from "@/lib/applications";
 
@@ -364,7 +366,9 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     setUpdateDenial(reason);
   }
 
-  const loadData = useCallback(async (refreshReports = true) => {
+  const latestData = useRef(data); latestData.current = data;
+  const loadData = useCallback(async (refreshReports = true, background = false) => {
+    const retainView = background && Boolean(latestData.current.profile);
     if (layoutMode === "unknown") return null;
     const generation = ++loadGeneration.current;
     const currentRequest = () => generation === loadGeneration.current;
@@ -376,7 +380,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     }
 
     setLoading(true);
-    setWorkspaceLoadState("checking_session");
+    if (!retainView) setWorkspaceLoadState("checking_session");
     setError(null);
     let session;
     try {
@@ -402,7 +406,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       return null;
     }
 
-    setWorkspaceLoadState("loading_data");
+    if (!retainView || session.data.session.user.id !== latestData.current.profile?.id) setWorkspaceLoadState("loading_data");
     try {
       if (loadScope === "profile") {
         const user = await supabase.auth.getUser();
@@ -543,6 +547,10 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   workspaceDataRef.current = data;
   const detailAccessScope = `${process.env.NEXT_PUBLIC_SUPABASE_URL ?? "local"}:${data.profile?.id ?? "anonymous"}:${data.profile?.role ?? "viewer"}:${data.profile?.site ?? ""}:${data.profile?.updated_at ?? ""}`;
   useEffect(() => () => { if (supabase) clearRecruitmentReadQueue(supabase); }, [detailAccessScope, supabase]);
+  const homeReadKey = JSON.stringify([detailAccessScope, filters.site, filters.owner, filters.priorityOnly]);
+  const homeReadIdentity = useRef("");
+  const visibleWelcomeSummary = homeReadIdentity.current === homeReadKey ? welcomeSummary : null;
+  const visibleHomeBannerSummary = homeReadIdentity.current === homeReadKey ? homeBannerSummary : null;
   useEffect(() => {
     if (initialView !== "home" || workspaceLoadState !== "ready" || !supabase || !data.profile) {
       setWelcomeSummary(null); setWelcomeSummaryLoading(false); setWelcomeSummaryError(null); setHomeBannerSummary(null); setHomeBannerLoading(false); setHomeBannerError(null);
@@ -550,8 +558,10 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     }
     let active = true;
     const scope = { headerSite: filters.site, headerPic: filters.owner, priorityOnly: filters.priorityOnly };
-    setWelcomeSummary(null); setWelcomeSummaryLoading(true); setWelcomeSummaryError(null);
-    setHomeBannerSummary(null); setHomeBannerLoading(true); setHomeBannerError(null);
+    if (homeReadIdentity.current !== homeReadKey) { setWelcomeSummary(null); setHomeBannerSummary(null); }
+    homeReadIdentity.current = homeReadKey;
+    setWelcomeSummaryLoading(true); setWelcomeSummaryError(null);
+    setHomeBannerLoading(true); setHomeBannerError(null);
     void loadWelcomeSummary(supabase, detailAccessScope, reportRefreshKey + welcomeSummaryRetry).then(value => {
       if (active) { setWelcomeSummary(value); setWelcomeSummaryError(null); }
     }).catch(loadError => {
@@ -563,7 +573,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       if (active) setHomeBannerError(loadError instanceof Error ? loadError.message : "Could not load the home banner summary.");
     }).finally(() => { if (active) setHomeBannerLoading(false); });
     return () => { active = false; };
-  }, [data.profile, detailAccessScope, filters.owner, filters.priorityOnly, filters.site, homeBannerRetry, initialView, reportRefreshKey, welcomeSummaryRetry, workspaceLoadState]);
+  }, [homeReadKey, data.profile, detailAccessScope, filters.owner, filters.priorityOnly, filters.site, homeBannerRetry, initialView, reportRefreshKey, welcomeSummaryRetry, workspaceLoadState]);
   useEffect(() => { if (supabase) clearScopedDetailCache(supabase); }, [detailAccessScope, supabase]);
   const currentDetailAccessScope = useRef(detailAccessScope);
   currentDetailAccessScope.current = detailAccessScope;
@@ -579,7 +589,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     }
     let cancelled = false;
     const candidateId = detail?.type === "candidate" ? detail.id : "";
-    setCandidateDetail({ key: candidateDetailKey, data: null, loading: true, error: null });
+    setCandidateDetail(previous => ({ key: candidateDetailKey, data: previous.key === candidateDetailKey ? previous.data : null, loading: true, error: null }));
     void loadCandidateDetail(supabase, { profileId: activeProfileId, key: detailAccessScope }, candidateId, selectedApplicationId, workspaceDataRef.current)
       .then(result => { if (!cancelled) setCandidateDetail({ key: candidateDetailKey, data: result, loading: false, error: null }); })
       .catch(loadError => { if (!cancelled) setCandidateDetail({ key: candidateDetailKey, data: null, loading: false, error: loadError instanceof Error ? loadError.message : "Could not load candidate details." }); });
@@ -606,7 +616,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       return;
     }
     let cancelled = false;
-    setRequisitionDetail({ key: requisitionDetailKey, loading: true, error: null, result: null });
+    setRequisitionDetail(previous => ({ key: requisitionDetailKey, loading: true, error: null, result: previous.key === requisitionDetailKey ? previous.result : null }));
     void loadScopedRequisitionDetail(supabase, { docId: detail.id, accessScope: { profileId: data.profile.id, key: detailAccessScope } })
       .then(result => { if (!cancelled) setRequisitionDetail({ key: requisitionDetailKey, loading: false, error: null, result }); })
       .catch(loadError => { if (!cancelled) setRequisitionDetail({ key: requisitionDetailKey, loading: false, error: loadError instanceof Error ? loadError.message : "Could not load requisition details.", result: null }); });
@@ -707,7 +717,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       if (!cancelled) { setWorkspaceTarget({ type: null, id: null }); setDetail({ type: "requisition", id: docId }); }
     });
     return () => { cancelled = true; };
-  }, [data.profile, detailAccessScope, filters.owner, filters.site, initialView, supabase, workspaceLoadState, workspaceTarget]);
+  }, [homeReadKey, data.profile, detailAccessScope, filters.owner, filters.site, initialView, supabase, workspaceLoadState, workspaceTarget]);
 
   useEffect(() => {
     if (initialView === "workspace" && workspaceUrlState.params.has("doc")) updateWorkspaceUrlState({ doc: null });
@@ -1290,7 +1300,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       refreshMutationCaches(savedAction.endpoint);
       const changedCandidateId = String(savedAction.payload.candidate_id ?? "");
       if (detail?.type === "candidate" && detail.id === changedCandidateId) {
-        setCandidateDetail({ key: candidateDetailKey, data: null, loading: true, error: null });
+        setCandidateDetail(previous => ({ key: candidateDetailKey, data: previous.key === candidateDetailKey ? previous.data : null, loading: true, error: null }));
         setCandidateDetailRetry(value => value + 1);
       }
       const handoff = offerPassHandoffFromResult(result, candidateDetailContext ?? data);
@@ -1452,11 +1462,11 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   }, [ensureCandidateActionContext]);
   const saveTeamsInterview = useCallback(async (payload: Record<string, unknown>) => {
     if (!supabase) throw new Error("Sign in before scheduling a Teams interview."); setBusy(true);
-    try { const { data: session } = await supabase.auth.getSession(); const response = await fetch("/api/interview-meetings", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${session.session?.access_token ?? ""}` }, body: JSON.stringify(payload) }); const result = await response.json() as { ok?: boolean; error?: string }; if (!response.ok || !result.ok) throw new Error(result.error ?? "Could not update Teams interview."); setStatus(payload.operation === "cancel" ? "Teams interview cancelled." : "Teams interview scheduled and invitations sent."); setCurrentStageActionCandidateId(null); refreshMutationCaches("app_interview_meetings"); if (detail?.type === "candidate" && detail.id === payload.candidate_id) { setCandidateDetail({ key: candidateDetailKey, data: null, loading: true, error: null }); setCandidateDetailRetry(value => value + 1); } } finally { setBusy(false); }
+    try { const { data: session } = await supabase.auth.getSession(); const response = await fetch("/api/interview-meetings", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${session.session?.access_token ?? ""}` }, body: JSON.stringify(payload) }); const result = await response.json() as { ok?: boolean; error?: string }; if (!response.ok || !result.ok) throw new Error(result.error ?? "Could not update Teams interview."); setStatus(payload.operation === "cancel" ? "Teams interview cancelled." : "Teams interview scheduled and invitations sent."); setCurrentStageActionCandidateId(null); refreshMutationCaches("app_interview_meetings"); if (detail?.type === "candidate" && detail.id === payload.candidate_id) { setCandidateDetail(previous => ({ key: candidateDetailKey, data: previous.key === candidateDetailKey ? previous.data : null, loading: true, error: null })); setCandidateDetailRetry(value => value + 1); } } finally { setBusy(false); }
   }, [detail, candidateDetailKey, refreshMutationCaches]);
   const saveCurrentStageEstimate = useCallback(async (payload: Record<string, unknown>) => {
     if (!supabase) throw new Error("Sign in before updating the pending stage."); setBusy(true);
-    try { const { data: rpcResult, error: rpcError } = await supabase.rpc("app_update_pipeline_pending_v2", { payload }); if (rpcError) throw new Error(rpcError.message); const result = (rpcResult ?? { ok: true }) as RpcResult; if (result.error) throw new Error(result.error); setStatus("Estimated action date updated."); setCurrentStageActionCandidateId(null); refreshMutationCaches("app_update_pipeline_pending_v2"); if (detail?.type === "candidate" && detail.id === payload.candidate_id) { setCandidateDetail({ key: candidateDetailKey, data: null, loading: true, error: null }); setCandidateDetailRetry(value => value + 1); } } finally { setBusy(false); }
+    try { const { data: rpcResult, error: rpcError } = await supabase.rpc("app_update_pipeline_pending_v2", { payload }); if (rpcError) throw new Error(rpcError.message); const result = (rpcResult ?? { ok: true }) as RpcResult; if (result.error) throw new Error(result.error); setStatus("Estimated action date updated."); setCurrentStageActionCandidateId(null); refreshMutationCaches("app_update_pipeline_pending_v2"); if (detail?.type === "candidate" && detail.id === payload.candidate_id) { setCandidateDetail(previous => ({ key: candidateDetailKey, data: previous.key === candidateDetailKey ? previous.data : null, loading: true, error: null })); setCandidateDetailRetry(value => value + 1); } } finally { setBusy(false); }
   }, [detail, candidateDetailKey, refreshMutationCaches]);
   const createRejectionLetterDraft = useCallback(async (payload: { candidate_id: string; failed_stage_instance_id: string; template_id: string; language: "th" | "en"; recipient_email: string; subject: string; body: string; retry_of_draft_id?: string }) => {
     if (!supabase) throw new Error("Sign in before sending a rejection letter.");
@@ -1514,19 +1524,19 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
 
   const detailBody: DetailBodyResult = detail?.type === "candidate" ? {
     title: `${formatRecruitmentId(detail.id)} / ${hydratedCandidateData?.candidates.find(row => row.candidate_id === detail.id)?.name ?? "Candidate"}`,
-    body: candidateDetail.loading || candidateDetail.key !== candidateDetailKey
-      ? <p role="status" className="py-6 text-sm text-slate">{translate(language, "loadingRecruitmentRecords")}</p>
+    body: (candidateDetail.loading && !hydratedCandidateData) || candidateDetail.key !== candidateDetailKey
+      ? <LoadingSkeleton variant="detail" label={<>{translate(language, "loadingRecruitmentRecords")}</>} className="py-6 text-sm text-slate" />
       : candidateDetail.error
-        ? <div role="alert" className="grid gap-3 py-4 text-sm text-slate"><p>{candidateDetail.error}</p><Button type="button" variant="secondary" onClick={() => setCandidateDetailRetry(value => value + 1)}>{translate(language, "retry")}</Button></div>
-        : hydratedCandidateData ? <CandidateProfilePanel key={detail.id} candidateId={detail.id} applicationId={selectedJourney?.application_id ?? null} data={hydratedCandidateData} language={language} client={supabase} accessScope={detailAccessScope} onSelect={(id)=>{setSelectedApplicationId(id);const url=new URL(window.location.href);url.searchParams.set("applicationId",id);window.history.pushState({},"",url);}} onEdit={() => openDetailCandidateChange(detail.id)} onAction={prepareRpcAction}>{selectedJourney ? legacyDetailBody.body : null}</CandidateProfilePanel>
+        ? <div role="alert" className="grid gap-3 py-4 text-sm text-slate"><p>{candidateDetail.error}</p><RetryIconButton title={`${language === "th" ? "ลองโหลดข้อมูลอีกครั้ง" : "Retry loading"}: Recruitment Workspace`} type="button"  onClick={() => setCandidateDetailRetry(value => value + 1)}>{translate(language, "retry")}</RetryIconButton></div>
+        : hydratedCandidateData ? <><div aria-busy={candidateDetail.loading}>{candidateDetail.loading ? <RefreshIndicator language={language} /> : null}</div><CandidateProfilePanel key={detail.id} candidateId={detail.id} applicationId={selectedJourney?.application_id ?? null} data={hydratedCandidateData} language={language} client={supabase} accessScope={detailAccessScope} onSelect={(id)=>{setSelectedApplicationId(id);const url=new URL(window.location.href);url.searchParams.set("applicationId",id);window.history.pushState({},"",url);}} onEdit={() => openDetailCandidateChange(detail.id)} onAction={prepareRpcAction}>{selectedJourney ? legacyDetailBody.body : null}</CandidateProfilePanel></>
         : <p>{translate(language, "candidateUnavailable")}</p>
   } : detail?.type === "requisition" ? {
     title: loadedRequisition ? formatRequisitionTitle(enrichRequisitions(detailSource)[0]) : detail.id,
-    body: requisitionDetail.loading || requisitionDetail.key !== requisitionDetailKey
-      ? <p role="status" className="py-6 text-sm text-slate">{translate(language, "loadingRecruitmentRecords")}</p>
+    body: (requisitionDetail.loading && !loadedRequisition) || requisitionDetail.key !== requisitionDetailKey
+      ? <LoadingSkeleton variant="detail" label={<>{translate(language, "loadingRecruitmentRecords")}</>} className="py-6 text-sm text-slate" />
       : requisitionDetail.error || requisitionDetailResult?.status !== "ready"
-        ? <div role="alert" className="grid gap-3 py-4 text-sm text-slate"><p>{requisitionDetail.error ?? translate(language, "loadFailed")}</p><Button type="button" variant="secondary" onClick={() => setRequisitionDetailRetry(value => value + 1)}>{translate(language, "retry")}</Button></div>
-        : legacyDetailBody.body
+        ? <div role="alert" className="grid gap-3 py-4 text-sm text-slate"><p>{requisitionDetail.error ?? translate(language, "loadFailed")}</p><RetryIconButton type="button"  onClick={() => setRequisitionDetailRetry(value => value + 1)}>{translate(language, "retry")}</RetryIconButton></div>
+        : <div aria-busy={requisitionDetail.loading}>{requisitionDetail.loading ? <RefreshIndicator language={language} /> : null}{legacyDetailBody.body}</div>
   } : legacyDetailBody;
 
   if (!hasSupabaseConfig) {
@@ -1590,7 +1600,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
         <>
           <CommandSelector ariaLabel={translate(language, "site")} density="compact" emptyLabel={translate(language, "allSites")} options={[{ value: "", label: translate(language, "allSites") }, ...siteOptions.map((value) => ({ value, label: value }))]} value={filters.site} onValueChange={(value) => setFilters((old) => ({ ...old, site: value }))} className="w-full min-w-[8.5rem] sm:w-36" />
           <CommandSelector ariaLabel={translate(language, "personInCharge")} density="compact" emptyLabel={translate(language, "allOwners")} options={[{ value: "", label: translate(language, "allOwners") }, ...ownerOptions.map((value) => ({ value, label: value }))]} value={filters.owner} onValueChange={(value) => setFilters((old) => ({ ...old, owner: value }))} className="w-full min-w-[11rem] sm:w-48" />
-          {ownerOptionsError ? <Button type="button" size="sm" variant="secondary" title={ownerOptionsError} onClick={() => setOwnerOptionsRetry(value => value + 1)}>Retry owners</Button> : null}
+          {ownerOptionsError ? <RetryIconButton type="button"   title={ownerOptionsError} onClick={() => setOwnerOptionsRetry(value => value + 1)}>Retry owners</RetryIconButton> : null}
           <Button type="button" size={initialView === "dashboard" ? "icon-toolbar" : "icon-sm"} variant="secondary" className={initialView === "dashboard" ? filters.priorityOnly ? "!bg-[#E8F0FF] !text-[#0A3CDC] !ring-[#9FBFFF]" : "!text-[#0A3CDC]" : filters.priorityOnly ? "min-h-11 min-w-11 !bg-[#E8F0FF] !text-[#0A3CDC] !ring-[#9FBFFF] sm:min-h-9 sm:min-w-9" : "min-h-11 min-w-11 !text-[#0A3CDC] sm:min-h-9 sm:min-w-9"}
             icon={<Bookmark size={initialView === "dashboard" ? 16 : 18} fill={filters.priorityOnly ? "currentColor" : "none"} aria-hidden="true" />}
             aria-label={translate(language, "priorityRequisitionFilter")} aria-pressed={filters.priorityOnly}
@@ -1602,7 +1612,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       navigationContext={navigationContext}
       profile={data.profile}
       onLanguageChange={() => setLanguage((current) => (current === "en" ? "th" : "en"))}
-      onRefresh={desktopRequired ? undefined : () => { clearDashboardReportCache(); clearDashboardSummaryCache(); clearRecruitmentListCache(); void loadData(); }}
+      onRefresh={desktopRequired ? undefined : () => { clearDashboardReportCache(); clearDashboardSummaryCache(); clearRecruitmentListCache(); void loadData(true, true); }}
       onSignOut={signOut}
     >
       {desktopRequired ? <DesktopRequiredNotice view={initialView} language={language} navigationContext={navigationContext} /> : <>
@@ -1615,7 +1625,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       ) : null}
 
       {initialView === "home" ? (
-        <HomeView refreshKey={reportRefreshKey} bannerSummary={homeBannerSummary} bannerSummaryLoading={homeBannerLoading} bannerSummaryError={homeBannerError} onRetryBannerSummary={() => setHomeBannerRetry(value => value + 1)} listClient={supabase} accessScope={detailAccessScope} summaryScope={{ headerSite: filters.site, headerPic: filters.owner, priorityOnly: filters.priorityOnly }} language={language} profile={data.profile} requisitions={filteredRequisitions} candidates={filteredCandidates} offers={filteredOffers} recruitmentLogs={data.recruitment_logs} sourcingGroups={homeSourcingGroups} sourcingHref={buildContextualHref("/sourcing", { language, site: filters.site, owner: filters.owner, sourcingWeek, priority: filters.priorityOnly ? "only" : "all" })} staleSourcingGroups={staleSourcingGroups} changeLogs={filteredChangeLogs} dataQualityIssues={dataQualityIssues} canViewRecentActivity={canWrite} onConfirmStart={(offer) => { setProcessDefaults({ offer_id: offer.offer_id, offer_expected_updated_at: offer.updated_at, offer_start_confirmation: offer.start_confirmation }); setActiveModal("start_confirmation"); }} onEditPending={openPendingEdit} onOpenRequisition={(id) => setDetail({ type: "requisition", id })} onOpenCandidate={openCandidateDetail} />
+        <HomeView refreshKey={reportRefreshKey} bannerSummary={visibleHomeBannerSummary} bannerSummaryLoading={homeBannerLoading} bannerSummaryError={homeBannerError} onRetryBannerSummary={() => setHomeBannerRetry(value => value + 1)} listClient={supabase} accessScope={detailAccessScope} summaryScope={{ headerSite: filters.site, headerPic: filters.owner, priorityOnly: filters.priorityOnly }} language={language} profile={data.profile} requisitions={filteredRequisitions} candidates={filteredCandidates} offers={filteredOffers} recruitmentLogs={data.recruitment_logs} sourcingGroups={homeSourcingGroups} sourcingHref={buildContextualHref("/sourcing", { language, site: filters.site, owner: filters.owner, sourcingWeek, priority: filters.priorityOnly ? "only" : "all" })} staleSourcingGroups={staleSourcingGroups} changeLogs={filteredChangeLogs} dataQualityIssues={dataQualityIssues} canViewRecentActivity={canWrite} onConfirmStart={(offer) => { setProcessDefaults({ offer_id: offer.offer_id, offer_expected_updated_at: offer.updated_at, offer_start_confirmation: offer.start_confirmation }); setActiveModal("start_confirmation"); }} onEditPending={openPendingEdit} onOpenRequisition={(id) => setDetail({ type: "requisition", id })} onOpenCandidate={openCandidateDetail} />
       ) : null}
 
       {initialView === "dashboard" ? (
@@ -1819,7 +1829,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
         language={language}
         open={welcomeOpen}
         profile={data.profile}
-        summary={welcomeSummary}
+        summary={visibleWelcomeSummary}
         loading={welcomeSummaryLoading}
         error={welcomeSummaryError}
         onClose={closeWelcomeSummary}
@@ -1889,7 +1899,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       {rejectionLetterCandidateId && rejectionTemplateError ? <p role="alert" className="fixed bottom-4 right-4 z-[90] rounded-md bg-white p-3 text-sm text-scarlet shadow-lg">Could not load rejection templates: {rejectionTemplateError}</p> : null}
       <CurrentStageEditModal candidate={applicationAwareCandidate(currentStageActionCandidateId ?? "") ?? null} stage={currentStageActionData.recruitment_logs.find((log) => log.candidate_id === currentStageActionCandidateId && log.application_id === selectedApplicationId && log.result === null && !log.superseded_at) ?? null} meeting={currentStageActionData.interview_meetings.find((meeting) => meeting.candidate_id === currentStageActionCandidateId && currentStageActionData.recruitment_logs.some(log => log.stage_instance_id === meeting.stage_instance_id && log.application_id === selectedApplicationId) && meeting.status !== "cancelled") ?? null} templates={data.interview_invitation_templates} profiles={invitationProfiles} language={language} recruiterName={data.profile?.nickname ?? data.profile?.full_name ?? data.profile?.email ?? "Recruitment"} busy={busy} onClose={() => setCurrentStageActionCandidateId(null)} onSaveEstimate={saveCurrentStageEstimate} onSaveTeams={saveTeamsInterview} />
       {currentStageActionCandidateId && invitationTemplateError ? <p role="alert" className="fixed bottom-4 right-4 z-[90] rounded-md bg-white p-3 text-sm text-scarlet shadow-lg">Could not load interview templates: {invitationTemplateError}</p> : null}
-      {currentStageActionCandidateId && invitationProfilesError ? <p role="alert" className="fixed bottom-4 right-4 z-[90] rounded-md bg-white p-3 text-sm text-scarlet shadow-lg">Could not load interviewer options: {invitationProfilesError} <button type="button" onClick={() => setInvitationProfilesRetry(value => value + 1)}>{translate(language, "retry")}</button></p> : null}
+      {currentStageActionCandidateId && invitationProfilesError ? <p role="alert" className="fixed bottom-4 right-4 z-[90] rounded-md bg-white p-3 text-sm text-scarlet shadow-lg">Could not load interviewer options: {invitationProfilesError} <RetryIconButton type="button" onClick={() => setInvitationProfilesRetry(value => value + 1)}>{translate(language, "retry")}</RetryIconButton></p> : null}
       </>}
     </AppShell></DesktopInteractionContext.Provider>
   );
@@ -2475,8 +2485,8 @@ function RecordModal({
         {["requisition", "candidate", "offer", "group", "user"].includes(modal) ? <ModeRow mode={mode} onModeChange={handleModeChange} /> : null}
         {modal === "requisition" ? <RequisitionFields key={`${selectedId}-${scopedSelectedRequisition?.updated_at ?? "pending"}`} data={data} client={client} accessScope={accessScope} lookupScope={lookupScope} language={language} profile={profile} ownerProfiles={assignableProfiles} ownerOptionsLoading={ownerOptionsLoading} ownerOptionsError={ownerOptionsError} onRetryOwnerOptions={() => setOwnerOptionsRetry(value => value + 1)} mode={mode} selectedId={selectedId} selected={scopedSelectedRequisition} onSelect={setSelectedId} onSelectRow={selectRequisition} /> : null}
         {modal === "status" ? <StatusFields key={`${selectedId}-${scopedSelectedRequisition?.status ?? "pending"}`} client={client} accessScope={accessScope} lookupScope={lookupScope} language={language} selectedId={selectedId} selected={scopedSelectedRequisition} onSelect={selectRequisition} /> : null}
-        {exactTargetPending ? <p role="status" className="text-sm text-slate">{translate(language, "loading")}</p> : null}
-        {exactTargetUnavailable ? <div className="flex items-center gap-2 text-sm text-danger" role="alert"><span>{exactRequisitionState?.error ?? translate(language, "recordUnavailable")}</span><Button type="button" variant="secondary" onClick={() => setExactRequisitionRetry(value => value + 1)}>{translate(language, "retry")}</Button></div> : null}
+        {exactTargetPending ? <LoadingSkeleton variant="lookup" label={<>{translate(language, "loading")}</>} className="text-sm text-slate" /> : null}
+        {exactTargetUnavailable ? <div className="flex items-center gap-2 text-sm text-danger" role="alert"><span>{exactRequisitionState?.error ?? translate(language, "recordUnavailable")}</span><RetryIconButton type="button"  onClick={() => setExactRequisitionRetry(value => value + 1)}>{translate(language, "retry")}</RetryIconButton></div> : null}
         {modal === "candidate" ? <CandidatePrefillFields data={data} language={language} profile={profile} mode={mode} selectedId={selectedId} selected={selectedRecords.candidate} defaults={modalDefaults} onSelect={setSelectedId} client={client} accessScope={accessScope} /> : null}
         {modal === "candidate_reference" ? <CandidateReferenceFields defaults={processDefaults} language={language} /> : null}
         {modal === "reference_status" ? <CandidateReferenceStatusFields defaults={processDefaults} language={language} /> : null}
@@ -2515,9 +2525,9 @@ function AuthorizedPositionGroupLookup({ client, accessScope, scope, language, v
   return <div className="grid gap-2" data-testid="authorized-group-lookup">
     <Field label={language === "th" ? "ค้นหากลุ่มตำแหน่ง" : "Search position groups"}><TextInput value={search} onChange={event => setSearch(event.target.value)} placeholder={language === "th" ? "รหัสกลุ่ม ตำแหน่ง หรือไซต์" : "Group ID, position, or site"} aria-label={language === "th" ? "ค้นหากลุ่มตำแหน่ง" : "Search position groups"} /></Field>
     <Field label={label}><SelectInput name={name} aria-label={label} value={value} required onChange={event => { const row = rows.find(candidate => candidate.group_id === event.target.value) ?? null; setRetained(row ? { id: row.group_id, row } : null); onSelect(row); }}>{[<option key="" value="">{language === "th" ? "เลือกกลุ่ม" : "Select group"}</option>, ...rows.map(row => <option key={row.group_id} value={row.group_id}>{formatRecruitmentId(row.group_id)} · {row.group_position}{row.sites.length ? ` · ${row.sites.join(", ")}` : ""}</option>)]}</SelectInput></Field>
-    <div className="flex items-center justify-between gap-2 text-xs text-slate"><span>{page.countLabel} · {language === "th" ? "กลุ่ม" : "groups"}</span>{page.countError ? <Button type="button" size="sm" variant="secondary" onClick={page.retryCount}>{translate(language, "retry")}</Button> : null}</div>
-    {page.loading ? <p role="status" className="text-sm text-slate">{translate(language, "loading")}</p> : null}
-    {page.error ? <div role="alert" className="flex items-center justify-between gap-2 text-sm text-danger"><span>{translate(language, "recordUnavailableOrLoadFailed")}</span><Button type="button" size="sm" variant="secondary" onClick={page.retry}>{translate(language, "retry")}</Button></div> : null}
+    <div className="flex items-center justify-between gap-2 text-xs text-slate"><span>{page.countLabel} · {language === "th" ? "กลุ่ม" : "groups"}</span>{page.countError ? <RetryIconButton type="button"   onClick={page.retryCount} loading={page.countLoading}>{translate(language, "retry")}</RetryIconButton> : null}</div>
+    {page.initialLoading ? <LoadingSkeleton variant="lookup" label={<>{translate(language, "loading")}</>} className="text-sm text-slate" /> : null}
+    {page.error ? <div role="alert" className="flex items-center justify-between gap-2 text-sm text-danger"><span>{translate(language, "recordUnavailableOrLoadFailed")}</span><RetryIconButton type="button"   onClick={page.retry} loading={page.loading}>{translate(language, "retry")}</RetryIconButton></div> : null}
     {!page.error ? <div className="flex items-center justify-end gap-2"><SelectInput aria-label={translate(language, "rowsPerPage")} value={page.pageSize} onChange={event => page.setPageSize(Number(event.target.value))}><option value={25}>25</option><option value={50}>50</option><option value={100}>100</option></SelectInput><Button type="button" size="sm" variant="secondary" disabled={!page.canPrevious} onClick={page.goPrevious}>{translate(language, "previous")}</Button><span className="text-xs tabular-nums">{page.page}</span><Button type="button" size="sm" variant="secondary" disabled={!page.canNext} onClick={page.goNext}>{translate(language, "next")}</Button></div> : null}
   </div>;
 }
@@ -2757,8 +2767,8 @@ function RequisitionFields({
           <option value="">{translate(language, "unassigned")}</option>
           {personOptions.map((person) => <option key={person} value={person}>{person}</option>)}
         </CreateSelectInput>
-        {!isSiteRecruiter && ownerOptionsLoading ? <p className="text-xs text-slate" role="status">Loading authorized recruiter options…</p> : null}
-        {!isSiteRecruiter && ownerOptionsError ? <p className="text-xs text-scarlet" role="alert">Could not load recruiter options. <button type="button" className="font-semibold underline" onClick={onRetryOwnerOptions}>Retry</button></p> : null}
+        {!isSiteRecruiter && ownerOptionsLoading ? <LoadingSkeleton variant="lookup" label={<>Loading authorized recruiter options…</>} className="text-xs text-slate" /> : null}
+        {!isSiteRecruiter && ownerOptionsError ? <p className="text-xs text-scarlet" role="alert">Could not load recruiter options. <RetryIconButton type="button" className="font-semibold underline" onClick={onRetryOwnerOptions}>Retry</RetryIconButton></p> : null}
       </Field>
       <Field label={translate(language, "lineManager")}><TextInput name="line_manager" list="manager-options" placeholder={mode === "new" ? translate(language, "lineManagerPlaceholder") : undefined} defaultValue={selected?.line_manager ?? ""} /></Field>
       <Field label={translate(language, "status")}>
@@ -2916,7 +2926,7 @@ function useApplicationDestinationOptions(client: SupabaseClient | null, accessS
 
 function DestinationControls({ language, name, label, emptyLabel, value, onChange, options, locked = false }: { language: Language; name?: string; label: string; emptyLabel: string; value: string; onChange: (value: string) => void; options: ReturnType<typeof useApplicationDestinationOptions>; locked?: boolean }) {
   const rows = options.items.some(row => row.group_id === value) || !value ? options.items : [{ group_id: value, group_position: value, sites: [], owners: [], doc_ids: [] }, ...options.items];
-  return <div className="grid gap-2">{!locked ? <TextInput aria-label={language === "th" ? `ค้นหา${label}` : `Search ${label}`} value={options.search} onChange={event => options.setSearch(event.target.value)} placeholder={language === "th" ? "ค้นหารหัสหรือชื่อตำแหน่ง" : "Search ID or position"} /> : null}<SelectInput aria-label={locked ? (language === "th" ? "กลุ่มใบสมัครที่เลือก" : "Locked application group") : undefined} name={locked ? undefined : name} disabled={locked} value={value} onChange={event => onChange(event.target.value)}>{locked ? null : <option value="">{emptyLabel}</option>}{(locked ? rows.filter(row => row.group_id === value) : rows).map(row => <option key={row.group_id} value={row.group_id}>{formatRecruitmentId(row.group_id)} · {row.group_position}</option>)}</SelectInput>{!locked && options.loading ? <p role="status" className="text-xs text-slate">{translate(language,"loading")}</p> : null}{!locked && options.error ? <p role="alert" className="flex items-center gap-2 text-xs text-danger">{translate(language,"loadFailed")} <Button type="button" variant="secondary" size="sm" onClick={options.retry}>{translate(language,"retry")}</Button></p> : null}{!locked && options.hasMore ? <Button type="button" variant="secondary" size="sm" disabled={options.loading} onClick={options.loadMore}>{language === "th" ? "โหลดตัวเลือกเพิ่ม" : "Load more options"}</Button> : null}</div>;
+  return <div className="grid gap-2">{!locked ? <TextInput aria-label={language === "th" ? `ค้นหา${label}` : `Search ${label}`} value={options.search} onChange={event => options.setSearch(event.target.value)} placeholder={language === "th" ? "ค้นหารหัสหรือชื่อตำแหน่ง" : "Search ID or position"} /> : null}<SelectInput aria-label={locked ? (language === "th" ? "กลุ่มใบสมัครที่เลือก" : "Locked application group") : undefined} name={locked ? undefined : name} disabled={locked} value={value} onChange={event => onChange(event.target.value)}>{locked ? null : <option value="">{emptyLabel}</option>}{(locked ? rows.filter(row => row.group_id === value) : rows).map(row => <option key={row.group_id} value={row.group_id}>{formatRecruitmentId(row.group_id)} · {row.group_position}</option>)}</SelectInput>{!locked && options.loading ? <LoadingSkeleton variant="lookup" label={<>{translate(language,"loading")}</>} className="text-xs text-slate" /> : null}{!locked && options.error ? <p role="alert" className="flex items-center gap-2 text-xs text-danger">{translate(language,"loadFailed")} <RetryIconButton type="button"   onClick={options.retry} loading={options.loading}>{translate(language,"retry")}</RetryIconButton></p> : null}{!locked && options.hasMore ? <Button type="button" variant="secondary" size="sm" disabled={options.loading} onClick={options.loadMore}>{language === "th" ? "โหลดตัวเลือกเพิ่ม" : "Load more options"}</Button> : null}</div>;
 }
 
 function CandidatePrefillFields({
@@ -2998,7 +3008,7 @@ function CandidatePrefillFields({
     return()=>{cancelled=true;};
   },[accessScope,client,existingCandidateId,mode]);
 
-  const existingPicker = mode === "new" ? <Field label={language === "th" ? "ใช้ข้อมูลผู้สมัครเดิม" : "Use existing candidate"}><TextInput aria-label={language==="th"?"ค้นหาผู้สมัครเดิม":"Search existing candidates"} value={existingCandidateSearch} onChange={event=>setExistingCandidateSearch(event.target.value)} placeholder={language==="th"?"ค้นหารหัสหรือชื่อ":"Search ID or name"}/><SelectInput name="existing_candidate_id" value={existingCandidateId} onChange={event => {setExistingCandidateId(event.target.value);setAuthorizedExistingCandidateId("");setExistingCandidateAccess("idle");}}><option value="">{language === "th" ? "สร้างข้อมูลผู้สมัครใหม่" : "Create a new profile"}</option>{existingCandidates.items.map(row => <option key={row.candidate_id} value={row.candidate_id}>{`${formatRecruitmentId(row.candidate_id)} · ${[row.name,row.nickname].filter(Boolean).join(" ")}`}</option>)}</SelectInput>{existingCandidateAccess==="loading"?<p role="status" className="text-xs text-slate">{translate(language,"loading")}</p>:null}{existingCandidateAccess==="denied"?<p role="alert" className="text-xs text-danger">{language==="th"?"ไม่มีสิทธิ์เพิ่มใบสมัครให้ผู้สมัครรายนี้":"You cannot add an application for this candidate."}</p>:null}{existingCandidateAccess==="error"?<p role="alert" className="text-xs text-danger">{translate(language,"loadFailed")}</p>:null}{existingCandidates.error?<p role="alert" className="text-xs text-danger">{translate(language,"loadFailed")} <Button type="button" variant="secondary" size="sm" onClick={existingCandidates.retry}>{translate(language,"retry")}</Button></p>:null}{existingCandidates.canNext?<Button type="button" variant="secondary" size="sm" disabled={existingCandidates.loading} onClick={existingCandidates.goNext}>{language==="th"?"ถัดไป":"Next candidates"}</Button>:null}</Field> : null;
+  const existingPicker = mode === "new" ? <Field label={language === "th" ? "ใช้ข้อมูลผู้สมัครเดิม" : "Use existing candidate"}><TextInput aria-label={language==="th"?"ค้นหาผู้สมัครเดิม":"Search existing candidates"} value={existingCandidateSearch} onChange={event=>setExistingCandidateSearch(event.target.value)} placeholder={language==="th"?"ค้นหารหัสหรือชื่อ":"Search ID or name"}/><SelectInput name="existing_candidate_id" value={existingCandidateId} onChange={event => {setExistingCandidateId(event.target.value);setAuthorizedExistingCandidateId("");setExistingCandidateAccess("idle");}}><option value="">{language === "th" ? "สร้างข้อมูลผู้สมัครใหม่" : "Create a new profile"}</option>{existingCandidates.items.map(row => <option key={row.candidate_id} value={row.candidate_id}>{`${formatRecruitmentId(row.candidate_id)} · ${[row.name,row.nickname].filter(Boolean).join(" ")}`}</option>)}</SelectInput>{existingCandidateAccess==="loading"?<LoadingSkeleton variant="lookup" label={<>{translate(language,"loading")}</>} className="text-xs text-slate" />:null}{existingCandidateAccess==="denied"?<p role="alert" className="text-xs text-danger">{language==="th"?"ไม่มีสิทธิ์เพิ่มใบสมัครให้ผู้สมัครรายนี้":"You cannot add an application for this candidate."}</p>:null}{existingCandidateAccess==="error"?<p role="alert" className="text-xs text-danger">{translate(language,"loadFailed")}</p>:null}{existingCandidates.error?<p role="alert" className="text-xs text-danger">{translate(language,"loadFailed")} <RetryIconButton type="button"   onClick={existingCandidates.retry} loading={existingCandidates.loading}>{translate(language,"retry")}</RetryIconButton></p>:null}{existingCandidates.canNext?<Button type="button" variant="secondary" size="sm" disabled={existingCandidates.loading} onClick={existingCandidates.goNext}>{language==="th"?"ถัดไป":"Next candidates"}</Button>:null}</Field> : null;
   if (authorizedExistingCandidateId) return <div className="grid gap-4">{existingPicker}<Field label={translate(language, "groupId")}><DestinationControls language={language} name="group_id" label={translate(language,"groupId")} emptyLabel={translate(language,"selectGroup")} value={groupLocked ? groupValue : selectedGroupId} onChange={setSelectedGroupId} options={destinationOptions} locked={groupLocked}/>{groupLocked ? <input type="hidden" name="group_id" value={groupValue}/> : null}{groupLocked ? <span className="text-xs font-medium text-slate">{translate(language, "groupLockedToWorkspace")}</span> : null}</Field><p className="text-sm text-slate">{language === "th" ? "เพิ่มใบสมัครใหม่โดยใช้ข้อมูลเดิม ไม่สร้างผู้สมัครซ้ำ" : "Create an application using this profile; no duplicate person is created."}</p></div>;
   return (
     <div className="grid gap-4 md:grid-cols-2">
@@ -3030,7 +3040,7 @@ function CandidatePrefillFields({
           <option value="">{availableChannels.length === 0 ? translate(language, "noSourcingChannelsForGroup") : translate(language, "selectChannel")}</option>
           {availableChannels.map((channel) => <option key={channel.enabled} value={channel.label}>{channel.label}</option>)}
         </CreateSelectInput>
-        {selectedGroupId&&selectedGroupProjection.loading?<p role="status" className="text-xs text-slate">{translate(language,"loading")}</p>:null}
+        {selectedGroupId&&selectedGroupProjection.loading?<LoadingSkeleton variant="lookup" label={<>{translate(language,"loading")}</>} className="text-xs text-slate" />:null}
         {selectedGroupId&&selectedGroupProjection.error?<p role="alert" className="text-xs text-danger">{translate(language,"loadFailed")}</p>:null}
       </Field>
       {showReferenceName ? (
@@ -3535,7 +3545,7 @@ function OfferPrefillFields({
         </Field>
       ) : null}
       {mode === "change" ? <input type="hidden" name="candidate_id" value={selected?.candidate_id ?? ""} /> : null}
-      {mode === "new" ? <Field label={translate(language, "candidate")}><TextInput aria-label={language === "th" ? "ค้นหาผู้สมัครที่ผ่าน Offer" : "Search Offer-pass candidates"} value={search} onChange={event => setSearch(event.target.value)} placeholder={language === "th" ? "ค้นหาด้วยรหัสหรือชื่อ" : "Search by ID or name"} /><div className="grid gap-2"><CreateSelectInput name={undefined} required value={offerApplicationId} onChange={event => { const chosen = remoteCandidates.find(row => row.application_id === event.target.value); setSelectedOfferCandidate(chosen ?? null); setOfferApplicationId(chosen?.application_id ?? ""); setSelectedCandidateId(chosen?.candidate_id ?? ""); setSelectedDocId(chosen && defaults.doc_id && chosen.doc_ids.includes(defaults.doc_id) ? defaults.doc_id : chosen?.doc_ids.length === 1 ? chosen.doc_ids[0] : ""); }}><option value="">{translate(language, "selectOfferPassCandidate")}</option>{selectedRemote && !remoteCandidates.some(row => row.application_id === selectedRemote.application_id) ? <option value={selectedRemote.application_id}>{`${formatRecruitmentId(selectedRemote.candidate_id)} · ${selectedRemote.name} · ${selectedRemote.group_position}`}</option> : null}{remoteCandidates.map(row => <option key={row.application_id} value={row.application_id}>{`${formatRecruitmentId(row.candidate_id)} · ${row.name} · ${row.group_position}`}</option>)}</CreateSelectInput>{loadingCandidates ? <p role="status" className="text-xs text-slate">{translate(language, "loading")}</p> : null}{candidateError ? <p role="alert" className="text-xs text-danger">{translate(language, "loadFailed")} <Button type="button" variant="secondary" size="sm" onClick={() => setRetry(value => value + 1)}>{translate(language, "retry")}</Button></p> : null}{hasMore ? <Button type="button" variant="secondary" size="sm" disabled={loadingCandidates} onClick={() => void loadMoreCandidates()}>{language === "th" ? "โหลดเพิ่ม" : "Load more"}</Button> : null}</div></Field> : null}
+      {mode === "new" ? <Field label={translate(language, "candidate")}><TextInput aria-label={language === "th" ? "ค้นหาผู้สมัครที่ผ่าน Offer" : "Search Offer-pass candidates"} value={search} onChange={event => setSearch(event.target.value)} placeholder={language === "th" ? "ค้นหาด้วยรหัสหรือชื่อ" : "Search by ID or name"} /><div className="grid gap-2"><CreateSelectInput name={undefined} required value={offerApplicationId} onChange={event => { const chosen = remoteCandidates.find(row => row.application_id === event.target.value); setSelectedOfferCandidate(chosen ?? null); setOfferApplicationId(chosen?.application_id ?? ""); setSelectedCandidateId(chosen?.candidate_id ?? ""); setSelectedDocId(chosen && defaults.doc_id && chosen.doc_ids.includes(defaults.doc_id) ? defaults.doc_id : chosen?.doc_ids.length === 1 ? chosen.doc_ids[0] : ""); }}><option value="">{translate(language, "selectOfferPassCandidate")}</option>{selectedRemote && !remoteCandidates.some(row => row.application_id === selectedRemote.application_id) ? <option value={selectedRemote.application_id}>{`${formatRecruitmentId(selectedRemote.candidate_id)} · ${selectedRemote.name} · ${selectedRemote.group_position}`}</option> : null}{remoteCandidates.map(row => <option key={row.application_id} value={row.application_id}>{`${formatRecruitmentId(row.candidate_id)} · ${row.name} · ${row.group_position}`}</option>)}</CreateSelectInput>{loadingCandidates ? <LoadingSkeleton variant="lookup" label={<>{translate(language, "loading")}</>} className="text-xs text-slate" /> : null}{candidateError ? <p role="alert" className="text-xs text-danger">{translate(language, "loadFailed")} <RetryIconButton type="button"   onClick={() => setRetry(value => value + 1)}>{translate(language, "retry")}</RetryIconButton></p> : null}{hasMore ? <Button type="button" variant="secondary" size="sm" disabled={loadingCandidates} onClick={() => void loadMoreCandidates()}>{language === "th" ? "โหลดเพิ่ม" : "Load more"}</Button> : null}</div></Field> : null}
       {mode === "change" ? <Field label={translate(language, "candidate")}><p className="rounded-md border border-[#D7DEE8] bg-lightgray px-3 py-2 text-sm text-navy">{selectedCandidate ? `${formatRecruitmentId(selectedCandidate.candidate_id)} · ${formatCandidateName(selectedCandidate)}` : formatRecruitmentId(selected?.candidate_id)}</p></Field> : null}
       {mode === "change" ? <input type="hidden" name="doc_id" value={selected?.doc_id ?? ""} /> : null}
       <Field label={translate(language, "docId")}>
@@ -3543,7 +3553,7 @@ function OfferPrefillFields({
           <option value="">{selectedCandidateId ? translate(language, "selectRequisitionOption") : translate(language, "selectCandidateFirst")}</option>
           {mode === "new" ? remoteDocIds.map(docId => { const row=docOptions.find(option=>option.doc_id===docId); return <option key={docId} value={docId}>{row?requisitionOptionLabel(row):docId}</option>; }) : docOptions.map((row) => <option key={row.doc_id} value={row.doc_id}>{requisitionOptionLabel(row)}</option>)}
         </CreateSelectInput>
-        {mode === "new" && loadingRequisitions ? <p role="status" className="text-xs text-slate">{translate(language, "loading")}</p> : null}{mode === "new" && requisitionError ? <p role="alert" className="text-xs text-danger">{translate(language, "loadFailed")}</p> : null}
+        {mode === "new" && loadingRequisitions ? <LoadingSkeleton variant="lookup" label={<>{translate(language, "loading")}</>} className="text-xs text-slate" /> : null}{mode === "new" && requisitionError ? <p role="alert" className="text-xs text-danger">{translate(language, "loadFailed")}</p> : null}
       </Field>
       <Field label={translate(language, "acceptedDateField")}><TextInput name="accepted_date" type="date" defaultValue={selected?.accepted_date ?? defaults.accepted_date ?? ""} /></Field>
       <Field label={translate(language, "firstWorkingDate")}><TextInput name="first_working_date" type="date" defaultValue={selected?.first_working_date ?? ""} /></Field>
@@ -3650,8 +3660,8 @@ function UserPrefillFields({
           ))}
         </SelectInput>
       </Field> : null}
-      {profilesLoading ? <p role="status" className="text-sm text-slate">{translate(language, "loading")}</p> : null}
-      {profilesError ? <p role="alert" className="text-sm text-danger">{translate(language, "recordUnavailableOrLoadFailed")} <Button type="button" size="sm" variant="secondary" onClick={onRetryProfiles}>{translate(language, "retry")}</Button></p> : null}
+      {profilesLoading ? <LoadingSkeleton variant="lookup" label={<>{translate(language, "loading")}</>} className="text-sm text-slate" /> : null}
+      {profilesError ? <p role="alert" className="text-sm text-danger">{translate(language, "recordUnavailableOrLoadFailed")} <RetryIconButton type="button"   onClick={onRetryProfiles}>{translate(language, "retry")}</RetryIconButton></p> : null}
       <Field label={translate(language, "email")}><TextInput name="email" type="email" defaultValue={selected?.email ?? ""} /></Field>
       <Field label={translate(language, "temporaryPassword")}><TextInput name="password" type="password" minLength={8} /></Field>
       <Field label={translate(language, "nicknameAccountName")}><TextInput name="nickname" list="pic-options-form" required defaultValue={selected?.nickname ?? ""} /></Field>
@@ -3780,8 +3790,8 @@ function CreateAndMatchGroupFields({ client, accessScope, lookupScope, profile, 
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <Field label={translate(language, "groupId")}><TextInput value={translate(language, "autoInNewMode")} readOnly /></Field>
-      {defaults.doc_id && preselectedState && preselectedState.scope === eligibilityScopeKey && preselectedState.client === client && preselectedState.status === "loading" ? <p role="status" className="text-sm text-slate md:col-span-2">{translate(language, "loading")}</p> : null}
-      {defaults.doc_id && preselectedState && preselectedState.scope === eligibilityScopeKey && preselectedState.client === client && (preselectedState.status === "error" || preselectedState.status === "missing") ? <div role="alert" className="flex items-center gap-2 text-sm text-danger md:col-span-2"><span>{preselectedState.error ?? translate(language, "recordUnavailable")}</span><Button type="button" variant="secondary" onClick={() => setPreselectedRetry(value => value + 1)}>{translate(language, "retry")}</Button></div> : null}
+      {defaults.doc_id && preselectedState && preselectedState.scope === eligibilityScopeKey && preselectedState.client === client && preselectedState.status === "loading" ? <LoadingSkeleton variant="lookup" label={<>{translate(language, "loading")}</>} className="text-sm text-slate md:col-span-2" /> : null}
+      {defaults.doc_id && preselectedState && preselectedState.scope === eligibilityScopeKey && preselectedState.client === client && (preselectedState.status === "error" || preselectedState.status === "missing") ? <div role="alert" className="flex items-center gap-2 text-sm text-danger md:col-span-2"><span>{preselectedState.error ?? translate(language, "recordUnavailable")}</span><RetryIconButton type="button"  onClick={() => setPreselectedRetry(value => value + 1)}>{translate(language, "retry")}</RetryIconButton></div> : null}
       <Field label={translate(language, "groupPosition")}><TextInput name="group_position" list="group-position-options" required value={groupPosition} onChange={event => setGroupPosition(event.target.value)} /></Field>
       <div className="grid gap-2 rounded-md border border-[#D7DEE8] bg-lightgray p-3 text-sm font-bold text-navy md:col-span-2 md:grid-cols-4">
         {SOURCING_CHANNELS.map((channel) => <label key={channel.enabled} className="flex items-center gap-2"><input name={channel.enabled} type="checkbox" /> {channel.label}</label>)}
@@ -4240,7 +4250,7 @@ function buildDetailBodyV2(
         </section>
         {failedLog ? <DetailDisclosure title="Rejection letters" summary={`${data.rejection_letter_drafts.filter((draft) => draft.candidate_id === candidate.candidate_id && logs.some(log=>log.stage_instance_id===draft.failed_stage_instance_id)).length} recorded`}>
           <div className="grid gap-2">
-            {data.rejection_letter_drafts.filter((draft) => draft.candidate_id === candidate.candidate_id && logs.some(log=>log.stage_instance_id===draft.failed_stage_instance_id)).map((draft) => <div key={draft.draft_id} className="rounded-md border border-[#D7DEE8] bg-white p-3 text-sm"><strong className="text-navy">{draft.status === "sent" ? "Email sent" : draft.status === "draft_created" ? "Outlook draft created" : draft.status === "creating" ? "Creating Outlook draft" : draft.status === "failed" ? "Email delivery failed" : "Sending email"}</strong><p className="mt-1 text-slate">{draft.recipient_email} · {formatDate(draft.created_at.slice(0, 10), language)}</p>{draft.shared_mailbox ? <p className="text-xs text-slate">Shared mailbox: {draft.shared_mailbox}</p> : null}{draft.failure_summary ? <p className="mt-1 text-xs text-scarlet">{draft.failure_summary}</p> : null}{draft.status === "failed" && canWrite ? <Button type="button" size="sm" variant="secondary" className="mt-2" onClick={() => onCreateRejectionLetter(candidate, draft.draft_id)}>Retry email</Button> : null}</div>)}
+            {data.rejection_letter_drafts.filter((draft) => draft.candidate_id === candidate.candidate_id && logs.some(log=>log.stage_instance_id===draft.failed_stage_instance_id)).map((draft) => <div key={draft.draft_id} className="rounded-md border border-[#D7DEE8] bg-white p-3 text-sm"><strong className="text-navy">{draft.status === "sent" ? "Email sent" : draft.status === "draft_created" ? "Outlook draft created" : draft.status === "creating" ? "Creating Outlook draft" : draft.status === "failed" ? "Email delivery failed" : "Sending email"}</strong><p className="mt-1 text-slate">{draft.recipient_email} · {formatDate(draft.created_at.slice(0, 10), language)}</p>{draft.shared_mailbox ? <p className="text-xs text-slate">Shared mailbox: {draft.shared_mailbox}</p> : null}{draft.failure_summary ? <p className="mt-1 text-xs text-scarlet">{draft.failure_summary}</p> : null}{draft.status === "failed" && canWrite ? <Button type="button"   className="mt-2" onClick={() => onCreateRejectionLetter(candidate, draft.draft_id)}>Retry email</Button> : null}</div>)}
             {data.rejection_letter_drafts.filter((draft) => draft.candidate_id === candidate.candidate_id && logs.some(log=>log.stage_instance_id===draft.failed_stage_instance_id)).length === 0 ? <p className="text-sm text-slate">No rejection letters have been sent.</p> : null}
           </div>
         </DetailDisclosure> : null}
@@ -4780,8 +4790,8 @@ function WorkspaceStatusScreen({
   return (
     <main className="grid min-h-screen place-items-center bg-offwhite p-6">
       <Panel className="w-full max-w-md">
-        <div role="status" aria-live="polite" aria-busy={busy} className="grid gap-3 text-center">
-          {busy ? <div className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-[#D7DEE8] border-t-primary" /> : null}
+        <div role={busy ? undefined : "status"} aria-live={busy ? undefined : "polite"} aria-busy={busy} className="grid gap-3 text-center">
+          {busy ? <LoadingSkeleton variant="detail" label={message} /> : null}
           <h1 className="text-xl font-semibold text-navy">{title}</h1>
           <p className="text-sm font-medium text-slate">{message}</p>
           {loginHref ? (
@@ -4793,7 +4803,7 @@ function WorkspaceStatusScreen({
           ) : null}
           {onRetry ? (
             <div>
-              <Button type="button" variant="secondary" onClick={onRetry}>Retry</Button>
+              <RetryIconButton type="button"  onClick={onRetry}>Retry</RetryIconButton>
             </div>
           ) : null}
         </div>

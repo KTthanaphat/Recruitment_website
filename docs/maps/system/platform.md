@@ -92,3 +92,8 @@ If the task changes schema, environment or release state, cross to [Setup](../SE
 - Contracts: [Controls](../../design/controls.md#fields-buttons-and-overlays), [portal](../../design/dashboard-portal.md#compact-system-presentation), [new reports](../../design/dashboard-risk-bottlenecks.md). Checks: [compact geometry/theme/layout](../../../tests/e2e/dashboard-compact.spec.ts); [review](../../work-items/dashboard-risk-bottlenecks/review.md).
 
 Dashboard inline header filters and comparison-date owner: AppShell / [format.ts](../../../src/lib/format.ts) `formatCompactDateRange`; consumers/checks: [Reporting refinement](reporting.md#dashboard-navigation-and-summary-refinement).
+
+
+### Shared data-loading feedback
+
+Owners: `LoadingSkeleton`, `RefreshIndicator`, and `RetryIconButton` in `src/components/ui`; list state in `src/lib/recruitment-list.ts`. Contract: [data loading and retry controls](../../design/controls.md#data-loading-and-retry-controls). Coverage: [loading feedback](../../../tests/e2e/loading-feedback.spec.ts), Home aggregate and read-scheduling regressions. Inspect all read-only loading/error callers when changing these primitives; preserve labeled mutation actions.

@@ -1,3 +1,5 @@
+import { RetryIconButton } from "@/components/ui/RetryIconButton";
+import { LoadingSkeleton, RefreshIndicator } from "@/components/ui/LoadingSkeleton";
 import { Plus, Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
@@ -88,13 +90,13 @@ export function OffersView({
   }, [list.page, list.pageSize, list.search, table.filters, table.sortDirection, table.sortKey]);
 
   return (
-    <Panel>
-      {list.error ? <div role="alert" className="mb-3 flex items-center gap-3 text-sm text-scarlet"><span>Could not load offers.</span><Button type="button" variant="secondary" onClick={list.retry}>Retry</Button></div> : null}
-      {list.loading && client ? <p role="status" className="py-4 text-sm text-slate">Loading offers…</p> : !client && rows.length === 0 ? (
+    <Panel>{list.refreshing ? <RefreshIndicator language={language} /> : null}
+      {list.error ? <div role="alert" className="mb-3 flex items-center gap-3 text-sm text-scarlet"><span>Could not load offers.</span><RetryIconButton title={`${language === "th" ? "ลองโหลดข้อมูลอีกครั้ง" : "Retry loading"}: Offers`} type="button"  onClick={list.retry} loading={list.loading}>Retry</RetryIconButton></div> : null}
+      {!client && rows.length === 0 ? (
         <>{canWrite ? <div className="mb-4 flex justify-end"><Button type="button" size="sm" icon={<Plus size={17} />} onClick={onNew}>{translate(language, "newOffer")}</Button></div> : null}<EmptyState message={translate(language, "noData")} /></>
       ) : (
         <>
-        <TableToolbar
+        {list.initialLoading ? <LoadingSkeleton variant="cards" language={language} className="md:hidden" /> : null}<TableToolbar
           advancedFiltersOpen={advancedFiltersOpen}
           language={language}
           onAdvancedFiltersToggle={() => setAdvancedFiltersOpen((open) => !open)}
@@ -155,7 +157,7 @@ export function OffersView({
                 <th scope="col" className="px-3 py-3"><span className="sr-only">{translate(language, "actions")}</span></th>
               </tr>
             </thead>
-            <tbody>
+            <tbody aria-busy={list.loading}>{list.initialLoading ? <tr><td colSpan={columns.length}><LoadingSkeleton variant="table" language={language} /></td></tr> : null}
               {visibleRows.map((row) => (
                 <tr key={row.offer_id} className="border-b border-[#D7DEE8] last:border-0">
                   <td className="px-3 py-3">
@@ -186,7 +188,7 @@ export function OffersView({
             </tbody>
           </table>
         </div>
-        {client ? <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-[#D7DEE8] pt-3 text-sm"><span>Page {list.page} · {list.countLabel} offers{list.countError?<Button type="button" size="sm" variant="secondary" onClick={list.retryCount}>Retry count</Button>:null}</span><div className="flex gap-2"><Button type="button" variant="secondary" disabled={!list.canPrevious} onClick={list.goPrevious}>Previous</Button><Button type="button" variant="secondary" disabled={!list.canNext} onClick={list.goNext}>Next</Button><select aria-label="Rows per page" value={list.pageSize} onChange={event=>list.setPageSize(Number(event.target.value))} className="min-h-10 rounded-md border border-[#C9D5E6] bg-white px-2">{PAGE_SIZE_OPTIONS.map(size=><option key={size} value={size}>{size}</option>)}</select></div></div> : <Pagination language={language} page={paginated.page} pageSize={pageSize} totalRows={table.controlledRows.length} onPageChange={setPage} onPageSizeChange={setPageSize} />}
+        {client ? <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-[#D7DEE8] pt-3 text-sm"><span>Page {list.page} · {list.countLabel} offers{list.countError?<RetryIconButton type="button"   onClick={list.retryCount} loading={list.countLoading}>Retry count</RetryIconButton>:null}</span><div className="flex gap-2"><Button type="button" variant="secondary" disabled={!list.canPrevious} onClick={list.goPrevious}>Previous</Button><Button type="button" variant="secondary" disabled={!list.canNext} onClick={list.goNext}>Next</Button><select aria-label="Rows per page" value={list.pageSize} onChange={event=>list.setPageSize(Number(event.target.value))} className="min-h-10 rounded-md border border-[#C9D5E6] bg-white px-2">{PAGE_SIZE_OPTIONS.map(size=><option key={size} value={size}>{size}</option>)}</select></div></div> : <Pagination language={language} page={paginated.page} pageSize={pageSize} totalRows={table.controlledRows.length} onPageChange={setPage} onPageSizeChange={setPageSize} />}
         <BulkActionToolbar
           disabledReason={bulkDisabledReason}
           entityLabel={translate(language, "offers")}

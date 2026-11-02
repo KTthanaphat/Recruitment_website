@@ -1,3 +1,5 @@
+import { RetryIconButton } from "@/components/ui/RetryIconButton";
+import { LoadingSkeleton, RefreshIndicator } from "@/components/ui/LoadingSkeleton";
 import { Search, SlidersHorizontal } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -38,7 +40,7 @@ export function AuditView({ language, rows, client, accessScope }: { language: L
   }).sort((a, b) => b.changed_at.localeCompare(a.changed_at) || b.log_id - a.log_id);
 
   return (
-    <Panel>
+    <Panel>{list.refreshing ? <RefreshIndicator language={language} /> : null}
       <SectionTitle title={translate(language, "audit")} action={<Button type="button" size="sm" variant="secondary" icon={<SlidersHorizontal size={16} />} className="md:hidden" onClick={() => setFiltersOpen(true)}>{translate(language, "filters")}</Button>} />
       <div className="mb-4 hidden gap-2 rounded-md border border-[#D7DEE8] bg-[#F8FAFD] p-3 md:grid md:grid-cols-3 xl:grid-cols-6">
         <AuditFilter language={language} label={translate(language, "entity")} value={filters.entity} onChange={(value) => setFilters((current) => ({ ...current, entity: value }))} />
@@ -58,13 +60,13 @@ export function AuditView({ language, rows, client, accessScope }: { language: L
           <Button type="button" onClick={() => setFiltersOpen(false)}>{translate(language, "confirm")}</Button>
         </div>
       </MobileBottomSheet>
-      {list.error ? <div role="alert" className="mb-3 flex items-center gap-3 text-sm text-scarlet"><span>Could not load audit records.</span><Button type="button" variant="secondary" onClick={list.retry}>Retry</Button></div> : null}
+      {list.error ? <div role="alert" className="mb-3 flex items-center gap-3 text-sm text-scarlet"><span>Could not load audit records.</span><RetryIconButton title={`${language === "th" ? "ลองโหลดข้อมูลอีกครั้ง" : "Retry loading"}: Audit`} type="button"  onClick={list.retry} loading={list.loading}>Retry</RetryIconButton></div> : null}
       <p className="mb-3 text-sm font-medium text-slate" role="status">{translate(language, "auditResultCount", { count: list.loading ? list.totalCount : client ? list.totalCount : filteredRows.length })}</p>
-      {list.loading && client ? <p role="status" className="py-4 text-sm text-slate">Loading audit records…</p> : filteredRows.length === 0 ? <EmptyState message={list.error ? "Audit records are unavailable." : rows.length === 0 ? translate(language, "noAuditRecords") : translate(language, "noAuditRecordsMatch")} /> : (
+      {filteredRows.length === 0 && !list.initialLoading ? <EmptyState message={list.error ? "Audit records are unavailable." : rows.length === 0 ? translate(language, "noAuditRecords") : translate(language, "noAuditRecordsMatch")} /> : (
         <div className="min-w-0 md:max-h-[min(68dvh,48rem)] md:overflow-auto" data-testid="audit-table-viewport">
           <div className="sticky top-0 z-10 hidden min-w-[66rem] grid-cols-[minmax(13rem,1.5fr)_minmax(9rem,.8fr)_minmax(12rem,1fr)_minmax(10rem,1fr)_minmax(9rem,.8fr)] gap-3 border-b border-[#D7DEE8] bg-white px-3 py-2 text-xs font-medium text-slate md:grid"><span>{translate(language, "workspaceEvent")}</span><span>{translate(language, "date")}</span><span>{translate(language, "record")}</span><span>{translate(language, "actor")}</span><span>{translate(language, "fieldChanges")}</span></div>
           <div className="divide-y divide-[#E4E9F2] md:min-w-[66rem]">
-            {filteredRows.map((row) => { const diffs = auditDiffRows(row); const changed = diffs.filter((diff) => diff.changed).length; return <article key={row.log_id} className="min-w-0 px-3 py-3 text-sm hover:bg-[#F8FAFD]">
+            {list.initialLoading ? <LoadingSkeleton variant="table" language={language} /> : null}{filteredRows.map((row) => { const diffs = auditDiffRows(row); const changed = diffs.filter((diff) => diff.changed).length; return <article key={row.log_id} className="min-w-0 px-3 py-3 text-sm hover:bg-[#F8FAFD]">
               <div className="grid min-w-0 gap-2 md:grid-cols-[minmax(13rem,1.5fr)_minmax(9rem,.8fr)_minmax(12rem,1fr)_minmax(10rem,1fr)_minmax(9rem,.8fr)] md:items-start md:gap-3">
                 <div className="min-w-0"><span className="block text-xs text-slate md:hidden">{translate(language, "workspaceEvent")}</span><span className="block break-words font-semibold text-navy">{auditEntityLabel(language, row.entity)}</span><Tag appearance="soft" tone={statusTone(row.action) as never}>{actionToneLabel(language, row.action)}</Tag></div>
                 <div className="text-slate"><span className="block text-xs md:hidden">{translate(language, "date")}</span><time dateTime={row.changed_at}>{formatDateTime(row.changed_at, language)}</time></div>

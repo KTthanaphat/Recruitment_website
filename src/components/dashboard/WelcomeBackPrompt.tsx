@@ -1,5 +1,7 @@
 "use client";
 
+import { RetryIconButton } from "@/components/ui/RetryIconButton";
+import { LoadingSkeleton, RefreshIndicator } from "@/components/ui/LoadingSkeleton";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { dailyWelcomeMessage } from "@/lib/daily-messages";
@@ -34,12 +36,12 @@ export function WelcomeBackPrompt({
 
   return (
     <Modal open={open} title={title} onClose={onClose} width="max-w-xl">
-      {loading ? (
-        <p role="status" className="py-4 text-sm text-slate">{translate(language, "loading")}</p>
+      {loading && summary ? <RefreshIndicator language={language} /> : null}{loading && !summary ? (
+        <LoadingSkeleton variant="metrics" label={<>{translate(language, "loading")}</>} className="py-4 text-sm text-slate" />
       ) : error || !summary ? (
         <div role="alert" className="grid gap-3 py-2 text-sm text-danger">
           <p>{error || translate(language, "loadFailed")}</p>
-          <div className="flex justify-end"><Button type="button" variant="secondary" onClick={onRetry}>{translate(language, "retry")}</Button></div>
+          <div className="flex justify-end"><RetryIconButton title={`${language === "th" ? "ลองโหลดข้อมูลอีกครั้ง" : "Retry loading"}: Welcome Back Prompt`} type="button"  onClick={onRetry}>{translate(language, "retry")}</RetryIconButton></div>
         </div>
       ) : (
         <WelcomeSummaryContent language={language} name={name} summary={summary} onClose={onClose} onPipeline={onPipeline} />

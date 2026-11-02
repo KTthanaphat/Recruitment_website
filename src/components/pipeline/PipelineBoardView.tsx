@@ -1,4 +1,6 @@
 "use client";
+import { RetryIconButton } from "@/components/ui/RetryIconButton";
+import { LoadingSkeleton, RefreshIndicator } from "@/components/ui/LoadingSkeleton";
 import { compareApplicationLogs } from "@/lib/application-stage-order";
 import { belongsToApplication, applicationKey } from "@/lib/applications";
 
@@ -152,7 +154,11 @@ export function PipelineBoardView({
   }
   const scopeKey = JSON.stringify(listScope);
   const summaryRevision = useSyncExternalStore(subscribePipelineSummary, pipelineSummaryRevision, () => 0);
-  const [summary, setSummary] = useState<PipelineSummary | null>(null);
+  const [summarySnapshot, setSummary] = useState<PipelineSummary | null>(null);
+  const summaryKey = JSON.stringify([accessScope, scopeKey]);
+  const [loadedSummaryKey, setLoadedSummaryKey] = useState("");
+  const summary = loadedSummaryKey === summaryKey ? summarySnapshot : null;
+  const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState(false);
   const rows = serverEnabled ? stageLists.flatMap(entry => entry.list.items) : initialRows;
   const boardRef = useRef<HTMLDivElement>(null);
@@ -171,12 +177,12 @@ export function PipelineBoardView({
   useEffect(() => { setSummary(null); setSummaryError(false); }, [accessScope, scopeKey, serverEnabled]);
   useEffect(() => {
     if (!serverEnabled || !listClient) return;
-    let cancelled = false;
+    let cancelled = false; setSummaryLoading(true);
     loadPipelineSummary(listClient, accessScope, JSON.parse(scopeKey) as Record<string, unknown>, typeof listScope.groupId === "string" ? listScope.groupId : null, formatLocalDateInput(), 7)
-      .then(value => { if (!cancelled) { setSummary(value); setSummaryError(false); } })
-      .catch(() => { if (!cancelled) setSummaryError(true); });
+      .then(value => { if (!cancelled) { setSummary(value); setLoadedSummaryKey(summaryKey); setSummaryError(false); } })
+      .catch(() => { if (!cancelled) setSummaryError(true); }).finally(() => { if (!cancelled) setSummaryLoading(false); });
     return () => { cancelled = true; };
-  }, [accessScope, listClient, scopeKey, serverEnabled, summaryRevision]);
+  }, [summaryKey, listScope.groupId, accessScope, listClient, scopeKey, serverEnabled, summaryRevision]);
 
   useEffect(() => {
     if (!openStageMenu && !openMobileStageMenu) return;
@@ -276,7 +282,7 @@ export function PipelineBoardView({
           action={<div className="flex min-w-0 flex-wrap items-center justify-end gap-2"><PipelineViewSwitch language={language} value="board" onChange={setPipelineView} />{canWrite && onNewCandidate ? <Button type="button" size="sm" icon={<Plus size={17} />} onClick={onNewCandidate}>{translate(language, "newCandidate")}</Button> : null}</div>}
         />
         <div className="mb-3 grid gap-3">
-          <OperationalSummaryStrip
+          {serverEnabled && !summary && !summaryError ? <LoadingSkeleton variant="metrics" language={language} /> : <OperationalSummaryStrip
             className={embedded ? "hidden" : undefined}
             density="compact"
             items={[
@@ -286,8 +292,8 @@ export function PipelineBoardView({
               { label: translate(language, embedded ? "offerPassAllTime" : "offerPass7d"), value: serverEnabled ? summary?.passed_offer ?? "—" : passedOfferRows.length, tone: "success", helper: translate(language, embedded ? "allCompletedOffers" : "recentlyCompleted") },
               { label: translate(language, "noActivity"), value: serverEnabled ? summary?.no_activity ?? "—" : noActivityRows.length, tone: "warning", helper: translate(language, "needsFirstUpdate") }
             ]}
-          />
-          {serverEnabled && summaryError ? <div role="alert" className="rounded-lg border border-[#E9B9B4] bg-[#FFF8F7] px-3 py-2 text-sm text-scarlet">{translate(language, "loadError")} <button type="button" className="ml-2 font-semibold underline" onClick={() => { setSummaryError(false); setSummary(null); clearPipelineSummaryCache(); }}>{translate(language, "retry")}</button></div> : null}
+          />}{summaryLoading && summary ? <RefreshIndicator language={language} /> : null}
+          {serverEnabled && summaryError ? <div role="alert" className="rounded-lg border border-[#E9B9B4] bg-[#FFF8F7] px-3 py-2 text-sm text-scarlet">{translate(language, "loadError")} <RetryIconButton title={`${language === "th" ? "ลองโหลดข้อมูลอีกครั้ง" : "Retry loading"}: Pipeline Board`} type="button" className="ml-2 font-semibold underline" onClick={() => { setSummaryError(false); setSummary(null); clearPipelineSummaryCache(); }}>{translate(language, "retry")}</RetryIconButton></div> : null}
           <div className={`relative flex flex-wrap items-center justify-between gap-2 ${embedded ? "hidden md:flex" : ""}`} data-filter-popover-root="true">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <span className="text-xs font-semibold text-slate">{translate(language, "groupCards")}</span>
@@ -439,11 +445,11 @@ export function PipelineBoardView({
                   <h3 className={`break-words text-sm font-semibold ${processIndex(stage) === 1 ? "text-scarlet" : "text-navy"}`}>
                   {processLabel(stage, language)} <span aria-hidden="true" className="ml-1 rounded bg-white/70 px-1.5 py-0.5 text-xs tabular-nums">{serverEnabled ? stageList.countLabel : stageRows.length}</span>
                   </h3>
-                  {serverEnabled && stageList.countError ? <Button type="button" size="sm" variant="secondary" onClick={stageList.retryCount}>{translate(language, "retry")}</Button> : null}
-                  {serverEnabled && stageList.error ? <Button type="button" size="sm" variant="secondary" onClick={stageList.retry}>{translate(language, "retry")}</Button> : null}
+                  {serverEnabled && stageList.refreshing ? <RefreshIndicator language={language} /> : null}{serverEnabled && stageList.countError ? <RetryIconButton type="button"   onClick={stageList.retryCount} loading={stageList.countLoading}>{translate(language, "retry")}</RetryIconButton> : null}
+                  {serverEnabled && stageList.error ? <RetryIconButton type="button"   onClick={stageList.retry} loading={stageList.loading}>{translate(language, "retry")}</RetryIconButton> : null}
                 </div>
                 {stageRows.length === 0 ? (
-                  serverEnabled && stageList.loading ? <p role="status" className="px-1 py-2 text-xs font-medium text-slate">{translate(language, "loading")}</p>
+                  serverEnabled && stageList.initialLoading ? <LoadingSkeleton variant="cards" label={<>{translate(language, "loading")}</>} className="px-1 py-2 text-xs font-medium text-slate" />
                     : serverEnabled && stageList.error ? <p role="alert" className="px-1 py-2 text-xs font-medium text-scarlet">{translate(language, "loadError")}</p>
                     : <EmptyState variant="board" message={serverEnabled && (stageList.totalCount ?? 0) > 0 ? translate(language, "noRecordsOnCurrentPage") : translate(language, "noData")} />
                 ) : (
@@ -501,7 +507,7 @@ export function PipelineBoardView({
         <Panel variant="secondary">
           <SectionTitle title={translate(language, embedded ? "failedCandidatesAllTime" : "failedCandidatesLast7Days")} />
           {failedGroups.every((group) => group.rows.length === 0) ? (
-            serverEnabled && failedList.loading ? <p role="status" className="py-3 text-sm text-slate">{translate(language, "loading")}</p> : <EmptyState variant="quiet" message={translate(language, embedded ? "noFailedCandidatesAllTime" : "noFailedCandidatesLast7Days")} />
+            serverEnabled && failedList.initialLoading ? <LoadingSkeleton variant="cards" label={<>{translate(language, "loading")}</>} className="py-3 text-sm text-slate" /> : <EmptyState variant="quiet" message={translate(language, embedded ? "noFailedCandidatesAllTime" : "noFailedCandidatesLast7Days")} />
           ) : (
             <div className="grid grid-flow-col gap-3 overflow-x-auto pb-2" style={{ gridAutoColumns: "minmax(240px, 1fr)" }}>
               {failedGroups.map((group) => (
@@ -529,13 +535,13 @@ export function PipelineBoardView({
               ))}
             </div>
           )}
-          {serverEnabled ? <div className="mt-3 flex items-center justify-end gap-2"><span className="text-xs text-slate">{failedList.countLabel} · {translate(language, "pipelineRecords")}</span>{failedList.countError ? <Button type="button" size="sm" variant="secondary" onClick={failedList.retryCount}>{translate(language, "retry")}</Button> : null}{failedList.error ? <Button type="button" size="sm" variant="secondary" onClick={failedList.retry}>{translate(language, "retry")}</Button> : null}<CursorPagination language={language} page={failedList.page} pageSize={failedList.pageSize} loading={failedList.loading} canPrevious={failedList.canPrevious} canNext={failedList.canNext} onPrevious={failedList.goPrevious} onNext={failedList.goNext} onPageSizeChange={failedList.setPageSize} /></div> : null}
+          {serverEnabled ? <div className="mt-3 flex items-center justify-end gap-2"><span className="text-xs text-slate">{failedList.countLabel} · {translate(language, "pipelineRecords")}</span>{failedList.countError ? <RetryIconButton type="button"   onClick={failedList.retryCount} loading={failedList.countLoading}>{translate(language, "retry")}</RetryIconButton> : null}{failedList.error ? <RetryIconButton type="button"   onClick={failedList.retry} loading={failedList.loading}>{translate(language, "retry")}</RetryIconButton> : null}<CursorPagination language={language} page={failedList.page} pageSize={failedList.pageSize} loading={failedList.loading} canPrevious={failedList.canPrevious} canNext={failedList.canNext} onPrevious={failedList.goPrevious} onNext={failedList.goNext} onPageSizeChange={failedList.setPageSize} /></div> : null}
         </Panel>
 
         <Panel variant="secondary">
           <SectionTitle title={translate(language, embedded ? "passedOfferAllTime" : "passedOfferLast7Days")} />
           {passedOfferRows.length === 0 ? (
-            serverEnabled && passedOfferList.loading ? <p role="status" className="py-3 text-sm text-slate">{translate(language, "loading")}</p> : <EmptyState variant="quiet" message={translate(language, embedded ? "noOfferPassAllTime" : "noOfferPassLast7Days")} />
+            serverEnabled && passedOfferList.initialLoading ? <LoadingSkeleton variant="cards" label={<>{translate(language, "loading")}</>} className="py-3 text-sm text-slate" /> : <EmptyState variant="quiet" message={translate(language, embedded ? "noOfferPassAllTime" : "noOfferPassLast7Days")} />
           ) : (
             <div className="grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(240px,1fr))]">
               {passedOfferRows.map((candidate) => (
@@ -553,7 +559,7 @@ export function PipelineBoardView({
               ))}
             </div>
           )}
-          {serverEnabled ? <div className="mt-3 flex items-center justify-end gap-2"><span className="text-xs text-slate">{passedOfferList.countLabel} · {translate(language, "pipelineRecords")}</span>{passedOfferList.countError ? <Button type="button" size="sm" variant="secondary" onClick={passedOfferList.retryCount}>{translate(language, "retry")}</Button> : null}{passedOfferList.error ? <Button type="button" size="sm" variant="secondary" onClick={passedOfferList.retry}>{translate(language, "retry")}</Button> : null}<CursorPagination language={language} page={passedOfferList.page} pageSize={passedOfferList.pageSize} loading={passedOfferList.loading} canPrevious={passedOfferList.canPrevious} canNext={passedOfferList.canNext} onPrevious={passedOfferList.goPrevious} onNext={passedOfferList.goNext} onPageSizeChange={passedOfferList.setPageSize} /></div> : null}
+          {serverEnabled ? <div className="mt-3 flex items-center justify-end gap-2"><span className="text-xs text-slate">{passedOfferList.countLabel} · {translate(language, "pipelineRecords")}</span>{passedOfferList.countError ? <RetryIconButton type="button"   onClick={passedOfferList.retryCount} loading={passedOfferList.countLoading}>{translate(language, "retry")}</RetryIconButton> : null}{passedOfferList.error ? <RetryIconButton type="button"   onClick={passedOfferList.retry} loading={passedOfferList.loading}>{translate(language, "retry")}</RetryIconButton> : null}<CursorPagination language={language} page={passedOfferList.page} pageSize={passedOfferList.pageSize} loading={passedOfferList.loading} canPrevious={passedOfferList.canPrevious} canNext={passedOfferList.canNext} onPrevious={passedOfferList.goPrevious} onNext={passedOfferList.goNext} onPageSizeChange={passedOfferList.setPageSize} /></div> : null}
         </Panel>
       </div>
     </div>
@@ -606,8 +612,8 @@ function PipelineTableView({ language, rows, recruitmentLogs, recruitmentLogHist
     <SectionTitle title={translate(language, "candidatePipeline")} action={<div className="flex min-w-0 flex-wrap items-center justify-end gap-2"><PipelineViewSwitch language={language} value="table" onChange={onViewChange} />{canWrite && onNewCandidate ? <Button type="button" size="sm" icon={<Plus size={17} />} onClick={onNewCandidate}>{translate(language, "newCandidate")}</Button> : null}</div>} />
     <TableToolbar advancedFiltersOpen={advancedFiltersOpen} language={language} onAdvancedFiltersToggle={() => setAdvancedFiltersOpen((open) => !open)} onSearch={table.setSearch} resultCount={table.controlledRows.length} searchValue={table.search} totalCount={recordRows.length} />
     {advancedFiltersOpen ? <div className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-[#E4E9F2] bg-[#F8FAFD] p-3"><label className="flex items-center gap-2 text-sm font-semibold text-navy"><input type="checkbox" checked={showAudit} onChange={(event) => setShowAudit(event.target.checked)} />{translate(language, "showAuditHistory")}</label><Button type="button" variant="secondary" size="sm" onClick={clear}>{translate(language, "clear")}</Button></div> : null}
-    {serverEnabled && historyList.error ? <div role="alert" className="rounded-lg border border-[#E9B9B4] bg-[#FFF8F7] px-3 py-2 text-sm text-scarlet">{translate(language, "loadError")} <Button type="button" size="sm" variant="secondary" onClick={historyList.retry}>{translate(language, "retry")}</Button></div> : null}
-    {serverEnabled && historyList.loading ? <p role="status" className="px-3 py-2 text-sm text-slate">{translate(language, "loading")}</p> : null}
+    {serverEnabled && historyList.error ? <div role="alert" className="rounded-lg border border-[#E9B9B4] bg-[#FFF8F7] px-3 py-2 text-sm text-scarlet">{translate(language, "loadError")} <RetryIconButton type="button"   onClick={historyList.retry} loading={historyList.loading}>{translate(language, "retry")}</RetryIconButton></div> : null}
+    {serverEnabled && historyList.initialLoading ? <LoadingSkeleton variant="cards" label={<>{translate(language, "loading")}</>} className="px-3 py-2 text-sm text-slate" /> : null}
     <div className="grid gap-2 md:hidden">{visibleRows.map(({ candidate, log, audit }) => <article key={log.log_id} className="ats-card p-3"><button type="button" onClick={() => onOpen(candidate.candidate_id, candidate.application_id)} className="text-left"><strong className="block text-navy">{formatCandidateName(candidate)}</strong><span className="text-xs text-slate">{processLabel(log.recruitment_process, language)} · {translate(language, "round")} {log.round}</span></button><p className="mt-2 text-xs text-slate">{translate(language, "pendingDetails")}: {formatDate(log.log_date, language)} · {log.interviewer ?? "-"}</p>{log.estimated_action_date ? <p className="text-xs font-medium text-slate">{translate(language, "estimatedDateValue", { date: formatDate(log.estimated_action_date, language) })}</p> : null}{log.result !== null ? <p className="text-xs text-slate">{translate(language, "outcome")}: {resultText(log.result, language)} · {formatDate(log.outcome_date, language)}</p> : null}<RecordTableActions candidate={candidate} log={log} audit={audit} language={language} canCorrect={adminCanCorrect} onOpen={onOpen} onCorrect={onCorrectPipelineRecord} /></article>)}</div>
     <div className="table-scroll hidden md:block"><table className="w-full border-collapse text-left text-sm"><thead className="bg-lightgray text-xs uppercase text-slate"><tr>{columns.map((column) => <th key={column.key} scope="col" className="px-3 py-3 align-top"><SortableFilterHeader columnKey={column.key} filterValue={table.filters[column.key] ?? ""} language={language} label={column.label} onFilter={table.setFilter} onSort={table.toggleSort} sortDirection={table.sortDirection} sortKey={table.sortKey} showFilter={advancedFiltersOpen} /></th>)}<th className="px-3 py-3"><span className="sr-only">{translate(language, "actions")}</span></th></tr></thead><tbody>{visibleRows.map(({ candidate, log, audit }) => <tr key={log.log_id} className="border-b border-[#D7DEE8] last:border-0"><td className="px-3 py-3"><button type="button" onClick={() => onOpen(candidate.candidate_id, candidate.application_id)} className="text-left font-semibold text-navy hover:text-primary">{formatRecruitmentId(candidate.candidate_id)}<span className="block text-xs font-medium text-slate">{formatCandidateName(candidate)}</span></button></td><td className="px-3 py-3 text-slate">{candidate.group_position ?? "-"}<span className="block text-xs">{candidate.doc_ids.join(", ") || "-"}</span></td><td className="px-3 py-3 text-slate">{candidate.site ?? "-"}</td><td className="px-3 py-3 text-slate">{candidate.person_in_charge ?? "-"}</td><td className="px-3 py-3"><Tag tone={audit ? "muted" : "teal"}>{processLabel(log.recruitment_process, language)} · {log.round}</Tag></td><td className="px-3 py-3 text-slate">{formatDate(log.log_date, language)}{log.estimated_action_date ? <span className="block text-xs font-semibold text-primary">{translate(language, "estimatedDateValue", { date: formatDate(log.estimated_action_date, language) })}</span> : null}<span className="block text-xs">{log.interviewer ?? "-"}</span><span className="block text-xs">{log.remark ?? ""}</span></td><td className="px-3 py-3 text-slate">{log.result === null ? <Tag tone="warning">{resultText(null, language)}</Tag> : <><Tag tone={statusTone(log.result)}>{resultText(log.result, language)}</Tag><span className="block text-xs">{formatDate(log.outcome_date, language)} · {log.outcome_interviewer ?? "-"}</span><span className="block text-xs">{log.result === 0 ? failureReasonText(log, language) : ""}</span><span className="block text-xs">{log.outcome_remark ?? ""}</span></>}</td><td className="px-3 py-3 text-slate">{formatDate(log.updated_at ?? log.created_at, language)}</td><td className="px-3 py-3"><RecordTableActions candidate={candidate} log={log} audit={audit} language={language} canCorrect={adminCanCorrect} onOpen={onOpen} onCorrect={onCorrectPipelineRecord} /></td></tr>)}</tbody></table></div>
     {visibleRows.length === 0 && !historyList.loading ? <EmptyState message={translate(language, "noData")} /> : null}
@@ -767,7 +773,7 @@ function MobileWorkspacePipelineStages({
           const stageRows = stageList?.items ?? sortByLastUpdateAsc(rows.filter((row) => row.latest_process === stage));
           return <details key={stage} className="group rounded-lg border border-[#E4E9F2] bg-white">
             <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 text-sm font-semibold text-navy focus:outline-none focus:ring-2 focus:ring-primary/30 [&::-webkit-details-marker]:hidden"><span className="min-w-0 truncate">{processLabel(stage, language)}</span><span className="inline-flex min-w-7 items-center justify-center rounded-md bg-[#F1F6FC] px-2 py-1 text-xs tabular-nums text-navy">{stageList?.countLabel ?? stageRows.length}</span></summary>
-            <div className="grid gap-1 border-t border-[#E4E9F2] p-2">{stageList?.countError ? <Button type="button" size="sm" variant="secondary" onClick={stageList.retryCount}>{translate(language, "retry")}</Button> : null}{stageList?.error ? <Button type="button" size="sm" variant="secondary" onClick={stageList.retry}>{translate(language, "retry")}</Button> : null}{stageRows.length === 0 ? stageList?.loading ? <p role="status" className="px-1 py-2 text-xs font-medium text-slate">{translate(language, "loading")}</p> : stageList?.error ? <p role="alert" className="px-1 py-2 text-xs font-medium text-scarlet">{translate(language, "loadError")}</p> : <p className="px-1 py-2 text-xs font-medium text-slate">{translate(language, "noData")}</p> : stageRows.map(renderCandidate)}{stageList ? <CursorPagination language={language} page={stageList.page} pageSize={stageList.pageSize} loading={stageList.loading} canPrevious={stageList.canPrevious} canNext={stageList.canNext} onPrevious={stageList.goPrevious} onNext={stageList.goNext} onPageSizeChange={stageList.setPageSize} /> : null}</div>
+            <div className="grid gap-1 border-t border-[#E4E9F2] p-2">{stageList?.countError ? <RetryIconButton type="button"   onClick={stageList.retryCount} loading={stageList.countLoading}>{translate(language, "retry")}</RetryIconButton> : null}{stageList?.error ? <RetryIconButton type="button"   onClick={stageList.retry} loading={stageList.loading}>{translate(language, "retry")}</RetryIconButton> : null}{stageRows.length === 0 ? stageList?.loading ? <LoadingSkeleton variant="cards" label={<>{translate(language, "loading")}</>} className="px-1 py-2 text-xs font-medium text-slate" /> : stageList?.error ? <p role="alert" className="px-1 py-2 text-xs font-medium text-scarlet">{translate(language, "loadError")}</p> : <p className="px-1 py-2 text-xs font-medium text-slate">{translate(language, "noData")}</p> : stageRows.map(renderCandidate)}{stageList ? <CursorPagination language={language} page={stageList.page} pageSize={stageList.pageSize} loading={stageList.loading} canPrevious={stageList.canPrevious} canNext={stageList.canNext} onPrevious={stageList.goPrevious} onNext={stageList.goNext} onPageSizeChange={stageList.setPageSize} /> : null}</div>
           </details>;
         })}
       </div>
@@ -785,8 +791,8 @@ function MobileWorkspacePipelineStages({
               <span className="inline-flex min-w-7 items-center justify-center rounded-md bg-[#F1F6FC] px-2 py-1 text-xs tabular-nums text-navy">{stageList?.countLabel ?? stageRows.length}</span>
             </summary>
             <div className="grid gap-1 border-t border-[#E4E9F2] p-2">
-              {stageList?.countError ? <Button type="button" size="sm" variant="secondary" onClick={stageList.retryCount}>{translate(language, "retry")}</Button> : null}{stageList?.error ? <Button type="button" size="sm" variant="secondary" onClick={stageList.retry}>{translate(language, "retry")}</Button> : null}
-              {stageRows.length === 0 ? stageList?.loading ? <p role="status" className="px-1 py-2 text-xs font-medium text-slate">{translate(language, "loading")}</p> : stageList?.error ? <p role="alert" className="px-1 py-2 text-xs font-medium text-scarlet">{translate(language, "loadError")}</p> : <p className="px-1 py-2 text-xs font-medium text-slate">{translate(language, "noData")}</p> : stageRows.map((candidate) => {
+              {stageList?.countError ? <RetryIconButton type="button"   onClick={stageList.retryCount} loading={stageList.countLoading}>{translate(language, "retry")}</RetryIconButton> : null}{stageList?.error ? <RetryIconButton type="button"   onClick={stageList.retry} loading={stageList.loading}>{translate(language, "retry")}</RetryIconButton> : null}
+              {stageRows.length === 0 ? stageList?.loading ? <LoadingSkeleton variant="cards" label={<>{translate(language, "loading")}</>} className="px-1 py-2 text-xs font-medium text-slate" /> : stageList?.error ? <p role="alert" className="px-1 py-2 text-xs font-medium text-scarlet">{translate(language, "loadError")}</p> : <p className="px-1 py-2 text-xs font-medium text-slate">{translate(language, "noData")}</p> : stageRows.map((candidate) => {
                 const nextStage = nextStages(candidate.latest_process)[0];
                 const canAdvance = canWrite && (candidate.latest_process === "No activity" || Boolean(nextStage));
                 const advanceLabel = candidate.latest_process === "No activity"

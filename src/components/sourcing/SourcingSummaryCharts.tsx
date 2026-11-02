@@ -1,3 +1,5 @@
+import { RetryIconButton } from "@/components/ui/RetryIconButton";
+import { LoadingSkeleton, RefreshIndicator } from "@/components/ui/LoadingSkeleton";
 import { useEffect, useId, useRef, useState } from "react";
 import { Info } from "lucide-react";
 import { Button } from "@/components/ui/Button";
@@ -141,11 +143,11 @@ export function SourcingSummaryCharts({ summary, language, loading = false, erro
 
   const cardClass = "min-w-0 rounded-xl border border-[#D7DEE8] bg-white p-3 shadow-[0_8px_24px_rgba(11,19,43,0.05)]";
 
-  if (loading || !summary || error) return <section data-testid="workspace-sourcing-summary" className="mb-4 min-w-0 rounded-xl border border-[#D7DEE8] bg-white p-3">
-    {loading ? <p role="status" className="text-sm text-slate">{translate(language, "loading")}</p> : <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-danger"><span>{language === "th" ? "โหลดสรุปข้อมูลจัดหาไม่สำเร็จ" : "Could not load the sourcing summary."}</span>{onRetry ? <Button type="button" size="sm" variant="secondary" onClick={onRetry}>{translate(language, "retry")}</Button> : null}</div>}
+  if (!summary || error) return <section data-testid="workspace-sourcing-summary" aria-busy={loading} className="mb-4 min-w-0 rounded-xl border border-[#D7DEE8] bg-white p-3">
+    {loading ? <LoadingSkeleton variant="chart" label={<>{translate(language, "loading")}</>} className="text-sm text-slate" /> : <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-danger"><span>{language === "th" ? "โหลดสรุปข้อมูลจัดหาไม่สำเร็จ" : "Could not load the sourcing summary."}</span>{onRetry ? <RetryIconButton title={`${language === "th" ? "ลองโหลดข้อมูลอีกครั้ง" : "Retry loading"}: Sourcing Summary Charts`} type="button"   onClick={onRetry}>{translate(language, "retry")}</RetryIconButton> : null}</div>}
   </section>;
 
-  return <section data-testid="workspace-sourcing-summary" className="mb-4 min-w-0">
+  return <section data-testid="workspace-sourcing-summary" aria-busy={loading} className="mb-4 min-w-0">{loading ? <RefreshIndicator language={language} /> : null}
     <div data-testid="workspace-sourcing-summary-row" className="grid min-w-0 gap-2 min-[1080px]:grid-cols-[minmax(0,30fr)_minmax(0,34fr)_minmax(0,36fr)]">
       <div className={cardClass}>
         <div className="flex min-w-0 items-center gap-1"><h2 className="min-w-0 text-base font-semibold text-navy">{translate(language, "accumulatedApplicants")}</h2><SummaryHelp label={translate(language, "accumulatedApplicants")} description={translate(language, "sourcingCumulativeHelp")} language={language} /></div>

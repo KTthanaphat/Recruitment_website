@@ -1,5 +1,7 @@
 "use client";
 
+import { RetryIconButton } from "@/components/ui/RetryIconButton";
+import { LoadingSkeleton, RefreshIndicator } from "@/components/ui/LoadingSkeleton";
 import Link from "next/link";
 import { assignmentGroup, reassignmentCounts, groupCandidateCount } from "@/lib/applications";
 import { ArrowLeft, BarChart3, BriefcaseBusiness, CheckCircle2, Clock3, FileText, Plus, Send, UserRound, UsersRound } from "lucide-react";
@@ -145,14 +147,14 @@ export function HiringWorkspaceView({
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   const selectedTarget = urlState.target;
-  const detailRequestKey = JSON.stringify([selectedTarget.type, selectedTarget.id, weekStart, siteFilter, ownerFilter, priorityOnly, accessScope, refreshKey, detailRetry]);
+  const detailRequestKey = JSON.stringify([selectedTarget.type, selectedTarget.id, weekStart, siteFilter, ownerFilter, priorityOnly, accessScope]);
   useEffect(() => {
     if (!selectedTarget.type || !selectedTarget.id || !listClient || !profile?.id || !accessScope) {
       setTargetDetail({ key: detailRequestKey, loading: false, error: false, result: null });
       return;
     }
     let cancelled = false;
-    setTargetDetail({ key: detailRequestKey, loading: true, error: false, result: null });
+    setTargetDetail(previous => ({ key: detailRequestKey, loading: true, error: false, result: previous.key === detailRequestKey ? previous.result : null }));
     const identity = { profileId: profile.id, key: accessScope };
     const request = selectedTarget.type === "requisition"
       ? loadScopedRequisitionDetail(listClient, { docId: selectedTarget.id, accessScope: identity })
@@ -162,23 +164,23 @@ export function HiringWorkspaceView({
       else if (!cancelled) setTargetDetail({ key: detailRequestKey, loading: false, error: true, result: null });
     }).catch(() => { if (!cancelled) setTargetDetail({ key: detailRequestKey, loading: false, error: true, result: null }); });
     return () => { cancelled = true; };
-  }, [accessScope, detailRequestKey, detailRetry, listClient, ownerFilter, priorityOnly, profile?.id, selectedTarget.id, selectedTarget.type, siteFilter, weekStart]);
+  }, [refreshKey, detailRetry, accessScope, detailRequestKey, listClient, ownerFilter, priorityOnly, profile?.id, selectedTarget.id, selectedTarget.type, siteFilter, weekStart]);
   const matchingDetail = targetDetail.key === detailRequestKey ? targetDetail.result : null;
   const qualityScope = { headerSite: siteFilter, headerPic: ownerFilter, priorityOnly };
   const qualityToday = workspaceTodayBangkok();
-  const qualityRequestKey = JSON.stringify([selectedTarget.type, selectedTarget.id, accessScope, qualityScope, qualityToday, refreshKey, qualityRetry]);
+  const qualityRequestKey = JSON.stringify([selectedTarget.type, selectedTarget.id, accessScope, qualityScope, qualityToday]);
   useEffect(() => {
     if (!selectedTarget.type || !selectedTarget.id || !listClient || !profile?.id || !accessScope) {
       setQualityState({ key: qualityRequestKey, loading: false, error: false, page: null });
       return;
     }
     let cancelled = false;
-    setQualityState({ key: qualityRequestKey, loading: true, error: false, page: null });
+    setQualityState(previous => ({ key: qualityRequestKey, loading: true, error: false, page: previous.key === qualityRequestKey ? previous.page : null }));
     void loadHomeQualityPage(listClient, { scope: qualityScope, groupId: selectedTarget.type === "group" ? selectedTarget.id : null, docId: selectedTarget.type === "requisition" ? selectedTarget.id : null, today: qualityToday, profileKey: accessScope, limit: 25 })
       .then(page => { if (!cancelled) setQualityState({ key: qualityRequestKey, loading: false, error: false, page }); })
       .catch(() => { if (!cancelled) setQualityState({ key: qualityRequestKey, loading: false, error: true, page: null }); });
     return () => { cancelled = true; };
-  }, [accessScope, listClient, profile?.id, qualityRequestKey, qualityRetry, selectedTarget.id, selectedTarget.type, siteFilter, ownerFilter, priorityOnly]);
+  }, [refreshKey, accessScope, listClient, profile?.id, qualityRequestKey, qualityRetry, selectedTarget.id, selectedTarget.type, siteFilter, ownerFilter, priorityOnly]);
   const matchingQualityPage = qualityState.key === qualityRequestKey ? qualityState.page : null;
   const qualityIssues = matchingQualityPage?.items.map(issue => ({ ...issue, workspaceCode: issue.workspaceCode as DataQualityIssue["workspaceCode"] }) as DataQualityIssue & { cursorId: string }) ?? null;
   const workspaceData = useMemo(() => {
@@ -380,8 +382,8 @@ export function HiringWorkspaceView({
     ];
 
   return (
-    <div className={`grid min-w-0 gap-5 ${context && !pickerOpen ? "lg:min-h-[calc(100vh+7rem)] lg:content-start" : ""}`}>
-      {pickerOpen || !context ? null : <section className={`relative z-30 min-w-0 rounded-2xl border border-[#D7E4F5] bg-gradient-to-r from-white via-white to-[#F1F6FF] p-3 shadow-[0_8px_24px_rgba(11,19,43,0.06)] lg:sticky lg:top-3 lg:backdrop-blur ${contextCompact ? "lg:mb-2 lg:p-2.5" : context.type === "group" ? "lg:p-3" : "lg:p-5"}`}>
+    <div aria-busy={targetDetail.key === detailRequestKey && targetDetail.loading} className={`grid min-w-0 gap-5 ${context && !pickerOpen ? "lg:min-h-[calc(100vh+7rem)] lg:content-start" : ""}`}>
+      {context && targetDetail.loading ? <RefreshIndicator language={language} /> : null}{pickerOpen || !context ? null : <section className={`relative z-30 min-w-0 rounded-2xl border border-[#D7E4F5] bg-gradient-to-r from-white via-white to-[#F1F6FF] p-3 shadow-[0_8px_24px_rgba(11,19,43,0.06)] lg:sticky lg:top-3 lg:backdrop-blur ${contextCompact ? "lg:mb-2 lg:p-2.5" : context.type === "group" ? "lg:p-3" : "lg:p-5"}`}>
         <div className={`grid min-w-0 grid-cols-1 gap-x-3 gap-y-2 md:grid-cols-[minmax(0,1fr)_auto] ${contextCompact ? "lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center" : "min-[1080px]:grid-cols-[minmax(0,9fr)_minmax(0,16fr)]"}`}>
           {!contextCompact ? <div className="flex min-w-0 items-center gap-1 md:col-start-1 md:row-start-1"><button type="button" aria-label={translate(language, "backToWorkspaceGroups")} title={translate(language, "backToWorkspaceGroups")} className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md text-primary hover:bg-[#E9F1FF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary lg:min-h-8 lg:min-w-8" onClick={showWorkspaceCatalog}><ArrowLeft size={16} aria-hidden="true" /></button><WorkspaceBreadcrumbs
             flush={context.type === "group"}
@@ -436,7 +438,7 @@ export function HiringWorkspaceView({
         </div>
       </section>}
       {selectedTarget.type && (!matchingDetail || matchingDetail.status !== "ready") ? (
-        <Panel><p role={targetDetail.loading ? "status" : "alert"} className={`text-sm ${targetDetail.loading ? "text-slate" : "text-danger"}`}>{targetDetail.loading ? translate(language, "loading") : translate(language, "loadFailed")}</p>{!targetDetail.loading ? <Button type="button" variant="secondary" className="mt-3" onClick={() => setDetailRetry(value => value + 1)}>{translate(language, "retry")}</Button> : null}</Panel>
+        <Panel><p role={targetDetail.loading ? "status" : "alert"} className={`text-sm ${targetDetail.loading ? "text-slate" : "text-danger"}`}>{targetDetail.loading ? translate(language, "loading") : translate(language, "loadFailed")}</p>{!targetDetail.loading ? <RetryIconButton title={`${language === "th" ? "ลองโหลดข้อมูลอีกครั้ง" : "Retry loading"}: Hiring Workspace`} type="button"  className="mt-3" onClick={() => setDetailRetry(value => value + 1)}>{translate(language, "retry")}</RetryIconButton> : null}</Panel>
       ) : pickerOpen || !context ? (
         <WorkspacePicker canManageSetup={canManageSetup && Boolean(onDispatchAction)} groups={(pickerScope === "all" ? allGroups : activeOpenGroups).filter((group) => { const choices = readWorkspaceUrlState().get("groupChoices"); return !choices || choices.split(",").includes(group.group_id); })} scope={pickerScope} onScopeChange={setPickerScope} data={scopedData} requisitions={requisitions} candidates={candidates} latestSavedByGroup={latestSavedByGroup} invalidTarget={Boolean(selectedTarget.type && selectedTarget.id && !context)} language={language} onCreateGroup={() => onDispatchAction?.({ kind: "group.create" })} onCreateRequisition={() => onDispatchAction?.({ kind: "requisition.create" })} onOpenRequisition={onOpenRequisition} onSelect={selectTarget} client={listClient} accessScope={accessScope} weekStart={weekStart} siteFilter={siteFilter} ownerFilter={ownerFilter} priorityOnly={priorityOnly} />
       ) : (
@@ -512,7 +514,7 @@ function OverviewSection({ context, contextIssues, qualityLoading, qualityError,
           {overdueGroupRequests > 0 ? <Tag appearance="soft" tone="danger">{translate(language, "workspaceOverdueShort", { count: overdueGroupRequests })}</Tag> : null}
         </div>
         <div data-testid="workspace-quality-list" className="mt-3 min-w-0 divide-y divide-[#E4E9F2] lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain lg:pr-2 lg:[scrollbar-gutter:stable]">
-          {qualityLoading && !contextIssues?.length ? <p role="status" className="text-sm text-slate">{translate(language, "loading")}</p> : qualityError ? <div role="alert" className="grid gap-2 py-2 text-sm text-danger"><p>{translate(language, "loadFailed")}</p><Button type="button" size="sm" variant="secondary" onClick={onQualityRetry}>{translate(language, "retry")}</Button></div> : contextIssues === null ? <p className="text-sm text-slate">{language === "th" ? "ยังไม่สามารถโหลดรายการตรวจสอบของกลุ่มนี้ได้" : "Data quality checks are unavailable for this scoped record."}</p> : sortedIssues.length === 0 ? <p className="text-sm text-slate">{translate(language, "noDataQualityIssues")}</p> : sortedIssues.map((issue) => <DataQualityIssueCard key={"cursorId" in issue ? String(issue.cursorId) : issue.id} issue={localizeWorkspaceIssue(issue, language)} language={language} row overview />)}
+          {qualityLoading && !contextIssues?.length ? <LoadingSkeleton variant="table" label={<>{translate(language, "loading")}</>} className="text-sm text-slate" /> : qualityError ? <div role="alert" className="grid gap-2 py-2 text-sm text-danger"><p>{translate(language, "loadFailed")}</p><RetryIconButton type="button"   onClick={onQualityRetry}>{translate(language, "retry")}</RetryIconButton></div> : contextIssues === null ? <p className="text-sm text-slate">{language === "th" ? "ยังไม่สามารถโหลดรายการตรวจสอบของกลุ่มนี้ได้" : "Data quality checks are unavailable for this scoped record."}</p> : sortedIssues.length === 0 ? <p className="text-sm text-slate">{translate(language, "noDataQualityIssues")}</p> : sortedIssues.map((issue) => <DataQualityIssueCard key={"cursorId" in issue ? String(issue.cursorId) : issue.id} issue={localizeWorkspaceIssue(issue, language)} language={language} row overview />)}
           {qualityHasMore ? <Button type="button" size="sm" variant="secondary" disabled={qualityLoading} onClick={onQualityMore}>{language === "th" ? "โหลดรายการเพิ่ม" : "Load more issues"}</Button> : null}
         </div>
       </section>
@@ -553,22 +555,23 @@ function SourcingFallbackSection({ data, groups, language, weekStart, client, ac
   const [summaryError, setSummaryError] = useState(false);
   const [summaryRetry, setSummaryRetry] = useState(0);
   const groupId = groups.length === 1 ? groups[0].group_id : null;
+  const summaryIdentity = JSON.stringify([client !== null, accessScope, weekStart, groupId, siteFilter, ownerFilter, priorityOnly]);
+  const [loadedSummaryIdentity, setLoadedSummaryIdentity] = useState("");
   useEffect(() => {
     let active = true;
-    setSummary(null);
     setSummaryError(false);
     if (!client || !accessScope) { setSummaryLoading(false); return () => { active = false; }; }
     setSummaryLoading(true);
     void loadSourcingSummary(client, { selectedWeek: weekStart, groupId, scope: { headerSite: siteFilter, headerPic: ownerFilter, priorityOnly }, profileKey: accessScope })
-      .then((value) => { if (active) setSummary(value); })
+      .then((value) => { if (active) { setSummary(value); setLoadedSummaryIdentity(summaryIdentity); } })
       .catch(() => { if (active) setSummaryError(true); })
       .finally(() => { if (active) setSummaryLoading(false); });
     return () => { active = false; };
-  }, [client, accessScope, weekStart, groupId, siteFilter, ownerFilter, priorityOnly, summaryRetry]);
+  }, [summaryIdentity, client, accessScope, weekStart, groupId, siteFilter, ownerFilter, priorityOnly, summaryRetry]);
   return (
     <Panel>
       <SectionTitle title={translate(language, "sourcingCoverage")} eyebrow={translate(language, "readOnlyFallback")} />
-      {client && accessScope ? <SourcingSummaryCharts summary={summary} language={language} loading={summaryLoading} error={summaryError} onRetry={() => setSummaryRetry((value) => value + 1)} /> : null}
+      {client && accessScope ? <SourcingSummaryCharts summary={loadedSummaryIdentity === summaryIdentity ? summary : null} language={language} loading={summaryLoading} error={summaryError} onRetry={() => setSummaryRetry((value) => value + 1)} /> : null}
       <div className="grid min-w-0 gap-3">
         {groups.length === 0 ? <EmptyState message={translate(language, "noMatchedSourcingGroup")} /> : groups.map((group) => {
           const previous = sourcingPreviousUpdate(data, group.group_id, weekStart);
@@ -712,8 +715,8 @@ function WorkspacePicker({ canManageSetup, groups, scope, onScopeChange, data, r
         <label className="grid gap-1 text-sm font-medium text-slate">{translate(language, "sortBy")}<SelectInput aria-label={translate(language,"sortBy")} value={sort} onChange={(event) => setSort(event.target.value as typeof sort)}><option value="attention">{translate(language, "workspaceNeedsAttention")}</option><option value="name">{translate(language, "workspaceNameSort")}</option><option value="oldest">{translate(language, "workspaceOldestSort")}</option></SelectInput></label>
       </div>
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-medium text-slate" role="status">{translate(language, "workspaceMatches", { count })}</p><div role="group" aria-label={language === "th" ? "รูปแบบมุมมองกลุ่ม" : "Group view"} className="inline-flex rounded-lg border border-[#C9D5E6] bg-[#F8FAFD] p-0.5">{(["table", "cards"] as const).map(option => <button key={option} type="button" aria-pressed={view === option} onClick={() => selectView(option)} className={`min-h-11 rounded-md px-3 text-sm font-medium focus-visible:ring-2 focus-visible:ring-primary ${view === option ? "bg-white text-navy shadow-sm" : "text-slate hover:text-navy"}`}>{option === "table" ? (language === "th" ? "ตาราง" : "Table") : (language === "th" ? "การ์ด" : "Cards")}</button>)}</div></div>
-      {pickerList.error ? <div role="alert" className="mb-2 flex items-center gap-3 text-sm text-scarlet"><span>{language === "th" ? "โหลดรายการกลุ่มไม่สำเร็จ" : "Could not load workspace groups."}</span><Button type="button" variant="secondary" onClick={pickerList.retry}>{translate(language, "retry")}</Button></div> : null}
-      {pickerList.loading && serverGroups ? <p role="status" className="py-4 text-sm text-slate">{language === "th" ? "กำลังโหลดกลุ่ม…" : "Loading groups…"}</p> : null}
+      {pickerList.error ? <div role="alert" className="mb-2 flex items-center gap-3 text-sm text-scarlet"><span>{language === "th" ? "โหลดรายการกลุ่มไม่สำเร็จ" : "Could not load workspace groups."}</span><RetryIconButton type="button"  onClick={pickerList.retry} loading={pickerList.loading}>{translate(language, "retry")}</RetryIconButton></div> : null}
+      {pickerList.initialLoading && serverGroups ? <LoadingSkeleton variant="table" label={<>{language === "th" ? "กำลังโหลดกลุ่ม…" : "Loading groups…"}</>} className="py-4 text-sm text-slate" /> : null}
       <div data-workspace-picker-results className="mt-2 min-w-0 md:max-h-[min(60vh,36rem)] md:overflow-auto">
         {count === 0 && !pickerList.loading ? <EmptyState message={translate(language, "noMatchingWorkspaces")} /> : null}
         {view === "table" && (count === null || count > 0) ? <table className="hidden w-full min-w-[68rem] border-collapse text-left text-sm md:table"><thead className="sticky top-0 z-10 bg-white text-xs text-slate"><tr>{["groupName", "readiness", "workspaceFilledDemand", "workspaceActiveCandidates", "siteOwner", "linkedRequisitions", "lastSaved"].map(key => <th key={key} scope="col" className="px-3 py-2 font-semibold">{translate(language, key as Parameters<typeof translate>[1])}</th>)}</tr></thead><tbody>{filteredGroups.map(row => <tr key={row.group.group_id} className="border-t border-[#E4E9F2]">{groupCells(row).map((cell, index) => <td key={index} className={`px-3 py-2 align-middle ${index===0?"w-48 max-w-[15rem]":""}`}>{cell}</td>)}</tr>)}</tbody></table> : null}
@@ -723,7 +726,7 @@ function WorkspacePicker({ canManageSetup, groups, scope, onScopeChange, data, r
           return <article key={row.group.group_id} className={view === "cards" ? "ats-card min-w-0 p-4" : "min-w-0 py-3"}>{cells[0]}<dl className="mt-3 grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] gap-x-3 gap-y-2">{cells.slice(1).map((cell,index) => <div key={labels[index+1]} className="contents"><dt className="text-xs text-slate">{translate(language, labels[index+1])}</dt><dd className="min-w-0 break-words text-sm text-navy">{cell}</dd></div>)}</dl></article>;
         })}</div>
       </div>
-      {serverGroups ? <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-[#D7DEE8] pt-3 text-sm"><span>Page {pickerList.page} · {pickerList.countLabel} groups</span>{pickerList.countError?<Button type="button" variant="secondary" onClick={pickerList.retryCount}>Retry count</Button>:null}<div className="flex gap-2"><Button type="button" variant="secondary" disabled={!pickerList.canPrevious} onClick={pickerList.goPrevious}>Previous</Button><Button type="button" variant="secondary" disabled={!pickerList.canNext} onClick={pickerList.goNext}>Next</Button><select aria-label="Rows per page" value={pickerList.pageSize} onChange={event=>pickerList.setPageSize(Number(event.target.value))} className="min-h-10 rounded-md border border-[#C9D5E6] bg-white px-2"><option value={25}>25</option><option value={50}>50</option><option value={100}>100</option></select></div></div> : null}
+      {serverGroups ? <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-[#D7DEE8] pt-3 text-sm"><span>Page {pickerList.page} · {pickerList.countLabel} groups</span>{pickerList.countError?<RetryIconButton type="button"  onClick={pickerList.retryCount} loading={pickerList.countLoading}>Retry count</RetryIconButton>:null}<div className="flex gap-2"><Button type="button" variant="secondary" disabled={!pickerList.canPrevious} onClick={pickerList.goPrevious}>Previous</Button><Button type="button" variant="secondary" disabled={!pickerList.canNext} onClick={pickerList.goNext}>Next</Button><select aria-label="Rows per page" value={pickerList.pageSize} onChange={event=>pickerList.setPageSize(Number(event.target.value))} className="min-h-10 rounded-md border border-[#C9D5E6] bg-white px-2"><option value={25}>25</option><option value={50}>50</option><option value={100}>100</option></select></div></div> : null}
     </Panel>
   );
 }
