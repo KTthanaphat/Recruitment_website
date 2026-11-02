@@ -174,7 +174,13 @@ async function main() {
   await db.exec(fs.readFileSync(path.join(root,'supabase/migrations/20261015091726_candidate_group_journey_claims.sql'),'utf8'));
   if (productionUpgradeMode) await db.exec(fs.readFileSync(path.join(root,'supabase/migrations/20261026040217_fix_line_interview_round_date_derivation.sql'),'utf8'));
   await db.exec(fs.readFileSync(path.join(root,'supabase/migrations/20261101124015_five_digit_app_ids.sql'),'utf8'));
-  await db.exec(fs.readFileSync(path.join(root,'supabase/schemas/20_indexes.sql'),'utf8'));
+  // Keep this newly reviewed index out of the early declarative replay: its additive migration must install it at the correct chronological point.
+  const assignmentHistoryMigration=fs.readFileSync(path.join(root,'supabase/migrations/20261102123400_candidate_assignment_application_history_index.sql'),'utf8');
+  const declarativeIndexes=fs.readFileSync(path.join(root,'supabase/schemas/20_indexes.sql'),'utf8');
+  const historyIndexDeclaration=/create index if not exists idx_candidate_application_assignments_application_id\s+on public\.candidate_application_assignments\(application_id\);/g;
+  assert.equal((declarativeIndexes.match(historyIndexDeclaration)||[]).length,1,'one canonical all-history application index declaration exists');
+  assert.equal(assignmentHistoryMigration.replace(/\s+/g,' ').trim(),declarativeIndexes.match(historyIndexDeclaration)[0].replace(/\s+/g,' ').trim(),'additive history index migration matches its declarative source');
+  await db.exec(declarativeIndexes.replace(historyIndexDeclaration,''));
   await db.exec(fs.readFileSync(path.join(root,'supabase/schemas/55_dashboard_report.sql'),'utf8'));
   for (const name of [
     '20261101125118_candidate_registry_list.sql',
@@ -201,6 +207,13 @@ async function main() {
   await db.exec(fs.readFileSync(path.join(root,'supabase/migrations/20261102120000_pipeline_stage_board_membership.sql'),'utf8'));
   await db.exec(fs.readFileSync(path.join(root,'supabase/migrations/20261102121000_requisition_link_option_filters.sql'),'utf8'));
   await db.exec(fs.readFileSync(path.join(root,'supabase/migrations/20261102122000_home_welcome_summaries.sql'),'utf8'));
+  await db.exec(fs.readFileSync(path.join(root,'supabase/migrations/20261102123000_home_quality_duplicate_key_precompute.sql'),'utf8'));
+  await db.exec(fs.readFileSync(path.join(root,'supabase/migrations/20261102123100_requisition_page_enrichment_after_limit.sql'),'utf8'));
+  await db.exec(fs.readFileSync(path.join(root,'supabase/migrations/20261102123200_bottleneck_authorization_key_memoization.sql'),'utf8'));
+  await db.exec(fs.readFileSync(path.join(root,'supabase/migrations/20261102123300_rejection_distinct_authorization_precompute.sql'),'utf8'));
+  assert.equal((await db.query("select to_regclass('public.idx_candidate_application_assignments_application_id') as idx")).rows[0].idx,null,'chronological index migration is not masked by the early schema20 replay');
+  await db.exec(assignmentHistoryMigration);
+  assert.deepEqual((await db.query("select i.indisvalid valid,i.indisready ready,i.indpred is null all_history from pg_index i where i.indexrelid='public.idx_candidate_application_assignments_application_id'::regclass")).rows[0],{valid:true,ready:true,all_history:true},'additive migration creates a valid ready all-history index without a partial predicate');
   if (process.argv.includes('--inline-auth-experiment')) {
     await db.exec(fs.readFileSync(path.join(root,'tests/db/scoped-auth-inline-experiment.sql'),'utf8'));
   }
@@ -256,7 +269,7 @@ async function main() {
       union all
       (select candidate_id,doc_id from public.candidate_requisitions except select candidate_id,doc_id from production_link_baseline)
     ) link_diff`)).rows[0].count;
-    assert.equal(missingLinks,0,'all 1,225 candidate-to-requisition links survive with their raw identities');
+    assert.equal(missingLinks,0,'all captured candidate-to-requisition links survive with their raw identities');
     const badJourney=(await db.query(`select count(*) from public.candidate_applications a join public.candidates c using(candidate_id)
       left join public.candidate_application_assignments x using(application_id)
       where a.created_at is distinct from c.created_at or a.updated_at is distinct from c.updated_at
@@ -291,8 +304,18 @@ async function main() {
       update public.profiles set role='viewer',site=null where id='55555555-5555-5555-5555-555555555555';`);
     await db.exec(`select set_config('request.jwt.claim.sub','33333333-3333-3333-3333-333333333333',false); set role authenticated;`);
     assert.equal((await db.query(`select count(*) from public.candidates where candidate_id='TEST-C1'`)).rows[0].count,1,'KT1 site-reader policy can read the matching application despite preserved legacy home_site');
+    assert.deepEqual((await db.query(`select
+      (select count(*) from public.candidates where candidate_id like 'PROD-CAN-M-%' and home_site is null) profiles,
+      (select count(*) from public.candidate_applications a join public.candidates c using(candidate_id) where c.candidate_id like 'PROD-CAN-M-%' and c.home_site is null) applications,
+      (select count(*) from public.candidate_application_assignments x join public.candidate_applications a using(application_id) join public.candidates c using(candidate_id) where c.candidate_id like 'PROD-CAN-M-%' and c.home_site is null) assignments`)).rows[0],
+      {profiles:53,applications:53,assignments:53},'site-reader RLS retains all 53 NULL-home shared-group journeys without assigning a home site');
     await db.exec(`select set_config('request.jwt.claim.sub','44444444-4444-4444-4444-444444444444',false);`);
     assert.equal((await db.query(`select count(*) from public.candidates where candidate_id='TEST-C1'`)).rows[0].count,0,'KT2 site-reader policy does not see the unrelated KT1 application');
+    assert.deepEqual((await db.query(`select
+      (select count(*) from public.candidates where candidate_id like 'PROD-CAN-M-%' and home_site is null) profiles,
+      (select count(*) from public.candidate_applications a join public.candidates c using(candidate_id) where c.candidate_id like 'PROD-CAN-M-%' and c.home_site is null) applications,
+      (select count(*) from public.candidate_application_assignments x join public.candidate_applications a using(application_id) join public.candidates c using(candidate_id) where c.candidate_id like 'PROD-CAN-M-%' and c.home_site is null) assignments`)).rows[0],
+      {profiles:53,applications:53,assignments:53},'site-reader RLS retains all 53 NULL-home shared-group journeys without assigning a home site');
     await db.exec(`select set_config('request.jwt.claim.sub','55555555-5555-5555-5555-555555555555',false);`);
     assert.equal((await db.query(`select count(*) from public.candidates where candidate_id='TEST-C1'`)).rows[0].count,1,'viewer read access follows the existing global-reader policy');
     await db.exec('reset role; set role anon;');

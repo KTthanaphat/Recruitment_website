@@ -1,0 +1,1 @@
+create index if not exists idx_candidate_application_assignments_application_id on public.candidate_application_assignments(application_id);

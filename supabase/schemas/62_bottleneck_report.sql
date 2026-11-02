@@ -16,10 +16,16 @@ begin
   if cardinality(coalesce(p_trend_dates,'{}'::date[]))>8 or exists(select 1 from unnest(coalesce(p_trend_dates,'{}'::date[])) d where d<p_start or d>p_end) then raise exception 'REPORT_RANGE_INVALID'; end if;
   v_as_of:=least(p_end,(now() at time zone 'Asia/Bangkok')::date);
   if p_start<=v_as_of then
-    with authorized_logs as materialized (
-      select l.* from public.recruitment_logs l where l.superseded_at is null and l.superseded_by_stage_instance_id is null
+    with authorized_candidates as materialized (
+      select c.candidate_id,c.name,c.channel from public.candidates c where app_private.can_read_candidate(c.candidate_id)
+    ), authorized_applications as materialized (
+      select a.application_id,a.candidate_id,a.group_id from public.candidate_applications a where app_private.can_read_application(a.application_id)
+    ), authorized_logs as materialized (
+      select l.* from public.recruitment_logs l join authorized_candidates c on c.candidate_id=l.candidate_id
+        left join authorized_applications a on a.application_id=l.application_id
+      where l.superseded_at is null and l.superseded_by_stage_instance_id is null
         and l.recruitment_process in ('Phone Screen','HR Interview','Line Interview','Test','Reference Check','Offer')
-        and (l.application_id is null or app_private.can_read_application(l.application_id)) and app_private.can_read_candidate(l.candidate_id)
+        and (l.application_id is null or a.application_id is not null)
     ), direct_rows as (
       select l.stage_instance_id::text attempt_id,l.application_id,l.candidate_id,l.recruitment_process stage,l.round,l.log_id,l.log_date entry_date,
         case when l.result is null then null else l.outcome_date end outcome_date,l.result,l.estimated_action_date due_date,
@@ -57,12 +63,11 @@ begin
       select distinct on (aa.application_id) aa.application_id,aa.group_id from public.candidate_application_assignments aa
       where (aa.started_at at time zone 'Asia/Bangkok')::date<=v_as_of and (aa.ended_at is null or (aa.ended_at at time zone 'Asia/Bangkok')::date>v_as_of)
       order by aa.application_id,aa.started_at desc,aa.assignment_id desc
-    ), app_context as (
+    ), app_context as materialized (
       select a.application_id,a.candidate_id,c.name,coalesce(aa.group_id,a.group_id) group_id
-      from public.candidate_applications a join public.candidates c on c.candidate_id=a.candidate_id
+      from authorized_applications a join authorized_candidates c on c.candidate_id=a.candidate_id
       left join assignment_at_date aa on aa.application_id=a.application_id
-      where app_private.can_read_application(a.application_id) and app_private.can_read_candidate(c.candidate_id)
-        and (lower(coalesce(nullif(btrim(c.channel),''),'Others'))=lower(coalesce(nullif(btrim(p_channel),''),'all')) or lower(coalesce(p_channel,'all'))='all')
+      where (lower(coalesce(nullif(btrim(c.channel),''),'Others'))=lower(coalesce(nullif(btrim(p_channel),''),'all')) or lower(coalesce(p_channel,'all'))='all')
     ), scoped_req as (
       select r.doc_id,r.site,r.department,r.position,r.person_in_charge,r.level,r.is_priority,r.head_count,r.status,r.created_at,r.pr_approved_date,dg.group_id
       from public.document_groups dg join public.requisitions r on r.doc_id=dg.doc_id
@@ -106,10 +111,12 @@ begin
     ), unresolved as (
       select a.* from ranked_attempts a where a.latest_rank=1 and (a.outcome_date is null or a.outcome_date>v_as_of)
     ), terminal_apps as materialized (
-      select t.application_id from public.recruitment_logs t where t.application_id is not null and t.superseded_at is null and t.superseded_by_stage_instance_id is null
+      select t.application_id from public.recruitment_logs t join authorized_applications allowed_a on allowed_a.application_id=t.application_id
+        join authorized_candidates allowed_c on allowed_c.candidate_id=t.candidate_id
+      where t.application_id is not null and t.superseded_at is null and t.superseded_by_stage_instance_id is null
         and (t.recruitment_process in ('Rejected','Withdrawn') or t.result=0)
         and case when t.recruitment_process in ('Rejected','Withdrawn') or t.stage_instance_id is null then t.log_date else t.outcome_date end<=v_as_of
-        and app_private.can_read_application(t.application_id) and app_private.can_read_candidate(t.candidate_id) group by t.application_id
+      group by t.application_id
       union
       select o.application_id from public.offers o where o.application_id is not null and o.accepted_date<=v_as_of and o.start_confirmation is distinct from 'did_not_start'
     ), eligible_queue as (
@@ -141,10 +148,16 @@ begin
     v_conflicts:=coalesce((v_queue_summary->>'conflicts')::integer,0); v_status:=v_queue_summary->'statusCounts';
     v_stage_wait:=v_queue_summary->'stageWait'; v_pics:=array(select jsonb_array_elements_text(v_queue_summary->'pics'));
   end if;
-  with authorized_logs as materialized (
-    select l.* from public.recruitment_logs l where l.superseded_at is null and l.superseded_by_stage_instance_id is null
+  with authorized_candidates as materialized (
+    select c.candidate_id,c.name,c.channel from public.candidates c where app_private.can_read_candidate(c.candidate_id)
+  ), authorized_applications as materialized (
+    select a.application_id,a.candidate_id,a.group_id from public.candidate_applications a where app_private.can_read_application(a.application_id)
+  ), authorized_logs as materialized (
+    select l.* from public.recruitment_logs l join authorized_candidates c on c.candidate_id=l.candidate_id
+      left join authorized_applications a on a.application_id=l.application_id
+    where l.superseded_at is null and l.superseded_by_stage_instance_id is null
       and l.recruitment_process in ('Phone Screen','HR Interview','Line Interview','Test','Reference Check','Offer')
-      and (l.application_id is null or app_private.can_read_application(l.application_id)) and app_private.can_read_candidate(l.candidate_id)
+      and (l.application_id is null or a.application_id is not null)
   ), direct_rows as (
     select l.stage_instance_id::text attempt_id,l.application_id,l.candidate_id,l.recruitment_process stage,l.round,l.log_id,l.log_date entry_date,
       case when l.result is null then null else l.outcome_date end outcome_date,l.result,l.estimated_action_date due_date,
@@ -192,13 +205,12 @@ begin
     select distinct on (aa.application_id) aa.application_id,aa.group_id from public.candidate_application_assignments aa
     where (aa.started_at at time zone 'Asia/Bangkok')::date<=v_as_of and (aa.ended_at is null or (aa.ended_at at time zone 'Asia/Bangkok')::date>v_as_of)
     order by aa.application_id,aa.started_at desc,aa.assignment_id desc
-  ), app_context as (
+  ), app_context as materialized (
     select a.application_id,a.candidate_id,coalesce(aa.group_id,a.group_id) group_id,
       lower(coalesce(nullif(btrim(c.channel),''),'Others')) channel_key
-    from public.candidate_applications a join public.candidates c on c.candidate_id=a.candidate_id
+    from authorized_applications a join authorized_candidates c on c.candidate_id=a.candidate_id
     left join assignment_at_date aa on aa.application_id=a.application_id
-    where app_private.can_read_application(a.application_id) and app_private.can_read_candidate(c.candidate_id)
-      and (lower(coalesce(nullif(btrim(c.channel),''),'Others'))=lower(coalesce(nullif(btrim(p_channel),''),'all')) or lower(coalesce(p_channel,'all'))='all')
+    where (lower(coalesce(nullif(btrim(c.channel),''),'Others'))=lower(coalesce(nullif(btrim(p_channel),''),'all')) or lower(coalesce(p_channel,'all'))='all')
   ), eligible_attempts as (
     select x.* from attempts x join app_context c on c.application_id=x.application_id
     where (exists(select 1 from scoped_req r where r.group_id=coalesce((select aa.group_id from public.candidate_application_assignments aa
@@ -217,7 +229,7 @@ begin
     from stage_order s left join completion_stats c using(stage)
   ), primary_row as (select * from stage_rows where median is not null order by median desc,waiting desc,oldest desc nulls last,ord limit 1),
   channel_options as (select coalesce(jsonb_agg(distinct coalesce(nullif(btrim(c.channel),''),'Others') order by coalesce(nullif(btrim(c.channel),''),'Others')),'[]'::jsonb) values
-    from public.candidates c where app_private.can_read_candidate(c.candidate_id)),
+    from authorized_candidates c),
   excluded as (select count(*)::integer n from eligible_attempts where exclusion is not null and ((outcome_date between p_start and v_as_of) or (outcome_date is null and entry_date<=v_as_of))),
   med as (select percentile_cont(.5) within group(order by duration)::numeric value from valid)
   select jsonb_build_object('asOf',v_as_of,'start',p_start,'future',p_start>v_as_of,'channel',coalesce(p_channel,'all'),
@@ -260,10 +272,16 @@ begin
   if p_stage is not null and p_stage not in ('Phone Screen','HR Interview','Line Interview','Test','Reference Check','Offer') then raise exception 'BOTTLENECK_FILTER_INVALID'; end if;
   if length(coalesce(p_search,''))>200 or jsonb_typeof(coalesce(p_scope,'{}'::jsonb))<>'object'
     or exists(select 1 from jsonb_object_keys(coalesce(p_scope,'{}'::jsonb)) k where k not in ('headerSite','headerPic','priorityOnly','sites','departments','levels')) then raise exception 'BOTTLENECK_FILTER_INVALID'; end if;
-  with authorized_logs as materialized (
-    select l.* from public.recruitment_logs l where l.superseded_at is null and l.superseded_by_stage_instance_id is null
+  with authorized_candidates as materialized (
+    select c.candidate_id,c.name,c.channel from public.candidates c where app_private.can_read_candidate(c.candidate_id)
+  ), authorized_applications as materialized (
+    select a.application_id,a.candidate_id,a.group_id from public.candidate_applications a where app_private.can_read_application(a.application_id)
+  ), authorized_logs as materialized (
+    select l.* from public.recruitment_logs l join authorized_candidates c on c.candidate_id=l.candidate_id
+      left join authorized_applications a on a.application_id=l.application_id
+    where l.superseded_at is null and l.superseded_by_stage_instance_id is null
       and l.recruitment_process in ('Phone Screen','HR Interview','Line Interview','Test','Reference Check','Offer')
-      and (l.application_id is null or app_private.can_read_application(l.application_id)) and app_private.can_read_candidate(l.candidate_id)
+      and (l.application_id is null or a.application_id is not null)
   ), direct_rows as (
     select l.stage_instance_id::text attempt_id,l.application_id,l.candidate_id,l.recruitment_process stage,l.round,l.log_id,l.log_date entry_date,
       case when l.result is null then null else l.outcome_date end outcome_date,l.result,l.estimated_action_date due_date,
@@ -310,13 +328,12 @@ begin
     select distinct on (aa.application_id) aa.application_id,aa.group_id from public.candidate_application_assignments aa
     where (aa.started_at at time zone 'Asia/Bangkok')::date<=p_as_of and (aa.ended_at is null or (aa.ended_at at time zone 'Asia/Bangkok')::date>p_as_of)
     order by aa.application_id,aa.started_at desc,aa.assignment_id desc
-  ), app_context as (
+  ), app_context as materialized (
     select a.application_id,a.candidate_id,c.name,coalesce(aa.group_id,a.group_id) group_id,
       lower(coalesce(nullif(btrim(c.channel),''),'Others')) channel_key
-    from public.candidate_applications a join public.candidates c on c.candidate_id=a.candidate_id
+    from authorized_applications a join authorized_candidates c on c.candidate_id=a.candidate_id
     left join assignment_at_date aa on aa.application_id=a.application_id
-    where app_private.can_read_application(a.application_id) and app_private.can_read_candidate(c.candidate_id)
-      and (lower(coalesce(nullif(btrim(c.channel),''),'Others'))=lower(coalesce(nullif(btrim(p_channel),''),'all')) or lower(coalesce(p_channel,'all'))='all')
+    where (lower(coalesce(nullif(btrim(c.channel),''),'Others'))=lower(coalesce(nullif(btrim(p_channel),''),'all')) or lower(coalesce(p_channel,'all'))='all')
   ), scoped_req as (
     select r.doc_id,r.site,r.department,r.position,r.person_in_charge,r.level,r.is_priority,r.head_count,r.status,r.created_at,r.pr_approved_date,dg.group_id
     from public.document_groups dg join public.requisitions r on r.doc_id=dg.doc_id
@@ -361,10 +378,12 @@ begin
   ), unresolved as (
     select a.* from ranked_attempts a where a.latest_rank=1 and (a.outcome_date is null or a.outcome_date>p_as_of)
   ), terminal_apps as materialized (
-    select t.application_id from public.recruitment_logs t where t.application_id is not null and t.superseded_at is null and t.superseded_by_stage_instance_id is null
+    select t.application_id from public.recruitment_logs t join authorized_applications allowed_a on allowed_a.application_id=t.application_id
+      join authorized_candidates allowed_c on allowed_c.candidate_id=t.candidate_id
+    where t.application_id is not null and t.superseded_at is null and t.superseded_by_stage_instance_id is null
       and (t.recruitment_process in ('Rejected','Withdrawn') or t.result=0)
       and case when t.recruitment_process in ('Rejected','Withdrawn') or t.stage_instance_id is null then t.log_date else t.outcome_date end<=p_as_of
-      and app_private.can_read_application(t.application_id) and app_private.can_read_candidate(t.candidate_id) group by t.application_id
+    group by t.application_id
     union
     select o.application_id from public.offers o where o.application_id is not null and o.accepted_date<=p_as_of and o.start_confirmation is distinct from 'did_not_start'
   ), eligible_queue as (

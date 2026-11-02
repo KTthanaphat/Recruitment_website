@@ -24,8 +24,12 @@ async function main() {
   await db.exec(`
     create schema auth; create schema app_private; create role authenticated; create role anon;
     create function auth.uid() returns uuid language sql stable as $$ select 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'::uuid $$;
-    create function app_private.can_read_application(uuid) returns boolean language sql stable as $$ select true $$;
-    create function app_private.can_read_candidate(text) returns boolean language sql stable as $$ select true $$;
+    create function app_private.can_read_application(uuid) returns boolean language sql stable as $$
+      select coalesce($1::text <> all(string_to_array(current_setting('test.denied_applications',true),',')),true)
+    $$;
+    create function app_private.can_read_candidate(text) returns boolean language sql stable as $$
+      select coalesce($1 <> all(string_to_array(current_setting('test.denied_candidates',true),',')),true)
+    $$;
     create function app_private.can_read_requisition(text) returns boolean language sql stable as $$ select true $$;
     create function app_private.is_recruitment_reader() returns boolean language sql stable as $$ select true $$;
     create table public.candidates(candidate_id text primary key,name text not null,channel text);
@@ -43,11 +47,22 @@ async function main() {
   await db.exec(`create function auth.test_two_into() returns integer language plpgsql as $$ declare a integer; b integer; begin select 2 into a; select 3 into b; return a+b; end; $$;`);
   assert.equal((await db.query(`select auth.test_two_into() value`)).rows[0].value, 5);
   await db.exec(`drop function auth.test_two_into()`);
-  const sql = fs.readFileSync(path.resolve(__dirname, "../../supabase/migrations/20261101152821_stage_bottleneck_summaries.sql"), "utf8");
+  const baselineSql = fs.readFileSync(path.resolve(__dirname, "../../supabase/migrations/20261101152821_stage_bottleneck_summaries.sql"), "utf8");
+  const sql = fs.readFileSync(path.resolve(__dirname, "../../supabase/migrations/20261102123200_bottleneck_authorization_key_memoization.sql"), "utf8");
   const declarativeSql = fs.readFileSync(path.resolve(__dirname, "../../supabase/schemas/62_bottleneck_report.sql"), "utf8").replaceAll("\r\n", "\n");
   const migrationSql = sql.replaceAll("\r\n", "\n");
-  assert.ok(migrationSql.startsWith(declarativeSql), "generated Bottleneck migration matches declarative schema");
+  assert.ok(migrationSql.startsWith(declarativeSql), "new Bottleneck migration matches declarative schema");
+  assert.match(migrationSql, /authorized_candidates as materialized/i);
+  assert.match(migrationSql, /authorized_applications as materialized/i);
+  assert.match(migrationSql, /l\.application_id is null or a\.application_id is not null/i, "legacy NULL-application logs retain their allowed path");
+  assert.doesNotMatch(migrationSql, /can_read_application\(l\.application_id\)|can_read_candidate\(l\.candidate_id\)/i,
+    "per-log authorization calls are replaced by materialized authorized key joins");
+  assert.equal((migrationSql.match(/can_read_candidate\(c\.candidate_id\)/g) || []).length, 3,
+    "candidate authorization is evaluated once per authorized-key CTE, not per log row");
+  assert.equal((migrationSql.match(/can_read_application\(a\.application_id\)/g) || []).length, 3,
+    "application authorization is evaluated once per authorized-key CTE, not per log row");
   assert.equal(sql.includes("v_page:=public.app_dashboard_bottleneck_queue_v1"), false, "summary computes one SQL aggregate instead of iterating queue pages");
+  await db.exec(baselineSql);
   await db.exec(sql);
   await db.exec(`revoke all on function public.app_dashboard_bottleneck_summary_v1(date,date,date,date,jsonb,text,date[]), public.app_dashboard_bottleneck_queue_v1(date,jsonb,text,text,text,text,text,text,text,text,text,integer) from public,anon,authenticated;
     grant execute on function public.app_dashboard_bottleneck_summary_v1(date,date,date,date,jsonb,text,date[]), public.app_dashboard_bottleneck_queue_v1(date,jsonb,text,text,text,text,text,text,text,text,text,integer) to authenticated;`);
@@ -141,6 +156,9 @@ async function main() {
   const trendDates=modelReport.trends.map(row=>row.date);
   const summary = await db.query(`select public.app_dashboard_bottleneck_summary_v1('2026-10-01','2026-11-01','2026-09-01','2026-09-30','{}'::jsonb,'all',array[${trendDates.map(value=>`${sqlText(value)}::date`).join(",")}]) report`);
   const sqlReport=summary.rows[0].report;
+  const filteredSummary = await db.query(`select public.app_dashboard_bottleneck_summary_v1('2026-10-01','2026-11-01','2026-09-01','2026-09-30','{}'::jsonb,'LinkedIn','{}'::date[]) report`);
+  assert.deepEqual(filteredSummary.rows[0].report.channelOptions, sqlReport.channelOptions,
+    "channel options remain global across the selected report channel");
   assert.deepEqual(sqlReport.metrics,modelReport.metrics,"SQL Bottleneck metrics match buildStageBottleneckReport");
   assert.deepEqual(sqlReport.stages.map(({stage,sample,median,p90,waiting,oldest})=>({stage,sample,median,p90,waiting,oldest})),modelReport.stages,"SQL stage rows match buildStageBottleneckReport");
   assert.deepEqual(sqlReport.priorMetrics,modelReport.prior.metrics,"SQL prior metrics match buildStageBottleneckReport");
@@ -154,6 +172,13 @@ async function main() {
   assert.equal(hrSummary.sample, 1);
   assert.equal(hrSummary.median, 4);
   assert.equal(sqlReport.stages.find(row => row.stage === "Test").oldest, 0, "same-day waiting age stays zero rather than null");
+  await db.query(`select set_config('test.denied_candidates','CAN-0001',false),
+    set_config('test.denied_applications','10000000-0000-0000-0000-000000000002',false)`);
+  const deniedCandidate = await db.query(`select public.app_dashboard_bottleneck_queue_v1('2026-11-01','{}'::jsonb,'all',null,null,null,'CAN-0001',null,null,null,null,20) page`);
+  const deniedApplication = await db.query(`select public.app_dashboard_bottleneck_queue_v1('2026-11-01','{}'::jsonb,'all',null,null,null,'CAN-0002',null,null,null,null,20) page`);
+  assert.equal(deniedCandidate.rows[0].page.rows.length, 0, "candidate authorization denial excludes the candidate's rows");
+  assert.equal(deniedApplication.rows[0].page.rows.length, 0, "application authorization denial excludes that journey's rows");
+  await db.query(`select set_config('test.denied_candidates','',false),set_config('test.denied_applications','',false)`);
   const lastPage = await db.query(`select public.app_dashboard_bottleneck_queue_v1('2026-11-01','{}'::jsonb,'all',null,null,null,'',${sqlText(pageOne.nextCursor.value)},${sqlText(pageOne.nextCursor.id)},null,null,20) page`);
   const pageTwo = lastPage.rows[0].page;
   assert.equal(pageTwo.rows.length, 11);
@@ -188,7 +213,7 @@ async function main() {
     const started = performance.now();
     const plan = await db.query(`explain analyze select public.app_dashboard_bottleneck_summary_v1('2026-10-01','2026-11-01',null,null,'{}'::jsonb,'all','{}'::date[])`);
     const elapsedMs = Math.round(performance.now() - started);
-    const planText = String(plan.rows[0]["QUERY PLAN"]);
+    const planText = plan.rows.map(row => String(row["QUERY PLAN"])).join("\n");
     assert.match(planText, /Function Scan|Result/);
     console.log(JSON.stringify({ benchmark: "PGlite 10k authorized journeys", seedMs, queryMs: elapsedMs, topLevelSql: "EXPLAIN ANALYZE SELECT public.app_dashboard_bottleneck_summary_v1(...)", plan: planText, limitation: "PGlite embedded planner; inner PL/pgSQL statement count and production PostgreSQL plan are not exposed" }));
   }
@@ -206,7 +231,7 @@ async function main() {
         from generate_series(1,${benchCount}) i;
     `);
     const seedMs = Math.round(performance.now() - seedStarted);
-    const start = sql.indexOf("    with authorized_logs as materialized (");
+    const start = sql.indexOf("    with authorized_candidates as materialized (");
     const endToken = "    into v_queue_summary from status_counts cross join pic_counts;";
     const end = sql.indexOf(endToken, start);
     assert.ok(start >= 0 && end > start, "extract direct queue summary SQL for inner-plan profiling");

@@ -18,6 +18,9 @@ async function main() {
   const homeListMigration = fs.readFileSync(path.join(root, "supabase/migrations/20261102101500_home_recruitment_list_filters.sql"), "utf8");
   const boardMigration = fs.readFileSync(path.join(root, "supabase/migrations/20261102120000_pipeline_stage_board_membership.sql"), "utf8");
   const requisitionOptionMigration = fs.readFileSync(path.join(root, "supabase/migrations/20261102121000_requisition_link_option_filters.sql"), "utf8");
+  const homeWelcomeMigration = fs.readFileSync(path.join(root, "supabase/migrations/20261102122000_home_welcome_summaries.sql"), "utf8");
+  const homeQualityMigration = fs.readFileSync(path.join(root, "supabase/migrations/20261102123000_home_quality_duplicate_key_precompute.sql"), "utf8");
+  const requisitionPagePerformanceMigration = fs.readFileSync(path.join(root, "supabase/migrations/20261102123100_requisition_page_enrichment_after_limit.sql"), "utf8");
   const offerCandidatesMigration = fs.readFileSync(path.join(root, "supabase/migrations/20261101174258_offer_candidates_lookup.sql"), "utf8");
   const functionSql = (source, functionName) => {
     const marker = `create or replace function public.${functionName}(`;
@@ -31,7 +34,8 @@ async function main() {
   assert.equal(functionSql(boardMigration, "app_recruitment_applications_page_v1"), functionSql(listSchema, "app_recruitment_applications_page_v1"), "the additive migration installs the exact declarative application projection");
   assert.equal(functionSql(boardMigration, "app_recruitment_list_v1"), functionSql(listSchema, "app_recruitment_list_v1"), "the additive migration installs the exact declarative dispatcher contract");
   assert.ok(boardMigration.startsWith("-- Additive correction for the application stage board endpoint."), "the new migration is additive after the chronological Home list migration");
-  assert.equal(functionSql(requisitionOptionMigration, "app_recruitment_requisitions_page_v1"), functionSql(listSchema, "app_recruitment_requisitions_page_v1"), "the additive migration installs the exact declarative requisition filter projection");
+  assert.ok(functionSql(requisitionOptionMigration, "app_recruitment_requisitions_page_v1").includes("linkToGroupId"), "the earlier additive migration retains its scoped requisition lookup predicates");
+  assert.equal(functionSql(requisitionPagePerformanceMigration, "app_recruitment_requisitions_page_v1"), functionSql(listSchema, "app_recruitment_requisitions_page_v1"), "the additive performance migration installs the exact declarative requisition page/count implementation");
   assert.match(homeListMigration, /revoke all on function public\.app_recruitment_list_v1[\s\S]*grant execute on function public\.app_recruitment_list_v1/, "the signature replacement migration restores authenticated-only dispatcher/count grants");
   assert.match(offerCandidatesMigration, /create or replace function public\.app_offer_candidates_page_v1[\s\S]*revoke all on function public\.app_offer_candidates_page_v1[\s\S]*grant execute on function public\.app_offer_candidates_page_v1/, "offer form lookup migration installs only an authenticated bounded RPC");
   const db = new PGlite();
@@ -40,7 +44,7 @@ async function main() {
       create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
       create function app_private.is_recruitment_reader() returns boolean language sql stable as $$select auth.uid() is not null$$;
       create function app_private.is_global_recruitment_reader() returns boolean language sql stable as $$select false$$;
-      create function app_private.current_app_role() returns text language sql stable as $$select 'system_admin'::text$$;
+      create function app_private.current_app_role() returns text language sql stable as $$select coalesce(nullif(current_setting('test.app_role',true),''),'system_admin')::text$$;
       create function app_private.can_manage_requisition(p_id text) returns boolean language sql stable as $$select true$$;
       create function app_private.can_read_candidate(p_id text) returns boolean language sql stable as $$select p_id not in ('CAN-HIDDEN','CAN-MASKED')$$;
       create function app_private.can_read_requisition(p_id text) returns boolean language sql stable as $$select p_id<>'REQ-HIDDEN'$$;
@@ -132,12 +136,15 @@ async function main() {
     await db.exec(`create function public.app_recruitment_list_v1(text,text,jsonb,text,text,integer,jsonb,text,boolean) returns jsonb language sql as $$select '{}'::jsonb$$;
       create function public.app_recruitment_applications_page_v1(text,jsonb,text,text,integer,jsonb,text,boolean) returns jsonb language sql as $$select '{}'::jsonb$$;
       create function public.app_recruitment_history_page_v1(text,jsonb,text,text,integer,jsonb,text,boolean) returns jsonb language sql as $$select '{}'::jsonb$$;`);
-    const sql = ["20261101140739_recruitment_list_optimization.sql", "20261102101500_home_recruitment_list_filters.sql"]
-      .map((name) => fs.readFileSync(path.join(root, "supabase/migrations", name), "utf8")).join("\n");
-    await db.exec(sql);
+    const listMigration = fs.readFileSync(path.join(root, "supabase/migrations/20261101140739_recruitment_list_optimization.sql"), "utf8");
+    await db.exec(listMigration);
     await db.exec(offerCandidatesMigration);
+    await db.exec(homeListMigration);
     await db.exec(boardMigration);
     await db.exec(requisitionOptionMigration);
+    await db.exec(homeWelcomeMigration);
+    await db.exec(homeQualityMigration);
+    await db.exec(requisitionPagePerformanceMigration);
     const leftoverOverloads = await db.query(`select proname,pronargs from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and proname in ('app_recruitment_list_v1','app_recruitment_applications_page_v1','app_recruitment_history_page_v1') order by proname,pronargs`);
     assert.deepEqual(leftoverOverloads.rows, [
       { proname: "app_recruitment_applications_page_v1", pronargs: 9 },
@@ -267,6 +274,83 @@ async function main() {
     assert.equal(requisitions.items[0].accepted_count, 1, "did_not_start offers do not cover requisition headcount");
     assert.equal(requisitions.items[0].open_headcount, 1);
     assert.equal(requisitions.items[0].sla_restart_date, "2026-10-30");
+    const requisitionFallbackFirst = await page(db, {}, 25, null, false, "", "requisitions", "doc_id", "asc");
+    assert.deepEqual(requisitions.items, requisitionFallbackFirst.items, "default updated_at fast path preserves DTOs and canonical doc_id tie order when timestamps tie");
+    const requisitionFastNext = await page(db, {}, 25, requisitions.next_cursor, false, "", "requisitions", "updated_at", "desc");
+    const requisitionFallbackNext = await page(db, {}, 25, requisitionFallbackFirst.next_cursor, false, "", "requisitions", "doc_id", "asc");
+    assert.deepEqual(requisitionFastNext.items, requisitionFallbackNext.items, "materialized key page enriches the same next-page rows as the full projection path");
+    const requisitionFastPrevious = await page(db, {}, 25, requisitionFastNext.previous_cursor, true, "", "requisitions", "updated_at", "desc");
+    const requisitionFallbackPrevious = await page(db, {}, 25, requisitionFallbackNext.previous_cursor, true, "", "requisitions", "doc_id", "asc");
+    assert.deepEqual(requisitionFastPrevious.items, requisitionFallbackPrevious.items, "fast and fallback paths preserve previous-page cursor semantics");
+    const baseFilter = { status: "ongoing", site: "Site A", headerSite: "Site A", headerPic: "PIC", owner: "PIC" };
+    const filteredFast = await page(db, baseFilter, 25, null, false, "", "requisitions", "updated_at", "desc");
+    const filteredFallback = await page(db, baseFilter, 25, null, false, "", "requisitions", "doc_id", "asc");
+    assert.deepEqual(filteredFast.items, filteredFallback.items, "base-column filters keep identical rows across fast/fallback sort paths");
+    assert.equal(filteredFast.total_count, filteredFallback.total_count);
+    await db.exec("update public.requisitions set updated_at='2026-10-12T00:00:00Z' where doc_id='REQ-129'; update public.requisitions set updated_at='2026-10-08T00:00:00Z' where doc_id='REQ-128'");
+    for (const direction of ["asc", "desc"]) {
+      const fast = await page(db, {}, 25, null, false, "", "requisitions", "updated_at", direction);
+      const fallback = await page(db, { open_headcount: null }, 25, null, false, "", "requisitions", "updated_at", direction);
+      assert.deepEqual(fast.items, fallback.items, `${direction} fast page matches fallback when timestamps vary`);
+      assert.deepEqual(fast.next_cursor, fallback.next_cursor);
+      const fastNext = await page(db, {}, 25, fast.next_cursor, false, "", "requisitions", "updated_at", direction);
+      const fallbackNext = await page(db, { open_headcount: null }, 25, fallback.next_cursor, false, "", "requisitions", "updated_at", direction);
+      assert.deepEqual(fastNext.items, fallbackNext.items, `${direction} next cursor matches fallback after unequal sort values`);
+      const fastPrevious = await page(db, {}, 25, fastNext.previous_cursor, true, "", "requisitions", "updated_at", direction);
+      const fallbackPrevious = await page(db, { open_headcount: null }, 25, fallbackNext.previous_cursor, true, "", "requisitions", "updated_at", direction);
+      assert.deepEqual(fastPrevious.items, fallbackPrevious.items, `${direction} previous cursor matches fallback after unequal sort values`);
+    }
+    await db.exec("update public.requisitions set level='unclassified',pr_approved_date=null where doc_id='REQ-128'");
+    for (const key of ["open_headcount", "readiness", "sla", "age", "accepted_count", "candidate_count"]) {
+      const whitespace = await page(db, { [key]: " " }, 25, null, false, "", "requisitions", "updated_at", "desc");
+      assert.equal(whitespace.total_count, (await db.query("select public.app_recruitment_list_count_v1('requisitions','',$1::jsonb) as count", [JSON.stringify({ [key]: " " })])).rows[0].count,
+        `${key} whitespace filter keeps exact fallback semantics in both page and count`);
+      if (key === "age") assert.equal(whitespace.total_count, 180, "every fixture age display contains the whitespace separator used by the fallback filter");
+      else assert.ok(whitespace.total_count < 180, `${key} whitespace is not silently normalized to an empty filter`);
+    }
+    await db.exec("update public.requisitions set level='5',pr_approved_date='2026-10-01' where doc_id='REQ-128'");
+    await db.query("select set_config('test.app_role','site_recruiter',false)");
+    const scopedFilters = { linkToGroupId: "GRP-00001" };
+    const scopedFast = await page(db, scopedFilters, 25, null, false, "", "requisitions", "updated_at", "desc");
+    const scopedFallback = await page(db, { ...scopedFilters, open_headcount: null }, 25, null, false, "", "requisitions", "updated_at", "desc");
+    assert.deepEqual(scopedFast.items, scopedFallback.items, "site-recruiter group-link authorization stays identical across paths");
+    assert.equal(scopedFast.total_count, scopedFallback.total_count);
+    await db.query("select set_config('test.app_role','system_admin',false)");
+    const requisitionFunction = functionSql(listSchema, "app_recruitment_requisitions_page_v1");
+    assert.ok(requisitionFunction.indexOf("page_keys as materialized") < requisitionFunction.indexOf("), edges as ("), "the bounded key page is materialized before edge/cursor calculation");
+    assert.match(requisitionFunction, /from page_keys k join public\.requisitions r on r\.doc_id=k\.doc_id[\s\S]*?left join lateral \([\s\S]*?candidate_count/,
+      "candidate/offer enrichment consumes only materialized page_keys, not the full requisition population");
+    assert.match(requisitionFunction, /if p_count_only and v_fast_base_criteria then[\s\S]*?select count\(\*\)::integer into v_exact_count[\s\S]*?from public\.requisitions r/,
+      "base-only exact counts avoid candidate/offer lateral projections");
+    const innerPlan = await db.query(`explain (format json) with page_raw as materialized (
+        select r.doc_id,r.updated_at from public.requisitions r
+        where app_private.can_read_requisition(r.doc_id)
+        order by r.updated_at desc,r.doc_id asc limit 51
+      ), page_keys as materialized (
+        select * from page_raw order by updated_at desc,doc_id asc limit 50
+      )
+      select k.doc_id,candidate_totals.candidate_count,offer_totals.accepted_count
+      from page_keys k join public.requisitions r using(doc_id)
+      left join lateral (
+        select count(distinct c.candidate_id)::integer candidate_count
+        from public.document_groups d join public.candidate_applications a on a.group_id=d.group_id
+        join public.candidates c on c.candidate_id=a.candidate_id
+        where d.doc_id=r.doc_id and app_private.can_read_application(a.application_id) and app_private.can_read_candidate(c.candidate_id)
+      ) candidate_totals on true
+      left join lateral (
+        select count(*) filter(where o.accepted_date is not null and o.start_confirmation is distinct from 'did_not_start')::integer accepted_count
+        from public.offers o where o.doc_id=r.doc_id and app_private.can_read_application(o.application_id)
+      ) offer_totals on true`);
+    const planNodes = [];
+    const visitPlan = node => {
+      if (!node || typeof node !== "object") return;
+      if (node["Node Type"]) planNodes.push(node);
+      for (const child of node.Plans ?? []) visitPlan(child);
+    };
+    for (const rootNode of innerPlan.rows[0]["QUERY PLAN"][0].Plan.Plans ?? []) visitPlan(rootNode);
+    const boundedKeysScan = planNodes.find(node => node["Node Type"] === "CTE Scan" && node["CTE Name"] === "page_keys");
+    assert.ok(boundedKeysScan, "EXPLAIN shows enrichment reading the materialized page_keys CTE");
+    assert.ok(boundedKeysScan["Plan Rows"] <= 50, `EXPLAIN bounds enrichment input to one page (planned ${boundedKeysScan["Plan Rows"]} rows)`);
     const homeReqs = await page(db, { homeTab: "open_headcount" }, 25, null, false, "", "requisitions", "home_oldest", "desc");
     assert.equal(homeReqs.total_count, (await db.query("select count(*)::int n from public.requisitions r where r.status not in ('filled','cancel') and greatest(r.head_count-coalesce((select count(*) from public.offers o where o.doc_id=r.doc_id and o.accepted_date is not null and o.start_confirmation is distinct from 'did_not_start'),0),0)>0")).rows[0].n, "Home open headcount is filtered and counted over the complete authorized population");
     assert.ok(homeReqs.items.every(row => row.status !== "filled" && row.status !== "cancel" && row.open_headcount > 0));

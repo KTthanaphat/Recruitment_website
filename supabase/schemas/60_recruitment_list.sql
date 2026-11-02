@@ -286,6 +286,8 @@ declare
   v_unmatched_only boolean := coalesce((p_filters->>'unmatchedOnly')::boolean,false);
   v_link_to_group_id text := nullif(p_filters->>'linkToGroupId','');
   v_profile_admin boolean := app_private.current_app_role() in ('system_admin','admin_recruiter');
+  v_fast_base_criteria boolean;
+  v_exact_count integer;
   v_result jsonb;
 begin
   if auth.uid() is null or not app_private.is_recruitment_reader() then raise exception 'RECRUITMENT_READ_NOT_AUTHORIZED'; end if;
@@ -298,6 +300,120 @@ begin
     or (p_filters ? 'linkToGroupId' and jsonb_typeof(p_filters->'linkToGroupId') not in ('string','null')) then raise exception 'RECRUITMENT_LIST_FILTER_INVALID'; end if;
   if p_cursor_value is not null and (jsonb_typeof(p_cursor_value)<>'string' or nullif(p_cursor_id,'') is null) then raise exception 'RECRUITMENT_LIST_CURSOR_INVALID'; end if;
   if (p_cursor_value is null) <> (p_cursor_id is null) or (p_before and p_cursor_value is null) then raise exception 'RECRUITMENT_LIST_CURSOR_INVALID'; end if;
+  v_fast_base_criteria := v_search='' and v_home_tab=''
+    and not (coalesce(p_filters,'{}'::jsonb) ?| array['open_headcount','readiness','sla','age','accepted_count','candidate_count']);
+
+  -- Count-only requests with base-column criteria do not need per-requisition candidate/offer enrichment.
+  -- Keep aggregate-dependent filters and all free-text search on the original complete path below.
+  if p_count_only and v_fast_base_criteria then
+    select count(*)::integer into v_exact_count
+    from public.requisitions r
+    where app_private.can_read_requisition(r.doc_id)
+      and (not v_managed_only or app_private.can_manage_requisition(r.doc_id))
+      and (not v_unmatched_only or not exists(select 1 from public.document_groups unmatched where unmatched.doc_id=r.doc_id))
+      and (v_link_to_group_id is null or (
+        exists(select 1 from public.position_groups target_group where target_group.group_id=v_link_to_group_id and app_private.can_read_position_group(target_group.group_id))
+        and (v_profile_admin or exists(select 1 from public.document_groups target_link join public.requisitions target_req on target_req.doc_id=target_link.doc_id where target_link.group_id=v_link_to_group_id and target_req.site=r.site))
+      ))
+      and (coalesce(p_filters->>'site','')='' or r.site ilike ('%'||(p_filters->>'site')||'%'))
+      and (coalesce(p_filters->>'level','')='' or r.level ilike ('%'||(p_filters->>'level')||'%'))
+      and (coalesce(p_filters->>'headerSite','')='' or r.site=p_filters->>'headerSite')
+      and (coalesce(p_filters->>'headerPic','')='' or lower(btrim(r.person_in_charge))=lower(btrim(p_filters->>'headerPic')))
+      and (not coalesce((p_filters->>'priorityOnly')::boolean,false) or r.is_priority)
+      and (coalesce(p_filters->>'doc_id','')='' or r.doc_id ilike ('%'||(p_filters->>'doc_id')||'%'))
+      and (coalesce(p_filters->>'position','')='' or (case when btrim(coalesce(r.level,'')) ~* '^L?(0|[1-9]|1[0-4])$' then coalesce(nullif(btrim(r.position),''),'-')||' (L'||regexp_replace(btrim(r.level),'^L','', 'i')||')' else coalesce(nullif(btrim(r.position),''),'-') end) ilike ('%'||(p_filters->>'position')||'%'))
+      and (coalesce(p_filters->>'status','')='' or case lower(btrim(p_filters->>'status')) when 'ongoing' then r.status='ongoing' when 'กำลังดำเนินการ' then r.status='ongoing' when 'filled' then r.status='filled' when 'ครบแล้ว' then r.status='filled' when 'cancel' then r.status='cancel' when 'cancelled' then r.status='cancel' when 'ยกเลิก' then r.status='cancel' else concat_ws(' ',r.status,r.site,r.department) ilike ('%'||(p_filters->>'status')||'%') end)
+      and (coalesce(p_filters->>'owner','')='' or coalesce(r.person_in_charge,'') ilike ('%'||(p_filters->>'owner')||'%'))
+      and (coalesce(p_filters->>'department','')='' or r.department ilike ('%'||(p_filters->>'department')||'%'))
+      and (coalesce(p_filters->>'request_type','')='' or case lower(btrim(p_filters->>'request_type')) when 'new' then r.request_type='New' when 'อัตราใหม่' then r.request_type='New' when 'replacement' then r.request_type='Replacement' when 'ทดแทน' then r.request_type='Replacement' else r.request_type ilike ('%'||(p_filters->>'request_type')||'%') end)
+      and (coalesce(p_filters->>'section','')='' or coalesce(r.section,'') ilike ('%'||(p_filters->>'section')||'%'))
+      and (coalesce(p_filters->>'head_count','')='' or r.head_count::text ilike ('%'||(p_filters->>'head_count')||'%'))
+      and (coalesce(p_filters->>'req_date','')='' or concat_ws(' ',r.pr_approved_date::text,to_char(r.pr_approved_date,'DD/MM/YYYY')) ilike ('%'||(p_filters->>'req_date')||'%'))
+      and (coalesce(p_filters->>'updated_at','')='' or concat_ws(' ',r.updated_at::date::text,to_char(r.updated_at::date,'DD/MM/YYYY')) ilike ('%'||(p_filters->>'updated_at')||'%'));
+    v_result := jsonb_build_object('items','[]'::jsonb,'total_count',v_exact_count,'has_more',false,'has_more_before',false,'next_cursor',null,'previous_cursor',null);
+    return v_result;
+  end if;
+
+  -- For the default date sort with base-only filters, page requisition keys first and enrich only those rows.
+  -- Filters/search/sorts that depend on candidate or offer aggregates deliberately use the original path.
+  if not p_count_only and p_limit>0 and v_fast_base_criteria and v_sort='updated_at' then
+    with base_rows as not materialized (
+      select r.doc_id,r.updated_at,
+        to_char(r.updated_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as sort_value
+      from public.requisitions r
+      where app_private.can_read_requisition(r.doc_id)
+        and (not v_managed_only or app_private.can_manage_requisition(r.doc_id))
+        and (not v_unmatched_only or not exists(select 1 from public.document_groups unmatched where unmatched.doc_id=r.doc_id))
+        and (v_link_to_group_id is null or (
+          exists(select 1 from public.position_groups target_group where target_group.group_id=v_link_to_group_id and app_private.can_read_position_group(target_group.group_id))
+          and (v_profile_admin or exists(select 1 from public.document_groups target_link join public.requisitions target_req on target_req.doc_id=target_link.doc_id where target_link.group_id=v_link_to_group_id and target_req.site=r.site))
+        ))
+        and (coalesce(p_filters->>'site','')='' or r.site ilike ('%'||(p_filters->>'site')||'%'))
+        and (coalesce(p_filters->>'level','')='' or r.level ilike ('%'||(p_filters->>'level')||'%'))
+        and (coalesce(p_filters->>'headerSite','')='' or r.site=p_filters->>'headerSite')
+        and (coalesce(p_filters->>'headerPic','')='' or lower(btrim(r.person_in_charge))=lower(btrim(p_filters->>'headerPic')))
+        and (not coalesce((p_filters->>'priorityOnly')::boolean,false) or r.is_priority)
+        and (coalesce(p_filters->>'doc_id','')='' or r.doc_id ilike ('%'||(p_filters->>'doc_id')||'%'))
+        and (coalesce(p_filters->>'position','')='' or (case when btrim(coalesce(r.level,'')) ~* '^L?(0|[1-9]|1[0-4])$' then coalesce(nullif(btrim(r.position),''),'-')||' (L'||regexp_replace(btrim(r.level),'^L','', 'i')||')' else coalesce(nullif(btrim(r.position),''),'-') end) ilike ('%'||(p_filters->>'position')||'%'))
+        and (coalesce(p_filters->>'status','')='' or case lower(btrim(p_filters->>'status')) when 'ongoing' then r.status='ongoing' when 'กำลังดำเนินการ' then r.status='ongoing' when 'filled' then r.status='filled' when 'ครบแล้ว' then r.status='filled' when 'cancel' then r.status='cancel' when 'cancelled' then r.status='cancel' when 'ยกเลิก' then r.status='cancel' else concat_ws(' ',r.status,r.site,r.department) ilike ('%'||(p_filters->>'status')||'%') end)
+        and (coalesce(p_filters->>'owner','')='' or coalesce(r.person_in_charge,'') ilike ('%'||(p_filters->>'owner')||'%'))
+        and (coalesce(p_filters->>'department','')='' or r.department ilike ('%'||(p_filters->>'department')||'%'))
+        and (coalesce(p_filters->>'request_type','')='' or case lower(btrim(p_filters->>'request_type')) when 'new' then r.request_type='New' when 'อัตราใหม่' then r.request_type='New' when 'replacement' then r.request_type='Replacement' when 'ทดแทน' then r.request_type='Replacement' else r.request_type ilike ('%'||(p_filters->>'request_type')||'%') end)
+        and (coalesce(p_filters->>'section','')='' or coalesce(r.section,'') ilike ('%'||(p_filters->>'section')||'%'))
+        and (coalesce(p_filters->>'head_count','')='' or r.head_count::text ilike ('%'||(p_filters->>'head_count')||'%'))
+        and (coalesce(p_filters->>'req_date','')='' or concat_ws(' ',r.pr_approved_date::text,to_char(r.pr_approved_date,'DD/MM/YYYY')) ilike ('%'||(p_filters->>'req_date')||'%'))
+        and (coalesce(p_filters->>'updated_at','')='' or concat_ws(' ',r.updated_at::date::text,to_char(r.updated_at::date,'DD/MM/YYYY')) ilike ('%'||(p_filters->>'updated_at')||'%'))
+    ), filtered as (
+      select b.* from base_rows b where p_cursor_value is null or
+        (not p_before and ((v_direction='desc' and (b.sort_value<v_cursor or (b.sort_value=v_cursor and b.doc_id>p_cursor_id))) or (v_direction='asc' and (b.sort_value>v_cursor or (b.sort_value=v_cursor and b.doc_id>p_cursor_id)))) or
+        (p_before and ((v_direction='desc' and (b.sort_value>v_cursor or (b.sort_value=v_cursor and b.doc_id<p_cursor_id))) or (v_direction='asc' and (b.sort_value<v_cursor or (b.sort_value=v_cursor and b.doc_id<p_cursor_id))))))
+    ), page_raw as materialized (
+      select * from filtered order by case when not p_before and v_direction='desc' then sort_value end desc,case when not p_before and v_direction='asc' then sort_value end asc,
+        case when p_before and v_direction='desc' then sort_value end asc,case when p_before and v_direction='asc' then sort_value end desc,
+        case when p_before then doc_id end desc,case when not p_before then doc_id end asc limit p_limit+1
+    ), page_keys as materialized (
+      select * from page_raw order by case when not p_before and v_direction='desc' then sort_value end desc,case when not p_before and v_direction='asc' then sort_value end asc,
+        case when p_before and v_direction='desc' then sort_value end asc,case when p_before and v_direction='asc' then sort_value end desc,
+        case when p_before then doc_id end desc,case when not p_before then doc_id end asc limit p_limit
+    ), edges as (
+      select (array_agg(sort_value order by case when v_direction='desc' then sort_value end desc,case when v_direction='asc' then sort_value end asc,doc_id asc))[1] first_sort,
+        (array_agg(doc_id order by case when v_direction='desc' then sort_value end desc,case when v_direction='asc' then sort_value end asc,doc_id asc))[1] first_id,
+        (array_agg(sort_value order by case when v_direction='desc' then sort_value end asc,case when v_direction='asc' then sort_value end desc,doc_id desc))[1] last_sort,
+        (array_agg(doc_id order by case when v_direction='desc' then sort_value end asc,case when v_direction='asc' then sort_value end desc,doc_id desc))[1] last_id from page_keys
+    ), page_info as (select count(*)>p_limit has_extra from page_raw), enriched as (
+      select k.sort_value,r.doc_id,r.is_priority,r.pr_approved_date,r.site,r.position,r.department,r.section,r.level,r.head_count,
+        r.person_in_charge,r.line_manager,r.request_type,r.replacement_names,r.status,r.created_at,r.updated_at,
+        coalesce(links.sourcing_group_ids,'{}'::text[]) sourcing_group_ids,
+        coalesce(cands.candidate_count,0)::integer candidate_count,
+        coalesce(ofrs.accepted_count,0)::integer accepted_count,
+        greatest(r.head_count-coalesce(ofrs.accepted_count,0),0)::integer open_headcount,
+        ofrs.sla_restart_date
+      from page_keys k join public.requisitions r on r.doc_id=k.doc_id
+      left join lateral (select array_agg(distinct d.group_id order by d.group_id) filter(where d.group_id is not null) sourcing_group_ids from public.document_groups d where d.doc_id=r.doc_id) links on true
+      left join lateral (
+        select count(distinct c.candidate_id)::integer candidate_count
+        from public.candidate_applications a join public.candidates c on c.candidate_id=a.candidate_id
+        where a.group_id=any(coalesce(links.sourcing_group_ids,'{}'::text[]))
+          and app_private.can_read_application(a.application_id) and app_private.can_read_candidate(c.candidate_id)
+      ) cands on true
+      left join lateral (
+        select count(*) filter(where o.accepted_date is not null and o.start_confirmation is distinct from 'did_not_start')::integer accepted_count,
+          max(o.start_confirmed_at::date) filter(where o.start_confirmation='did_not_start' and o.start_confirmed_at is not null) sla_restart_date
+        from public.offers o where o.doc_id=r.doc_id and app_private.can_read_application(o.application_id)
+      ) ofrs on true
+    ) select jsonb_build_object('items',coalesce((select jsonb_agg(jsonb_build_object(
+        'doc_id',e.doc_id,'is_priority',e.is_priority,'pr_approved_date',e.pr_approved_date,'site',e.site,'position',e.position,'department',e.department,'section',e.section,'level',e.level,'head_count',e.head_count,
+        'person_in_charge',e.person_in_charge,'line_manager',e.line_manager,'request_type',e.request_type,'replacement_names',e.replacement_names,'status',e.status,'created_at',e.created_at,'updated_at',e.updated_at,
+        'sourcing_group_ids',e.sourcing_group_ids,'candidate_count',e.candidate_count,'accepted_count',e.accepted_count,'open_headcount',e.open_headcount,'sla_restart_date',e.sla_restart_date)
+      order by case when v_direction='desc' then e.sort_value end desc,case when v_direction='asc' then e.sort_value end asc,e.doc_id asc) from enriched e),'[]'::jsonb),
+      'total_count',null,'has_more',case when p_before then exists(select 1 from page_keys) else page_info.has_extra end,
+      'has_more_before',case when p_before then page_info.has_extra else p_cursor_value is not null and exists(select 1 from page_keys) end,
+      'next_cursor',case when (case when p_before then exists(select 1 from page_keys) else page_info.has_extra end) then jsonb_build_object('value',to_jsonb(edges.last_sort),'id',edges.last_id) else null end,
+      'previous_cursor',case when (case when p_before then page_info.has_extra else p_cursor_value is not null and exists(select 1 from page_keys) end) then jsonb_build_object('value',to_jsonb(edges.first_sort),'id',edges.first_id) else null end)
+    into v_result from edges cross join page_info;
+    return v_result;
+  end if;
+
   with rows as not materialized (
     select r.doc_id,r.is_priority,r.pr_approved_date,r.site,r.position,r.department,r.section,r.level,r.head_count,
       r.person_in_charge,r.line_manager,r.request_type,r.replacement_names,r.status,r.created_at,r.updated_at,
