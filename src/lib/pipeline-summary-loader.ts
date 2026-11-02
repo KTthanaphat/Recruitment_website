@@ -1,3 +1,4 @@
+import { scheduleRecruitmentRead } from "./recruitment-read-scheduler";
 import { useSyncExternalStore } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -26,14 +27,15 @@ export async function loadPipelineSummary(client: Pick<SupabaseClient, "rpc">, a
   const key = JSON.stringify([accessScope, scope, groupId, asOf, recentDays]);
   const existing = cache.get(key);
   if (existing && existing.expiresAt > Date.now()) return existing.pending;
-  const pending = Promise.resolve(client.rpc("app_pipeline_summary_v1", { p_scope: scope, p_group_id: groupId, p_as_of: asOf, p_recent_days: recentDays })).then(({ data, error }) => {
+  const pending = scheduleRecruitmentRead(client, () => client.rpc("app_pipeline_summary_v1", { p_scope: scope, p_group_id: groupId, p_as_of: asOf, p_recent_days: recentDays }), 1).then(({ data, error }) => {
     if (error) throw new Error(error.message);
     const value = data as Partial<PipelineSummary> | null;
     const count = (input: unknown): input is number => typeof input === "number" && Number.isInteger(input) && input >= 0;
     if (!value || typeof value.as_of !== "string" || typeof value.recent_since !== "string" || !count(value.active) || !count(value.aging) || !count(value.failed) || !count(value.passed_offer) || !count(value.no_activity) || !Array.isArray(value.by_stage) || value.by_stage.some(row => !row || typeof row.stage !== "string" || !count(row.count))) throw new Error("Pipeline summary returned an invalid response");
     return value as PipelineSummary;
   });
-  cache.set(key, { expiresAt: Date.now() + ttlMs, pending });
+  cache.set(key, { expiresAt: Number.POSITIVE_INFINITY, pending });
+  void pending.then(() => { const entry = cache.get(key); if (entry?.pending === pending) entry.expiresAt = Date.now() + ttlMs; }, () => {});
   try { return await pending; }
   catch (error) { if (cache.get(key)?.pending === pending) cache.delete(key); throw error; }
 }

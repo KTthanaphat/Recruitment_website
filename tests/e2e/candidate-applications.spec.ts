@@ -57,14 +57,21 @@ test("empty continuation after concurrent deletion can recover to the first page
 });
 
 test("candidate registry renders page rows before its separate exact count resolves",async({page})=>{
- const mock=await installMockSupabase(page,{countDelayMs:1800}),template=mock.data.candidates[0];
+ const mock=await installMockSupabase(page),template=mock.data.candidates[0];
+ let releaseCount!:()=>void; let countRequested=false;
+ const countGate=new Promise<void>(resolve=>{releaseCount=resolve;});
+ await page.route("**/rest/v1/rpc/app_recruitment_list_count_v1",async route=>{
+  if(route.request().postDataJSON()?.p_entity==="candidate_registry") { countRequested=true; await countGate; }
+  await route.fallback();
+ });
  for(let i=0;i<60;i++)mock.data.candidates.push({...template,candidate_id:`CAN-DELAY-${String(i).padStart(3,"0")}`,name:`Delayed ${String(i).padStart(3,"0")}`,nickname:null,created_at:"2026-10-31T00:00:00.000Z",updated_at:"2026-10-31T00:00:00.000Z"});
  await page.goto("/candidates");await expectWorkspaceReady(page);
  await expect.poll(()=>mock.rpcCalls.some(row=>row.endpoint==="app_recruitment_list_v1"&&row.payload.p_entity==="candidate_registry")).toBe(true);
- await expect.poll(()=>mock.rpcCalls.some(row=>row.endpoint==="app_recruitment_list_count_v1"&&row.payload.p_entity==="candidate_registry")).toBe(true);
+ await expect.poll(()=>countRequested).toBe(true);
  await expect(page.getByRole("button",{name:/Delayed 000.*CAN-DELAY-000/})).toBeVisible();
  await expect(page.getByRole("button",{name:"Next"})).toBeEnabled();
  await expect(page.getByText("… people",{exact:true})).toBeVisible();
+ releaseCount();
  await expect(page.getByText(/^\d+ people$/)).toBeVisible();
 });
 

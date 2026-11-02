@@ -1,3 +1,4 @@
+import { scheduleRecruitmentRead } from "./recruitment-read-scheduler";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { DashboardLevel } from "@/lib/dashboard-filters";
 import type { PerformanceBand, PerformanceCell, PerformanceMetrics, PerformanceRange } from "@/lib/recruitment-performance";
@@ -30,14 +31,15 @@ async function cacheNamespace(client: SupabaseClient, profileKey: string) {
   return `${project}:${id}:${data.session?.user.id ?? "anonymous"}:${profileKey}`;
 }
 export function clearDashboardSummaryCache() { cache.clear(); }
-function memo<T>(key: string, fetch: () => Promise<T>): Promise<T> {
+function memo<T>(client: SupabaseClient, key: string, fetch: () => Promise<T>): Promise<T> {
   const now = Date.now();
   for (const [entryKey, entry] of cache) if (entry.expiresAt <= now) cache.delete(entryKey);
   while (cache.size >= 100) cache.delete(cache.keys().next().value!);
   const existing = cache.get(key);
   if (existing && existing.expiresAt > now) return existing.request as Promise<T>;
-  const request = fetch();
-  cache.set(key, { expiresAt: Date.now() + 30_000, request });
+  const request = scheduleRecruitmentRead(client, fetch, 1);
+  cache.set(key, { expiresAt: Number.POSITIVE_INFINITY, request });
+  void request.then(() => { const entry = cache.get(key); if (entry?.request === request) entry.expiresAt = Date.now() + 30_000; }, () => {});
   request.catch(() => { if (cache.get(key)?.request === request) cache.delete(key); });
   return request;
 }
@@ -49,7 +51,7 @@ export async function loadPerformanceSummary(client: SupabaseClient, input: {
 }): Promise<PerformanceSummary> {
   const namespace = await cacheNamespace(client, input.profileKey);
   const key = JSON.stringify([namespace, input.start, input.end, input.priorStart, input.priorEnd, input.period, input.scope, input.refreshKey ?? 0]);
-  return memo(key, async () => {
+  return memo(client, key, async () => {
     const { data, error } = await client.rpc("app_dashboard_performance_summary_v1", {
       p_start: input.start, p_end: input.end, p_prior_start: input.priorStart, p_prior_end: input.priorEnd,
       p_period: input.period, p_scope: input.scope
@@ -85,7 +87,7 @@ export type WelcomeSummary = {
 export type HomeBannerSummary = { monthlyFillCapacity: number; monthlyFilledCount: number };
 export async function loadWelcomeSummary(client: SupabaseClient, profileKey: string, refreshKey = 0): Promise<WelcomeSummary> {
   const namespace = await cacheNamespace(client, profileKey);
-  return memo(`welcome:${namespace}:${refreshKey}`, async () => {
+  return memo(client, `welcome:${namespace}:${refreshKey}`, async () => {
     const { data, error } = await client.rpc("app_home_welcome_summary_v1");
     if (error) throw new Error(error.message);
     const result = data as WelcomeSummary | null;
@@ -96,7 +98,7 @@ export async function loadWelcomeSummary(client: SupabaseClient, profileKey: str
 }
 export async function loadHomeBannerSummary(client: SupabaseClient, scope: Pick<DashboardSummaryScope, "headerSite" | "headerPic" | "priorityOnly">, profileKey: string, refreshKey = 0): Promise<HomeBannerSummary> {
   const namespace = await cacheNamespace(client, profileKey);
-  return memo(`home-banner:${namespace}:${JSON.stringify(scope)}:${refreshKey}`, async () => {
+  return memo(client, `home-banner:${namespace}:${JSON.stringify(scope)}:${refreshKey}`, async () => {
     const { data, error } = await client.rpc("app_home_banner_summary_v1", { p_scope: scope });
     if (error) throw new Error(error.message);
     const result = data as HomeBannerSummary | null;
@@ -123,7 +125,7 @@ export type RecruitmentCalendarPage = { events: {
 export type RecruitmentCalendarSummary = Omit<RecruitmentCalendarPage, "nextCursor"> & { nextCursor: null };
 export async function loadHomeSummary(client: SupabaseClient, scope: Pick<DashboardSummaryScope, "headerSite" | "headerPic" | "priorityOnly">, profileKey: string, refreshKey = 0) {
   const namespace = await cacheNamespace(client, profileKey);
-  return memo(`home:${namespace}:${JSON.stringify(scope)}:${refreshKey}`, async () => {
+  return memo(client, `home:${namespace}:${JSON.stringify(scope)}:${refreshKey}`, async () => {
     const { data, error } = await client.rpc("app_home_summary_v1", { p_scope: scope });
     if (error) throw new Error(error.message);
     const result = data as HomeSummary | null;
@@ -135,7 +137,7 @@ export async function loadHomeQualityPage(client: SupabaseClient,input:{scope:Pi
   const groupId=input.groupId??null,docId=input.docId??null;
   if(groupId===""||docId==="")throw new Error("Home quality scope IDs must be exact nonempty values");
   const namespace=await cacheNamespace(client,input.profileKey),limit=input.limit??25,scope={...input.scope,...(groupId?{groupId}:{}),...(docId?{docId}:{})},key=JSON.stringify(["home-quality",namespace,scope,input.today,input.cursor??null,limit,input.refreshKey??0]);
-  return memo(key,async()=>{
+  return memo(client, key,async()=>{
     const {data,error}=await client.rpc("app_home_quality_page_v1",{p_scope:scope,p_today:input.today,p_after_severity:input.cursor?.severity??null,p_after_title:input.cursor?.title??null,p_after_id:input.cursor?.id??null,p_limit:limit});
     if(error)throw new Error(error.message);
     const result=data as HomeQualityPage|null;
@@ -145,7 +147,7 @@ export async function loadHomeQualityPage(client: SupabaseClient,input:{scope:Pi
 }
 export async function loadSourcingSummary(client:SupabaseClient,input:{selectedWeek:string;groupId?:string|null;scope:Pick<DashboardSummaryScope,"headerSite"|"headerPic"|"priorityOnly">;profileKey:string;refreshKey?:number}):Promise<SourcingSummary>{
   const namespace=await cacheNamespace(client,input.profileKey),groupId=input.groupId??null,key=JSON.stringify(["sourcing-summary",namespace,input.selectedWeek,groupId,input.scope,input.refreshKey??0]);
-  return memo(key,async()=>{
+  return memo(client, key,async()=>{
     const {data,error}=await client.rpc("app_recruitment_sourcing_summary_v1",{p_selected_week:input.selectedWeek,p_group_id:groupId,p_scope:input.scope});
     if(error)throw new Error(error.message);
     const result=data as SourcingSummary|null;
@@ -158,7 +160,7 @@ export async function loadRecruitmentCalendarSummary(client: SupabaseClient, inp
 }) {
   if (input.start > input.end || (Date.parse(`${input.end}T00:00:00Z`) - Date.parse(`${input.start}T00:00:00Z`)) / 86_400_000 > 61) throw new Error("Calendar range must cover at most 62 days");
   const namespace = await cacheNamespace(client, input.profileKey);
-  return memo(`calendar:${namespace}:${input.start}:${input.end}:${JSON.stringify(input.scope)}:${input.refreshKey ?? 0}`, async () => {
+  return memo(client, `calendar:${namespace}:${input.start}:${input.end}:${JSON.stringify(input.scope)}:${input.refreshKey ?? 0}`, async () => {
     const events: RecruitmentCalendarPage["events"] = [];
     let cursor: { date: string; id: string } | null = null;
     const seen = new Set<string>();
@@ -182,7 +184,7 @@ export async function loadRecruitmentCalendarSummary(client: SupabaseClient, inp
 
 export async function loadDashboardFilterOptions(client: SupabaseClient, scope: Pick<DashboardSummaryScope, "headerSite" | "headerPic" | "priorityOnly"> & { sites: string[] }, profileKey: string) {
   const namespace = await cacheNamespace(client, profileKey);
-  return memo(`options:${namespace}:${JSON.stringify(scope)}`, async () => {
+  return memo(client, `options:${namespace}:${JSON.stringify(scope)}`, async () => {
     const { data, error } = await client.rpc("app_dashboard_filter_options_v1", { p_scope: scope });
     if (error) throw new Error(error.message);
     const result = data as { sites?: unknown; departments?: unknown; owners?: unknown } | null;
@@ -216,7 +218,7 @@ export async function loadRiskSummary(client: SupabaseClient, input: {
 }): Promise<RiskSummary> {
   const namespace = await cacheNamespace(client, input.profileKey);
   const key = JSON.stringify(["risk", namespace, input.start, input.end, input.priorStart, input.priorEnd, input.scope, input.trendDates, input.refreshKey ?? 0]);
-  return memo(key, async () => {
+  return memo(client, key, async () => {
     const { data, error } = await client.rpc("app_dashboard_risk_summary_v1", {
       p_start: input.start, p_end: input.end, p_prior_start: input.priorStart, p_prior_end: input.priorEnd, p_scope: input.scope, p_trend_dates: input.trendDates
     });
@@ -233,7 +235,7 @@ export async function loadRiskPage(client: SupabaseClient, input: {
 }): Promise<RiskPage> {
   const namespace = await cacheNamespace(client, input.profileKey);
   const key = JSON.stringify(["risk-page",namespace,input.asOf,input.scope,input.filter,input.grouping,input.group,input.cursor,input.refreshKey??0]);
-  return memo(key,async()=>{
+  return memo(client, key,async()=>{
     const {data,error}=await client.rpc("app_dashboard_risk_page_v1",{p_as_of:input.asOf,p_scope:input.scope,p_filter:input.filter,p_grouping:input.grouping,p_group:input.group,
       p_after_kind:input.cursor?.kind??null,p_after_remaining:input.cursor?.remaining??null,p_after_open:input.cursor?.open??null,p_after_doc:input.cursor?.docId??null,p_limit:RISK_PAGE_SIZE});
     if(error) throw new Error(error.message);
@@ -254,7 +256,7 @@ export type ActiveRequisitionReportPage = {rows:ActiveRequisitionReportRow[];tot
 export type ActiveRequisitionReportCriteria={filters:Record<string,string>;search:string;sortKey:string|null;sortDirection:"asc"|"desc"|null};
 export async function loadActiveRequisitionReportPage(client:SupabaseClient,input:{start:string;end:string;period:string;stageMode:"status"|"activity"|"accum";scope:DashboardSummaryScope;criteria:ActiveRequisitionReportCriteria;cursor?:ActiveRequisitionReportPage["nextCursor"]|null;profileKey:string;refreshKey?:number}):Promise<ActiveRequisitionReportPage>{
   const namespace=await cacheNamespace(client,input.profileKey),key=JSON.stringify(["active-requisition-report",namespace,input.start,input.end,input.period,input.stageMode,input.scope,input.criteria,input.cursor??null,input.refreshKey??0]);
-  return memo(key,async()=>{
+  return memo(client, key,async()=>{
     const {data,error}=await client.rpc("app_dashboard_active_requisitions_page_v1",{p_start:input.start,p_end:input.end,p_period:input.period,p_stage_mode:input.stageMode,p_scope:input.scope,p_after_value:input.cursor?.value??null,p_after_id:input.cursor?.id??null,p_limit:25,p_search:input.criteria.search,p_filters:input.criteria.filters,p_sort:input.criteria.sortKey,p_direction:input.criteria.sortDirection});
     if(error)throw new Error(error.message);
     const result=data as ActiveRequisitionReportPage|null;
@@ -266,7 +268,7 @@ export type ActiveRequisitionCandidate = {applicationId?:string;candidateId:stri
 export type ActiveRequisitionCandidatePage = {matches:ActiveRequisitionCandidate[];total:number;hasMore:boolean;nextCursor:{name:string;applicationId:string}|null};
 export async function loadActiveRequisitionCandidatePage(client:SupabaseClient,input:{docId:string;stage:string;start:string;end:string;requisitionDate:string|null;stageMode:"status"|"activity"|"accum";cursor?:ActiveRequisitionCandidatePage["nextCursor"]|null;profileKey:string;refreshKey?:number}):Promise<ActiveRequisitionCandidatePage>{
   const namespace=await cacheNamespace(client,input.profileKey),key=JSON.stringify(["active-requisition-candidates",namespace,input.docId,input.stage,input.start,input.end,input.requisitionDate,input.stageMode,input.cursor??null,input.refreshKey??0]);
-  return memo(key,async()=>{
+  return memo(client, key,async()=>{
     const {data,error}=await client.rpc("app_dashboard_active_requisition_candidates_v1",{p_doc_id:input.docId,p_stage:input.stage,p_start:input.start,p_end:input.end,p_requisition_date:input.requisitionDate,p_stage_mode:input.stageMode,p_after_name:input.cursor?.name??null,p_after_application_id:input.cursor?.applicationId??null,p_limit:25});
     if(error)throw new Error(error.message);
     const result=data as ActiveRequisitionCandidatePage|null;
@@ -297,7 +299,7 @@ export async function loadBottleneckPage(client: SupabaseClient, input: {
 }): Promise<BottleneckPage> {
   const namespace = await cacheNamespace(client, input.profileKey);
   const key = JSON.stringify(["bottleneck-page", namespace, input.asOf, input.scope, input.channel, input.stage, input.status, input.pic, input.search, input.cursor ?? null, input.before ?? false, input.refreshKey ?? 0]);
-  return memo(key, async () => {
+  return memo(client, key, async () => {
     const { data, error } = await client.rpc("app_dashboard_bottleneck_queue_v1", {
       p_as_of: input.asOf, p_scope: input.scope, p_channel: input.channel, p_stage: input.stage || null,
       p_status: input.status === "all" ? null : input.status, p_pic: input.pic || null, p_search: input.search || "",
@@ -313,7 +315,7 @@ export async function loadBottleneckPage(client: SupabaseClient, input: {
 export async function loadBottleneckSummary(client: SupabaseClient,input:{start:string;end:string;priorStart:string;priorEnd:string;scope:DashboardSummaryScope;channel:string;trendDates:string[];profileKey:string;refreshKey?:number}):Promise<BottleneckSummary>{
   const namespace=await cacheNamespace(client,input.profileKey);
   const key=JSON.stringify(["bottlenecks",namespace,input.start,input.end,input.priorStart,input.priorEnd,input.scope,input.channel,input.trendDates,input.refreshKey??0]);
-  return memo(key,async()=>{
+  return memo(client, key,async()=>{
     const {data,error}=await client.rpc("app_dashboard_bottleneck_summary_v1",{p_start:input.start,p_end:input.end,p_prior_start:input.priorStart,p_prior_end:input.priorEnd,p_scope:input.scope,p_channel:input.channel,p_trend_dates:input.trendDates});
     if(error)throw new Error(error.message);
     const result=data as BottleneckSummary|null;
@@ -327,7 +329,7 @@ export async function loadPipelineSummary(client: SupabaseClient, input: {
 }): Promise<PipelineSummary> {
   const namespace = await cacheNamespace(client, input.profileKey);
   const key = JSON.stringify(["pipeline", namespace, input.start, input.end, input.period, input.scope, input.channel, input.refreshKey ?? 0]);
-  return memo(key, async () => {
+  return memo(client, key, async () => {
     const { data, error } = await client.rpc("app_dashboard_pipeline_summary_v1", {
       p_start: input.start, p_end: input.end, p_period: input.period, p_scope: input.scope, p_channel: input.channel
     });
@@ -369,7 +371,7 @@ export type RejectionPage = { events: RejectionPageEvent[]; total: number; hasMo
 
 export async function loadRejectionSummary(client: SupabaseClient,input:{start:string;end:string;scope:DashboardSummaryScope;filters:RejectionFilterInput;profileKey:string;refreshKey?:number}):Promise<RejectionSummary>{
   const namespace=await cacheNamespace(client,input.profileKey),key=JSON.stringify(["rejections",namespace,input.start,input.end,input.scope,input.filters,input.refreshKey??0]);
-  return memo(key,async()=>{
+  return memo(client, key,async()=>{
     const {data,error}=await client.rpc("app_dashboard_rejection_summary_v1",{p_start:input.start,p_end:input.end,p_scope:input.scope,p_filters:input.filters});
     if(error)throw new Error(error.message);
     const result=data as RejectionSummary|null;
@@ -379,7 +381,7 @@ export async function loadRejectionSummary(client: SupabaseClient,input:{start:s
 }
 export async function loadRejectionPage(client:SupabaseClient,input:{start:string;end:string;scope:DashboardSummaryScope;filters:RejectionFilterInput;sort:"date-desc"|"date-asc"|"candidate-asc"|"stage-asc";cursor?:RejectionPage["nextCursor"];profileKey:string;refreshKey?:number}):Promise<RejectionPage>{
   const namespace=await cacheNamespace(client,input.profileKey),key=JSON.stringify(["rejection-page",namespace,input.start,input.end,input.scope,input.filters,input.sort,input.cursor,input.refreshKey??0]);
-  return memo(key,async()=>{
+  return memo(client, key,async()=>{
     const {data,error}=await client.rpc("app_dashboard_rejection_page_v1",{p_start:input.start,p_end:input.end,p_scope:input.scope,p_filters:input.filters,p_sort:input.sort,p_after_value:input.cursor?.value??null,p_after_log_id:input.cursor?.logId??null,p_limit:25});
     if(error)throw new Error(error.message);
     const result=data as RejectionPage|null;
