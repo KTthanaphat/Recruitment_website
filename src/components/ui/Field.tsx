@@ -1,6 +1,6 @@
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import { Children, createContext, isValidElement, useContext, useEffect, useId, useRef, useState, type ChangeEvent, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
-import { CommandSelector, type CommandOption } from "@/components/ui/CommandSelector";
+import { CommandSelector, type CommandOption, type CommandSelectorSearch } from "@/components/ui/CommandSelector";
 
 const FieldLabelContext = createContext<string | undefined>(undefined);
 
@@ -33,13 +33,13 @@ export function TextInput({ className = "", ...props }: InputHTMLAttributes<HTML
   return <input {...props} className={`${fieldClass} ${className}`} aria-labelledby={props["aria-labelledby"] ?? fieldLabelId} />;
 }
 
-export function SelectInput({ className = "", ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
+export function SelectInput({ className = "", ...props }: SelectHTMLAttributes<HTMLSelectElement> & { search?: CommandSelectorSearch; menuFooter?: ReactNode }) {
   const fieldLabelId = useContext(FieldLabelContext);
   return <CreateSelectInput {...props} className={`w-full min-w-0 ${className}`} aria-labelledby={props["aria-labelledby"] ?? fieldLabelId} />;
 }
 
 /** Shared command-selector field that keeps the existing FormData shape. */
-export function CreateSelectInput({ children, className = "", defaultValue, disabled, name, onChange, required, value, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
+export function CreateSelectInput({ children, className = "", defaultValue, disabled, menuFooter, name, onChange, required, search, value, ...props }: SelectHTMLAttributes<HTMLSelectElement> & { search?: CommandSelectorSearch; menuFooter?: ReactNode }) {
   const fieldLabelId = useContext(FieldLabelContext);
   const options: CommandOption[] = Children.toArray(children).flatMap((child) => {
     if (!isValidElement<{ value?: string; children?: ReactNode; disabled?: boolean }>(child)) return [];
@@ -59,6 +59,7 @@ export function CreateSelectInput({ children, className = "", defaultValue, disa
     disabled={disabled}
     emptyLabel={options.find((option) => option.value === "")?.label ?? "Select option"}
     emptyOptionsLabel={typeof window !== "undefined" && window.localStorage.getItem("recruitment_lang") === "th" ? "ไม่มีตัวเลือก" : "No options available"}
+    menuFooter={menuFooter}
     name={name}
     onValueChange={(nextValue) => {
       if (controlledValue === undefined) setInternalValue(nextValue);
@@ -68,6 +69,7 @@ export function CreateSelectInput({ children, className = "", defaultValue, disa
     }}
     options={options}
     required={required}
+    search={search}
     value={selectorValue}
   />;
 }
