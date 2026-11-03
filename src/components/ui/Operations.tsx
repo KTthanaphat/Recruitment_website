@@ -4,6 +4,8 @@ import { LampDesk, MoreVertical } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { NumberSkeleton } from "@/components/ui/LoadingSkeleton";
+import type { Language } from "@/types/recruitment";
 import { Button } from "@/components/ui/Button";
 import { detailUtilityClassName } from "@/components/ui/detail-utility";
 import { Tag } from "@/components/ui/Tag";
@@ -223,19 +225,20 @@ function RecordActionControl({
   );
 }
 
-export function OperationalSummaryStrip({ items, density = "default", className = "", layout = "grid", valueTone = "semantic" }: { items: OperationalSummaryItem[]; density?: "default" | "compact"; className?: string; layout?: "grid" | "stacked" | "stacked_lines"; valueTone?: "semantic" | "navy" }) {
+export function OperationalSummaryStrip({ items, density = "default", className = "", layout = "grid", valueTone = "semantic", loading = false, language = "en" }: { loading?: boolean; language?: Language; items: OperationalSummaryItem[]; density?: "default" | "compact"; className?: string; layout?: "grid" | "stacked" | "stacked_lines"; valueTone?: "semantic" | "navy" }) {
   const stacked = layout === "stacked";
   const stackedLines = layout === "stacked_lines";
   const vertical = stacked || stackedLines;
   return (
-    <div className={`grid ${stackedLines ? "grid-cols-1 divide-y divide-[#B8CCE4]" : `gap-2 ${stacked ? "grid-cols-1" : density === "compact" ? "[grid-template-columns:repeat(auto-fit,minmax(130px,1fr))]" : "[grid-template-columns:repeat(auto-fit,minmax(150px,1fr))]"}`} ${className}`}>
+    <div aria-busy={loading} className={`grid ${stackedLines ? "grid-cols-1 divide-y divide-[#B8CCE4]" : `gap-2 ${stacked ? "grid-cols-1" : density === "compact" ? "[grid-template-columns:repeat(auto-fit,minmax(130px,1fr))]" : "[grid-template-columns:repeat(auto-fit,minmax(150px,1fr))]"}`} ${className}`}>
+      {loading ? <span role="status" className="sr-only">{language === "th" ? "กำลังโหลดข้อมูล…" : "Loading data…"}</span> : null}
       {items.map((item) => (
         <div key={item.label} className={stackedLines ? "grid grid-cols-[minmax(0,4fr)_minmax(2.5rem,1fr)] items-center gap-3 px-0 py-2" : `rounded-xl border ${stacked ? "grid grid-cols-[minmax(0,4fr)_minmax(2.5rem,1fr)] items-center gap-3 px-3 py-2" : density === "compact" ? "px-3 py-2" : "p-3"} ${summaryCardClass(item.tone)}`}>
           <div className="min-w-0">
             <p className="text-xs font-medium text-slate">{item.label}</p>
-            {item.helper ? <p className={`${vertical ? "mt-0.5 font-light" : "mt-1 font-medium"} text-xs text-cool`}>{item.helper}</p> : null}
+            {item.helper ? <p className={`${vertical ? "mt-0.5 font-light" : "mt-1 font-medium"} text-xs text-cool`}>{loading ? <span aria-hidden="true" className="ats-skeleton block h-3 w-24 rounded-md"/> : item.helper}</p> : null}
           </div>
-          <p className={`${vertical ? "text-right" : "mt-1"} font-semibold tabular-nums ${density === "compact" ? "text-lg" : "text-xl"} ${valueTone === "navy" ? "text-navy" : summaryValueClass(item.tone)}`}>{item.value}</p>
+          <p className={`${vertical ? "text-right" : "mt-1"} font-semibold tabular-nums ${density === "compact" ? "text-lg" : "text-xl"} ${valueTone === "navy" ? "text-navy" : summaryValueClass(item.tone)}`}>{loading ? <NumberSkeleton ratio={typeof item.value === "string" && item.value.includes("/")}/> : item.value}</p>
         </div>
       ))}
     </div>

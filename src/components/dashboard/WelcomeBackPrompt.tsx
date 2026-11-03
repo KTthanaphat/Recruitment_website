@@ -37,7 +37,7 @@ export function WelcomeBackPrompt({
   return (
     <Modal open={open} title={title} onClose={onClose} width="max-w-xl">
       {loading && summary ? <RefreshIndicator language={language} /> : null}{loading && !summary ? (
-        <LoadingSkeleton variant="metrics" label={<>{translate(language, "loading")}</>} className="py-4 text-sm text-slate" />
+        <LoadingSkeleton gridClassName="grid-cols-1 sm:grid-cols-2" metricLabels={["welcomeOpenRequisitions","welcomeOpenVacancy","welcomeActiveCandidates","welcomeOfferFinalization"].map(key => translate(language,key as Parameters<typeof translate>[1]))} variant="metrics" label={<>{translate(language, "loading")}</>} className="py-4 text-sm text-slate" />
       ) : error || !summary ? (
         <div role="alert" className="grid gap-3 py-2 text-sm text-danger">
           <p>{error || translate(language, "loadFailed")}</p>

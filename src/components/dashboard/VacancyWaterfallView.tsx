@@ -1,7 +1,7 @@
 "use client";
 
 import { RetryIconButton } from "@/components/ui/RetryIconButton";
-import { LoadingSkeleton } from "@/components/ui/LoadingSkeleton";
+import { NumberSkeleton, RefreshIndicator, TableSkeletonRows, TableLoadingPlaceholder, LoadingSkeleton } from "@/components/ui/LoadingSkeleton";
 import { isReportEligible, validDateOnly, requisitionSnapshotAt, dateOnly } from "@/lib/dashboard-report-eligibility";
 import { applicationCandidates, belongsToApplication, assignmentGroup, applicationKey } from "@/lib/applications";
 import { buildPipelineReport } from "@/lib/pipeline-report";
@@ -112,6 +112,7 @@ export function VacancyWaterfallView({ context, reportGroup }: { context: Dashbo
   const [organizationRows, setOrganizationRows] = useState<DepartmentSectionRow[]>([]);
   const [activeReqRows, setActiveReqRows] = useState<RequisitionDetailRow[]>([]);
   const [activeReqTotal, setActiveReqTotal] = useState(0);
+  const [activeReqLoadedKey, setActiveReqLoadedKey] = useState("");
   const [activeReqCursor, setActiveReqCursor] = useState<ActiveRequisitionReportPage["nextCursor"]>(null);
   const [activeReqLoading, setActiveReqLoading] = useState(false);
   const [activeReqError, setActiveReqError] = useState(false);
@@ -142,20 +143,24 @@ export function VacancyWaterfallView({ context, reportGroup }: { context: Dashbo
     return ()=>window.clearTimeout(timer);
   },[activeReqCriteriaDraft,activeReqCriteria]);
   const activeReqCriteriaPending=JSON.stringify(activeReqCriteriaDraft)!==JSON.stringify(activeReqCriteria);
-  const activeReqKey = JSON.stringify([startDate,endDate,reportView,stageCountMode,activeReqScope,activeReqCriteria,activeReqRetry,context.data.profile?.id,context.data.profile?.role,context.data.profile?.site,context.data.profile?.updated_at]);
+  const activeReqDataKey = JSON.stringify([startDate,endDate,reportView,stageCountMode,activeReqScope,activeReqCriteria,context.data.profile?.id,context.data.profile?.role,context.data.profile?.site,context.data.profile?.updated_at]);
+  const activeReqKey = JSON.stringify([activeReqDataKey,activeReqRetry]);
   const activeReqKeyRef=useRef(activeReqKey); activeReqKeyRef.current=activeReqKey;
   useEffect(() => {
     let active = true;
-    setActiveReqRows([]); setActiveReqTotal(0); setActiveReqCursor(null); setActiveReqError(false); setStageDrilldown(null);
+    if (activeReqLoadedKey !== activeReqDataKey) { setActiveReqRows([]); setActiveReqTotal(0); setActiveReqCursor(null); }
+    setActiveReqError(false); setStageDrilldown(null);
     if (reportGroup !== "vacancy" || !validReportRange || !supabase) { setActiveReqLoading(false); return () => { active = false; }; }
     setActiveReqLoading(true);
     void loadActiveRequisitionReportPage(supabase,{start:startDate,end:endDate,period:reportView,stageMode:stageCountMode,scope:activeReqScope,criteria:activeReqCriteria,profileKey:`${context.data.profile?.id??""}:${context.data.profile?.updated_at??""}`,refreshKey:activeReqRetry})
-      .then(page => { if (!active) return; setActiveReqRows(page.rows.map(mapActiveRequisitionRow)); setActiveReqTotal(page.total); setActiveReqCursor(page.nextCursor); })
+      .then(page => { if (!active) return; setActiveReqRows(page.rows.map(mapActiveRequisitionRow)); setActiveReqTotal(page.total); setActiveReqLoadedKey(activeReqDataKey); setActiveReqCursor(page.nextCursor); })
       .catch(() => { if (active) setActiveReqError(true); })
       .finally(() => { if (active) setActiveReqLoading(false); });
     return () => { active = false; };
   }, [activeReqKey]);
-  const requisitionRows = activeReqRows;
+  const activeReqMatches = activeReqLoadedKey === activeReqDataKey && !activeReqCriteriaPending;
+  const requisitionRows = activeReqMatches ? activeReqRows : [];
+  const activeReqInitialLoading = Boolean(validReportRange && reportGroup === "vacancy" && supabase && !activeReqError && (!activeReqMatches || activeReqLoading));
   function changeActiveReqCriteria(next:ActiveRequisitionReportCriteria){
     setActiveReqCriteriaDraft(current=>JSON.stringify(current)===JSON.stringify(next)?current:next);
   }
@@ -339,7 +344,7 @@ export function VacancyWaterfallView({ context, reportGroup }: { context: Dashbo
     <div className="grid min-w-0 max-w-full gap-4 overflow-x-hidden">
       {reportGroup === "vacancy" ? <section className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-[#E4E9F2] bg-[#F8FAFD] shadow-none">
         <div className="flex flex-col gap-3 px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
-          <h2 className="min-w-0 flex-1"><span><strong className="block text-lg font-semibold text-navy">{translate(language, "vacancyWaterfall")} &amp; {translate(language, "activeRequisitionsSelectedRange")}</strong><span className="text-sm font-medium text-slate">{summary} · {translate(language, "activeRequisitionsInRange", { count: formatNumber(activeReqTotal, language), start: formatDate(startDate, language), end: formatDate(endDate, language) })} · {formatNumber(requisitionRows.length,language)} {language === "th" ? "แถวที่โหลดแล้ว" : "rows loaded"}</span></span></h2>
+          <h2 className="min-w-0 flex-1"><span><strong className="block text-lg font-semibold text-navy">{translate(language, "vacancyWaterfall")} &amp; {translate(language, "activeRequisitionsSelectedRange")}</strong><span className="text-sm font-medium text-slate">{summary} · {activeReqMatches ? translate(language, "activeRequisitionsInRange", { count: formatNumber(activeReqTotal, language), start: formatDate(startDate, language), end: formatDate(endDate, language) }) : activeReqError ? "—" : <NumberSkeleton/>} · {activeReqMatches ? formatNumber(requisitionRows.length,language) : activeReqError ? "—" : <NumberSkeleton/>} {language === "th" ? "แถวที่โหลดแล้ว" : "rows loaded"}</span></span></h2>
           <div className="flex flex-wrap items-center gap-2 print:hidden">
           <ReportHelp label={language === "th" ? "คำอธิบายกราฟอัตราว่าง" : "Vacancy Waterfall help"} text={language === "th" ? "แสดงการเปลี่ยนแปลงอัตราว่างจากต้นช่วงถึงปลายช่วง แท่งสีแยกสถานที่และประเภทคำขอ การบรรจุลดอัตราว่าง รายงานนี้ใช้ตัวกรองร่วมของแดชบอร์ด" : "Tracks open vacancies from the start to the end of the selected range. Stacks separate sites and request types; fills reduce open vacancies. The common dashboard filters apply to this report."} />
           <Button type="button" size="toolbar" variant="secondary" icon={<ImageDown size={16} />} aria-label={`${translate(language, "export")} ${translate(language, "vacancyWaterfall")} PNG`} title={`${translate(language, "export")} ${translate(language, "vacancyWaterfall")} PNG`} disabled={exportPreparing || !validReportRange || context.pipelineSummaryStatus !== "ready"} onClick={() => exportPng(chartExportRef.current, `vacancy-waterfall-${startDate}-to-${endDate}.png`)}>{translate(language, "export")}</Button>
@@ -348,9 +353,9 @@ export function VacancyWaterfallView({ context, reportGroup }: { context: Dashbo
         </div>
         <div className="border-t border-[#E4E9F2] bg-white py-4">
         {activeReqError ? <div className="mx-4 mb-4 rounded-xl border border-[#E4E9F2] p-3 sm:mx-6 lg:mx-8"><p role="alert" className="text-sm text-danger">{language === "th" ? "โหลดรายการคำขอไม่สำเร็จ" : "Could not load requisition rows."}</p><RetryIconButton title={`${language === "th" ? "ลองโหลดข้อมูลอีกครั้ง" : "Retry loading"}: Vacancy Waterfall`} type="button" className="mt-2"  onClick={() => setActiveReqRetry(value => value + 1)}>{language === "th" ? "ลองอีกครั้ง" : "Retry"}</RetryIconButton></div> : null}
-        {activeReqLoading && requisitionRows.length === 0 ? <LoadingSkeleton variant="table" label={<>{language === "th" ? "กำลังโหลดรายการคำขอ..." : "Loading requisition rows..."}</>} className="px-4 pb-4 text-sm text-slate sm:px-6 lg:px-8" /> : null}
 
-        {context.pipelineSummaryStatus === "error" ? <div className="px-4 sm:px-6 lg:px-8"><p role="alert" className="text-sm text-danger">{language === "th" ? "โหลดสรุปอัตราว่างไม่สำเร็จ" : "Could not load the vacancy summary."}</p><RetryIconButton type="button" className="mt-2"  onClick={context.onRetryPipelineSummary}>{language === "th" ? "ลองอีกครั้ง" : "Retry"}</RetryIconButton></div> : context.pipelineSummaryStatus !== "ready" ? <LoadingSkeleton variant="table" label={<>{language === "th" ? "กำลังโหลดสรุปอัตราว่าง..." : "Loading vacancy summary..."}</>} className="px-4 text-sm text-slate sm:px-6 lg:px-8" /> : waterfallRows.length === 0 ? (
+
+        {context.pipelineSummaryStatus === "error" ? <div className="px-4 sm:px-6 lg:px-8"><p role="alert" className="text-sm text-danger">{language === "th" ? "โหลดสรุปอัตราว่างไม่สำเร็จ" : "Could not load the vacancy summary."}</p><RetryIconButton type="button" className="mt-2"  onClick={context.onRetryPipelineSummary}>{language === "th" ? "ลองอีกครั้ง" : "Retry"}</RetryIconButton></div> : context.pipelineSummaryStatus !== "ready" ? <LoadingSkeleton variant="chart" label={<>{language === "th" ? "กำลังโหลดสรุปอัตราว่าง..." : "Loading vacancy summary..."}</>} className="px-4 text-sm text-slate sm:px-6 lg:px-8" /> : waterfallRows.length === 0 ? (
           <div className="px-4 sm:px-6 lg:px-8">
             <EmptyState variant="quiet" message={translate(language, "noWaterfallData")} />
           </div>
@@ -367,7 +372,7 @@ export function VacancyWaterfallView({ context, reportGroup }: { context: Dashbo
               {(["activity", "status", "accum"] as StageCountMode[]).map((mode) => <button key={mode} type="button" className={`rounded-lg px-3 py-2 text-sm font-semibold ${stageCountMode === mode ? "bg-primary text-white shadow-sm" : "text-slate hover:bg-white"}`} aria-pressed={stageCountMode === mode} onClick={() => setStageCountMode(mode)}>{translate(language, mode === "status" ? "pipelineStatus" : mode === "activity" ? "pipelineActivity" : "pipelineAccum")}</button>)}
             </div>
             {stageCountMode === "accum" ? <p className="mb-3 text-sm font-medium text-slate">{translate(language, "pipelineAccumHelp")}</p> : null}
-            {activeReqCriteriaPending ? <p role="status" className="py-3 text-sm text-slate">{language==="th"?"กำลังปรับตัวกรอง...":"Updating report filters..."}</p> : <RequisitionDetailTable rows={requisitionRows} language={language} serverControlled onCriteriaChange={changeActiveReqCriteria} onStageClick={(row, stage) => { void openStageCandidates(row,stage); }} />}
+            {activeReqLoading && activeReqMatches && requisitionRows.length ? <RefreshIndicator language={language}/> : null}{activeReqCriteriaPending ? <RequisitionDetailTable rows={[]} loading language={language} serverControlled/> : <RequisitionDetailTable rows={requisitionRows} loading={activeReqInitialLoading} language={language} serverControlled onCriteriaChange={changeActiveReqCriteria} onStageClick={(row, stage) => { void openStageCandidates(row,stage); }} />}
             {!activeReqCriteriaPending&&activeReqCursor ? <div className="mt-3 flex justify-center"><Button type="button" size="toolbar" variant="secondary" disabled={activeReqLoading} onClick={loadMoreActiveRequisitions}>{activeReqLoading ? (language === "th" ? "กำลังโหลด..." : "Loading...") : (language === "th" ? "โหลดเพิ่มเติม" : "Load more")}</Button></div> : null}
           </div>
         </div>
@@ -377,14 +382,14 @@ export function VacancyWaterfallView({ context, reportGroup }: { context: Dashbo
         <div className="flex flex-col gap-3 px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
           <h2 className="min-w-0 flex-1">
             <strong className="block text-lg font-semibold text-navy">{translate(language, "recruitmentPipelineHealthSelectedRange")}</strong>
-            <span className="text-sm font-medium text-slate">{summary} · {translate(language, "applicantsInRange", { count: formatNumber(funnelApplicantTotal, language), start: formatDate(funnelStartDate, language), end: formatDate(funnelEndDate, language), level: funnelLevelLabel(funnelLevelBands, language), channel: funnelChannelLabel })}</span>
+            <span className="text-sm font-medium text-slate">{summary} · {context.pipelineSummaryStatus === "ready" ? translate(language, "applicantsInRange", { count: formatNumber(funnelApplicantTotal, language), start: formatDate(funnelStartDate, language), end: formatDate(funnelEndDate, language), level: funnelLevelLabel(funnelLevelBands, language), channel: funnelChannelLabel }) : context.pipelineSummaryStatus === "error" ? "—" : <NumberSkeleton/>}</span>
           </h2>
           <div className="flex flex-wrap gap-2 print:hidden">
             <DashboardExportChooser language={language} title={language === "th" ? "กระบวนการและช่องทางสรรหา" : "Pipeline & Sources"} summary={pipelineMetadata} pngLabel={`${translate(language, "export")} ${translate(language, "recruitmentPipelineHealth")} PNG`} disabled={exportPreparing || !validFunnelRange || context.pipelineSummaryStatus !== "ready"} onPng={exportPipelinePng} onExcel={exportPipelineExcel} />
           </div>
         </div>
           <div className="grid min-w-0 gap-4 border-t border-[#E4E9F2] bg-white p-4 sm:p-6 lg:p-8">
-            {context.pipelineSummaryStatus === "error" ? <div className="rounded-xl border border-[#E4E9F2] p-4"><p role="alert" className="text-sm text-danger">{language === "th" ? "โหลดสรุปกระบวนการไม่สำเร็จ" : "Could not load the pipeline summary."}</p><RetryIconButton type="button" className="mt-3"  onClick={context.onRetryPipelineSummary}>{language === "th" ? "ลองอีกครั้ง" : "Retry"}</RetryIconButton></div> : context.pipelineSummaryStatus !== "ready" ? <LoadingSkeleton variant="table" label={<>{language === "th" ? "กำลังโหลดสรุปกระบวนการ..." : "Loading pipeline summary..."}</>} className="text-sm text-slate" /> : null}
+            {context.pipelineSummaryStatus === "error" ? <div className="rounded-xl border border-[#E4E9F2] p-4"><p role="alert" className="text-sm text-danger">{language === "th" ? "โหลดสรุปกระบวนการไม่สำเร็จ" : "Could not load the pipeline summary."}</p><RetryIconButton type="button" className="mt-3"  onClick={context.onRetryPipelineSummary}>{language === "th" ? "ลองอีกครั้ง" : "Retry"}</RetryIconButton></div> : context.pipelineSummaryStatus !== "ready" ? <LoadingSkeleton variant="chart" label={<>{language === "th" ? "กำลังโหลดสรุปกระบวนการ..." : "Loading pipeline summary..."}</>} className="text-sm text-slate" /> : null}
             <div data-testid="pipeline-filters" className="dashboard-filter-toolbar pipeline-filter-toolbar flex min-w-0 flex-wrap items-end gap-3 rounded-xl border border-[#E4E9F2] bg-[#F8FAFD] p-3">
               <DashboardFilterPicker label={translate(language, "channel")} options={funnelChannelOptions} value={funnelChannel} onValueChange={setFunnelChannel} />
               <div className="grid min-w-0 gap-1 text-xs font-medium text-slate"><span>{language === "th" ? "คำอธิบายสีช่องทาง" : "Channel legend"}</span><OnOffSwitch checked={funnelLegend} onCheckedChange={funnelLegend => onPreferencesChange({ funnelLegend })} label={language === "th" ? "คำอธิบายสีช่องทาง" : "Channel legend"} language={language} title={language === "th" ? "สลับคำอธิบายสีช่องทาง" : "Toggle channel legend"} /></div>
@@ -776,14 +781,14 @@ function exportValue(row: RequisitionDetailRow, key: ExportColumnKey, language: 
 
 function StageCandidateModal({ language, drilldown, onClose, onLoadMore, onRetry, onOpenCandidate }: { language: Language; drilldown: { row: RequisitionDetailRow; stage: ProcessStage; matches: StageCandidateMatch[]; total:number; cursor:ActiveRequisitionCandidatePage["nextCursor"]; loading:boolean; error:boolean } | null; onClose: () => void; onLoadMore:()=>void; onRetry:()=>void; onOpenCandidate: (candidate: StageCandidateMatch) => void }) {
   const label = drilldown ? `${processStageLabel(language, drilldown.stage)} · ${drilldown.row.doc_id}` : "";
-  return <Modal open={Boolean(drilldown)} title={`Candidates in ${label}`} onClose={onClose} width="max-w-4xl"><div className="grid gap-3"><p className="text-sm text-slate">{drilldown?.total ?? 0} candidates in the selected report context.</p>{drilldown?.error ? <div><p role="alert" className="text-sm text-danger">{language==="th"?"โหลดผู้สมัครไม่สำเร็จ":"Could not load candidates."}</p><RetryIconButton type="button" className="mt-2"  onClick={onRetry}>{language==="th"?"ลองอีกครั้ง":"Retry"}</RetryIconButton></div> : drilldown?.loading && !drilldown.matches.length ? <LoadingSkeleton variant="table" label={<>{language==="th"?"กำลังโหลดผู้สมัคร...":"Loading candidates..."}</>} className="text-sm text-slate" /> : drilldown?.matches.length ? <><div className="max-h-[55vh] overflow-auto rounded-xl border border-[#D7DEE8]"><table className="min-w-full text-sm"><thead className="sticky top-0 bg-[#F8FAFD] text-left"><tr>{["Candidate", "ID", "Pending Date", "Result Date", "Person in Charge"].map((header) => <th key={header} className="border-b px-3 py-2 font-semibold text-navy">{header}</th>)}</tr></thead><tbody>{drilldown.matches.map((match) => <tr key={match.applicationId ?? match.candidateId} className="hover:bg-[#F8FAFD]"><td className="border-b px-3 py-2"><button type="button" className="font-semibold text-primary underline" onClick={() => onOpenCandidate(match)}>{match.name}</button></td><td aria-label={formatRecruitmentId(match.candidateId)} className="border-b px-3 py-2">{formatRecruitmentId(match.candidateId)}</td><td className="border-b px-3 py-2">{formatDate(match.pendingDate, language)}</td><td className="border-b px-3 py-2">{match.resultDate ? formatDate(match.resultDate, language) : "—"}</td><td className="border-b px-3 py-2">{drilldown.row.person_in_charge || "—"}</td></tr>)}</tbody></table></div>{drilldown.cursor?<div className="flex justify-center"><Button type="button" size="toolbar" variant="secondary" disabled={drilldown.loading} onClick={onLoadMore}>{drilldown.loading?(language==="th"?"กำลังโหลด...":"Loading..."):(language==="th"?"โหลดเพิ่มเติม":"Load more")}</Button></div>:null}</> : <EmptyState message={translate(language, "noData")} />}</div></Modal>;
+  return <Modal open={Boolean(drilldown)} title={`Candidates in ${label}`} onClose={onClose} width="max-w-4xl"><div className="grid gap-3"><p className="text-sm text-slate">{drilldown?.total ?? 0} candidates in the selected report context.</p>{drilldown?.error ? <div><p role="alert" className="text-sm text-danger">{language==="th"?"โหลดผู้สมัครไม่สำเร็จ":"Could not load candidates."}</p><RetryIconButton type="button" className="mt-2"  onClick={onRetry}>{language==="th"?"ลองอีกครั้ง":"Retry"}</RetryIconButton></div> : drilldown?.loading && !drilldown.matches.length ? <TableLoadingPlaceholder language={language} headers={language==="th"?["ผู้สมัคร","รหัส","วันที่รอดำเนินการ","วันที่ผลลัพธ์","ผู้รับผิดชอบ"]:["Candidate","ID","Pending Date","Result Date","Person in Charge"]} columns={[{},{},{kind:"date"},{kind:"date"},{}]}/> : drilldown?.matches.length ? <><div className="max-h-[55vh] overflow-auto rounded-xl border border-[#D7DEE8]"><table className="min-w-full text-sm"><thead className="sticky top-0 bg-[#F8FAFD] text-left"><tr>{["Candidate", "ID", "Pending Date", "Result Date", "Person in Charge"].map((header) => <th key={header} className="border-b px-3 py-2 font-semibold text-navy">{header}</th>)}</tr></thead><tbody>{drilldown.matches.map((match) => <tr key={match.applicationId ?? match.candidateId} className="hover:bg-[#F8FAFD]"><td className="border-b px-3 py-2"><button type="button" className="font-semibold text-primary underline" onClick={() => onOpenCandidate(match)}>{match.name}</button></td><td aria-label={formatRecruitmentId(match.candidateId)} className="border-b px-3 py-2">{formatRecruitmentId(match.candidateId)}</td><td className="border-b px-3 py-2">{formatDate(match.pendingDate, language)}</td><td className="border-b px-3 py-2">{match.resultDate ? formatDate(match.resultDate, language) : "—"}</td><td className="border-b px-3 py-2">{drilldown.row.person_in_charge || "—"}</td></tr>)}</tbody></table></div>{drilldown.cursor?<div className="flex justify-center"><Button type="button" size="toolbar" variant="secondary" disabled={drilldown.loading} onClick={onLoadMore}>{drilldown.loading?(language==="th"?"กำลังโหลด...":"Loading..."):(language==="th"?"โหลดเพิ่มเติม":"Load more")}</Button></div>:null}</> : <EmptyState message={translate(language, "noData")} />}</div></Modal>;
 }
 
 function ReportCandidateDetail({ language, candidate, onClose }: { language: Language; candidate: StageCandidateReportDetail | null; onClose: () => void }) {
   return <Modal open={Boolean(candidate)} title="Candidate Report Detail" onClose={onClose} width="max-w-lg"><dl className="grid grid-cols-2 gap-3 text-sm"><dt className="text-slate">Candidate</dt><dd className="font-semibold text-navy">{candidate?.name}</dd><dt className="text-slate">ID</dt><dd aria-label={formatRecruitmentId(candidate?.candidateId)}>{candidate?formatRecruitmentId(candidate.candidateId):""}</dd><dt className="text-slate">Stage</dt><dd>{candidate ? processStageLabel(language, candidate.stage) : ""}</dd><dt className="text-slate">Pending Date</dt><dd>{candidate ? formatDate(candidate.pendingDate, language) : ""}</dd><dt className="text-slate">Result Date</dt><dd>{candidate?.resultDate ? formatDate(candidate.resultDate, language) : "—"}</dd><dt className="text-slate">Person in Charge</dt><dd>{candidate?.personInCharge || "—"}</dd></dl></Modal>;
 }
 
-function RequisitionDetailTable({ rows, language, printMode = false, serverControlled=false, onCriteriaChange, onStageClick }: { rows: RequisitionDetailRow[]; language: Language; printMode?: boolean; serverControlled?:boolean; onCriteriaChange?:(criteria:ActiveRequisitionReportCriteria)=>void; onStageClick?: (row: RequisitionDetailRow, stage: ProcessStage) => void }) {
+function RequisitionDetailTable({ rows, language, loading = false, printMode = false, serverControlled=false, onCriteriaChange, onStageClick }: { rows: RequisitionDetailRow[]; language: Language; loading?: boolean; printMode?: boolean; serverControlled?:boolean; onCriteriaChange?:(criteria:ActiveRequisitionReportCriteria)=>void; onStageClick?: (row: RequisitionDetailRow, stage: ProcessStage) => void }) {
   const columns: TableColumn<RequisitionDetailRow>[] = [
     { key: "site", label: translate(language, "site"), value: (row) => row.site },
     { key: "department", label: translate(language, "department"), value: (row) => row.department },
@@ -810,7 +815,7 @@ function RequisitionDetailTable({ rows, language, printMode = false, serverContr
   const criteriaCallback=useRef(onCriteriaChange);criteriaCallback.current=onCriteriaChange;
   useEffect(()=>{if(serverControlled)criteriaCallback.current?.({filters:table.filters,search:table.search,sortKey:table.sortDirection?table.sortKey:null,sortDirection:table.sortDirection});},[serverControlled,table.filters,table.search,table.sortDirection,table.sortKey]);
   const visibleRows = printMode || serverControlled ? rows : table.controlledRows;
-  if (rows.length === 0) return <EmptyState message={translate(language, "noActiveRequisitionsInRange")} />;
+  if (rows.length === 0 && !loading) return <EmptyState message={translate(language, "noActiveRequisitionsInRange")} />;
 
   return (
     <div className={`min-w-0 max-w-full overflow-x-auto ${printMode ? "print-detail-scroll" : "dashboard-detail-scroll"}`}>
@@ -836,7 +841,7 @@ function RequisitionDetailTable({ rows, language, printMode = false, serverContr
             ))}
           </tr>
         </thead>
-        <tbody>
+        <tbody aria-busy={loading}>{loading && !visibleRows.length ? <TableSkeletonRows language={language} columns={columns.map(column => ({ kind: ["vacancy","applicants","actual_age","sla",...detailStages].includes(column.key) ? "number" as const : /date/.test(column.key) ? "date" as const : "text" as const }))}/> : null}
           {visibleRows.map((row) => (
             <tr key={row.doc_id} className="align-top">
               <td className={`${detailCellClass("Site")} border border-[#D7DEE8] px-2 py-2`}>{row.site}</td>

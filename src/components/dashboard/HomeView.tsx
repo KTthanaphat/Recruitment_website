@@ -1,6 +1,7 @@
 "use client";
+import { AttendanceDecisionActions, type AttendanceOutcome } from "@/components/ui/AttendanceDecisionActions";
 import { RetryIconButton } from "@/components/ui/RetryIconButton";
-import { LoadingSkeleton, RefreshIndicator } from "@/components/ui/LoadingSkeleton";
+import { NumberSkeleton, LoadingSkeleton, RefreshIndicator } from "@/components/ui/LoadingSkeleton";
 import { compareApplicationLogs } from "@/lib/application-stage-order";
 import { belongsToApplication } from "@/lib/applications";
 
@@ -8,7 +9,6 @@ import { belongsToApplication } from "@/lib/applications";
 import type { KeyboardEvent } from "react";
 import { useCallback, useRef, useState } from "react";
 import { useEffect } from "react";
-import { BadgeCheck } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -88,7 +88,7 @@ export function HomeView({
   changeLogs: ChangeLog[];
   dataQualityIssues: DataQualityIssue[];
   canViewRecentActivity: boolean;
-  onConfirmStart: (offer: EnrichedOffer) => void;
+  onConfirmStart: (offer: EnrichedOffer, outcome?: AttendanceOutcome) => void;
   onEditPending?: (candidate: EnrichedCandidate) => void;
   onOpenRequisition: (docId: string) => void;
   onOpenCandidate: (candidateId: string, applicationId?: string) => void;
@@ -103,18 +103,21 @@ export function HomeView({
 }) {
   const [todayEventData, setTodayEventData] = useState<{ date: string; events: CalendarEvent[] }>({ date: "", events: [] });
   const handleTodayEventsChange = useCallback((payload: { date: string; events: CalendarEvent[] }) => setTodayEventData(payload), []);
-  const [homeSummary, setHomeSummary] = useState<HomeSummary | null>(null);
+  const [homeSnapshot, setHomeSummary] = useState<HomeSummary | null>(null);
+  const [homeLoadedIdentity, setHomeLoadedIdentity] = useState("");
   const [summaryError, setSummaryError] = useState(false);
   const summaryScopeKey = JSON.stringify(summaryScope ?? null);
+  const homeIdentity = JSON.stringify([accessScope, summaryScopeKey]);
+  const homeSummary = homeLoadedIdentity === homeIdentity ? homeSnapshot : null;
   useEffect(() => {
-    setHomeSummary(null); setSummaryError(false);
-    if (!listClient || !summaryScope || !accessScope) return;
+    setSummaryError(false);
+    if (!listClient || summaryScopeKey === "null" || !accessScope) return;
     let cancelled = false;
     loadHomeSummary(listClient, JSON.parse(summaryScopeKey), accessScope, refreshKey)
-      .then(value => { if (!cancelled) { setHomeSummary(value); setSummaryError(false); } })
+      .then(value => { if (!cancelled) { setHomeSummary(value); setHomeLoadedIdentity(homeIdentity); setSummaryError(false); } })
       .catch(() => { if (!cancelled) setSummaryError(true); });
     return () => { cancelled = true; };
-  }, [accessScope, listClient, summaryScopeKey, refreshKey]);
+  }, [accessScope, listClient, summaryScopeKey, homeIdentity, refreshKey]);
   const notFilledRequisitions = requisitions.filter((row) => row.status !== "filled" && row.status !== "cancel");
   const openRequisitions = notFilledRequisitions.filter((row) => row.open_headcount > 0);
   const offeredCandidateIds = new Set(offers.map((offer) => offer.candidate_id));
@@ -176,7 +179,7 @@ export function HomeView({
             eyebrow={profile?.role === "viewer" ? translate(language, "monitoringView") : undefined}
         />
         <div className="md:hidden">
-          <OperationalSummaryStrip
+          <OperationalSummaryStrip loading={!homeSummary && !summaryError} language={language}
             density="compact"
             layout="stacked_lines"
             valueTone="navy"
@@ -187,7 +190,7 @@ export function HomeView({
           />
         </div>
         <div className="hidden md:block">
-          <OperationalSummaryStrip
+          <OperationalSummaryStrip loading={!homeSummary && !summaryError} language={language}
             density="compact"
             layout="stacked_lines"
             valueTone="navy"
@@ -283,7 +286,7 @@ function HomeRecordTabs({
   sourcingGroups: EnrichedSourcingGroup[];
   sourcingHref: string;
   startConfirmations: EnrichedOffer[];
-  onConfirmStart: (offer: EnrichedOffer) => void;
+  onConfirmStart: (offer: EnrichedOffer, outcome?: AttendanceOutcome) => void;
   tabs: HomeTab[];
   listClient?: SupabaseClient | null;
   accessScope?: string;
@@ -389,7 +392,7 @@ function HomeRecordTabs({
               type="button"
             >
               <span>{tab.label}</span>
-              <span aria-hidden="true" className={`inline-flex min-w-6 justify-center rounded-md px-1.5 py-0.5 text-xs tabular-nums ${selected ? "bg-primary/10 text-primary" : "bg-[#F1F4F8] text-cool"}`}>{tab.count === null ? "—" : formatNumber(tab.count, language)}</span>
+              <span aria-hidden="true" className={`inline-flex min-w-6 justify-center rounded-md px-1.5 py-0.5 text-xs tabular-nums ${selected ? "bg-primary/10 text-primary" : "bg-[#F1F4F8] text-cool"}`}>{tab.count === null ? <NumberSkeleton/> : formatNumber(tab.count, language)}</span>
             </button>
           );
         })}
@@ -405,7 +408,7 @@ function HomeRecordTabs({
         {selectedTab.key === "open_headcount" ? (
           <>
             <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 px-1 pb-2 text-xs font-medium">
-              <span className="text-slate" data-open-requisition-count="true">{reqPage.error ? translate(language,"loadFailed") : translate(language, "openRequisitionCount", { count: listClient?(reqPage.totalCount===null?reqPage.countLabel:formatNumber(reqPage.totalCount,language)):formatNumber(needsAction.length,language), plural: reqPage.totalCount === 1 ? "" : "s" })}{listClient&&reqPage.countError?<RetryIconButton type="button"  onClick={reqPage.retryCount} loading={reqPage.countLoading}>{translate(language,"retry")}</RetryIconButton>:null}</span>
+              <span className="text-slate" data-open-requisition-count="true">{reqPage.error ? translate(language,"loadFailed") : listClient && reqPage.totalCount === null && reqPage.countLoading ? <NumberSkeleton/> : translate(language, "openRequisitionCount", { count: listClient?(reqPage.totalCount===null?"—":formatNumber(reqPage.totalCount,language)):formatNumber(needsAction.length,language), plural: reqPage.totalCount === 1 ? "" : "s" })}{listClient&&reqPage.countError?<RetryIconButton type="button"  onClick={reqPage.retryCount} loading={reqPage.countLoading}>{translate(language,"retry")}</RetryIconButton>:null}</span>
               <label className="flex min-w-0 items-center gap-2 text-slate">{translate(language, "sortBy")}
                 <SelectInput aria-label={translate(language, "sortOpenHeadcount")} className="max-w-[11rem]" value={headcountSort} onChange={(event) => setHeadcountSort(event.target.value as typeof headcountSort)}>
                   <option value="oldest">{translate(language, "oldestFirst")}</option>
@@ -422,7 +425,7 @@ function HomeRecordTabs({
         {selectedTab.key === "candidate_pipeline" ? (
           <>
             <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 px-1 pb-2 text-xs font-medium">
-              <span className="text-slate" data-home-candidate-count="true">{pipelinePage.error?translate(language,"loadFailed"):translate(language, "candidatePipelineCount", { count: listClient?(pipelinePage.totalCount===null?pipelinePage.countLabel:formatNumber(pipelinePage.totalCount,language)):formatNumber(ongoingCandidates.length,language) })}{listClient&&pipelinePage.countError?<RetryIconButton type="button"  onClick={pipelinePage.retryCount} loading={pipelinePage.countLoading}>{translate(language,"retry")}</RetryIconButton>:null}</span>
+              <span className="text-slate" data-home-candidate-count="true">{pipelinePage.error?translate(language,"loadFailed"):listClient && pipelinePage.totalCount === null && pipelinePage.countLoading ? <NumberSkeleton/> : translate(language, "candidatePipelineCount", { count: listClient?(pipelinePage.totalCount===null?"—":formatNumber(pipelinePage.totalCount,language)):formatNumber(ongoingCandidates.length,language) })}{listClient&&pipelinePage.countError?<RetryIconButton type="button"  onClick={pipelinePage.retryCount} loading={pipelinePage.countLoading}>{translate(language,"retry")}</RetryIconButton>:null}</span>
               <label className="flex min-w-0 items-center gap-2 text-slate">{translate(language, "sortBy")}
                 <SelectInput aria-label={translate(language, "sortCandidatePipeline")} className="max-w-[12rem]" value={candidateSort} onChange={(event) => setCandidateSort(event.target.value as typeof candidateSort)}>
                   <option value="oldest_touch">{translate(language, "oldestTouchFirst")}</option>
@@ -435,15 +438,15 @@ function HomeRecordTabs({
             <div ref={recordListRef} className="min-w-0 md:max-h-[min(62dvh,44rem)] md:overflow-auto md:overscroll-contain" data-home-candidate-scroll="true">
               <div className="md:min-w-[62rem] xl:min-w-0">
                 <HomeRecordHeader columns={[translate(language, "candidate"), translate(language, "stage"), translate(language, "siteOwner"), translate(language, "lastTouch"), translate(language, "pendingRemark"), translate(language, "progress")]} gridClass={pipelineColumns} sticky />
-                <div className="grid grid-cols-1 divide-y divide-[#E4E9F2]" data-home-record-list="true">{pipelinePage.initialLoading&&!candidateRows.length?<LoadingSkeleton variant="table" label={<>{translate(language,"loading")}</>} className="p-4 text-sm text-slate" />:pipelinePage.error?<div role="alert" className="p-4 text-sm text-danger">{translate(language,"loadFailed")} <RetryIconButton  onClick={pipelinePage.retry} loading={pipelinePage.loading}>{translate(language,"retry")}</RetryIconButton></div>:candidateRows.length===0?<TabEmptyState message={translate(language,"noActiveCandidates")} />:(listClient?candidateRows:candidateRows.sort((a,b)=>compareCandidateRows(a,b,candidateSort))).map(({ candidate, lastTouch, pendingRemark }) => <CandidateActionCard key={candidate.application_id ?? candidate.candidate_id} candidate={candidate} language={language} lastTouch={lastTouch} pendingRemark={pendingRemark} onOpenCandidate={onOpenCandidate} />)}</div>
+                <div className="grid grid-cols-1 divide-y divide-[#E4E9F2]" data-home-record-list="true">{pipelinePage.initialLoading&&!candidateRows.length?<LoadingSkeleton variant="table" columns={6} gridClassName={pipelineColumns} label={<>{translate(language,"loading")}</>} className="p-4 text-sm text-slate" />:pipelinePage.error?<div role="alert" className="p-4 text-sm text-danger">{translate(language,"loadFailed")} <RetryIconButton  onClick={pipelinePage.retry} loading={pipelinePage.loading}>{translate(language,"retry")}</RetryIconButton></div>:candidateRows.length===0?<TabEmptyState message={translate(language,"noActiveCandidates")} />:(listClient?candidateRows:candidateRows.sort((a,b)=>compareCandidateRows(a,b,candidateSort))).map(({ candidate, lastTouch, pendingRemark }) => <CandidateActionCard key={candidate.application_id ?? candidate.candidate_id} candidate={candidate} language={language} lastTouch={lastTouch} pendingRemark={pendingRemark} onOpenCandidate={onOpenCandidate} />)}</div>
               </div>
             </div>
             {pipelinePage.refreshing ? <RefreshIndicator language={language} /> : null}{listClient&&!pipelinePage.error?<CursorPagination language={language} page={pipelinePage.page} pageSize={pipelinePage.pageSize} loading={pipelinePage.loading} canPrevious={pipelinePage.canPrevious} canNext={pipelinePage.canNext} onPrevious={pipelinePage.goPrevious} onNext={pipelinePage.goNext} onPageSizeChange={pipelinePage.setPageSize}/>:null}
           </>
         ) : null}
-        {selectedTab.key === "sourcing_updates" ? <div ref={recordListRef} className="min-w-0 md:max-h-[min(62dvh,44rem)] md:overflow-auto" data-home-record-list="true"><div className="md:min-w-[68rem]"><HomeRecordHeader columns={[translate(language, "group"), translate(language, "linkedRequisitions"), translate(language, "openVacanciesHeader"), translate(language, "siteOwner"), translate(language, "weekStatus"), translate(language, "lastSaved")]} gridClass={sourcingColumns} sticky /><div className="divide-y divide-[#E4E9F2]">{groupPage.initialLoading&&!visibleGroups.length?<LoadingSkeleton variant="table" label={<>{translate(language,"loading")}</>} className="p-4 text-sm text-slate" />:groupPage.error?<div role="alert" className="p-4 text-sm text-danger">{translate(language,"loadFailed")} <RetryIconButton  onClick={groupPage.retry} loading={groupPage.loading}>{translate(language,"retry")}</RetryIconButton></div>:visibleGroups.length===0?<TabEmptyState message={translate(language,"noOpenSourcingAttention")} />:visibleGroups.map((group) => <SourcingUpdateCard key={group.group_id} group={group} language={language} href={groupWorkspaceHref(sourcingHref, group.group_id)} />)}</div>{groupPage.refreshing ? <RefreshIndicator language={language} /> : null}{listClient&&!groupPage.error?<><span aria-live="polite">{groupPage.countLabel}</span>{groupPage.countError?<RetryIconButton type="button"  onClick={groupPage.retryCount} loading={groupPage.countLoading}>{translate(language,"retry")}</RetryIconButton>:null}<CursorPagination language={language} page={groupPage.page} pageSize={groupPage.pageSize} loading={groupPage.loading} canPrevious={groupPage.canPrevious} canNext={groupPage.canNext} onPrevious={groupPage.goPrevious} onNext={groupPage.goNext} onPageSizeChange={groupPage.setPageSize}/></>:null}</div></div> : null}
-        {selectedTab.key === "data_quality" ? <div ref={recordListRef} className="min-w-0 md:max-h-[min(62dvh,44rem)] md:overflow-auto" data-home-record-list="true"><div className="md:min-w-[70rem]"><HomeRecordHeader columns={[translate(language, "record"), translate(language, "issue"), translate(language, "severity"), translate(language, "explanation"), translate(language, "context"), translate(language, "action")]} gridClass={qualityColumns} sticky />{qualityLoading && !qualityPage ? <LoadingSkeleton variant="table" label={<>{translate(language, "loading")}</>} className="py-4 text-sm text-slate" /> : null}{qualityError ? <div role="alert" className="py-4 text-sm text-danger">{translate(language, "loadFailed")} <RetryIconButton type="button"  onClick={() => setQualityRetry(value => value + 1)}>{translate(language, "retry")}</RetryIconButton></div> : null}<div className="divide-y divide-[#E4E9F2]">{qualityPage?.items.map(issue => <HomeQualityRow key={issue.cursorId} candidates={candidates} issue={issue} language={language} offers={offers} onOpenCandidate={onOpenCandidate} onOpenRequisition={onOpenRequisition} requisitions={requisitions} sourcingHref={sourcingHref} />)}{qualityPage && qualityPage.totalCount===0 && !qualityLoading ? <TabEmptyState message={translate(language, "noDataQualityIssues")} /> : null}</div>{qualityPage && qualityPage.totalCount>0 ? <div className="flex items-center justify-between gap-3 py-3 text-sm"><span>Page {qualityCursorStack.length} · {qualityPage.totalCount} issues</span><div className="flex gap-2"><Button type="button" variant="secondary" disabled={qualityCursorStack.length<=1||qualityLoading} onClick={()=>{setQualityPage(null);setQualityCursorStack(stack=>stack.slice(0,-1));}}>{translate(language,"previous")}</Button><Button type="button" variant="secondary" disabled={!qualityPage.hasMore||qualityLoading||!qualityPage.nextCursor} onClick={()=>{if(qualityPage.nextCursor){setQualityPage(null);setQualityCursorStack(stack=>[...stack,qualityPage.nextCursor]);}}}>{translate(language,"next")}</Button></div></div>:null}</div></div> : null}
-        {selectedTab.key === "start_confirmation" ? <div ref={recordListRef} className="min-w-0 md:max-h-[min(62dvh,44rem)] md:overflow-auto" data-home-record-list="true"><div className="md:min-w-[68rem]"><HomeRecordHeader columns={[translate(language, "candidate"), translate(language, "requisition"), translate(language, "siteOwner"), translate(language, "firstWorkingDate"), translate(language, "confirmationState"), translate(language, "confirmationAction")]} gridClass={confirmationColumns} sticky /><div className="divide-y divide-[#E4E9F2]">{startPage.initialLoading&&!visibleStartConfirmations.length?<LoadingSkeleton variant="table" label={<>{translate(language,"loading")}</>} className="p-4 text-sm text-slate" />:startPage.error?<div role="alert" className="p-4 text-sm text-danger">{translate(language,"loadFailed")} <RetryIconButton  onClick={startPage.retry} loading={startPage.loading}>{translate(language,"retry")}</RetryIconButton></div>:visibleStartConfirmations.length===0?<TabEmptyState message={translate(language,"noNewHireConfirmations")} />:visibleStartConfirmations.map((offer) => <StartConfirmationCard key={offer.offer_id} language={language} offer={offer} onConfirm={() => onConfirmStart(offer)} onOpenCandidate={onOpenCandidate} requisition={requisitions.find((row) => row.doc_id === offer.doc_id)} />)}</div>{startPage.refreshing ? <RefreshIndicator language={language} /> : null}{listClient&&!startPage.error?<><span aria-live="polite">{startPage.countLabel}</span>{startPage.countError?<RetryIconButton type="button"  onClick={startPage.retryCount} loading={startPage.countLoading}>{translate(language,"retry")}</RetryIconButton>:null}<CursorPagination language={language} page={startPage.page} pageSize={startPage.pageSize} loading={startPage.loading} canPrevious={startPage.canPrevious} canNext={startPage.canNext} onPrevious={startPage.goPrevious} onNext={startPage.goNext} onPageSizeChange={startPage.setPageSize}/></>:null}</div></div> : null}
+        {selectedTab.key === "sourcing_updates" ? <><div ref={recordListRef} className="min-w-0 md:max-h-[min(62dvh,44rem)] md:overflow-auto" data-home-record-list="true"><div className="md:min-w-[68rem]"><HomeRecordHeader columns={[translate(language, "group"), translate(language, "linkedRequisitions"), translate(language, "openVacanciesHeader"), translate(language, "siteOwner"), translate(language, "weekStatus"), translate(language, "lastSaved")]} gridClass={sourcingColumns} sticky /><div className="divide-y divide-[#E4E9F2]">{groupPage.initialLoading&&!visibleGroups.length?<LoadingSkeleton variant="table" columns={6} gridClassName={sourcingColumns} label={<>{translate(language,"loading")}</>} className="p-4 text-sm text-slate" />:groupPage.error?<div role="alert" className="p-4 text-sm text-danger">{translate(language,"loadFailed")} <RetryIconButton  onClick={groupPage.retry} loading={groupPage.loading}>{translate(language,"retry")}</RetryIconButton></div>:visibleGroups.length===0?<TabEmptyState message={translate(language,"noOpenSourcingAttention")} />:visibleGroups.map((group) => <SourcingUpdateCard key={group.group_id} group={group} language={language} href={groupWorkspaceHref(sourcingHref, group.group_id)} />)}</div></div></div><div data-home-record-pagination className="mt-3 min-w-0 border-t border-[#E4E9F2] pt-3">{groupPage.refreshing ? <RefreshIndicator language={language} /> : null}{listClient&&!groupPage.error?<><span aria-live="polite">{groupPage.totalCount === null && groupPage.countLoading ? <NumberSkeleton/> : groupPage.countLabel}</span>{groupPage.countError?<RetryIconButton type="button"  onClick={groupPage.retryCount} loading={groupPage.countLoading}>{translate(language,"retry")}</RetryIconButton>:null}<CursorPagination language={language} page={groupPage.page} pageSize={groupPage.pageSize} loading={groupPage.loading} canPrevious={groupPage.canPrevious} canNext={groupPage.canNext} onPrevious={groupPage.goPrevious} onNext={groupPage.goNext} onPageSizeChange={groupPage.setPageSize}/></>:null}</div></> : null}
+        {selectedTab.key === "data_quality" ? <><div ref={recordListRef} className="min-w-0 md:max-h-[min(62dvh,44rem)] md:overflow-auto" data-home-record-list="true"><div className="md:min-w-[70rem]"><HomeRecordHeader columns={[translate(language, "record"), translate(language, "issue"), translate(language, "severity"), translate(language, "explanation"), translate(language, "context"), translate(language, "action")]} gridClass={qualityColumns} sticky />{qualityLoading && !qualityPage ? <LoadingSkeleton variant="table" columns={6} gridClassName={qualityColumns} label={<>{translate(language, "loading")}</>} className="py-4 text-sm text-slate" /> : null}{qualityError ? <div role="alert" className="py-4 text-sm text-danger">{translate(language, "loadFailed")} <RetryIconButton type="button"  onClick={() => setQualityRetry(value => value + 1)}>{translate(language, "retry")}</RetryIconButton></div> : null}<div className="divide-y divide-[#E4E9F2]">{qualityPage?.items.map(issue => <HomeQualityRow key={issue.cursorId} candidates={candidates} issue={issue} language={language} offers={offers} onOpenCandidate={onOpenCandidate} onOpenRequisition={onOpenRequisition} requisitions={requisitions} sourcingHref={sourcingHref} />)}{qualityPage && qualityPage.totalCount===0 && !qualityLoading ? <TabEmptyState message={translate(language, "noDataQualityIssues")} /> : null}</div></div></div><div data-home-record-pagination className="mt-3 min-w-0 border-t border-[#E4E9F2] pt-3">{qualityPage && qualityPage.totalCount>0 ? <div className="flex items-center justify-between gap-3 py-3 text-sm"><span>Page {qualityCursorStack.length} · {qualityPage.totalCount} issues</span><div className="flex gap-2"><Button type="button" variant="secondary" disabled={qualityCursorStack.length<=1||qualityLoading} onClick={()=>{setQualityPage(null);setQualityCursorStack(stack=>stack.slice(0,-1));}}>{translate(language,"previous")}</Button><Button type="button" variant="secondary" disabled={!qualityPage.hasMore||qualityLoading||!qualityPage.nextCursor} onClick={()=>{if(qualityPage.nextCursor){setQualityPage(null);setQualityCursorStack(stack=>[...stack,qualityPage.nextCursor]);}}}>{translate(language,"next")}</Button></div></div>:null}</div></> : null}
+        {selectedTab.key === "start_confirmation" ? <><div ref={recordListRef} className="min-w-0 md:max-h-[min(62dvh,44rem)] md:overflow-auto" data-home-record-list="true"><div className="md:min-w-[68rem]"><HomeRecordHeader columns={[translate(language, "candidate"), translate(language, "requisition"), translate(language, "siteOwner"), translate(language, "firstWorkingDate"), translate(language, "confirmationState"), translate(language, "confirmationAction")]} gridClass={confirmationColumns} sticky /><div className="divide-y divide-[#E4E9F2]">{startPage.initialLoading&&!visibleStartConfirmations.length?<LoadingSkeleton variant="table" columns={[{},{},{},{kind:"date"},{},{kind:"action",actionCount:2}]} gridClassName={confirmationColumns} label={<>{translate(language,"loading")}</>} className="p-4 text-sm text-slate" />:startPage.error?<div role="alert" className="p-4 text-sm text-danger">{translate(language,"loadFailed")} <RetryIconButton  onClick={startPage.retry} loading={startPage.loading}>{translate(language,"retry")}</RetryIconButton></div>:visibleStartConfirmations.length===0?<TabEmptyState message={translate(language,"noNewHireConfirmations")} />:visibleStartConfirmations.map((offer) => <StartConfirmationCard key={offer.offer_id} language={language} offer={offer} onConfirm={(outcome) => onConfirmStart(offer, outcome)} onOpenCandidate={onOpenCandidate} requisition={requisitions.find((row) => row.doc_id === offer.doc_id)} />)}</div></div></div><div data-home-record-pagination className="mt-3 min-w-0 border-t border-[#E4E9F2] pt-3">{startPage.refreshing ? <RefreshIndicator language={language} /> : null}{listClient&&!startPage.error?<><span aria-live="polite">{startPage.totalCount === null && startPage.countLoading ? <NumberSkeleton/> : startPage.countLabel}</span>{startPage.countError?<RetryIconButton type="button"  onClick={startPage.retryCount} loading={startPage.countLoading}>{translate(language,"retry")}</RetryIconButton>:null}<CursorPagination language={language} page={startPage.page} pageSize={startPage.pageSize} loading={startPage.loading} canPrevious={startPage.canPrevious} canNext={startPage.canNext} onPrevious={startPage.goPrevious} onNext={startPage.goNext} onPageSizeChange={startPage.setPageSize}/></>:null}</div></> : null}
       </div>
     </Panel>
   );
@@ -587,7 +590,7 @@ function HomeQualityRow({ candidates, issue, language, offers, onOpenCandidate, 
   </article>;
 }
 
-function StartConfirmationCard({ language, offer, onConfirm, onOpenCandidate, requisition }: { language: Language; offer: EnrichedOffer; onConfirm: () => void; onOpenCandidate: (candidateId: string, applicationId?: string) => void; requisition?: EnrichedRequisition }) {
+function StartConfirmationCard({ language, offer, onConfirm, onOpenCandidate, requisition }: { language: Language; offer: EnrichedOffer; onConfirm: (outcome: AttendanceOutcome) => void; onOpenCandidate: (candidateId: string, applicationId?: string) => void; requisition?: EnrichedRequisition }) {
   return (
     <article className={`grid min-w-0 gap-2 px-2 py-2.5 text-[13px] md:items-center md:gap-3 md:text-xs xl:text-[13px] ${confirmationColumns}`}>
       <div className="min-w-0"><MobileFieldLabel>{translate(language, "candidate")}</MobileFieldLabel><button type="button" className="block min-h-11 max-w-full rounded-sm text-left font-semibold text-navy underline-offset-2 hover:text-primary hover:underline focus:outline-none focus:ring-2 focus:ring-primary/30 md:min-h-0" title={offer.candidate_name ?? formatRecruitmentId(offer.candidate_id)} aria-label={`${translate(language, "openCandidate")}: ${offer.candidate_name ?? formatRecruitmentId(offer.candidate_id)}`} onClick={() => onOpenCandidate(offer.candidate_id, offer.application_id)}><span className="block truncate">{offer.candidate_name ?? formatRecruitmentId(offer.candidate_id)}</span></button><span className="block truncate text-[11px] font-medium text-slate">{formatRecruitmentId(offer.candidate_id)}</span></div>
@@ -595,7 +598,7 @@ function StartConfirmationCard({ language, offer, onConfirm, onOpenCandidate, re
       <div className="min-w-0"><MobileFieldLabel>{translate(language, "siteOwner")}</MobileFieldLabel><span className="block break-words text-slate">{requisition?.site || offer.site || "—"} · {requisition?.person_in_charge || offer.person_in_charge || translate(language, "unassigned")}</span></div>
       <div className="min-w-0"><MobileFieldLabel>{translate(language, "firstWorkingDate")}</MobileFieldLabel><span className="block font-medium tabular-nums text-slate">{formatDate(offer.first_working_date, language)}</span></div>
       <div className="min-w-0"><MobileFieldLabel>{translate(language, "confirmationState")}</MobileFieldLabel><Tag appearance="soft" tone="warning">{translate(language, "pending")}</Tag></div>
-      <div className="min-w-0"><MobileFieldLabel>{translate(language, "confirmationAction")}</MobileFieldLabel><Button type="button" size="sm" variant="secondary" icon={<BadgeCheck size={15} aria-hidden="true" />} className="!min-h-11 px-2.5 text-xs md:!min-h-9" onClick={onConfirm}>{translate(language, "confirmStart")}</Button></div>
+      <div className="min-w-0"><MobileFieldLabel>{translate(language, "confirmationAction")}</MobileFieldLabel><AttendanceDecisionActions language={language} eligible={Boolean(offer.accepted_date && offer.first_working_date && offer.first_working_date <= formatLocalDateInput() && !offer.start_confirmation)} onDecision={onConfirm}/></div>
     </article>
   );
 }

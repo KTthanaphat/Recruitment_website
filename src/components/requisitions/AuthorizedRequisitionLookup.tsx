@@ -1,5 +1,5 @@
 import { RetryIconButton } from "@/components/ui/RetryIconButton";
-import { LoadingSkeleton } from "@/components/ui/LoadingSkeleton";
+import { NumberSkeleton, LoadingSkeleton } from "@/components/ui/LoadingSkeleton";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/Button";
@@ -86,7 +86,7 @@ export function AuthorizedRequisitionLookup({ client, accessScope, language, fil
       </SelectInput>
     </Field>
     <div className="flex min-h-5 items-center justify-between gap-2 text-xs text-slate">
-      <span>{page.countLabel} · {translate(language, "requisitions")}</span>
+      <span>{page.totalCount === null && page.countLoading ? <NumberSkeleton/> : page.countLabel} · {translate(language, "requisitions")}</span>
       {page.countError ? <RetryIconButton title={`${language === "th" ? "ลองโหลดข้อมูลอีกครั้ง" : "Retry loading"}: Authorized Requisition Lookup`} type="button"   onClick={page.retryCount} loading={page.countLoading}>{translate(language, "retry")}</RetryIconButton> : null}
     </div>
     {page.initialLoading ? <LoadingSkeleton variant="lookup" label={<>{translate(language, "loading")}</>} className="text-sm text-slate" /> : null}

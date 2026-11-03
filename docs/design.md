@@ -8,6 +8,7 @@ Use the matching contract and its linked component; do not read the entire libra
 | --- | --- |
 | Font hierarchy, color, surfaces, responsive composition | [Foundations](design/foundations.md) |
 | Home banner, work queue, calendar, summary cards | [Home](design/home.md) |
+| Pipeline board loading and five-card navigation | [Pipeline](design/pipeline.md) |
 | Workspace picker, selected case, tabs, and sections | [Workspace](design/workspace.md) |
 | Audit filters, event table and field changes | [Audit Log](design/audit.md) |
 | Dashboard common filters, report tabs, scope and responsive portal | [Dashboard portal](design/dashboard-portal.md) |

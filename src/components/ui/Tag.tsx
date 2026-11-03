@@ -22,6 +22,6 @@ const softTones: Record<Tone, string> = {
   purple: "bg-[#F3EAFF] text-[#7040A8]"
 };
 
-export function Tag({ children, tone = "muted", appearance = "filled" }: { children: ReactNode; tone?: Tone; appearance?: "filled" | "soft" }) {
-  return <span data-tag-appearance={appearance} className={`inline-flex min-h-6 items-center rounded-md px-2.5 text-xs font-semibold ${appearance === "soft" ? softTones[tone] : tones[tone]}`}>{children}</span>;
+export function Tag({ children, tone = "muted", appearance = "filled", className = "" }: { children: ReactNode; tone?: Tone; appearance?: "filled" | "soft"; className?: string }) {
+  return <span data-tag-appearance={appearance} className={`inline-flex min-h-6 items-center rounded-md px-2.5 text-xs font-semibold ${appearance === "soft" ? softTones[tone] : tones[tone]} ${className}`}>{children}</span>;
 }

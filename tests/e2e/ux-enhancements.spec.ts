@@ -481,7 +481,7 @@ test("home calendar distinguishes due, confirmed, future, and no-show start-work
   await due.click();
   const candidateDetail = page.getByRole("dialog", { name: /C-OFFER-PASS/ });
   await expect(candidateDetail.getByText("New hire confirmation due")).toHaveCount(1);
-  await candidateDetail.getByRole("button", { name: "Confirm start" }).last().click();
+  await candidateDetail.getByRole("button", { name: "Accept: Started work" }).last().click();
   await expect(page.getByRole("dialog", { name: "New Hire Confirmation" })).toBeVisible();
   await page.getByRole("dialog", { name: "New Hire Confirmation" }).getByRole("button", { name: "Cancel" }).click();
   await candidateDetail.getByRole("button", { name: "Close" }).click();

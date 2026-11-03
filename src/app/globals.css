@@ -636,3 +636,22 @@ dialog::backdrop {
 .ats-retry-icon { min-width: 36px; min-height: 36px; }
 @media (max-width: 767px), (pointer: coarse) { .ats-retry-icon { min-width: 44px; min-height: 44px; } }
 @media (prefers-reduced-motion: reduce) { .ats-skeleton { animation: none; } }
+
+/* Compact local navigation/edit utilities retain coarse-pointer touch targets. */
+.ats-compact-utility { height: 36px; width: 36px; }
+.ats-attendance-action { min-height: 36px; }
+@media (max-width: 639px), (pointer: coarse) {
+  .ats-compact-utility { height: 44px; width: 44px; }
+  .ats-attendance-action { min-height: 44px; }
+}
+
+/* Shared attendance decisions and their table placeholders. */
+.ats-attendance-button, .ats-attendance-placeholder { height: 36px; width: 36px; flex-shrink: 0; }
+button.ats-attendance-accept { background: #E8F5EC; color: #167A3D; }
+button.ats-attendance-reject { background: #FCECEF; color: #C52B40; }
+button.ats-attendance-accept:not(:disabled):hover { background: #D3ECDC; }
+button.ats-attendance-reject:not(:disabled):hover { background: #F8D9DF; }
+button.ats-attendance-button:disabled { background: #E4E9F2; color: #7D8DA8; }
+@media (max-width: 639px), (pointer: coarse) {
+  .ats-attendance-button, .ats-attendance-placeholder { height: 44px; width: 44px; }
+}

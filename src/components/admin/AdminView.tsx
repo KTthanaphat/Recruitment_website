@@ -92,7 +92,7 @@ export function AdminView({
         action={<Button type="button" size="sm" variant="secondary" icon={<UserPlus size={16} />} onClick={onInvite}>{translate(language, "manageUser")}</Button>}
       />
       {refreshing ? <RefreshIndicator language={language} /> : null}{loading && !refreshing ? (
-        <LoadingSkeleton variant="table" label={<>{translate(language, "loading")}</>} className="py-6 text-center text-sm font-medium text-slate" />
+        <><LoadingSkeleton variant="metrics" metricLabels={["systemAdmins","recruiters","siteRecruiters","missingSite","viewers"].map(key => translate(language,key as Parameters<typeof translate>[1]))} language={language}/><LoadingSkeleton variant="cards" count={3} language={language} gridClassName="md:grid-cols-2 xl:grid-cols-3"/></>
       ) : unavailable ? (
         <div role="alert" className="grid justify-items-center gap-3 py-5 text-center">
           <p className="text-sm font-medium text-slate">{translate(language, "couldNotLoadRecruitmentRecords")}</p>

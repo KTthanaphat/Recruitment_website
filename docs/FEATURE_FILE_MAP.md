@@ -4,6 +4,7 @@ Updated: 2026-10-04. Start with the row closest to the task; read one feature no
 
 | Task | Entry |
 | --- | --- |
+| Structural skeletons, five-card boards, compact offers or sourcing repair | [Design adjustment record](work-items/design-adjustments/implementation.md#november-3-refinement) → follow only the affected canonical contract |
 | Create/add a feature; choose direct or agent work | [Feature delivery process](workflows/FEATURE_DELIVERY_LOOP.md) |
 | Change behavior, component or record flow | [System map](maps/SYSTEM_MAP.md) |
 | Run locally, configure services, schema workflow or release | [Setup map](maps/SETUP_MAP.md) |

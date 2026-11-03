@@ -1,6 +1,7 @@
+import { createPortal } from "react-dom";
 import { RetryIconButton } from "@/components/ui/RetryIconButton";
-import { LoadingSkeleton, RefreshIndicator } from "@/components/ui/LoadingSkeleton";
-import { useEffect, useId, useRef, useState } from "react";
+import { NumberSkeleton, LoadingSkeleton, RefreshIndicator } from "@/components/ui/LoadingSkeleton";
+import { useEffect, useLayoutEffect, useId, useRef, useState } from "react";
 import { Info } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { SOURCING_CHANNELS, pipelineDisplayLabel, type PipelineDisplayStage } from "@/lib/constants";
@@ -19,7 +20,7 @@ function SummaryHelp({ label, description, language }: { label: string; descript
   const tooltipRef = useRef<HTMLSpanElement>(null);
   const id = useId();
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!open) return;
     const positionTooltip = () => {
       const trigger = rootRef.current?.getBoundingClientRect();
@@ -51,8 +52,8 @@ function SummaryHelp({ label, description, language }: { label: string; descript
   }, [open]);
 
   return <span ref={rootRef} className="relative inline-flex shrink-0" onMouseEnter={() => setOpen(true)} onMouseLeave={() => { if (!rootRef.current?.contains(document.activeElement)) setOpen(false); }}>
-    <button type="button" className="grid h-7 w-7 place-items-center rounded-full text-[#8A9BB4] hover:bg-[#EEF5FF] hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40" aria-label={translate(language, "sourcingSummaryInfo", { metric: label })} aria-expanded={open} aria-controls={open ? id : undefined} aria-describedby={open ? id : undefined} onFocus={() => setOpen(true)} onBlur={() => setOpen(false)} onClick={() => setOpen(true)}><Info size={16} aria-hidden="true" /></button>
-    {open ? <span ref={tooltipRef} id={id} role="tooltip" style={placement} className="pointer-events-none fixed z-30 box-border rounded-lg bg-navy px-3 py-2 text-left text-xs font-normal leading-relaxed text-white shadow-lg">{description}</span> : null}
+    <button type="button" className="grid h-11 w-11 sm:h-7 sm:w-7 place-items-center rounded-full text-[#8A9BB4] hover:bg-[#EEF5FF] hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40" aria-label={translate(language, "sourcingSummaryInfo", { metric: label })} aria-expanded={open} aria-controls={open ? id : undefined} aria-describedby={open ? id : undefined} onFocus={() => setOpen(true)} onBlur={() => setOpen(false)} onClick={() => setOpen(true)}><Info size={16} aria-hidden="true" /></button>
+    {open ? createPortal(<span ref={tooltipRef} id={id} role="tooltip" style={placement} className="pointer-events-none fixed z-30 box-border rounded-lg bg-navy px-3 py-2 text-left text-xs font-normal leading-relaxed text-white shadow-lg">{description}</span>, document.body) : null}
   </span>;
 }
 
@@ -92,7 +93,7 @@ export function SourcingSummaryCharts({ summary, language, loading = false, erro
     observer.observe(chart);
     return () => observer.disconnect();
   }, [weeks.length]);
-  const values = weeks.map((row) => row.applicants);
+  const values = weeks.map((row) => row.updatedRows < row.expectedRows ? null : row.applicants);
   const maximum = Math.max(0, ...values.filter((value): value is number => value !== null));
   const scale = maximum > 0 ? Math.ceil(maximum * 1.1 / 10) * 10 : 1;
   const ticks = maximum > 0 ? [0, scale / 2, scale] : [0];
@@ -143,11 +144,11 @@ export function SourcingSummaryCharts({ summary, language, loading = false, erro
 
   const cardClass = "min-w-0 rounded-xl border border-[#D7DEE8] bg-white p-3 shadow-[0_8px_24px_rgba(11,19,43,0.05)]";
 
-  if (!summary || error) return <section data-testid="workspace-sourcing-summary" aria-busy={loading} className="mb-4 min-w-0 rounded-xl border border-[#D7DEE8] bg-white p-3">
-    {loading ? <LoadingSkeleton variant="chart" label={<>{translate(language, "loading")}</>} className="text-sm text-slate" /> : <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-danger"><span>{language === "th" ? "โหลดสรุปข้อมูลจัดหาไม่สำเร็จ" : "Could not load the sourcing summary."}</span>{onRetry ? <RetryIconButton title={`${language === "th" ? "ลองโหลดข้อมูลอีกครั้ง" : "Retry loading"}: Sourcing Summary Charts`} type="button"   onClick={onRetry}>{translate(language, "retry")}</RetryIconButton> : null}</div>}
+  if (!summary) return <section data-testid="workspace-sourcing-summary" aria-busy={loading} className="mb-4 min-w-0 rounded-xl border border-[#D7DEE8] bg-white p-3">
+    {loading || !error ? <div className="grid min-w-0 gap-2 min-[1080px]:grid-cols-3">{["accumulatedApplicants","cumulativeChannelDistribution","sourcingStageChannels"].map(key => <div key={key} className="min-w-0 rounded-xl border border-[#E4E9F2] p-3"><h2 className="text-base font-semibold text-navy">{translate(language,key as Parameters<typeof translate>[1])}</h2><div className="mt-3"><NumberSkeleton/></div><LoadingSkeleton variant="chart" language={language}/></div>)}</div> : <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-danger"><span>{language === "th" ? "โหลดสรุปข้อมูลจัดหาไม่สำเร็จ" : "Could not load the sourcing summary."}</span>{onRetry ? <RetryIconButton title={`${language === "th" ? "ลองโหลดข้อมูลอีกครั้ง" : "Retry loading"}: Sourcing Summary Charts`} type="button"   onClick={onRetry}>{translate(language, "retry")}</RetryIconButton> : null}</div>}
   </section>;
 
-  return <section data-testid="workspace-sourcing-summary" aria-busy={loading} className="mb-4 min-w-0">{loading ? <RefreshIndicator language={language} /> : null}
+  return <section data-testid="workspace-sourcing-summary" aria-busy={loading} className="mb-4 min-w-0">{error ? <div role="alert" className="mb-2 text-sm text-danger">{translate(language,"loadFailed")} <RetryIconButton onClick={onRetry} loading={loading}>{translate(language,"retry")}</RetryIconButton></div> : null}{loading ? <RefreshIndicator language={language} /> : null}
     <div data-testid="workspace-sourcing-summary-row" className="grid min-w-0 gap-2 min-[1080px]:grid-cols-[minmax(0,30fr)_minmax(0,34fr)_minmax(0,36fr)]">
       <div className={cardClass}>
         <div className="flex min-w-0 items-center gap-1"><h2 className="min-w-0 text-base font-semibold text-navy">{translate(language, "accumulatedApplicants")}</h2><SummaryHelp label={translate(language, "accumulatedApplicants")} description={translate(language, "sourcingCumulativeHelp")} language={language} /></div>

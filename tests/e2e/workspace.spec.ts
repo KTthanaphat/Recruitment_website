@@ -385,6 +385,7 @@ test("Workspace Sourcing lists all weeks beside one editor and guards unsaved ch
   await expectWorkspaceReady(page);
   const layout = page.getByTestId("workspace-sourcing-layout");
   const dates = layout.getByTestId("workspace-sourcing-dates");
+  await expect(dates.getByRole("button")).toHaveCount(8);
   const weekHeader = await layout.getByTestId("workspace-sourcing-week-header").boundingBox();
   const updateHeader = await layout.getByTestId("workspace-sourcing-update-header").boundingBox();
   expect(Math.abs(weekHeader!.height - updateHeader!.height)).toBeLessThan(2);
@@ -675,18 +676,18 @@ test("Workspace Sourcing summary distinguishes recorded and missing weeks", asyn
   expect(Math.abs((numberBox!.y + numberBox!.height) - (changeBox!.y + changeBox!.height))).toBeLessThan(7);
   const help = metric.getByRole("button", { name: "About Cumulative applicants" });
   await help.focus();
-  await expect(metric.getByRole("tooltip")).toContainText("selected week's saved applicants");
+  await expect(page.getByRole("tooltip")).toContainText("selected week's saved applicants");
   await help.press("Escape");
-  await expect(metric.getByRole("tooltip")).toHaveCount(0);
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
   await page.mouse.click(0, 0);
   await help.hover();
-  await expect(metric.getByRole("tooltip")).toBeVisible();
+  await expect(page.getByRole("tooltip")).toBeVisible();
   await page.mouse.move(0, 0);
-  await expect(metric.getByRole("tooltip")).toHaveCount(0);
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
   await help.click();
-  await expect(metric.getByRole("tooltip")).toBeVisible();
+  await expect(page.getByRole("tooltip")).toBeVisible();
   await metric.getByRole("heading", { name: "Applicant trend · 8 weeks" }).click();
-  await expect(metric.getByRole("tooltip")).toHaveCount(0);
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
   await page.goto("/workspace?type=group&id=GRP-ENG&section=sourcing&sourcingWeek=2026-07-11");
   await expect(summary).toContainText("Cumulative applicants20");
   await expect(summary.getByTestId("workspace-sourcing-pie")).toBeVisible();
@@ -855,14 +856,14 @@ test("Sourcing reference layout reflows with accurate periods and Thai copy", as
   await expect(page.getByTestId("workspace-sourcing-draft-total")).toContainText("ผู้สมัครรวมในรายการที่กำลังแก้ไข");
   const thaiHelp = summary.getByRole("button", { name: /ข้อมูลเกี่ยวกับ/ }).first();
   await thaiHelp.click();
-  await expect(summary.getByRole("tooltip")).toContainText("ยอดผู้สมัครจากบันทึกที่ครบถ้วน");
+  await expect(page.getByRole("tooltip")).toContainText("ยอดผู้สมัครจากบันทึกที่ครบถ้วน");
   await thaiHelp.press("Escape");
   await page.setViewportSize({ width: 360, height: 850 });
   const thaiHelpButtons = summary.getByRole("button", { name: /ข้อมูลเกี่ยวกับ/ });
   for (let index = 0; index < 3; index += 1) {
     const helpButton = thaiHelpButtons.nth(index);
     await helpButton.click();
-    const helpBounds = await summary.getByRole("tooltip").boundingBox();
+    const helpBounds = await page.getByRole("tooltip").boundingBox();
     expect(helpBounds!.x >= 0 && helpBounds!.x + helpBounds!.width <= 360).toBe(true);
     await helpButton.press("Escape");
   }
@@ -875,6 +876,10 @@ test("Sourcing distribution shows every contributing channel with shared editor 
   const update = mock.data.sourcing_weekly_updates.find((row) => row.group_id === "GRP-ENG" && row.week_start === "2026-07-06");
   if (!update) throw new Error("Missing sourcing update fixture");
   update.week_start = "2026-07-04";
+  // Isolate this distribution fixture: cumulative history must not add the base fixture's eight applicants.
+  for (const row of mock.data.sourcing_weekly_updates.filter(row => row.group_id === "GRP-ENG" && row !== update)) {
+    for (const key of Object.keys(row).filter(key => key.startsWith("applicants_"))) (row as unknown as Record<string, unknown>)[key] = 0;
+  }
   Object.assign(update, { channel_fb: true, applicants_fb: 5, channel_jobthai: true, applicants_jobthai: 4, channel_linkedin: true, applicants_linkedin: 3, channel_walkin: true, applicants_walkin: 3, channel_referral: true, applicants_referral: 1, channel_others: true, applicants_others: 2 });
   await page.goto("/workspace?type=group&id=GRP-ENG&section=sourcing&sourcingWeek=2026-07-04");
   await expectWorkspaceReady(page);
@@ -959,7 +964,9 @@ test("Sourcing chart preserves a recorded zero and Thai labels", async ({ page }
   const update = mock.data.sourcing_weekly_updates.find((row) => row.group_id === "GRP-ENG" && row.week_start === "2026-07-06");
   if (!update) throw new Error("Missing sourcing update fixture");
   update.week_start = "2026-07-04";
-  update.applicants_fb = 0;
+  for (const row of mock.data.sourcing_weekly_updates.filter(row => row.group_id === "GRP-ENG")) {
+    for (const key of Object.keys(row).filter(key => key.startsWith("applicants_"))) (row as unknown as Record<string, unknown>)[key] = 0;
+  }
   await page.goto("/workspace?lang=th&type=group&id=GRP-ENG&section=sourcing&sourcingWeek=2026-07-04");
   await expect(page.getByRole("button", { name: "รีเฟรช" })).toBeVisible();
   const summary = page.getByTestId("workspace-sourcing-summary");

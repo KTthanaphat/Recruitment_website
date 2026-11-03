@@ -67,3 +67,7 @@ Cross-site candidate destinations use the minimal application directory; matchin
 ## Bounded picker data correctness
 
 The paginated picker counts linked requisitions from each group row's authorized `doc_ids`, independently of the small startup dataset. `LinkedRequisitionPreview` loads only those exact requisitions and their offers when opened, through `loadScopedRequisitionPreview`; loading and retry states preserve the projected count. Scoped relation readers deduplicate by the requested table primary key, so multiple offers sharing one application remain distinct. Candidate stage cards and profile drawers continue using their scoped database reads. Regression coverage: [workspace data display](../../../tests/e2e/workspace-data-display.spec.ts) and [scoped loaders](../../../tests/e2e/scoped-detail-loaders.spec.ts).
+
+Cards/ratios/scoped sourcing: [contract](../../design/workspace.md#group-cards-ratios-and-scoped-sourcing); search sourcingSlot, embeddedHistory; [checks](../../../tests/e2e/design-adjustments.spec.ts).
+
+Compact Cards/loading: groupCardGrid, GroupCardSkeleton; [contract](../../design/workspace.md#group-cards-ratios-and-scoped-sourcing); [checks](../../../tests/e2e/design-refinement.spec.ts). Table-only details/preview remain under the same owner.

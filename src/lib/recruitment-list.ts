@@ -93,6 +93,34 @@ export async function fetchRecruitmentList<T>(client: RpcClient, request: Recrui
   catch (error) { if (pageCache.get(key) === cached) pageCache.delete(key); throw error; }
 }
 
+/** Complete card projection; never publishes a partial cursor traversal. */
+export async function fetchCompleteRecruitmentList<T>(client: RpcClient, request: RecruitmentListRequest, keyOf: (row: T) => string): Promise<RecruitmentListPage<T>> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const items: T[] = [], ids = new Set<string>(), cursors = new Set<string>();
+    let cursor: RecruitmentListCursor | null = null;
+    do {
+      const page: RecruitmentListPage<T> = await fetchRecruitmentList<T>(client, { ...request, limit: 100, cursor, before: false });
+      for (const row of page.items) {
+        const id = keyOf(row);
+        if (!id || ids.has(id)) throw new Error("Complete list contains a missing or duplicate identity");
+        ids.add(id); items.push(row);
+      }
+      cursor = page.has_more ? page.next_cursor : null;
+      if (cursor) {
+        const key = JSON.stringify(cursor);
+        if (cursors.has(key)) throw new Error("Complete list cursor did not advance");
+        cursors.add(key);
+      }
+    } while (cursor);
+    const count = await fetchRecruitmentListCount(client, request);
+    if (count === items.length) return { items, total_count: count, has_more: false, has_more_before: false, next_cursor: null, previous_cursor: null };
+    // Clear cached pages for a clean second snapshot without emitting a render revision.
+    for (const key of pageCache.keys()) { const parts = JSON.parse(key); if (parts[0] === clientId(client) && parts[1] === request.accessScope && parts[2] === request.entity) pageCache.delete(key); }
+    for (const key of countCache.keys()) { const parts = JSON.parse(key); if (parts[0] === clientId(client) && parts[1] === request.accessScope && parts[2] === request.entity) countCache.delete(key); }
+  }
+  throw new Error("Matching records changed during retrieval. Please retry.");
+}
+
 /** Counts the full authorized criteria scope separately from cursor projection and pages. */
 export async function fetchRecruitmentListCount(client: RpcClient, request: RecruitmentListRequest): Promise<number> {
   pruneCache(countCache, MAX_COUNT_CACHE_ENTRIES);
@@ -165,16 +193,17 @@ export function clearRecruitmentListCache() {
   for (const entity of listeners.keys()) { revision.set(entity, (revision.get(entity) ?? 0) + 1); listeners.get(entity)?.forEach(listener => listener()); }
 }
 
-export function useRecruitmentList<T>({ client, accessScope, entity, filters = {}, sort = "", direction = "asc", initialPageSize = 50, enabled = true, searchInput }: { client: SupabaseClient | null; accessScope: string; entity: RecruitmentListEntity; filters?: Record<string, unknown>; sort?: string; direction?: "asc" | "desc"; initialPageSize?: 25 | 50 | 100; enabled?: boolean; searchInput?: { value: string; setValue: (value: string) => void } }) {
+export function useRecruitmentList<T>({ client, accessScope, entity, filters = {}, sort = "", direction = "asc", initialPageSize = 50, enabled = true, searchInput, complete = false, completeKey }: { client: SupabaseClient | null; accessScope: string; entity: RecruitmentListEntity; filters?: Record<string, unknown>; sort?: string; direction?: "asc" | "desc"; initialPageSize?: 25 | 50 | 100; enabled?: boolean; searchInput?: { value: string; setValue: (value: string) => void }; complete?: boolean; completeKey?: (row: T) => string }) {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(1), [displayPage, setDisplayPage] = useState(1), [pageSize, setPageSize] = useState<25 | 50 | 100>(initialPageSize);
   const [cursor, setCursor] = useState<RecruitmentListCursor | null>(null), [before, setBefore] = useState(false), [cursorCriteria, setCursorCriteria] = useState("");
   const [result, setResult] = useState<RecruitmentListPage<T> | null>(null), [loadedKey, setLoadedKey] = useState(""), [loading, setLoading] = useState(false), [error, setError] = useState(false), [retry, setRetry] = useState(0);
+  const [errorKey, setErrorKey] = useState("");
   const navigationPending = useRef(false);
   const listRevision = useSyncExternalStore(listener => subscribeRecruitmentLists(entity, listener), () => recruitmentListRevision(entity), () => 0);
   const filterKey = JSON.stringify(filters);
-  const criteriaKey = JSON.stringify([client ? clientId(client) : 0, accessScope, entity, debouncedSearch, filterKey, sort, direction, pageSize, enabled]);
+  const criteriaKey = JSON.stringify([client ? clientId(client) : 0, accessScope, entity, debouncedSearch, filterKey, sort, direction, pageSize, enabled, complete]);
   const effectiveCursor = cursorCriteria === criteriaKey ? cursor : null;
   const effectiveBefore = cursorCriteria === criteriaKey && before;
   const requestPage = effectiveCursor ? page : 1;
@@ -186,12 +215,13 @@ export function useRecruitmentList<T>({ client, accessScope, entity, filters = {
     if (!enabled || !client || !accessScope) { setLoading(false); return; }
     let cancelled = false;
     setLoading(true); setError(false);
-    fetchRecruitmentList<T>(client, { accessScope, entity, search: debouncedSearch, filters, sort, direction, limit: pageSize, cursor: effectiveCursor, before: effectiveBefore })
+    const request = { accessScope, entity, search: debouncedSearch, filters, sort, direction, limit: pageSize, cursor: effectiveCursor, before: effectiveBefore };
+    (complete ? fetchCompleteRecruitmentList<T>(client, request, completeKey ?? ((row) => JSON.stringify(row))) : fetchRecruitmentList<T>(client, request))
       .then(pageResult => { if (cancelled) return; setResult(pageResult); setLoadedKey(requestKey); setDisplayPage(requestPage); if (!effectiveCursor) setPage(1); })
-      .catch(() => { if (!cancelled) setError(true); })
+      .catch(() => { if (!cancelled) { setError(true); setErrorKey(requestKey); } })
       .finally(() => { if (!cancelled) { setLoading(false); navigationPending.current = false; } });
     return () => { cancelled = true; };
-  }, [accessScope, client, debouncedSearch, direction, effectiveBefore, effectiveCursor, enabled, entity, filterKey, listRevision, page, pageSize, requestKey, retry, sort]);
+  }, [accessScope, client, debouncedSearch, direction, effectiveBefore, effectiveCursor, enabled, entity, filterKey, listRevision, page, pageSize, requestKey, retry, sort, complete]);
   const countCriteriaKey = JSON.stringify([client ? clientId(client) : 0, accessScope, entity, debouncedSearch, filterKey, enabled]);
   const [countState, setCountState] = useState<{ key: string; value: number | null; loading: boolean; error: boolean }>({ key: "", value: null, loading: false, error: false });
   const [countRetry, setCountRetry] = useState(0);
@@ -205,8 +235,10 @@ export function useRecruitmentList<T>({ client, accessScope, entity, filters = {
       .catch(() => { if (!cancelled) setCountState(previous => ({ key: countCriteriaKey, value: previous.key === countCriteriaKey ? previous.value : null, loading: false, error: true })); });
     return () => { cancelled = true; };
   }, [accessScope, client, countCriteriaKey, countRetry, debouncedSearch, enabled, entity, filterKey, listRevision, loadedKey, requestKey, result, error]);
-  const current = loadedKey === requestKey ? result : null;
-  const currentCount = countState.key === countCriteriaKey ? countState : null;
+  const searchPending = activeSearch.trim() !== debouncedSearch;
+  const activeError = error && errorKey === requestKey && !searchPending;
+  const current = !searchPending && loadedKey === requestKey ? result : null;
+  const currentCount = !searchPending && countState.key === countCriteriaKey ? countState : null;
   function goNext() {
     if (loading || navigationPending.current || !current?.has_more || !current.next_cursor) return;
     navigationPending.current = true; setCursor(current.next_cursor); setBefore(false); setCursorCriteria(criteriaKey); setPage(value => value + 1);
@@ -221,5 +253,5 @@ export function useRecruitmentList<T>({ client, accessScope, entity, filters = {
   const totalCount = currentCount?.value ?? null;
   const countLoading = currentCount?.loading ?? Boolean(enabled && client && accessScope);
   const countError = currentCount?.error ?? false;
-  return { initialLoading: Boolean(enabled && client && accessScope && !current && !error), refreshing: Boolean(loading && current), search: activeSearch, setSearch: searchInput?.setValue ?? setSearch, items: current?.items ?? [], totalCount, countLabel: totalCount === null ? countError ? "—" : countLoading ? "…" : "—" : String(totalCount), countLoading, countError, page: displayPage, pageSize, setPageSize: changePageSize, loading, error, canPrevious: !loading && page > 1, canNext: !loading && Boolean(current?.has_more && current.next_cursor), goPrevious, goNext, goFirst, retry: () => setRetry(value => value + 1), retryCount: () => setCountRetry(value => value + 1) };
+  return { initialLoading: Boolean(enabled && client && accessScope && !current && !activeError), refreshing: Boolean(loading && current), search: activeSearch, setSearch: searchInput?.setValue ?? setSearch, items: current?.items ?? [], totalCount, countLabel: totalCount === null ? countError ? "—" : countLoading ? "…" : "—" : String(totalCount), countLoading, countError, page: displayPage, pageSize, setPageSize: changePageSize, loading, error: activeError, canPrevious: !loading && page > 1, canNext: !loading && Boolean(current?.has_more && current.next_cursor), goPrevious, goNext, goFirst, retry: () => setRetry(value => value + 1), retryCount: () => setCountRetry(value => value + 1) };
 }
