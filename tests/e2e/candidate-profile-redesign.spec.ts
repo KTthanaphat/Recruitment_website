@@ -7,6 +7,22 @@ async function openNew(page:Page) {
 }
 async function confirm(page:Page){const dialog=page.getByRole("dialog",{name:"Confirm Save",exact:true});await expect(dialog).toBeVisible();await dialog.getByRole("button",{name:"Save changes",exact:true}).click();await expect(dialog).toBeHidden();}
 
+test("new candidate group search is inside the picker and supports keyboard selection",async({page})=>{
+ await installMockSupabase(page);await page.goto("/candidates");await expectWorkspaceReady(page);const form=await openNew(page);
+ const groupPicker=form.getByRole("button",{name:"Application group (optional)",exact:true});await groupPicker.click();
+ const groupSearch=form.getByRole("combobox",{name:"Search Application group",exact:true});await groupSearch.fill("GRP-TECH");
+ await expect(page.getByRole("option",{name:/GRP-TECH/}).first()).toBeVisible();await groupSearch.press("ArrowDown");await groupSearch.press("Enter");await expect(groupPicker).toContainText("GRP-TECH");
+});
+
+test("new candidate flow keeps group search in the picker when using an existing profile",async({page})=>{
+ await installMockSupabase(page);await page.goto("/candidates");await expectWorkspaceReady(page);const form=await openNew(page);
+ await form.getByRole("textbox",{name:"Use existing candidate",exact:true}).fill("C-PHONE");
+ await form.getByRole("button",{name:"Use existing candidate",exact:true}).click();await page.getByRole("option",{name:"C-PHONE · Pat Phone",exact:true}).click();
+ const groupPicker=form.getByRole("button",{name:"Group ID",exact:true});await groupPicker.click();
+ const groupSearch=form.getByRole("combobox",{name:"Search Group ID",exact:true});await groupSearch.fill("GRP-TECH");
+ await expect(page.getByRole("option",{name:/GRP-TECH/}).first()).toBeVisible();await groupSearch.press("ArrowDown");await groupSearch.press("Enter");await expect(groupPicker).toContainText("GRP-TECH");
+});
+
 test("new profile has adjacent identity fields, no ownership fields, and contact review precedes save",async({page})=>{
  const mock=await installMockSupabase(page);await page.goto("/candidates");await expectWorkspaceReady(page);
  const form=await openNew(page);
@@ -57,6 +73,19 @@ test("one note is updated rather than appended and PICs cannot edit it",async({p
  const form=page.getByRole("dialog",{name:"Edit Candidate"});await form.locator('[name="note"]').fill("Updated note");
  await form.getByRole("button",{name:"Review changes",exact:true}).click();await confirm(page);
  expect(mock.data.candidate_notes).toHaveLength(1);expect(mock.data.candidate_notes[0].body).toBe("Updated note");expect(mock.data.candidate_notes[0].version).toBe(2);
+});
+
+test("Edit profile pre-fills the drawer candidate and current note version",async({page})=>{
+ const mock=await installMockSupabase(page);const first=mock.data.candidates.find(row=>row.candidate_id==="C-HR")!;
+ Object.assign(first,{name:"First Candidate",nickname:"First",position_interests:"First interest",phone_no:"0811111111",email:"first@example.com",channel:"Facebook",first_contact_date:"2026-07-20",candidate_folder_url:"https://example.com/first"});
+ mock.data.candidate_notes=[{note_id:"first-note",candidate_id:first.candidate_id,body:"First note",created_by:mock.data.profile!.id,created_at:"2026-07-20T00:00:00Z",version:2}];
+ await page.goto(`/candidates?detailType=candidate&detailId=${first.candidate_id}`);await expectWorkspaceReady(page);await page.getByRole("button",{name:"Edit profile",exact:true}).click();
+ const form=page.getByRole("dialog",{name:"Edit Candidate"});
+ await expect(form.locator('[name="candidate_id"]')).toHaveValue(first.candidate_id);await expect(form.locator('[name="name"]')).toHaveValue("First Candidate");await expect(form.locator('[name="note"]')).toHaveValue("First note");
+ await expect(form.locator('[name="nickname"]')).toHaveValue("First");await expect(form.locator('[name="position_interests"]')).toHaveValue("First interest");
+ await expect(form.locator('[name="phone_no"]')).toHaveValue("0811111111");await expect(form.locator('[name="email"]')).toHaveValue("first@example.com");
+ await expect(form.locator('[name="candidate_folder_url"]')).toHaveValue("https://example.com/first");await expect(form.locator('[name="first_contact_date"]')).toHaveValue("2026-07-20");
+ await expect(form.locator('[name="expected_note_id"]')).toHaveValue("first-note");await expect(form.locator('[name="expected_note_version"]')).toHaveValue("2");await expect(form.getByRole("button",{name:"Channel"})).toContainText("Facebook");
 });
 
 test("a PIC can edit shared profile fields but the note input is absent",async({page})=>{

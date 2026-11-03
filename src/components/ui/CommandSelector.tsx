@@ -4,9 +4,10 @@ import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight } from "lucide-rea
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
 export type CommandOption = { value: string; label: string; disabled?: boolean };
+export type CommandSelectorSearch = { ariaLabel: string; onChange: (value: string) => void; placeholder?: string; value: string };
 
 export function CommandSelector({
-  ariaLabel, ariaLabelledBy, className = "", density = "regular", disabled = false, emptyLabel, emptyOptionsLabel = "No options available", icon, name, required = false,
+  ariaLabel, ariaLabelledBy, className = "", density = "regular", disabled = false, emptyLabel, emptyOptionsLabel = "No options available", icon, menuFooter, name, required = false, search,
   onValueChange, options, value, typography = "emphasized"
 }: {
   ariaLabel: string;
@@ -18,8 +19,10 @@ export function CommandSelector({
   emptyLabel: string;
   emptyOptionsLabel?: string;
   icon?: ReactNode;
+  menuFooter?: ReactNode;
   name?: string;
   required?: boolean;
+  search?: CommandSelectorSearch;
   onValueChange: (value: string) => void;
   options: readonly CommandOption[];
   value: string;
@@ -28,11 +31,13 @@ export function CommandSelector({
   const [activeIndex, setActiveIndex] = useState(0);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const searchRef = useRef<HTMLInputElement | null>(null);
   const id = useId();
   const selectedIndex = Math.max(0, options.findIndex((option) => option.value === value));
   const selected = options.find((option) => option.value === value);
   const height = density === "compact" ? "min-h-9" : "min-h-11";
-  const enabledIndices = options.flatMap((option, index) => option.disabled ? [] : [index]);
+  const visibleOptions = options.map((option, index) => ({ option, index })).filter(({ option }) => !search?.value.trim() || option.value !== "");
+  const enabledIndices = visibleOptions.flatMap(({ option, index }) => option.disabled ? [] : [index]);
 
   useEffect(() => {
     const close = (event: MouseEvent) => { if (!rootRef.current?.contains(event.target as Node)) setOpen(false); };
@@ -45,16 +50,25 @@ export function CommandSelector({
     document.getElementById(`${id}-option-${activeIndex}`)?.scrollIntoView({ block: "nearest" });
   }, [activeIndex, id, open]);
 
+  useEffect(() => {
+    if (!open || !search) return;
+    const selectedOption = options.findIndex((option) => option.value === value && !option.disabled);
+    const firstEnabled = enabledIndices[0] ?? 0;
+    setActiveIndex(selectedOption >= 0 ? selectedOption : firstEnabled);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, options.length, search?.value]);
+
   function openAt(index = selectedIndex) {
     if (disabled) return;
-    const enabledIndex = options[index] && !options[index].disabled ? index : enabledIndices[0] ?? 0;
+    const enabledIndex = enabledIndices.includes(index) ? index : enabledIndices[0] ?? 0;
     setActiveIndex(enabledIndex);
     setOpen(true);
+    if (search) requestAnimationFrame(() => searchRef.current?.focus());
   }
   function moveActive(direction: 1 | -1) {
     if (enabledIndices.length === 0) return;
     const current = enabledIndices.indexOf(activeIndex);
-    const next = (current + direction + enabledIndices.length) % enabledIndices.length;
+    const next = (Math.max(current, 0) + direction + enabledIndices.length) % enabledIndices.length;
     setActiveIndex(enabledIndices[next]);
   }
   function moveToEdge(edge: "start" | "end") {
@@ -73,6 +87,14 @@ export function CommandSelector({
       else choose(options[activeIndex]);
     }
   }
+  function onSearchKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "Escape") { event.preventDefault(); setOpen(false); triggerRef.current?.focus(); return; }
+    if (event.key === "ArrowDown") { event.preventDefault(); moveActive(1); return; }
+    if (event.key === "ArrowUp") { event.preventDefault(); moveActive(-1); return; }
+    if (event.key === "Home") { event.preventDefault(); moveToEdge("start"); return; }
+    if (event.key === "End") { event.preventDefault(); moveToEdge("end"); return; }
+    if (event.key === "Enter") { event.preventDefault(); choose(options[activeIndex]); }
+  }
 
   return <div ref={rootRef} className={`relative min-w-0 ${className}`}>
     {name ? <select className="ats-dropdown-form-value" aria-hidden="true" tabIndex={-1} name={name} value={value} required={required} disabled={disabled} onChange={() => undefined} onInvalid={(event) => { event.preventDefault(); triggerRef.current?.focus(); }}>
@@ -85,8 +107,10 @@ export function CommandSelector({
       <span className="min-w-0 flex-1 truncate" title={selected?.label ?? emptyLabel}>{selected?.label ?? emptyLabel}</span>
       <ChevronDown size={density === "compact" ? 16 : 17} className={`shrink-0 text-slate transition-transform ${open ? "rotate-180" : ""}`} aria-hidden="true" />
     </button>
-    {open ? <div id={`${id}-options`} role="listbox" aria-label={ariaLabel} className="ats-dropdown-menu absolute right-0 z-50 mt-2 grid max-h-72 w-full min-w-[12rem] max-w-[calc(100vw-2rem)] overflow-y-auto grid-cols-1 rounded-2xl border">
-      {options.length === 0 ? <div role="option" aria-disabled="true" aria-selected="false" className="ats-dropdown-option text-sm text-slate">{emptyOptionsLabel}</div> : options.map((option, index) => {
+    {open ? <div id={`${id}-menu`} className="ats-dropdown-menu absolute right-0 z-50 mt-2 grid max-h-72 w-full min-w-[12rem] max-w-[calc(100vw-2rem)] grid-cols-1 overflow-y-auto rounded-2xl border">
+      {search ? <div className="sticky top-0 z-10 border-b border-[#E4E9F2] bg-white p-2"><input ref={searchRef} type="search" role="combobox" aria-label={search.ariaLabel} aria-haspopup="listbox" aria-expanded="true" aria-controls={`${id}-options`} aria-activedescendant={visibleOptions.some(({ index }) => index === activeIndex) ? `${id}-option-${activeIndex}` : undefined} value={search.value} onChange={(event) => search.onChange(event.target.value)} onKeyDown={onSearchKeyDown} placeholder={search.placeholder} className="min-h-11 w-full rounded-md border border-[#C9D5E6] px-3 text-sm font-normal text-navy focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" /></div> : null}
+      <div id={`${id}-options`} role="listbox" aria-label={ariaLabel}>
+      {visibleOptions.length === 0 ? <div role="option" aria-disabled="true" aria-selected="false" className="ats-dropdown-option text-sm text-slate">{emptyOptionsLabel}</div> : visibleOptions.map(({ option, index }) => {
         const selected = option.value === value;
         return <button id={`${id}-option-${index}`} key={option.value || "empty"} type="button" role="option" aria-selected={selected} tabIndex={-1} disabled={option.disabled} onMouseEnter={() => { if (!option.disabled) setActiveIndex(index); }} onClick={() => choose(option)}
           className={`ats-dropdown-option flex items-center gap-2 text-left text-sm ${typography === "normal" ? "font-normal" : "font-semibold"} text-navy ${selected ? "is-selected" : ""} ${activeIndex === index ? "is-active" : ""}`}>
@@ -94,6 +118,7 @@ export function CommandSelector({
           <span className="block min-w-0 break-words" title={option.label}>{option.label}</span>
         </button>;
       })}
+      </div>{menuFooter ? <div className="border-t border-[#E4E9F2] bg-white p-2">{menuFooter}</div> : null}
     </div> : null}
   </div>;
 }
