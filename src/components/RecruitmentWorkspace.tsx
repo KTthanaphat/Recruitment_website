@@ -332,6 +332,9 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const [currentStageActionCandidateId, setCurrentStageActionCandidateId] = useState<string | null>(null);
   const [workspaceTarget, setWorkspaceTarget] = useState<{ type: "requisition" | "group" | null; id: string | null }>({ type: null, id: null });
   const [welcomeOpen, setWelcomeOpen] = useState(false);
+  const welcomeEligible = useRef(false);
+  welcomeEligible.current = welcomeOpen;
+  const [welcomeReadyKey, setWelcomeReadyKey] = useState("");
   const [welcomeSummary, setWelcomeSummary] = useState<WelcomeSummary | null>(null);
   const [welcomeSummaryLoading, setWelcomeSummaryLoading] = useState(false);
   const [welcomeSummaryError, setWelcomeSummaryError] = useState<string | null>(null);
@@ -548,10 +551,13 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const workspaceDataRef = useRef(data);
   workspaceDataRef.current = data;
   const detailAccessScope = `${process.env.NEXT_PUBLIC_SUPABASE_URL ?? "local"}:${data.profile?.id ?? "anonymous"}:${data.profile?.role ?? "viewer"}:${data.profile?.site ?? ""}:${data.profile?.updated_at ?? ""}`;
+  const welcomeInitialKey = JSON.stringify([detailAccessScope, reportRefreshKey]);
+  const handleHomeInitialDataSettled = useCallback(() => setWelcomeReadyKey(welcomeInitialKey), [welcomeInitialKey]);
   useEffect(() => () => { if (supabase) clearRecruitmentReadQueue(supabase); }, [detailAccessScope, supabase]);
   const homeReadKey = JSON.stringify([detailAccessScope, filters.site, filters.owner, filters.priorityOnly]);
   const homeReadIdentity = useRef("");
-  const visibleWelcomeSummary = homeReadIdentity.current === homeReadKey ? welcomeSummary : null;
+  const welcomeLoadedIdentity = useRef("");
+  const visibleWelcomeSummary = welcomeLoadedIdentity.current === detailAccessScope ? welcomeSummary : null;
   const visibleHomeBannerSummary = homeReadIdentity.current === homeReadKey ? homeBannerSummary : null;
   useEffect(() => {
     if (initialView !== "home" || workspaceLoadState !== "ready" || !supabase || !data.profile) {
@@ -560,22 +566,26 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     }
     let active = true;
     const scope = { headerSite: filters.site, headerPic: filters.owner, priorityOnly: filters.priorityOnly };
-    if (homeReadIdentity.current !== homeReadKey) { setWelcomeSummary(null); setHomeBannerSummary(null); }
+    if (homeReadIdentity.current !== homeReadKey) setHomeBannerSummary(null);
     homeReadIdentity.current = homeReadKey;
-    setWelcomeSummaryLoading(true); setWelcomeSummaryError(null);
     setHomeBannerLoading(true); setHomeBannerError(null);
-    void loadWelcomeSummary(supabase, detailAccessScope, reportRefreshKey + welcomeSummaryRetry).then(value => {
-      if (active) { setWelcomeSummary(value); setWelcomeSummaryError(null); }
-    }).catch(loadError => {
-      if (active) setWelcomeSummaryError(loadError instanceof Error ? loadError.message : "Could not load the welcome summary.");
-    }).finally(() => { if (active) setWelcomeSummaryLoading(false); });
     void loadHomeBannerSummary(supabase, scope, detailAccessScope, reportRefreshKey + homeBannerRetry).then(value => {
       if (active) { setHomeBannerSummary(value); setHomeBannerError(null); }
     }).catch(loadError => {
       if (active) setHomeBannerError(loadError instanceof Error ? loadError.message : "Could not load the home banner summary.");
     }).finally(() => { if (active) setHomeBannerLoading(false); });
     return () => { active = false; };
-  }, [homeReadKey, data.profile, detailAccessScope, filters.owner, filters.priorityOnly, filters.site, homeBannerRetry, initialView, reportRefreshKey, welcomeSummaryRetry, workspaceLoadState]);
+  }, [homeReadKey, data.profile, detailAccessScope, filters.owner, filters.priorityOnly, filters.site, homeBannerRetry, initialView, reportRefreshKey, workspaceLoadState]);
+  useEffect(() => {
+    if (!welcomeOpen || initialView !== "home" || welcomeReadyKey !== welcomeInitialKey || !supabase || !data.profile) return;
+    let active = true;
+    setWelcomeSummary(null); setWelcomeSummaryLoading(true); setWelcomeSummaryError(null);
+    void loadWelcomeSummary(supabase, detailAccessScope, reportRefreshKey + welcomeSummaryRetry, () => welcomeEligible.current)
+      .then(value => { if (active) { welcomeLoadedIdentity.current = detailAccessScope; setWelcomeSummary(value); } })
+      .catch(error => { if (active) setWelcomeSummaryError(error instanceof Error ? error.message : "Could not load the welcome summary."); })
+      .finally(() => { if (active) setWelcomeSummaryLoading(false); });
+    return () => { active = false; };
+  }, [welcomeOpen, initialView, welcomeReadyKey, welcomeInitialKey, detailAccessScope, reportRefreshKey, welcomeSummaryRetry]);
   useEffect(() => { if (supabase) clearScopedDetailCache(supabase); }, [detailAccessScope, supabase]);
   const currentDetailAccessScope = useRef(detailAccessScope);
   currentDetailAccessScope.current = detailAccessScope;
@@ -898,6 +908,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   }
 
   function closeWelcomeSummary() {
+    welcomeEligible.current = false;
     const key = welcomeStorageKey(data.profile?.id ?? data.profile?.email ?? "unknown");
     sessionStorage.setItem(key, "dismissed");
     setWelcomeOpen(false);
@@ -1630,7 +1641,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       ) : null}
 
       {initialView === "home" ? (
-        <HomeView refreshKey={reportRefreshKey} bannerSummary={visibleHomeBannerSummary} bannerSummaryLoading={homeBannerLoading} bannerSummaryError={homeBannerError} onRetryBannerSummary={() => setHomeBannerRetry(value => value + 1)} listClient={supabase} accessScope={detailAccessScope} summaryScope={{ headerSite: filters.site, headerPic: filters.owner, priorityOnly: filters.priorityOnly }} language={language} profile={data.profile} requisitions={filteredRequisitions} candidates={filteredCandidates} offers={filteredOffers} recruitmentLogs={data.recruitment_logs} sourcingGroups={homeSourcingGroups} sourcingHref={buildContextualHref("/sourcing", { language, site: filters.site, owner: filters.owner, sourcingWeek, priority: filters.priorityOnly ? "only" : "all" })} staleSourcingGroups={staleSourcingGroups} changeLogs={filteredChangeLogs} dataQualityIssues={dataQualityIssues} canViewRecentActivity={canWrite} onConfirmStart={(offer, outcome) => { setProcessDefaults({ offer_id: offer.offer_id, offer_expected_updated_at: offer.updated_at, offer_start_confirmation: outcome ?? offer.start_confirmation }); setActiveModal("start_confirmation"); }} onEditPending={openPendingEdit} onOpenRequisition={(id) => setDetail({ type: "requisition", id })} onOpenCandidate={openCandidateDetail} />
+        <HomeView onInitialDataSettled={handleHomeInitialDataSettled} refreshKey={reportRefreshKey} bannerSummary={visibleHomeBannerSummary} bannerSummaryLoading={homeBannerLoading} bannerSummaryError={homeBannerError} onRetryBannerSummary={() => setHomeBannerRetry(value => value + 1)} listClient={supabase} accessScope={detailAccessScope} summaryScope={{ headerSite: filters.site, headerPic: filters.owner, priorityOnly: filters.priorityOnly }} language={language} profile={data.profile} requisitions={filteredRequisitions} candidates={filteredCandidates} offers={filteredOffers} recruitmentLogs={data.recruitment_logs} sourcingGroups={homeSourcingGroups} sourcingHref={buildContextualHref("/sourcing", { language, site: filters.site, owner: filters.owner, sourcingWeek, priority: filters.priorityOnly ? "only" : "all" })} staleSourcingGroups={staleSourcingGroups} changeLogs={filteredChangeLogs} dataQualityIssues={dataQualityIssues} canViewRecentActivity={canWrite} onConfirmStart={(offer, outcome) => { setProcessDefaults({ offer_id: offer.offer_id, offer_expected_updated_at: offer.updated_at, offer_start_confirmation: outcome ?? offer.start_confirmation }); setActiveModal("start_confirmation"); }} onEditPending={openPendingEdit} onOpenRequisition={(id) => setDetail({ type: "requisition", id })} onOpenCandidate={openCandidateDetail} />
       ) : null}
 
       {initialView === "dashboard" ? (
@@ -1835,7 +1846,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
         open={welcomeOpen}
         profile={data.profile}
         summary={visibleWelcomeSummary}
-        loading={welcomeSummaryLoading}
+        loading={welcomeSummaryLoading || welcomeReadyKey !== welcomeInitialKey}
         error={welcomeSummaryError}
         onClose={closeWelcomeSummary}
         onPipeline={openWelcomePipeline}

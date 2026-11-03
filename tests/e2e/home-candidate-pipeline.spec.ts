@@ -11,11 +11,11 @@ test("Home consumes scoped summary metrics and a bounded date-range calendar res
   await page.goto("/home");
   await expectWorkspaceReady(page);
   await expect(page.getByRole("heading", { name: "Recruitment Calendar" })).toBeVisible();
-  await expect.poll(() => mock.rpcCalls.some(call => call.endpoint === "app_home_summary_v1")).toBe(true);
+  await expect.poll(() => mock.rpcCalls.some(call => call.endpoint === "app_home_core_summary_v1")).toBe(true);
   await expect.poll(() => mock.rpcCalls.some(call => call.endpoint === "app_recruitment_list_v1" && call.payload.p_entity === "requisitions")).toBe(true);
   expect(mock.restReads.filter(read => ["requisitions","candidates","candidate_applications","recruitment_logs","offers","position_groups","document_groups"].includes(read.table))).toEqual([]);
   await expect.poll(() => mock.rpcCalls.some(call => call.endpoint === "app_recruitment_calendar_v1")).toBe(true);
-  const summary = mock.rpcCalls.find(call => call.endpoint === "app_home_summary_v1")!;
+  const summary = mock.rpcCalls.find(call => call.endpoint === "app_home_core_summary_v1")!;
   expect(summary.payload.p_scope).toEqual({ headerSite: "", headerPic: "", priorityOnly: false });
   const calendarCalls = mock.rpcCalls.filter(call => call.endpoint === "app_recruitment_calendar_v1");
   const calendar = calendarCalls.find(call => call.payload.p_start !== call.payload.p_end)!;
@@ -78,6 +78,7 @@ test("Candidate Pipeline count, sorting, and six-column layout work across width
   await page.getByRole("tab", { name: "Candidate Pipeline" }).click();
   const panel = page.getByRole("tabpanel");
   const rows = panel.locator("[data-home-candidate-row]");
+  await expect(rows.first()).toBeVisible();
   const count = await rows.count();
   await expect(panel.locator("[data-home-candidate-count]")).toHaveText(`${count} active candidates`);
   const header = panel.locator("[data-home-record-header]");

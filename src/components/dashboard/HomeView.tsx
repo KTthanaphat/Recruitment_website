@@ -29,7 +29,7 @@ import { ageDays, isCandidateAging, requisitionSourcingLinkReadiness, type DataQ
 import { getRequisitionSlaState } from "@/lib/sla";
 import { useRecruitmentList } from "@/lib/recruitment-list";
 import { CursorPagination } from "@/components/ui/CursorPagination";
-import { loadHomeQualityPage, loadHomeSummary, type HomeBannerSummary, type HomeQualityPage, type HomeSummary } from "@/lib/dashboard-summary-client";
+import { loadHomeQualityPage, loadHomeCoreSummary, loadHomeWorkQueue, type HomeBannerSummary, type HomeQualityPage, type HomeCoreSummary, type HomeWorkQueue } from "@/lib/dashboard-summary-client";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ChangeLog, EnrichedCandidate, EnrichedOffer, EnrichedRequisition, EnrichedSourcingGroup, Language, Profile, RecruitmentLog } from "@/types/recruitment";
 
@@ -74,7 +74,8 @@ export function HomeView({
   bannerSummary = null,
   bannerSummaryLoading = false,
   bannerSummaryError = null,
-  onRetryBannerSummary
+  onRetryBannerSummary,
+  onInitialDataSettled
 }: {
   language: Language;
   profile: Profile | null;
@@ -100,24 +101,48 @@ export function HomeView({
   bannerSummaryLoading?: boolean;
   bannerSummaryError?: string | null;
   onRetryBannerSummary?: () => void;
+  onInitialDataSettled?: () => void;
 }) {
   const [todayEventData, setTodayEventData] = useState<{ date: string; events: CalendarEvent[] }>({ date: "", events: [] });
   const handleTodayEventsChange = useCallback((payload: { date: string; events: CalendarEvent[] }) => setTodayEventData(payload), []);
-  const [homeSnapshot, setHomeSummary] = useState<HomeSummary | null>(null);
-  const [homeLoadedIdentity, setHomeLoadedIdentity] = useState("");
-  const [summaryError, setSummaryError] = useState(false);
   const summaryScopeKey = JSON.stringify(summaryScope ?? null);
-  const homeIdentity = JSON.stringify([accessScope, summaryScopeKey]);
-  const homeSummary = homeLoadedIdentity === homeIdentity ? homeSnapshot : null;
+  const sectionKey = JSON.stringify([accessScope, summaryScopeKey, refreshKey]);
+  const [core, setCore] = useState<{ key: string; data: HomeCoreSummary | null; error: boolean }>({ key: "", data: null, error: false });
+  const [coreRetry, setCoreRetry] = useState(0);
+  const [coreLoading, setCoreLoading] = useState(false);
+  const [queue, setQueue] = useState<{ key: string; data: HomeWorkQueue | null; error: boolean }>({ key: "", data: null, error: false });
+  const [queueRetry, setQueueRetry] = useState(0);
+  const [queueLoading, setQueueLoading] = useState(false);
+  const [recordsSettledKey, setRecordsSettledKey] = useState("");
+  const [calendarSettledKey, setCalendarSettledKey] = useState("");
+  const handleRecordsSettled = useCallback(() => setRecordsSettledKey(sectionKey), [sectionKey]);
+  const handleCalendarSettled = useCallback(() => setCalendarSettledKey(sectionKey), [sectionKey]);
+  const homeSummary = core.key === sectionKey ? core.data : null;
+  const summaryError = core.key === sectionKey && core.error;
+  const initialSettled = core.key === sectionKey && !bannerSummaryLoading && recordsSettledKey === sectionKey && calendarSettledKey === sectionKey;
+  useEffect(() => { if (initialSettled) onInitialDataSettled?.(); }, [initialSettled, onInitialDataSettled]);
   useEffect(() => {
-    setSummaryError(false);
-    if (!listClient || summaryScopeKey === "null" || !accessScope) return;
+    if (!listClient || !summaryScope || !accessScope) return;
     let cancelled = false;
-    loadHomeSummary(listClient, JSON.parse(summaryScopeKey), accessScope, refreshKey)
-      .then(value => { if (!cancelled) { setHomeSummary(value); setHomeLoadedIdentity(homeIdentity); setSummaryError(false); } })
-      .catch(() => { if (!cancelled) setSummaryError(true); });
+    setCoreLoading(true);
+    loadHomeCoreSummary(listClient, JSON.parse(summaryScopeKey), accessScope, refreshKey + coreRetry)
+      .then(data => { if (!cancelled) setCore({ key: sectionKey, data, error: false }); })
+      .catch(() => { if (!cancelled) setCore({ key: sectionKey, data: null, error: true }); })
+      .finally(() => { if (!cancelled) setCoreLoading(false); });
     return () => { cancelled = true; };
-  }, [accessScope, listClient, summaryScopeKey, homeIdentity, refreshKey]);
+  }, [accessScope, listClient, summaryScopeKey, refreshKey, coreRetry, sectionKey]);
+  useEffect(() => {
+    if (!initialSettled || !listClient || !accessScope) return;
+    let cancelled = false;
+    setQueueLoading(true);
+    loadHomeWorkQueue(listClient, JSON.parse(summaryScopeKey), accessScope, refreshKey + queueRetry)
+      .then(data => { if (!cancelled) setQueue({ key: sectionKey, data, error: false }); })
+      .catch(() => { if (!cancelled) setQueue({ key: sectionKey, data: null, error: true }); })
+      .finally(() => { if (!cancelled) setQueueLoading(false); });
+    return () => { cancelled = true; };
+  }, [initialSettled, accessScope, listClient, summaryScopeKey, refreshKey, queueRetry, sectionKey]);
+  const [qualityCount, setQualityCount] = useState<{ key: string; count: number } | null>(null);
+  const handleQualityCount = useCallback((count: number) => setQualityCount({ key: sectionKey, count }), [sectionKey]);
   const notFilledRequisitions = requisitions.filter((row) => row.status !== "filled" && row.status !== "cancel");
   const openRequisitions = notFilledRequisitions.filter((row) => row.open_headcount > 0);
   const offeredCandidateIds = new Set(offers.map((offer) => offer.candidate_id));
@@ -128,7 +153,6 @@ export function HomeView({
       && !offeredCandidateIds.has(row.candidate_id)
   );
   const needsAction = [...openRequisitions];
-  const workQueue = homeSummary?.workQueue.items ?? [];
   const urgentCandidates = candidates.filter(isCandidateAging).length;
   const welcomeName = profile?.nickname ?? profile?.full_name ?? profile?.email ?? translate(language, "system");
   const todayParts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
@@ -143,18 +167,17 @@ export function HomeView({
   const homeOpenCount = homeSummary?.counts.openRequisitions ?? null;
   const homePipelineCount = homeSummary?.counts.activePipeline ?? null;
   const homeStaleGroups = homeSummary?.counts.staleSourcing ?? null;
-  const homeWorkQueueCount = homeSummary?.workQueue.totalCount ?? null;
-  const homeRecentActivity: ChangeLog[] | null = homeSummary?.recentActivity.map(row => ({ log_id: row.log_id, entity: row.entity, entity_id: row.entity_id, action: row.action, changed_at: row.changed_at, changed_by: row.changed_by_email, changed_by_email: row.changed_by_email, old_data: null, new_data: null })) ?? null;
+  const homeWorkQueueCount = queue.key === sectionKey ? queue.data?.totalCount ?? null : null;
   const tabs: HomeTab[] = [
     { key: "open_headcount", label: translate(language, "openHeadcount"), count: homeOpenCount },
     { key: "candidate_pipeline", label: translate(language, "candidatePipeline"), count: homePipelineCount },
     { key: "sourcing_updates", label: translate(language, "SourcingUpdates"), count: homeStaleGroups },
-    { key: "data_quality", label: translate(language, "dataQuality"), count: homeSummary?.counts.qualityIssues ?? null },
+    { key: "data_quality", label: translate(language, "dataQuality"), count: qualityCount?.key === sectionKey ? qualityCount.count : null },
     ...(canViewRecentActivity ? [{ key: "start_confirmation" as const, label: translate(language, "newHireConfirmation"), count: homeSummary?.counts.pendingOffers ?? null }] : [])
   ];
 
   return (
-    <div className="grid gap-5">
+    <div className="grid gap-5" data-home-core-ready={Boolean(homeSummary)}>
       <div data-home-banner="true" className="relative -mx-4 aspect-[6/1] w-[calc(100%+2rem)] bg-[#F8FAFF] sm:-mx-6 sm:w-[calc(100%+3rem)] lg:-mx-7 lg:w-[calc(100%+3.5rem)]">
         <img
           src={homeBanner.src}
@@ -202,6 +225,10 @@ export function HomeView({
             ]}
           />
         </div>
+        {coreLoading ? <p role="status" className="px-4 pb-2 text-xs text-slate">{translate(language, "loading")}</p> : null}
+        {queueLoading ? <p role="status" className="px-4 pb-2 text-xs text-slate">{translate(language, "urgentItems")}: {translate(language, "loading")}</p> : null}
+        {summaryError ? <div role="alert" className="px-4 pb-3 text-sm text-scarlet">{translate(language, "loadFailed")} <Button variant="secondary" disabled={coreLoading} onClick={() => setCoreRetry(value => value + 1)}>{translate(language, "retry")}</Button></div> : null}
+        {queue.key === sectionKey && queue.error ? <div role="alert" className="px-4 pb-3 text-sm text-scarlet">{translate(language, "urgentItems")}: {translate(language, "loadFailed")} <Button variant="secondary" disabled={queueLoading} onClick={() => setQueueRetry(value => value + 1)}>{translate(language, "retry")}</Button></div> : null}
         </Panel>
         </div>
 
@@ -216,6 +243,7 @@ export function HomeView({
               onEditPending={onEditPending}
               onOpenCandidate={onOpenCandidate}
               onTodayEventsChange={handleTodayEventsChange}
+              onLoadSettled={handleCalendarSettled}
               listClient={listClient}
               summaryScope={summaryScope}
               profileKey={accessScope}
@@ -231,7 +259,7 @@ export function HomeView({
         accessScope={accessScope}
         summaryScope={summaryScope}
         candidates={candidates}
-        changeLogs={homeRecentActivity ?? changeLogs}
+        changeLogs={changeLogs}
         dataQualityIssues={dataQualityIssues}
         language={language}
         needsAction={needsAction}
@@ -246,6 +274,9 @@ export function HomeView({
         startConfirmations={startConfirmations}
         onConfirmStart={onConfirmStart}
         tabs={tabs}
+        refreshKey={refreshKey}
+        onQualityCount={handleQualityCount}
+        onRecordsSettled={handleRecordsSettled}
       />
     </div>
   );
@@ -270,7 +301,10 @@ function HomeRecordTabs({
   tabs,
   listClient = null,
   accessScope = "",
-  summaryScope
+  summaryScope,
+  refreshKey = 0,
+  onQualityCount,
+  onRecordsSettled
 }: {
   candidates: EnrichedCandidate[];
   changeLogs: ChangeLog[];
@@ -288,13 +322,20 @@ function HomeRecordTabs({
   startConfirmations: EnrichedOffer[];
   onConfirmStart: (offer: EnrichedOffer, outcome?: AttendanceOutcome) => void;
   tabs: HomeTab[];
+  refreshKey?: number;
+  onQualityCount?: (count: number) => void;
+  onRecordsSettled?: () => void;
   listClient?: SupabaseClient | null;
   accessScope?: string;
   summaryScope?: { headerSite: string; headerPic: string; priorityOnly: boolean };
 }) {
   const [activeTab, setActiveTab] = useState<HomeTabKey>("open_headcount");
   const searchParams = useSearchParams();
-  const [qualitySnapshot, setQualityPage] = useState<HomeQualityPage | null>(null);
+  const [storedQualityPage, setQualityPage] = useState<HomeQualityPage | null>(null);
+  const qualityScopeKey = JSON.stringify([accessScope, summaryScope, refreshKey]);
+  const [qualityLoadedKey, setQualityLoadedKey] = useState("");
+  const [qualityCursorKey, setQualityCursorKey] = useState("");
+  const qualityPage = qualityLoadedKey === qualityScopeKey ? storedQualityPage : null;
   const [qualityCursorStack, setQualityCursorStack] = useState<Array<HomeQualityPage["nextCursor"]>>([null]);
   const [qualityLoading, setQualityLoading] = useState(false);
   const [qualityError, setQualityError] = useState(false);
@@ -312,20 +353,21 @@ function HomeRecordTabs({
   const pipelinePage = useRecruitmentList<EnrichedCandidate & {home_last_touch_date?:string|null;home_pending_remark?:string|null}>({client:listClient,accessScope,entity:"candidate_applications",filters:{homeTab:"active_pipeline",asOf:today,...(summaryScope??{})},sort:({oldest_touch:"home_oldest_touch",newest_touch:"home_newest_touch",name:"name",progression:"home_progression"} as const)[candidateSort],direction:candidateSort==="oldest_touch"?"asc":candidateSort==="name"?"asc":"desc",enabled:selectedTab.key==="candidate_pipeline"});
   const groupPage = useRecruitmentList<EnrichedSourcingGroup>({client:listClient,accessScope,entity:"position_groups",filters:{scope:"ongoing",weekStart:groupWeekStart,...(summaryScope??{})},sort:"name",direction:"asc",enabled:selectedTab.key==="sourcing_updates"});
   const startPage = useRecruitmentList<EnrichedOffer>({client:listClient,accessScope,entity:"offers",filters:{homeTab:"start_confirmation",today,...(summaryScope??{})},sort:"home_first_working",direction:"asc",enabled:selectedTab.key==="start_confirmation"});
-  const qualityCursor = qualityCursorStack[qualityCursorStack.length - 1] ?? undefined;
-  const qualityIdentity = JSON.stringify([accessScope, summaryScopeKey, today, qualityCursor]);
-  const [loadedQualityIdentity, setLoadedQualityIdentity] = useState("");
-  const qualityPage = loadedQualityIdentity === qualityIdentity ? qualitySnapshot : null;
+  const selectedRecords = selectedTab.key === "candidate_pipeline" ? pipelinePage : selectedTab.key === "sourcing_updates" ? groupPage : selectedTab.key === "start_confirmation" ? startPage : reqPage;
+  const selectedRecordsSettled = selectedTab.key === "data_quality" ? qualityLoadedKey === qualityScopeKey || qualityError : selectedRecords.settled;
+  useEffect(() => { if (selectedRecordsSettled || !listClient) onRecordsSettled?.(); }, [selectedRecordsSettled, listClient, onRecordsSettled]);
+  useEffect(() => { setQualityPage(null); setQualityCursorStack([null]); setQualityCursorKey(qualityScopeKey); setQualityError(false); }, [accessScope, summaryScopeKey, refreshKey]);
+  const qualityCursor = qualityCursorKey === qualityScopeKey ? qualityCursorStack[qualityCursorStack.length - 1] ?? undefined : null;
   useEffect(() => {
     if (selectedTab.key !== "data_quality" || !listClient || !summaryScope || !accessScope) return;
     let cancelled = false;
     setQualityLoading(true); setQualityError(false);
-    loadHomeQualityPage(listClient, { scope: JSON.parse(summaryScopeKey), today, cursor: qualityCursor, limit: 25, profileKey: accessScope, refreshKey: qualityRetry })
-      .then(page => { if (!cancelled) { setQualityPage(page); setLoadedQualityIdentity(qualityIdentity); setQualityError(false); } })
+    loadHomeQualityPage(listClient, { scope: JSON.parse(summaryScopeKey), today, cursor: qualityCursor, limit: 25, profileKey: accessScope, refreshKey: refreshKey + qualityRetry })
+      .then(page => { if (!cancelled) { setQualityPage(page); setQualityLoadedKey(qualityScopeKey); setQualityError(false); onQualityCount?.(page.totalCount); } })
       .catch(() => { if (!cancelled) { setQualityPage(null); setQualityError(true); } })
       .finally(() => { if (!cancelled) setQualityLoading(false); });
     return () => { cancelled = true; };
-  }, [qualityIdentity, accessScope, listClient, qualityCursor, qualityRetry, selectedTab.key, summaryScope, summaryScopeKey, today]);
+  }, [accessScope, listClient, qualityCursor, qualityRetry, selectedTab.key, summaryScopeKey, today, refreshKey, onQualityCount]);
   const remoteCandidateRows = pipelinePage.items.map((candidate) => ({candidate,lastTouch:candidate.home_last_touch_date??null,pendingRemark:candidate.home_pending_remark??null}));
   const candidateRows = listClient ? remoteCandidateRows : ongoingCandidates.map((candidate) => {
     const logs = recruitmentLogs.filter((log) => belongsToApplication(log, candidate) && !log.superseded_at && !log.superseded_by_stage_instance_id);

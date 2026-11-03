@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { expectWorkspaceReady, installMockSupabase } from "./support/mock-supabase";
 
-test("pipeline stages page and count independently with server search, closed pending membership, and padded ID aliases", async ({ page }) => {
+test("pipeline stages page locally after bounded reads with server search, closed pending membership, and padded ID aliases", async ({ page }) => {
   const mock = await installMockSupabase(page);
   const candidateTemplate = mock.data.candidates[0], applicationTemplate = mock.data.candidate_applications?.[0], assignmentTemplate = mock.data.candidate_application_assignments?.[0], logTemplate = mock.data.recruitment_logs[0];
   if (!candidateTemplate || !applicationTemplate || !assignmentTemplate || !logTemplate) throw new Error("Pipeline fixture templates are required.");
@@ -37,18 +37,18 @@ test("pipeline stages page and count independently with server search, closed pe
   await expect(phoneNext).toBeEnabled();
   await expect(hr.getByRole("button", { name: "Next", exact: true })).toBeDisabled();
   await phoneNext.click();
-  await expect(phone.getByText("page 2", { exact: true })).toBeVisible();
-  await expect(hr.getByText("page 1", { exact: true })).toBeVisible();
+  await expect(phone.getByLabel("Current page / total pages")).toHaveText("2/13");
+  await expect(hr.getByLabel("Current page / total pages")).toHaveText("1/1");
   const stageCalls = mock.rpcCalls.filter(call => call.endpoint === "app_recruitment_list_v1" && call.payload.p_entity === "pipeline_stage");
   expect(stageCalls.some(call => (call.payload.p_filters as { stage?: string }).stage === "Phone Screen")).toBe(true);
   expect(stageCalls.some(call => (call.payload.p_filters as { stage?: string }).stage === "HR Interview")).toBe(true);
   const phoneRequests = stageCalls.filter(call => (call.payload.p_filters as { stage?: string }).stage === "Phone Screen");
   expect(phoneRequests.every(call => call.payload.p_sort === "board_last_update" && call.payload.p_direction === "asc")).toBe(true);
-  expect(phoneRequests.some(call => Boolean(call.payload.p_cursor_id))).toBe(true);
+  expect(phoneRequests.every(call => Number(call.payload.p_limit) <= 100)).toBe(true);
 
   await page.getByRole("button", { name: "Pipeline filters" }).click();
   await page.getByPlaceholder("Candidate, ID, role, site, or owner").fill("CAN-00001");
-  await expect(phone.getByText("page 1", { exact: true })).toBeVisible();
+  await expect(phone.getByLabel("Current page / total pages")).toBeVisible();
   await expect(phone.getByText("Board Alias Candidate", { exact: true })).toBeVisible();
   await expect(phone.locator("article").filter({ hasText: "Board Alias Candidate" })).toContainText("CAN-00001");
   const aliasCall = mock.rpcCalls.filter(call => call.endpoint === "app_recruitment_list_v1" && call.payload.p_entity === "pipeline_stage").at(-1)!;

@@ -50,7 +50,8 @@ export function RecruitmentCalendar({
   , listClient = null,
   summaryScope,
   profileKey = "",
-  refreshKey = 0
+  refreshKey = 0,
+  onLoadSettled
 }: {
   candidates: EnrichedCandidate[];
   className?: string;
@@ -65,6 +66,7 @@ export function RecruitmentCalendar({
   summaryScope?: { headerSite: string; headerPic: string; priorityOnly: boolean };
   profileKey?: string;
   refreshKey?: number;
+  onLoadSettled?: () => void;
 }) {
   const [today, setToday] = useState(() => bangkokToday());
   const [visibleMonth, setVisibleMonth] = useState(() => monthFromIso(today));
@@ -143,9 +145,9 @@ export function RecruitmentCalendar({
         setCalendarError(false);
       })
       .catch(() => { if (!cancelled) setCalendarError(true); })
-      .finally(() => { if (!cancelled) setCalendarLoading(false); });
+      .finally(() => { if (!cancelled) { setCalendarLoading(false); onLoadSettled?.(); } });
     return () => { cancelled = true; };
-  }, [calendarIdentity, calendarScopeKey, listClient, profileKey, refreshKey, summaryMode, visibleMonth.month, visibleMonth.year]);
+  }, [calendarIdentity, calendarScopeKey, listClient, profileKey, refreshKey, summaryMode, visibleMonth.month, visibleMonth.year, onLoadSettled]);
   useEffect(() => {
     if (!summaryMode || !listClient || !summaryScope) return;
     let cancelled = false;
