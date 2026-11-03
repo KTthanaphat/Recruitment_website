@@ -51,7 +51,7 @@ test("Home sourcing and quality use the requested Thai copy", async ({ page }) =
   await expect(quality.locator("div").nth(3)).toContainText(/[\u0E00-\u0E7F]/);
 });
 
-test("New Hire Confirmation keeps a compact labeled phone action", async ({ page }) => {
+test("New Hire Confirmation uses compact accessible phone attendance icons", async ({ page }) => {
   await installMockSupabase(page, { role: "admin_recruiter" });
   await page.setViewportSize({ width: 360, height: 800 });
   await page.goto("/home");
@@ -59,7 +59,7 @@ test("New Hire Confirmation keeps a compact labeled phone action", async ({ page
   const welcome = page.getByRole("dialog", { name: "Welcome back" });
   if (await welcome.isVisible()) await welcome.getByRole("button", { name: "Close" }).last().click();
   await page.getByRole("tab", { name: "New Hire Confirmation" }).click();
-  const confirm = page.getByRole("tabpanel").getByRole("button", { name: "Confirm start" });
+  const confirm = page.getByRole("tabpanel").getByRole("button", { name: "Accept: Started work" });
   await expect(confirm).toBeVisible();
   expect((await confirm.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
   await confirm.click();

@@ -1,5 +1,5 @@
 import { RetryIconButton } from "@/components/ui/RetryIconButton";
-import { LoadingSkeleton, RefreshIndicator } from "@/components/ui/LoadingSkeleton";
+import { NumberSkeleton, TableSkeletonRows, LoadingSkeleton, RefreshIndicator } from "@/components/ui/LoadingSkeleton";
 import { Plus, RotateCw, Search, Bookmark } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
@@ -174,7 +174,7 @@ export function RequisitionsView({
                 <th scope="col" className="px-3 py-3"><span className="sr-only">{translate(language, "actions")}</span></th>
               </tr>
             </thead>
-            <tbody aria-busy={list.loading}>{list.initialLoading ? <tr><td colSpan={columns.length}><LoadingSkeleton variant="table" language={language} /></td></tr> : null}
+            <tbody aria-busy={list.loading}>{list.initialLoading ? <TableSkeletonRows columns={[{kind:"action"}, ...columns.map(column => ({kind: /head|count|age|sla/i.test(column.key) ? "number" as const : "text" as const})), {kind:"action"}]} language={language}/> : null}
               {visibleRows.map((row) => (
                 <tr key={row.doc_id} className="border-b border-[#D7DEE8] last:border-0">
                   <td className="px-3 py-3">
@@ -215,7 +215,7 @@ export function RequisitionsView({
             </tbody>
           </table>
         </div>
-        {client ? <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-[#D7DEE8] pt-3 text-sm"><span>Page {list.page} · {list.countLabel} requisitions{list.countError?<RetryIconButton type="button"   onClick={list.retryCount} loading={list.countLoading}>{language === "th" ? "ลองนับอีกครั้ง" : "Retry count"}</RetryIconButton>:null}</span><div className="flex gap-2"><Button type="button" variant="secondary" disabled={!list.canPrevious} onClick={list.goPrevious}>Previous</Button><Button type="button" variant="secondary" disabled={!list.canNext} onClick={list.goNext}>Next</Button><select aria-label="Rows per page" value={list.pageSize} onChange={event=>list.setPageSize(Number(event.target.value))} className="min-h-10 rounded-md border border-[#C9D5E6] bg-white px-2">{PAGE_SIZE_OPTIONS.map(size=><option key={size} value={size}>{size}</option>)}</select></div></div> : <Pagination language={language} page={paginated.page} pageSize={pageSize} totalRows={table.controlledRows.length} onPageChange={setPage} onPageSizeChange={setPageSize} />}
+        {client ? <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-[#D7DEE8] pt-3 text-sm"><span>Page {list.page} · {list.totalCount === null && list.countLoading ? <NumberSkeleton/> : list.countLabel} requisitions{list.countError?<RetryIconButton type="button"   onClick={list.retryCount} loading={list.countLoading}>{language === "th" ? "ลองนับอีกครั้ง" : "Retry count"}</RetryIconButton>:null}</span><div className="flex gap-2"><Button type="button" variant="secondary" disabled={!list.canPrevious} onClick={list.goPrevious}>Previous</Button><Button type="button" variant="secondary" disabled={!list.canNext} onClick={list.goNext}>Next</Button><select aria-label="Rows per page" value={list.pageSize} onChange={event=>list.setPageSize(Number(event.target.value))} className="min-h-10 rounded-md border border-[#C9D5E6] bg-white px-2">{PAGE_SIZE_OPTIONS.map(size=><option key={size} value={size}>{size}</option>)}</select></div></div> : <Pagination language={language} page={paginated.page} pageSize={pageSize} totalRows={table.controlledRows.length} onPageChange={setPage} onPageSizeChange={setPageSize} />}
         <BulkActionToolbar
           disabledReason={bulkDisabledReason}
           entityLabel={translate(language, "requisitionsUnit")}

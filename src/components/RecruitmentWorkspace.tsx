@@ -1,6 +1,7 @@
 "use client";
+import { AttendanceDecisionActions } from "@/components/ui/AttendanceDecisionActions";
 import { RetryIconButton } from "@/components/ui/RetryIconButton";
-import { LoadingSkeleton, RefreshIndicator } from "@/components/ui/LoadingSkeleton";
+import { NumberSkeleton, LoadingSkeleton, RefreshIndicator } from "@/components/ui/LoadingSkeleton";
 import { clearRecruitmentReadQueue } from "@/lib/recruitment-read-scheduler";
 import { candidateCanUseGroup, profileCapabilities, canManageApplicationGroup, eligibleApplicationGroups, canManageCandidateJourney } from "@/lib/applications";
 
@@ -317,6 +318,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const [requisitionDetailRetry, setRequisitionDetailRetry] = useState(0);
   const [activeModal, setActiveModal] = useState<ModalName>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const pendingSaveLock = useRef(false);
   const [destructiveAction, setDestructiveAction] = useState<DestructiveAction | null>(null);
   const [offerPassHandoff, setOfferPassHandoff] = useState<OfferPassHandoff | null>(null);
   const [processDefaults, setProcessDefaults] = useState<ProcessDefaults>({});
@@ -1257,7 +1259,8 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   }
 
   async function confirmPendingAction() {
-    if (!pendingAction || !supabase) return;
+    if (!pendingAction || !supabase || pendingSaveLock.current) return;
+    pendingSaveLock.current = true;
 
     const savedAction = pendingAction;
     setBusy(true);
@@ -1316,6 +1319,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       const message = saveError instanceof Error ? saveError.message : translate(language, "updateDeniedFallback");
       showUpdateDenial(message.includes("APPLICATION_GROUP_ALREADY_USED") ? (language === "th" ? "ผู้สมัครมีเส้นทางใบสมัครสำหรับกลุ่มนี้แล้ว โปรดเลือกกลุ่มอื่น หรือย้ายเส้นทางเดิมกลับมา" : "This candidate already has a journey for this group. Choose another group, or return the original journey.") : message);
     } finally {
+      pendingSaveLock.current = false;
       setBusy(false);
     }
   }
@@ -1518,7 +1522,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const rejectionActionData = actionDataFor(rejectionLetterCandidateId ?? "");
   const currentStageActionData = actionDataFor(currentStageActionCandidateId ?? "");
   const legacyDetailBody = useMemo(
-    () => buildDetailBodyV2(detail, detailData, language, canWrite && (detail?.type !== "candidate" || Boolean(selectedJourney && canManageApplicationGroup(detailSource,selectedJourney.group_id))), canDeleteRecords, openProcessFromDetail, openCurrentStageEdit, openDetailOffer, (offer) => { setProcessDefaults({ offer_id: offer.offer_id, offer_expected_updated_at: offer.updated_at, offer_start_confirmation: offer.start_confirmation }); setActiveModal("start_confirmation"); }, navigationContext, openDetailRequisitionChange, openDetailCandidateChange, openCandidateReference, openCandidateReferenceStatus, openCandidateReferenceCheck, prepareDestructiveRpcAction, openRejectionLetter, toggleRequisitionPriority),
+    () => buildDetailBodyV2(detail, detailData, language, canWrite && (detail?.type !== "candidate" || Boolean(selectedJourney && canManageApplicationGroup(detailSource,selectedJourney.group_id))), canDeleteRecords, openProcessFromDetail, openCurrentStageEdit, openDetailOffer, (offer, attendance) => { setProcessDefaults({ offer_id: offer.offer_id, offer_expected_updated_at: offer.updated_at, offer_start_confirmation: attendance ?? offer.start_confirmation }); setActiveModal("start_confirmation"); }, navigationContext, openDetailRequisitionChange, openDetailCandidateChange, openCandidateReference, openCandidateReferenceStatus, openCandidateReferenceCheck, prepareDestructiveRpcAction, openRejectionLetter, toggleRequisitionPriority),
     [canDeleteRecords, canWrite, detailSource, detail, detailData, selectedJourney, language, navigationContext, openCandidateReference, openCandidateReferenceCheck, openCandidateReferenceStatus, openDetailCandidateChange, openDetailRequisitionChange, openDetailOffer, openCurrentStageEdit, openProcessFromDetail, prepareDestructiveRpcAction, openRejectionLetter, toggleRequisitionPriority]
   );
 
@@ -1626,7 +1630,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       ) : null}
 
       {initialView === "home" ? (
-        <HomeView refreshKey={reportRefreshKey} bannerSummary={visibleHomeBannerSummary} bannerSummaryLoading={homeBannerLoading} bannerSummaryError={homeBannerError} onRetryBannerSummary={() => setHomeBannerRetry(value => value + 1)} listClient={supabase} accessScope={detailAccessScope} summaryScope={{ headerSite: filters.site, headerPic: filters.owner, priorityOnly: filters.priorityOnly }} language={language} profile={data.profile} requisitions={filteredRequisitions} candidates={filteredCandidates} offers={filteredOffers} recruitmentLogs={data.recruitment_logs} sourcingGroups={homeSourcingGroups} sourcingHref={buildContextualHref("/sourcing", { language, site: filters.site, owner: filters.owner, sourcingWeek, priority: filters.priorityOnly ? "only" : "all" })} staleSourcingGroups={staleSourcingGroups} changeLogs={filteredChangeLogs} dataQualityIssues={dataQualityIssues} canViewRecentActivity={canWrite} onConfirmStart={(offer) => { setProcessDefaults({ offer_id: offer.offer_id, offer_expected_updated_at: offer.updated_at, offer_start_confirmation: offer.start_confirmation }); setActiveModal("start_confirmation"); }} onEditPending={openPendingEdit} onOpenRequisition={(id) => setDetail({ type: "requisition", id })} onOpenCandidate={openCandidateDetail} />
+        <HomeView refreshKey={reportRefreshKey} bannerSummary={visibleHomeBannerSummary} bannerSummaryLoading={homeBannerLoading} bannerSummaryError={homeBannerError} onRetryBannerSummary={() => setHomeBannerRetry(value => value + 1)} listClient={supabase} accessScope={detailAccessScope} summaryScope={{ headerSite: filters.site, headerPic: filters.owner, priorityOnly: filters.priorityOnly }} language={language} profile={data.profile} requisitions={filteredRequisitions} candidates={filteredCandidates} offers={filteredOffers} recruitmentLogs={data.recruitment_logs} sourcingGroups={homeSourcingGroups} sourcingHref={buildContextualHref("/sourcing", { language, site: filters.site, owner: filters.owner, sourcingWeek, priority: filters.priorityOnly ? "only" : "all" })} staleSourcingGroups={staleSourcingGroups} changeLogs={filteredChangeLogs} dataQualityIssues={dataQualityIssues} canViewRecentActivity={canWrite} onConfirmStart={(offer, outcome) => { setProcessDefaults({ offer_id: offer.offer_id, offer_expected_updated_at: offer.updated_at, offer_start_confirmation: outcome ?? offer.start_confirmation }); setActiveModal("start_confirmation"); }} onEditPending={openPendingEdit} onOpenRequisition={(id) => setDetail({ type: "requisition", id })} onOpenCandidate={openCandidateDetail} />
       ) : null}
 
       {initialView === "dashboard" ? (
@@ -1709,16 +1713,16 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
             />
           )}
           profile={data.profile}
-          sourcingSlot={(
+          sourcingSlot={(selectedGroupData) => (
             <EmbeddedSourcingEditor
               canManageSetup={canManageSetup && !historicalWorkspace}
               canWrite={canWrite}
-              data={priorityData}
+              data={selectedGroupData}
               client={supabase}
               accessScope={detailAccessScope}
               priorityOnly={filters.priorityOnly}
               refreshKey={reportRefreshKey}
-              docIds={workspaceScope.requisitions.map((row) => row.doc_id)}
+              docIds={selectedGroupData.requisitions.map((row) => row.doc_id)}
               groupIds={workspaceScope.groupIds}
               language={language}
               profile={data.profile}
@@ -2526,7 +2530,7 @@ function AuthorizedPositionGroupLookup({ client, accessScope, scope, language, v
   return <div className="grid gap-2" data-testid="authorized-group-lookup">
     <Field label={language === "th" ? "ค้นหากลุ่มตำแหน่ง" : "Search position groups"}><TextInput value={search} onChange={event => setSearch(event.target.value)} placeholder={language === "th" ? "รหัสกลุ่ม ตำแหน่ง หรือไซต์" : "Group ID, position, or site"} aria-label={language === "th" ? "ค้นหากลุ่มตำแหน่ง" : "Search position groups"} /></Field>
     <Field label={label}><SelectInput name={name} aria-label={label} value={value} required onChange={event => { const row = rows.find(candidate => candidate.group_id === event.target.value) ?? null; setRetained(row ? { id: row.group_id, row } : null); onSelect(row); }}>{[<option key="" value="">{language === "th" ? "เลือกกลุ่ม" : "Select group"}</option>, ...rows.map(row => <option key={row.group_id} value={row.group_id}>{formatRecruitmentId(row.group_id)} · {row.group_position}{row.sites.length ? ` · ${row.sites.join(", ")}` : ""}</option>)]}</SelectInput></Field>
-    <div className="flex items-center justify-between gap-2 text-xs text-slate"><span>{page.countLabel} · {language === "th" ? "กลุ่ม" : "groups"}</span>{page.countError ? <RetryIconButton type="button"   onClick={page.retryCount} loading={page.countLoading}>{translate(language, "retry")}</RetryIconButton> : null}</div>
+    <div className="flex items-center justify-between gap-2 text-xs text-slate"><span>{page.totalCount === null && page.countLoading ? <NumberSkeleton/> : page.countLabel} · {language === "th" ? "กลุ่ม" : "groups"}</span>{page.countError ? <RetryIconButton type="button"   onClick={page.retryCount} loading={page.countLoading}>{translate(language, "retry")}</RetryIconButton> : null}</div>
     {page.initialLoading ? <LoadingSkeleton variant="lookup" label={<>{translate(language, "loading")}</>} className="text-sm text-slate" /> : null}
     {page.error ? <div role="alert" className="flex items-center justify-between gap-2 text-sm text-danger"><span>{translate(language, "recordUnavailableOrLoadFailed")}</span><RetryIconButton type="button"   onClick={page.retry} loading={page.loading}>{translate(language, "retry")}</RetryIconButton></div> : null}
     {!page.error ? <div className="flex items-center justify-end gap-2"><SelectInput aria-label={translate(language, "rowsPerPage")} value={page.pageSize} onChange={event => page.setPageSize(Number(event.target.value))}><option value={25}>25</option><option value={50}>50</option><option value={100}>100</option></SelectInput><Button type="button" size="sm" variant="secondary" disabled={!page.canPrevious} onClick={page.goPrevious}>{translate(language, "previous")}</Button><span className="text-xs tabular-nums">{page.page}</span><Button type="button" size="sm" variant="secondary" disabled={!page.canNext} onClick={page.goNext}>{translate(language, "next")}</Button></div> : null}
@@ -3427,9 +3431,9 @@ function StartConfirmationFields({ defaults, language }: { defaults: ProcessDefa
   return <div className="grid gap-4">
     <input type="hidden" name="offer_id" value={defaults.offer_id ?? ""} />
     <input type="hidden" name="expected_updated_at" value={defaults.offer_expected_updated_at ?? ""} />
-    <div className="rounded-md border border-[#D7DEE8] bg-lightgray p-3 text-sm font-medium text-slate">Confirm the candidate’s first working-day attendance. Did not start will reopen headcount and restart the requisition SLA today.</div>
-    <Field label="Start confirmation"><SelectInput name="start_confirmation" value={outcome} onChange={(event) => setOutcome(event.target.value as "started" | "did_not_start")}><option value="started">Started work</option><option value="did_not_start">Did not start</option></SelectInput></Field>
-    {outcome === "did_not_start" ? <Field label="Reason"><TextArea name="reason" required rows={3} placeholder="Why did the candidate not start?" /></Field> : null}
+    <div className="rounded-md border border-[#D7DEE8] bg-lightgray p-3 text-sm font-medium text-slate">{language === "th" ? "ยืนยันการมาทำงานวันแรกของผู้สมัคร หากไม่ได้เริ่มงาน ระบบจะเปิดอัตราว่างและเริ่มนับ SLA ของคำขอใหม่ในวันนี้" : "Confirm the candidate’s first working-day attendance. Did not start will reopen headcount and restart the requisition SLA today."}</div>
+    <Field label={language === "th" ? "ยืนยันการเริ่มงาน" : "Start confirmation"}><SelectInput name="start_confirmation" value={outcome} onChange={(event) => setOutcome(event.target.value as "started" | "did_not_start")}><option value="started">{language === "th" ? "เริ่มงานแล้ว" : "Started work"}</option><option value="did_not_start">{language === "th" ? "ไม่ได้เริ่มงาน" : "Did not start"}</option></SelectInput></Field>
+    {outcome === "did_not_start" ? <Field label={language === "th" ? "เหตุผล" : "Reason"}><TextArea name="reason" required rows={3} placeholder={language === "th" ? "เหตุผลที่ผู้สมัครไม่ได้เริ่มงาน" : "Why did the candidate not start?"} /></Field> : null}
   </div>;
 }
 
@@ -3916,12 +3920,12 @@ function ConfirmModal({
   const main = reasons.find((reason) => reason.reason_id === outcome?.failure_main_reason_id);
   const detail = reasons.find((reason) => reason.reason_id === outcome?.failure_detail_reason_id);
   return (
-    <Modal open={Boolean(action)} title={action?.title ?? "Confirm Save"} onClose={onClose} width="max-w-lg">
+    <Modal open={Boolean(action)} title={action?.title ?? "Confirm Save"} closeDisabled={busy} onClose={() => { if (!busy) onClose(); }} width="max-w-lg">
       <div className="grid gap-4">
         <p className="text-sm font-bold text-slate">{action?.summary}</p>
         {failure ? <dl className="grid gap-2 rounded-md border border-[#D7DEE8] bg-lightgray p-3 text-sm text-navy"><div><dt className="font-semibold">{translate(language, "outcomeDate")}</dt><dd>{formatDate(outcome?.date, language)}</dd></div><div><dt className="font-semibold">{translate(language, "interviewer")}</dt><dd>{outcome?.interviewer || "—"}</dd></div><div><dt className="font-semibold">{language === "th" ? "ผู้สิ้นสุดกระบวนการ" : "Who ended the process"}</dt><dd>{outcome?.failure_actor ? failureActorLabel(outcome.failure_actor, language) : "—"}</dd></div><div><dt className="font-semibold">{language === "th" ? "เหตุผลหลัก" : "Main reason"}</dt><dd>{main ? language === "th" ? main.label_th : main.label_en : "—"}</dd></div><div><dt className="font-semibold">{language === "th" ? "เหตุผลโดยละเอียด" : "Detailed reason"}</dt><dd>{detail ? language === "th" ? detail.label_th : detail.label_en : "—"}</dd></div><div><dt className="font-semibold">{language === "th" ? "หมายเหตุ" : "Remark"}</dt><dd>{outcome?.remark || "—"}</dd></div></dl> : <pre className="max-h-72 overflow-auto rounded-md border border-[#D7DEE8] bg-lightgray p-3 text-xs text-navy">{JSON.stringify(action?.payload ?? {}, null, 2)}</pre>}
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={onClose}>{translate(language, "cancel")}</Button>
+          <Button type="button" variant="secondary" disabled={busy} onClick={onClose}>{translate(language, "cancel")}</Button>
           <Button type="button" disabled={busy} onClick={onConfirm}>{translate(language, "saveChanges")}</Button>
         </div>
       </div>
@@ -4035,7 +4039,7 @@ function buildDetailBodyV2(
   onUpdateCandidate: (candidateId: string) => void,
   onEditPending: (candidate: EnrichedCandidate, stage: ProcessStage) => void,
   onEditOffer: (offer: Offer) => void,
-  onConfirmOfferStart: (offer: Offer) => void,
+  onConfirmOfferStart: (offer: Offer, attendance?: "started" | "did_not_start") => void,
   navigationContext: { language: Language; site: string; owner: string; sourcingWeek: string },
   onChangeRequisition: (docId: string) => void,
   onChangeCandidate: (candidateId: string) => void,
@@ -4347,16 +4351,13 @@ function buildDetailBodyV2(
                 {offers.length === 0 ? <p className="text-sm font-medium text-slate">{translate(language, "noData")}</p> : offers.map((offer) => (
                   <div key={offer.offer_id} className="grid gap-3 rounded-md border border-[#D7DEE8] bg-white p-3">
                     <section className="rounded-md border border-[#E4E9F2] bg-[#F8FAFD] p-3">
-                    <p className="text-xs font-semibold uppercase tracking-normal text-slate">Offer record</p>
-                    <div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-navy">{offer.doc_id}</strong><div className="flex flex-wrap gap-2">{canEditOffers ? <Button type="button" size="sm" variant="secondary" onClick={() => onEditOffer(offer)}>{translate(language, "edit")}</Button> : null}</div></div>
-                    <p className="mt-1 text-sm font-medium text-slate">{translate(language, "acceptedLower")}: {formatDate(offer.accepted_date, language)}</p>
-                    <p className="mt-1 text-sm font-medium text-slate">{translate(language, "startLower")}: {formatDate(offer.first_working_date, language)}</p>
+                    <div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-navy">{offer.doc_id}</strong><div className="flex flex-wrap gap-2">{canEditOffers ? <Button type="button" size="icon-sm" variant="ghost" className="ats-compact-utility" aria-label={language === "th" ? "แก้ไขข้อเสนอ" : "Edit offer"} title={language === "th" ? "แก้ไขข้อเสนอ" : "Edit offer"} onClick={() => onEditOffer(offer)}><Pencil size={17}/></Button> : null}</div></div>
+                    <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm font-medium text-slate"><span>{translate(language, "acceptedLower")}: {formatDate(offer.accepted_date, language)}</span><span>{translate(language, "startLower")}: {formatDate(offer.first_working_date, language)}</span></div>
                     {offer.remark ? <p className="mt-1 break-words text-sm text-slate">{offer.remark}</p> : null}
                     </section>
                     <section className="rounded-md border border-[#E4E9F2] bg-white p-3">
-                    <p className="text-xs font-semibold uppercase tracking-normal text-slate">Come to work</p>
-                    <p className="mt-1 text-sm font-medium text-slate">First working date attendance: {offer.start_confirmation ? `${offer.start_confirmation === "started" ? "Started work" : "Did not start"}${offer.start_confirmed_at ? ` / ${formatDate(offer.start_confirmed_at, language)}` : ""}${offer.start_confirmation_reason ? ` — ${offer.start_confirmation_reason}` : ""}` : offer.first_working_date && offer.first_working_date > today() ? "Available on the first working date" : "Not confirmed"}</p>
-                    {canEditOffers && offer.accepted_date && offer.first_working_date && offer.first_working_date <= today() && (!offer.start_confirmation || ["system_admin", "admin_recruiter"].includes(data.profile?.role ?? "")) ? <Button type="button" className="mt-3" size="sm" variant="secondary" onClick={() => onConfirmOfferStart(offer)}>{offer.start_confirmation ? "Correct start" : "Confirm start"}</Button> : null}
+                    <div className="flex items-start justify-between gap-2"><h5 className="pt-2 text-sm font-semibold text-navy">{language === "th" ? "ยืนยันการเริ่มงาน" : "Working Confirm"}</h5>{canEditOffers && offer.accepted_date && offer.first_working_date && offer.first_working_date <= today() && (!offer.start_confirmation || ["system_admin", "admin_recruiter"].includes(data.profile?.role ?? "")) ? <AttendanceDecisionActions language={language} onDecision={outcome => onConfirmOfferStart(offer, outcome)}/> : null}</div>
+                    <p className="mt-1 text-sm font-medium text-slate">{language === "th" ? "การมาทำงานวันแรก:" : "First working date attendance:"} {offer.start_confirmation ? `${offer.start_confirmation === "started" ? (language === "th" ? "เริ่มงานแล้ว" : "Started work") : (language === "th" ? "ไม่ได้เริ่มงาน" : "Did not start")}${offer.start_confirmed_at ? ` / ${formatDate(offer.start_confirmed_at, language)}` : ""}${offer.start_confirmation_reason ? ` — ${offer.start_confirmation_reason}` : ""}` : offer.first_working_date && offer.first_working_date > today() ? (language === "th" ? "ยืนยันได้ในวันเริ่มงาน" : "Available on the first working date") : (language === "th" ? "ยังไม่ได้ยืนยัน" : "Not confirmed")}</p>
                     </section>
                   </div>
                 ))}

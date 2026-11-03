@@ -1,12 +1,12 @@
 "use client";
 import { RetryIconButton } from "@/components/ui/RetryIconButton";
-import { LoadingSkeleton, RefreshIndicator } from "@/components/ui/LoadingSkeleton";
+import { NumberSkeleton, LoadingSkeleton, RefreshIndicator } from "@/components/ui/LoadingSkeleton";
 import { compareApplicationLogs } from "@/lib/application-stage-order";
 import { belongsToApplication, applicationKey } from "@/lib/applications";
 
 import { failureReasonText } from "@/lib/rejection-reasons";
 
-import { ArrowRight, Filter, Mail, Pencil, Plus, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, ArrowRight, Filter, Mail, Pencil, Plus, Search } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/Button";
@@ -121,20 +121,49 @@ export function PipelineBoardView({
   const serverEnabled = Boolean(listClient && accessScope);
   const stageFilters = { ...listScope, boardFilter, asOf: formatLocalDateInput(), recentSince: recentCutoffDate() };
   const stageSearchInput = { value: pipelineSearch, setValue: setPipelineSearch };
-  const noActivityList = useRecruitmentList<EnrichedCandidate>({ client: listClient, accessScope, entity: "pipeline_stage", filters: { ...stageFilters, stage: "No activity" }, sort: "board_last_update", direction: "asc", searchInput: stageSearchInput, enabled: serverEnabled });
-  const phoneList = useRecruitmentList<EnrichedCandidate>({ client: listClient, accessScope, entity: "pipeline_stage", filters: { ...stageFilters, stage: "Phone Screen" }, sort: "board_last_update", direction: "asc", searchInput: stageSearchInput, enabled: serverEnabled });
-  const hrInterviewList = useRecruitmentList<EnrichedCandidate>({ client: listClient, accessScope, entity: "pipeline_stage", filters: { ...stageFilters, stage: "HR Interview" }, sort: "board_last_update", direction: "asc", searchInput: stageSearchInput, enabled: serverEnabled });
-  const lineInterviewList = useRecruitmentList<EnrichedCandidate>({ client: listClient, accessScope, entity: "pipeline_stage", filters: { ...stageFilters, stage: "Line Interview" }, sort: "board_last_update", direction: "asc", searchInput: stageSearchInput, enabled: serverEnabled });
-  const testList = useRecruitmentList<EnrichedCandidate>({ client: listClient, accessScope, entity: "pipeline_stage", filters: { ...stageFilters, stage: "Test" }, sort: "board_last_update", direction: "asc", searchInput: stageSearchInput, enabled: serverEnabled });
-  const referenceList = useRecruitmentList<EnrichedCandidate>({ client: listClient, accessScope, entity: "pipeline_stage", filters: { ...stageFilters, stage: "Reference Check" }, sort: "board_last_update", direction: "asc", searchInput: stageSearchInput, enabled: serverEnabled });
-  const offerList = useRecruitmentList<EnrichedCandidate>({ client: listClient, accessScope, entity: "pipeline_stage", filters: { ...stageFilters, stage: "Offer" }, sort: "board_last_update", direction: "asc", searchInput: stageSearchInput, enabled: serverEnabled });
-  const stageLists: Array<{ stage: PipelineStageKey; list: ReturnType<typeof useRecruitmentList<EnrichedCandidate>> }> = [
+  const noActivityList = useBoardList({ client: listClient, accessScope, entity: "pipeline_stage", filters: { ...stageFilters, stage: "No activity" }, sort: "board_last_update", direction: "asc", searchInput: stageSearchInput, enabled: serverEnabled && pipelineView === "board" });
+  const phoneList = useBoardList({ client: listClient, accessScope, entity: "pipeline_stage", filters: { ...stageFilters, stage: "Phone Screen" }, sort: "board_last_update", direction: "asc", searchInput: stageSearchInput, enabled: serverEnabled && pipelineView === "board" });
+  const hrInterviewList = useBoardList({ client: listClient, accessScope, entity: "pipeline_stage", filters: { ...stageFilters, stage: "HR Interview" }, sort: "board_last_update", direction: "asc", searchInput: stageSearchInput, enabled: serverEnabled && pipelineView === "board" });
+  const lineInterviewList = useBoardList({ client: listClient, accessScope, entity: "pipeline_stage", filters: { ...stageFilters, stage: "Line Interview" }, sort: "board_last_update", direction: "asc", searchInput: stageSearchInput, enabled: serverEnabled && pipelineView === "board" });
+  const testList = useBoardList({ client: listClient, accessScope, entity: "pipeline_stage", filters: { ...stageFilters, stage: "Test" }, sort: "board_last_update", direction: "asc", searchInput: stageSearchInput, enabled: serverEnabled && pipelineView === "board" });
+  const referenceList = useBoardList({ client: listClient, accessScope, entity: "pipeline_stage", filters: { ...stageFilters, stage: "Reference Check" }, sort: "board_last_update", direction: "asc", searchInput: stageSearchInput, enabled: serverEnabled && pipelineView === "board" });
+  const offerList = useBoardList({ client: listClient, accessScope, entity: "pipeline_stage", filters: { ...stageFilters, stage: "Offer" }, sort: "board_last_update", direction: "asc", searchInput: stageSearchInput, enabled: serverEnabled && pipelineView === "board" });
+  const stageLists: Array<{ stage: PipelineStageKey; list: ReturnType<typeof useBoardList> }> = [
     { stage: "No activity", list: noActivityList }, { stage: "Phone Screen", list: phoneList }, { stage: "HR Interview", list: hrInterviewList },
     { stage: "Line Interview", list: lineInterviewList }, { stage: "Test", list: testList }, { stage: "Reference Check", list: referenceList }, { stage: "Offer", list: offerList }
   ];
   const stageListByStage = new Map(stageLists.map(entry => [entry.stage, entry.list]));
-  const failedList = useRecruitmentList<EnrichedCandidate>({ client: listClient, accessScope, entity: "candidate_applications", filters: { ...listScope, boardFilter: "failed", asOf: formatLocalDateInput(), ...(embedded ? { embeddedAllTime: true } : { recentSince: recentCutoffDate() }) }, sort: "latest_log_date", direction: "desc", enabled: serverEnabled });
-  const passedOfferList = useRecruitmentList<EnrichedCandidate>({ client: listClient, accessScope, entity: "candidate_applications", filters: { ...listScope, boardFilter: "passed_offer", asOf: formatLocalDateInput(), ...(embedded ? { embeddedAllTime: true } : { recentSince: recentCutoffDate() }) }, sort: "latest_log_date", direction: "desc", enabled: serverEnabled });
+  const failedList = useBoardList({ client: listClient, accessScope, entity: "candidate_applications", filters: { ...listScope, boardFilter: "failed", asOf: formatLocalDateInput(), ...(embedded ? { embeddedAllTime: true } : { recentSince: recentCutoffDate() }) }, sort: "latest_log_date", direction: "desc", enabled: serverEnabled && pipelineView === "board" });
+  const passedOfferList = useBoardList({ client: listClient, accessScope, entity: "candidate_applications", filters: { ...listScope, boardFilter: "passed_offer", asOf: formatLocalDateInput(), ...(embedded ? { embeddedAllTime: true } : { recentSince: recentCutoffDate() }) }, sort: "latest_log_date", direction: "desc", enabled: serverEnabled && pipelineView === "board" });
+  const completeLists = [...stageLists.map(entry => entry.list), failedList, passedOfferList];
+  const boardIdentity = JSON.stringify([accessScope, listScope, boardFilter, pipelineSearch]);
+  const [boardSnapshot, setBoardSnapshot] = useState<{ identity: string; buckets: EnrichedCandidate[][] } | null>(null);
+  const boardPending = completeLists.some(list => list.loading || list.initialLoading);
+  const boardLoadError = serverEnabled && completeLists.some(list => list.error);
+  useEffect(() => {
+    if (!serverEnabled || boardPending || boardLoadError) return;
+    setBoardSnapshot({ identity: boardIdentity, buckets: completeLists.map(list => list.allItems) });
+    // Publish all buckets together; their source arrays stay stable while local pages change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverEnabled, boardIdentity, boardPending, boardLoadError, noActivityList.allItems, phoneList.allItems, hrInterviewList.allItems, lineInterviewList.allItems, testList.allItems, referenceList.allItems, offerList.allItems, failedList.allItems, passedOfferList.allItems]);
+  const visibleSnapshot = boardSnapshot?.identity === boardIdentity ? boardSnapshot : null;
+  const retryActions = completeLists.map(list => list.retry);
+  const retryBoard = () => retryActions.forEach(retry => retry());
+  completeLists.forEach((list, index) => {
+    if (!serverEnabled) return;
+    const all = visibleSnapshot?.buckets[index] ?? [];
+    list.pages = Math.max(1, Math.ceil(all.length / 5));
+    list.page = Math.min(list.page, list.pages);
+    list.items = all.slice((list.page - 1) * 5, list.page * 5);
+    list.totalCount = visibleSnapshot ? all.length : null;
+    list.countLabel = visibleSnapshot ? String(all.length) : <NumberSkeleton/>;
+    list.initialLoading = !visibleSnapshot && !boardLoadError;
+    list.refreshing = Boolean(visibleSnapshot && boardPending);
+    list.canNext = list.page < list.pages;
+    list.canPrevious = list.page > 1;
+    list.error = boardLoadError;
+    list.retry = retryBoard;
+  });
   async function openCandidateActionMenu(candidate: EnrichedCandidate, setMenu: (value: string | null | ((current: string | null) => string | null)) => void) {
     const key = applicationKey(candidate);
     if (serverEnabled && onEnsureActionContext) {
@@ -282,7 +311,7 @@ export function PipelineBoardView({
           action={<div className="flex min-w-0 flex-wrap items-center justify-end gap-2"><PipelineViewSwitch language={language} value="board" onChange={setPipelineView} />{canWrite && onNewCandidate ? <Button type="button" size="sm" icon={<Plus size={17} />} onClick={onNewCandidate}>{translate(language, "newCandidate")}</Button> : null}</div>}
         />
         <div className="mb-3 grid gap-3">
-          {serverEnabled && !summary && !summaryError ? <LoadingSkeleton variant="metrics" language={language} /> : <OperationalSummaryStrip
+          {<OperationalSummaryStrip loading={serverEnabled && !summary && !summaryError} language={language}
             className={embedded ? "hidden" : undefined}
             density="compact"
             items={[
@@ -441,10 +470,10 @@ export function PipelineBoardView({
                   setDragged(null);
                 }}
               >
-                <div className="sticky top-0 z-10 -mx-1 mb-2 min-w-0 bg-[#EAF3FF] px-1 pb-2 md:mb-3 md:pb-1">
+                <div className="sticky top-0 z-10 -mx-1 mb-2 min-w-0 bg-[#EAF3FF] px-1 pb-2 md:mb-3 md:pb-1"><div className="flex flex-wrap items-center justify-between gap-1">
                   <h3 className={`break-words text-sm font-semibold ${processIndex(stage) === 1 ? "text-scarlet" : "text-navy"}`}>
                   {processLabel(stage, language)} <span aria-hidden="true" className="ml-1 rounded bg-white/70 px-1.5 py-0.5 text-xs tabular-nums">{serverEnabled ? stageList.countLabel : stageRows.length}</span>
-                  </h3>
+                  </h3>{serverEnabled ? <BoardPagination language={language} list={stageList} /> : null}</div>
                   {serverEnabled && stageList.refreshing ? <RefreshIndicator language={language} /> : null}{serverEnabled && stageList.countError ? <RetryIconButton type="button"   onClick={stageList.retryCount} loading={stageList.countLoading}>{translate(language, "retry")}</RetryIconButton> : null}
                   {serverEnabled && stageList.error ? <RetryIconButton type="button"   onClick={stageList.retry} loading={stageList.loading}>{translate(language, "retry")}</RetryIconButton> : null}
                 </div>
@@ -496,7 +525,7 @@ export function PipelineBoardView({
                   ))}
                 </div>
                 )}
-                {serverEnabled ? <CursorPagination language={language} page={stageList.page} pageSize={stageList.pageSize} loading={stageList.loading} canPrevious={stageList.canPrevious} canNext={stageList.canNext} onPrevious={stageList.goPrevious} onNext={stageList.goNext} onPageSizeChange={stageList.setPageSize} /> : null}
+
               </section>
             );
           })}
@@ -505,9 +534,9 @@ export function PipelineBoardView({
 
       <div className="grid gap-4 xl:grid-cols-2">
         <Panel variant="secondary">
-          <SectionTitle title={translate(language, embedded ? "failedCandidatesAllTime" : "failedCandidatesLast7Days")} />
+          <SectionTitle title={translate(language, embedded ? "failedCandidatesAllTime" : "failedCandidatesLast7Days")} action={serverEnabled ? <BoardPagination language={language} list={failedList}/> : undefined} />
           {failedGroups.every((group) => group.rows.length === 0) ? (
-            serverEnabled && failedList.initialLoading ? <LoadingSkeleton variant="cards" label={<>{translate(language, "loading")}</>} className="py-3 text-sm text-slate" /> : <EmptyState variant="quiet" message={translate(language, embedded ? "noFailedCandidatesAllTime" : "noFailedCandidatesLast7Days")} />
+            serverEnabled && failedList.error ? <p role="alert" className="text-sm text-danger">{translate(language,"loadFailed")}</p> : serverEnabled && failedList.initialLoading ? <LoadingSkeleton variant="cards" label={<>{translate(language, "loading")}</>} className="py-3 text-sm text-slate" /> : <EmptyState variant="quiet" message={translate(language, embedded ? "noFailedCandidatesAllTime" : "noFailedCandidatesLast7Days")} />
           ) : (
             <div className="grid grid-flow-col gap-3 overflow-x-auto pb-2" style={{ gridAutoColumns: "minmax(240px, 1fr)" }}>
               {failedGroups.map((group) => (
@@ -535,13 +564,13 @@ export function PipelineBoardView({
               ))}
             </div>
           )}
-          {serverEnabled ? <div className="mt-3 flex items-center justify-end gap-2"><span className="text-xs text-slate">{failedList.countLabel} · {translate(language, "pipelineRecords")}</span>{failedList.countError ? <RetryIconButton type="button"   onClick={failedList.retryCount} loading={failedList.countLoading}>{translate(language, "retry")}</RetryIconButton> : null}{failedList.error ? <RetryIconButton type="button"   onClick={failedList.retry} loading={failedList.loading}>{translate(language, "retry")}</RetryIconButton> : null}<CursorPagination language={language} page={failedList.page} pageSize={failedList.pageSize} loading={failedList.loading} canPrevious={failedList.canPrevious} canNext={failedList.canNext} onPrevious={failedList.goPrevious} onNext={failedList.goNext} onPageSizeChange={failedList.setPageSize} /></div> : null}
+          {serverEnabled ? <div className="mt-3 flex items-center justify-end gap-2"><span className="text-xs text-slate">{failedList.totalCount === null && failedList.countLoading ? <NumberSkeleton/> : failedList.countLabel} · {translate(language, "pipelineRecords")}</span>{failedList.countError ? <RetryIconButton type="button"   onClick={failedList.retryCount} loading={failedList.countLoading}>{translate(language, "retry")}</RetryIconButton> : null}{failedList.error ? <RetryIconButton type="button"   onClick={failedList.retry} loading={failedList.loading}>{translate(language, "retry")}</RetryIconButton> : null}</div> : null}
         </Panel>
 
         <Panel variant="secondary">
-          <SectionTitle title={translate(language, embedded ? "passedOfferAllTime" : "passedOfferLast7Days")} />
+          <SectionTitle title={translate(language, embedded ? "passedOfferAllTime" : "passedOfferLast7Days")} action={serverEnabled ? <BoardPagination language={language} list={passedOfferList}/> : undefined} />
           {passedOfferRows.length === 0 ? (
-            serverEnabled && passedOfferList.initialLoading ? <LoadingSkeleton variant="cards" label={<>{translate(language, "loading")}</>} className="py-3 text-sm text-slate" /> : <EmptyState variant="quiet" message={translate(language, embedded ? "noOfferPassAllTime" : "noOfferPassLast7Days")} />
+            serverEnabled && passedOfferList.error ? <p role="alert" className="text-sm text-danger">{translate(language,"loadFailed")}</p> : serverEnabled && passedOfferList.initialLoading ? <LoadingSkeleton variant="cards" label={<>{translate(language, "loading")}</>} className="py-3 text-sm text-slate" /> : <EmptyState variant="quiet" message={translate(language, embedded ? "noOfferPassAllTime" : "noOfferPassLast7Days")} />
           ) : (
             <div className="grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(240px,1fr))]">
               {passedOfferRows.map((candidate) => (
@@ -559,7 +588,7 @@ export function PipelineBoardView({
               ))}
             </div>
           )}
-          {serverEnabled ? <div className="mt-3 flex items-center justify-end gap-2"><span className="text-xs text-slate">{passedOfferList.countLabel} · {translate(language, "pipelineRecords")}</span>{passedOfferList.countError ? <RetryIconButton type="button"   onClick={passedOfferList.retryCount} loading={passedOfferList.countLoading}>{translate(language, "retry")}</RetryIconButton> : null}{passedOfferList.error ? <RetryIconButton type="button"   onClick={passedOfferList.retry} loading={passedOfferList.loading}>{translate(language, "retry")}</RetryIconButton> : null}<CursorPagination language={language} page={passedOfferList.page} pageSize={passedOfferList.pageSize} loading={passedOfferList.loading} canPrevious={passedOfferList.canPrevious} canNext={passedOfferList.canNext} onPrevious={passedOfferList.goPrevious} onNext={passedOfferList.goNext} onPageSizeChange={passedOfferList.setPageSize} /></div> : null}
+          {serverEnabled ? <div className="mt-3 flex items-center justify-end gap-2"><span className="text-xs text-slate">{passedOfferList.totalCount === null && passedOfferList.countLoading ? <NumberSkeleton/> : passedOfferList.countLabel} · {translate(language, "pipelineRecords")}</span>{passedOfferList.countError ? <RetryIconButton type="button"   onClick={passedOfferList.retryCount} loading={passedOfferList.countLoading}>{translate(language, "retry")}</RetryIconButton> : null}{passedOfferList.error ? <RetryIconButton type="button"   onClick={passedOfferList.retry} loading={passedOfferList.loading}>{translate(language, "retry")}</RetryIconButton> : null}</div> : null}
         </Panel>
       </div>
     </div>
@@ -758,7 +787,7 @@ function MobileWorkspacePipelineStages({
   language: Language;
   rows: EnrichedCandidate[];
   stages: PipelineStageKey[];
-  stageLists?: ReadonlyMap<PipelineStageKey, ReturnType<typeof useRecruitmentList<EnrichedCandidate>>>;
+  stageLists?: ReadonlyMap<PipelineStageKey, ReturnType<typeof useBoardList>>;
   canWrite: boolean;
   onMove: (candidate: EnrichedCandidate, nextStage: ProcessStage) => void;
   onOpen: (candidateId: string, applicationId?: string) => void;
@@ -773,7 +802,7 @@ function MobileWorkspacePipelineStages({
           const stageRows = stageList?.items ?? sortByLastUpdateAsc(rows.filter((row) => row.latest_process === stage));
           return <details key={stage} className="group rounded-lg border border-[#E4E9F2] bg-white">
             <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 text-sm font-semibold text-navy focus:outline-none focus:ring-2 focus:ring-primary/30 [&::-webkit-details-marker]:hidden"><span className="min-w-0 truncate">{processLabel(stage, language)}</span><span className="inline-flex min-w-7 items-center justify-center rounded-md bg-[#F1F6FC] px-2 py-1 text-xs tabular-nums text-navy">{stageList?.countLabel ?? stageRows.length}</span></summary>
-            <div className="grid gap-1 border-t border-[#E4E9F2] p-2">{stageList?.countError ? <RetryIconButton type="button"   onClick={stageList.retryCount} loading={stageList.countLoading}>{translate(language, "retry")}</RetryIconButton> : null}{stageList?.error ? <RetryIconButton type="button"   onClick={stageList.retry} loading={stageList.loading}>{translate(language, "retry")}</RetryIconButton> : null}{stageRows.length === 0 ? stageList?.initialLoading ? <LoadingSkeleton variant="cards" label={<>{translate(language, "loading")}</>} className="px-1 py-2 text-xs font-medium text-slate" /> : stageList?.error ? <p role="alert" className="px-1 py-2 text-xs font-medium text-scarlet">{translate(language, "loadError")}</p> : <p className="px-1 py-2 text-xs font-medium text-slate">{translate(language, "noData")}</p> : stageRows.map(renderCandidate)}{stageList ? <CursorPagination language={language} page={stageList.page} pageSize={stageList.pageSize} loading={stageList.loading} canPrevious={stageList.canPrevious} canNext={stageList.canNext} onPrevious={stageList.goPrevious} onNext={stageList.goNext} onPageSizeChange={stageList.setPageSize} /> : null}</div>
+            <div className="grid gap-1 border-t border-[#E4E9F2] p-2">{stageList ? <BoardPagination language={language} list={stageList}/> : null}{stageList?.countError ? <RetryIconButton type="button"   onClick={stageList.retryCount} loading={stageList.countLoading}>{translate(language, "retry")}</RetryIconButton> : null}{stageList?.error ? <RetryIconButton type="button"   onClick={stageList.retry} loading={stageList.loading}>{translate(language, "retry")}</RetryIconButton> : null}{stageRows.length === 0 ? stageList?.initialLoading ? <LoadingSkeleton variant="cards" label={<>{translate(language, "loading")}</>} className="px-1 py-2 text-xs font-medium text-slate" /> : stageList?.error ? <p role="alert" className="px-1 py-2 text-xs font-medium text-scarlet">{translate(language, "loadError")}</p> : <p className="px-1 py-2 text-xs font-medium text-slate">{translate(language, "noData")}</p> : stageRows.map(renderCandidate)}</div>
           </details>;
         })}
       </div>
@@ -803,7 +832,7 @@ function MobileWorkspacePipelineStages({
                   {canAdvance ? <button type="button" aria-label={advanceLabel} title={advanceLabel} onClick={() => candidate.latest_process === "No activity" ? onStartProcess(candidate) : onMove(candidate, nextStage!)} className="inline-flex size-11 shrink-0 items-center justify-center rounded-lg border border-[#C9D5E6] text-primary hover:bg-[#F1F7FF] focus:outline-none focus:ring-2 focus:ring-primary/30"><ArrowRight size={17} aria-hidden="true" /></button> : null}
                 </div>;
               })}
-              {stageList ? <CursorPagination language={language} page={stageList.page} pageSize={stageList.pageSize} loading={stageList.loading} canPrevious={stageList.canPrevious} canNext={stageList.canNext} onPrevious={stageList.goPrevious} onNext={stageList.goNext} onPageSizeChange={stageList.setPageSize} /> : null}
+              {stageList ? <BoardPagination language={language} list={stageList} /> : null}
             </div>
           </details>
         );
@@ -1240,4 +1269,27 @@ function groupPipelineRows(rows: EnrichedCandidate[], groupBy: PipelineGroupBy, 
   return Array.from(groups.entries())
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([label, groupRows]) => ({ label, rows: groupRows }));
+}
+
+function useBoardList(input: Parameters<typeof useRecruitmentList<EnrichedCandidate>>[0]) {
+  const list = useRecruitmentList<EnrichedCandidate>({ ...input, complete: true, completeKey: applicationKey });
+  const identity = JSON.stringify([input.accessScope, input.entity, input.filters, list.search]);
+  const [navigation, setNavigation] = useState({ identity, page: 1 });
+  const pages = Math.max(1, Math.ceil(list.items.length / 5));
+  const page = navigation.identity === identity ? Math.min(navigation.page, pages) : 1;
+  const allItems = list.items;
+  return { ...list, items: allItems.slice((page - 1) * 5, page * 5), allItems,
+    totalCount: list.initialLoading ? null : allItems.length, countLabel: list.initialLoading ? <NumberSkeleton/> : String(allItems.length),
+    page, pageSize: 5, pages, canPrevious: page > 1, canNext: page < pages,
+    goPrevious: () => setNavigation({ identity, page: Math.max(1, page - 1) }),
+    goNext: () => setNavigation({ identity, page: Math.min(pages, page + 1) })
+  };
+}
+function BoardPagination({ language, list }: { language: Language; list: ReturnType<typeof useBoardList> }) {
+  if (list.initialLoading || list.error || !list.totalCount) return null;
+  return <div data-board-pagination className="ml-auto flex shrink-0 items-center justify-end gap-1 text-xs font-medium tabular-nums text-slate">
+    <span aria-label={language === "th" ? "หน้าปัจจุบัน / จำนวนหน้า" : "Current page / total pages"}>{list.page}/{list.pages}</span>
+    <Button type="button" size="icon-sm" variant="ghost" className="ats-compact-utility" aria-label={translate(language,"previous")} title={translate(language,"previous")} disabled={list.loading || list.refreshing || !list.canPrevious} onClick={list.goPrevious}><ChevronLeft size={16}/></Button>
+    <Button type="button" size="icon-sm" variant="ghost" className="ats-compact-utility" aria-label={translate(language,"next")} title={translate(language,"next")} disabled={list.loading || list.refreshing || !list.canNext} onClick={list.goNext}><ChevronRight size={16}/></Button>
+  </div>;
 }

@@ -1,3 +1,4 @@
+import { sourcingCycleSaturday } from "../../../src/lib/dates";
 import { expect, type Page, type Route } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
@@ -386,8 +387,8 @@ export async function installMockSupabase(page: Page, options: MockSupabaseOptio
       rpcCalls.push({endpoint,payload:{...body}});
       const selectedWeek=String(body?.p_selected_week??"2026-07-18"),groupId=typeof body?.p_group_id==="string"?body.p_group_id:null;
       const groups=data.position_groups.filter(group=>!groupId||group.group_id===groupId);
-      const updates=data.sourcing_weekly_updates.filter(update=>update.week_start<=selectedWeek&&(!groupId||update.group_id===groupId));
-      const weeks=[...new Set(updates.map(update=>update.week_start))].sort().slice(-8).map(week_start=>{const weekRows=updates.filter(update=>update.week_start===week_start);return {week_start,expectedRows:groups.length,updatedRows:weekRows.length,applicants:weekRows.reduce((sum,row)=>sum+(sourcingApplicants(row)??0),0)};});
+      const updates=data.sourcing_weekly_updates.map(update => ({...update,week_start:sourcingCycleSaturday(update.week_start)})).filter(update=>update.week_start<=selectedWeek&&(!groupId||update.group_id===groupId));
+      const weeks=[...new Set(updates.map(update=>update.week_start))].sort().slice(-8).reverse().map(week_start=>{const weekRows=updates.filter(update=>update.week_start===week_start);return {week_start,expectedRows:groups.length,updatedRows:weekRows.length,applicants:weekRows.length < groups.length || weekRows.some(row=>sourcingApplicants(row) === null) ? null : weekRows.reduce((sum,row)=>sum+(sourcingApplicants(row)??0),0)};});
       const saved=updates.filter(row=>row.week_start===selectedWeek),totalApplicants=updates.reduce((sum,row)=>sum+(sourcingApplicants(row)??0),0);
       const channels=Object.fromEntries(SOURCING_CHANNELS.map(channel=>[channel.enabled,updates.reduce((sum,row)=>sum+(row[channel.enabled]?Number(row[channel.count]??0):0),0)]));
       await json(route,{selectedWeek,groupId,totalApplicants:updates.length?totalApplicants:null,selectedApplicants:saved.length?saved.reduce((sum,row)=>sum+(sourcingApplicants(row)??0),0):null,expectedRows:groups.length*8,updatedWeeks:updates.length,completeness:groups.length?Math.round(Math.min(1,updates.length/(groups.length*8))*100):0,channels,weeks,stageChannels:groupId?deriveSourcingStageChannels(data,groupId,selectedWeek):null});return;
@@ -659,14 +660,22 @@ function sourcingListRows(data: DashboardData, filters: Record<string, unknown>,
   const selectedWeek=String(filters.weekStart??filters.week??"2026-07-18");
   const rows = enrichWorkspaceLinkedGroups(data, selectedWeek).flatMap(group => {
     const requestedWeek=filters.week??(filters.surface==="board"?selectedWeek:"");
-    const updates = data.sourcing_weekly_updates.filter(row => row.group_id === group.group_id && (!requestedWeek || row.week_start === requestedWeek));
-    const weeks = requestedWeek ? [String(requestedWeek)] : [...new Set(data.sourcing_weekly_updates.map(row => row.week_start))].sort().reverse();
+    const updates = data.sourcing_weekly_updates.filter(row => row.group_id === group.group_id && (!requestedWeek || sourcingCycleSaturday(row.week_start) === requestedWeek));
+    const reqs = data.requisitions.filter(req => group.doc_ids.includes(req.doc_id));
+    const first = sourcingCycleSaturday(reqs.map(req=>req.pr_approved_date).filter((day):day is string=>Boolean(day)).sort()[0] ?? fixtureNow.toISOString().slice(0,10));
+    const terminal = reqs.length > 0 && reqs.every(req=>["filled","cancel"].includes(req.status));
+    const last = sourcingCycleSaturday(terminal ? reqs.map(req=>data.requisition_logs.filter(log=>log.doc_id===req.doc_id&&["filled","cancel"].includes(log.status)).map(log=>log.log_date).sort().at(-1) ?? req.updated_at.slice(0,10)).sort().at(-1)! : fixtureNow.toISOString().slice(0,10));
+    const expectedWeeks: string[]=[];
+    for(let date=new Date(first+"T00:00:00Z");date.toISOString().slice(0,10)<=last;date.setUTCDate(date.getUTCDate()+7)) expectedWeeks.push(date.toISOString().slice(0,10));
+    const weeks = requestedWeek ? expectedWeeks.filter(week=>week===String(requestedWeek)) : expectedWeeks.reverse();
     return weeks.map(week_start => {
-      const update = updates.find(row => row.week_start === week_start) ?? data.sourcing_weekly_updates.find(row => row.group_id === group.group_id && row.week_start === week_start) ?? null;
-      return { group, week_start, update, status: update ? "saved" as const : "needs_recording" as const, applicants: update ? Object.values(update).filter(value => typeof value === "number").reduce<number>((sum, value) => sum + value, 0) : null };
+      const update = updates.find(row => sourcingCycleSaturday(row.week_start) === week_start) ?? data.sourcing_weekly_updates.find(row => row.group_id === group.group_id && sourcingCycleSaturday(row.week_start) === week_start) ?? null;
+      return { group, week_start, update, status: update && sourcingApplicants(update) !== null ? "saved" as const : "needs_recording" as const, applicants: update ? Object.values(update).filter(value => typeof value === "number").reduce<number>((sum, value) => sum + value, 0) : null };
     });
   });
   return rows.filter(row => {
+    if (filters.groupId && row.group.group_id !== String(filters.groupId)) return false;
+    if (filters.groupId && row.group.group_id !== String(filters.groupId)) return false;
     if (filters.group && !row.group.group_id.toLowerCase().includes(String(filters.group).toLowerCase())) return false;
     if (filters.position && !row.group.group_position.toLowerCase().includes(String(filters.position).toLowerCase())) return false;
     if ((filters.week||filters.weekStart) && row.week_start !== String(filters.week??filters.weekStart)) return false;

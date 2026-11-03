@@ -64,3 +64,7 @@ Owners: [profile panel](../../../src/components/candidates/CandidateProfilePanel
 ## Connected profile and group uniqueness
 
 Owners: [drawer](../../../src/components/candidates/CandidateProfilePanel.tsx), [shared fields](../../../src/components/ui/RecordDetailFields.tsx), [group claims](../../../supabase/schemas/59_candidate_group_claims.sql). Contract: [layout](../../design/candidate-detail.md#connected-drawer-refinement), [behavior](../../WEBSITE_STRUCTURE.md#independent-candidate-profiles). Search: `CandidateApplicationDetailsExtras`, `candidateCanUseGroup`, `APPLICATION_GROUP_ALREADY_USED`. [Checks/evidence](../../work-items/candidate-detail-refinement/implementation.md).
+
+Board preload/five-card pages: [contract](../../design/pipeline.md); search useBoardList, BoardPagination, fetchCompleteRecruitmentList; [checks](../../../tests/e2e/design-adjustments.spec.ts).
+
+Candidate offer attendance icons: [shared controls](../../../src/components/ui/AttendanceDecisionActions.tsx) and confirmPendingAction/pendingSaveLock in RecruitmentWorkspace; [contract](../../design/candidate-detail.md#compact-offers-and-working-confirm); [checks](../../../tests/e2e/design-refinement.spec.ts).

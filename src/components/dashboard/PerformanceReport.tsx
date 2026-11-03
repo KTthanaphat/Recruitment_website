@@ -1,3 +1,4 @@
+import { SkeletonBlock } from "@/components/ui/LoadingSkeleton";
 import { formatDate, formatNumber } from "@/lib/format";
 import { Building2, Factory, ChartColumnIncreasing } from "lucide-react";
 import { ReportHelp } from "./ReportHelp";
@@ -151,4 +152,22 @@ function SlaChart({ cells, sites, language }: { cells: PerformanceCell[]; sites:
     </g>; })}
     {cells.every(cell => cell.filled === 0) ? <text x={width / 2} y={bottom / 2} textAnchor="middle" fill="#64748B" fontSize="11">{t.noFills}</text> : null}
   </svg></div>;
+}
+
+/** Uses the report's real grid/card classes and known labels while aggregates load. */
+export function PerformanceReportSkeleton({ language, period = "mtd" }: { language: Language; period?: string }) {
+  const t = performanceCopy[language];
+  return <div className={styles.body} aria-busy="true" data-performance-skeleton>
+    <div className={styles.kpis} data-loading-skeleton="metrics" role="status">
+      <span className="sr-only">{language === "th" ? "กำลังโหลดสรุปรายงาน…" : "Loading report summary…"}</span>
+      {(["vacancies","filled","filledPct","slaPct"] as const).map(key=><article key={key} className={styles.kpi} data-metric-placeholder={key}>
+        <h3>{t[key]}</h3><p className={styles.kpiHelper}>{language==="th"?"เทียบ ":"vs prior "}{period.toUpperCase()}</p>
+        <div aria-hidden="true" className={styles.value}><SkeletonBlock className="my-1 h-10 w-20"/></div>
+        <SkeletonBlock className="mt-2 h-3 w-24"/><SkeletonBlock className="mt-2 h-1 w-full"/>
+      </article>)}
+    </div>
+    {([{key:"matrix",label:t.matrix},{key:"vacancy",label:t.vacancyType},{key:"sla",label:t.sla}] as const).map(item=><section key={item.key} className={styles.panel+" "+styles[item.key]+" flex min-h-0 flex-col overflow-hidden"} aria-label={item.label}>
+      <h3 className="shrink-0 text-base font-semibold text-navy">{item.label}</h3><div role="status" aria-busy="true" data-loading-skeleton="chart" className="mt-3 min-h-0 flex-1"><span className="sr-only">{language==="th"?"กำลังโหลดกราฟ…":"Loading chart…"}</span><SkeletonBlock className="h-full min-h-20 w-full"/></div>
+    </section>)}
+  </div>;
 }

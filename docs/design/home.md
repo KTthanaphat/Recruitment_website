@@ -38,7 +38,7 @@ Candidate Pipeline's tablet/desktop header and rows share one bounded viewport t
 
 Progress uses bare stage icons without circular fills: blue completed, yellow current pending, grey upcoming. Keep textual stage states accessible, including failure. Candidate sorting adds **Progression: furthest first** by the existing journey order, then name and ID; the oldest-touch default remains.
 In the compact Home progress rail, omit connector segments. Other stage rails retain their connectors. The Sourcing Updates missing-week state reads **Update needed / ต้องอัปเดตข้อมูล**; keep Incomplete and Recorded distinct. Home Data Quality keeps its English issue copy and uses the Workspace issue-code translations for Thai titles, explanations, and actions, falling back to source text if a code is absent.
-The shared Thai Recorded sourcing tag reads **บันทึกข้อมูลแล้ว**. New Hire Confirmation uses a small secondary Confirm start button with an icon and visible label; the phone target remains at least 44px. Its existing confirmation modal and role gate remain in place.
+The shared Thai Recorded sourcing tag reads **บันทึกข้อมูลแล้ว**. New Hire Confirmation's Confirmation action field uses the shared AttendanceDecisionActions: green Check on pale green Accept, red X on pale red Reject, with localized names and hover/focus tooltips. Desktop buttons are 36px and phone/coarse targets 44px. Accept preselects started; Reject preselects did_not_start and requires a reason. Both retain review before save and the existing role/date gate. Each loading action cell contains two button-shaped placeholders.
 
 Sourcing Updates, Data Quality and New Hire Confirmation use six aligned columns in one bounded desktop/tablet viewport with a sticky header. Sourcing: Group, Linked requisitions, Open vacancies, Site / owner, Week status, Last saved. Quality: Record, Issue, Severity, Explanation, Context, Action. New hire: Candidate, Requisition, Site / owner, First working date, Confirmation state, Action. On phones, show labeled rows in normal page flow. Preserve record links, action gates, live values, and readable long explanations.
 
@@ -47,3 +47,7 @@ Calendar is a schedule, not a reporting chart. Eligibility and event constructio
 ## Reference checks
 
 Inspect empty/busy months, today/selected distinctions, three-plus events, long names, Thai labels and mobile agenda. Verify status meaning in text and color and contextual record opening. Use [Home ownership/coverage](../maps/system/home.md) for focused checks.
+
+## Record footer placement and loading
+
+Sourcing Update, Data Quality and New Hire Confirm place their whole count/page/navigation footer below and outside the bounded table viewport. Headers and rows stay inside it. Preserve independent cursors and page sizes. Skeletons reuse actual responsive column templates. Home metrics retain confirmed same-query values during refresh and reset on authorization/filter changes. [Checks](../../tests/e2e/design-adjustments.spec.ts).

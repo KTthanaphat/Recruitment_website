@@ -1,13 +1,13 @@
 "use client";
 
-import { LoadingSkeleton, RefreshIndicator } from "@/components/ui/LoadingSkeleton";
+import { RefreshIndicator } from "@/components/ui/LoadingSkeleton";
 import { RetryIconButton } from "@/components/ui/RetryIconButton";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DashboardExportChooser } from "./DashboardExportChooser";
 import { buildPerformanceExportSnapshot, downloadDashboardWorkbook } from "@/lib/dashboard-workbook";
 import { translate } from "@/lib/i18n/dictionary";
 import { buildPerformanceReport, previousPerformanceRange } from "@/lib/recruitment-performance";
-import { orderedReportSites, PerformanceReport, performanceCopy } from "./PerformanceReport";
+import { orderedReportSites, PerformanceReport, PerformanceReportSkeleton, performanceCopy } from "./PerformanceReport";
 import styles from "./performance.module.css";
 import type { DashboardReportContext } from "./DashboardPortal";
 import { supabase } from "@/lib/supabase/client";
@@ -109,7 +109,7 @@ export function RecruitmentPerformanceOverview({ context }: { context: Dashboard
     </header>
     <div className={styles.reportContent}>
       {reportLoading && report ? <RefreshIndicator language={language} /> : null}{report && priorReport ? <PerformanceReport report={report} previous={priorReport} language={language} sites={chartSites} period={period} />
-        : <div className="p-4 text-sm text-slate">{!reportError && supabase ? <LoadingSkeleton variant="chart" language={language} /> : null}<p className={!reportError && supabase ? "sr-only" : ""} role={reportError || !supabase ? "alert" : "status"}>{reportError || !supabase ? (language === "th" ? "โหลดสรุปรายงานไม่สำเร็จ" : "Could not load report summary") : (language === "th" ? "กำลังโหลดสรุปรายงาน…" : "Loading report summary…")}</p>{reportError && supabase ? <RetryIconButton title={`${language === "th" ? "ลองโหลดข้อมูลอีกครั้ง" : "Retry loading"}: Recruitment Performance Overview`} type="button" className="mt-2 rounded-md px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40" onClick={() => setRetrySummary(value => value + 1)}>{language === "th" ? "ลองอีกครั้ง" : "Retry"}</RetryIconButton> : null}</div>}
+        : <div className="p-4 text-sm text-slate">{!reportError && supabase ? <PerformanceReportSkeleton language={language} period={period}/> : null}<p className={!reportError && supabase ? "sr-only" : ""} role={reportError || !supabase ? "alert" : "status"}>{reportError || !supabase ? (language === "th" ? "โหลดสรุปรายงานไม่สำเร็จ" : "Could not load report summary") : (language === "th" ? "กำลังโหลดสรุปรายงาน…" : "Loading report summary…")}</p>{reportError && supabase ? <RetryIconButton title={`${language === "th" ? "ลองโหลดข้อมูลอีกครั้ง" : "Retry loading"}: Recruitment Performance Overview`} type="button" className="mt-2 rounded-md px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40" onClick={() => setRetrySummary(value => value + 1)}>{language === "th" ? "ลองอีกครั้ง" : "Retry"}</RetryIconButton> : null}</div>}
     </div>
     <div ref={exportRef} className={`export-report-surface ${styles.root}`} style={{ width: Math.max(1306, 400 + png.sites.length * 240), minWidth: 1306, background: "#FAFAFC" }} aria-hidden="true" data-performance-export>
       <div className={styles.exportTitle}><h2>{t.title}</h2><span>{png.period === "pim" ? t.pim : png.period.toUpperCase()}</span></div>

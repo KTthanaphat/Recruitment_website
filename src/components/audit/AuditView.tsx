@@ -1,5 +1,5 @@
 import { RetryIconButton } from "@/components/ui/RetryIconButton";
-import { LoadingSkeleton, RefreshIndicator } from "@/components/ui/LoadingSkeleton";
+import { NumberSkeleton, LoadingSkeleton, RefreshIndicator } from "@/components/ui/LoadingSkeleton";
 import { Search, SlidersHorizontal } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -61,12 +61,12 @@ export function AuditView({ language, rows, client, accessScope }: { language: L
         </div>
       </MobileBottomSheet>
       {list.error ? <div role="alert" className="mb-3 flex items-center gap-3 text-sm text-scarlet"><span>Could not load audit records.</span><RetryIconButton title={`${language === "th" ? "ลองโหลดข้อมูลอีกครั้ง" : "Retry loading"}: Audit`} type="button"  onClick={list.retry} loading={list.loading}>{language === "th" ? "ลองอีกครั้ง" : "Retry"}</RetryIconButton></div> : null}
-      <p className="mb-3 text-sm font-medium text-slate" role="status">{translate(language, "auditResultCount", { count: list.loading ? list.totalCount : client ? list.totalCount : filteredRows.length })}</p>
+      <p className="mb-3 text-sm font-medium text-slate" role="status">{list.totalCount === null && list.countLoading ? <NumberSkeleton/> : translate(language, "auditResultCount", { count: list.loading ? list.totalCount : client ? list.totalCount : filteredRows.length })}</p>
       {filteredRows.length === 0 && !list.initialLoading ? <EmptyState message={list.error ? "Audit records are unavailable." : rows.length === 0 ? translate(language, "noAuditRecords") : translate(language, "noAuditRecordsMatch")} /> : (
         <div className="min-w-0 md:max-h-[min(68dvh,48rem)] md:overflow-auto" data-testid="audit-table-viewport">
           <div className="sticky top-0 z-10 hidden min-w-[66rem] grid-cols-[minmax(13rem,1.5fr)_minmax(9rem,.8fr)_minmax(12rem,1fr)_minmax(10rem,1fr)_minmax(9rem,.8fr)] gap-3 border-b border-[#D7DEE8] bg-white px-3 py-2 text-xs font-medium text-slate md:grid"><span>{translate(language, "workspaceEvent")}</span><span>{translate(language, "date")}</span><span>{translate(language, "record")}</span><span>{translate(language, "actor")}</span><span>{translate(language, "fieldChanges")}</span></div>
           <div className="divide-y divide-[#E4E9F2] md:min-w-[66rem]">
-            {list.initialLoading ? <LoadingSkeleton variant="table" language={language} /> : null}{filteredRows.map((row) => { const diffs = auditDiffRows(row); const changed = diffs.filter((diff) => diff.changed).length; return <article key={row.log_id} className="min-w-0 px-3 py-3 text-sm hover:bg-[#F8FAFD]">
+            {list.initialLoading ? <LoadingSkeleton variant="table" columns={5} gridClassName="md:grid-cols-[minmax(13rem,1.5fr)_minmax(9rem,.8fr)_minmax(12rem,1fr)_minmax(10rem,1fr)_minmax(9rem,.8fr)]" language={language} /> : null}{filteredRows.map((row) => { const diffs = auditDiffRows(row); const changed = diffs.filter((diff) => diff.changed).length; return <article key={row.log_id} className="min-w-0 px-3 py-3 text-sm hover:bg-[#F8FAFD]">
               <div className="grid min-w-0 gap-2 md:grid-cols-[minmax(13rem,1.5fr)_minmax(9rem,.8fr)_minmax(12rem,1fr)_minmax(10rem,1fr)_minmax(9rem,.8fr)] md:items-start md:gap-3">
                 <div className="min-w-0"><span className="block text-xs text-slate md:hidden">{translate(language, "workspaceEvent")}</span><span className="block break-words font-semibold text-navy">{auditEntityLabel(language, row.entity)}</span><Tag appearance="soft" tone={statusTone(row.action) as never}>{actionToneLabel(language, row.action)}</Tag></div>
                 <div className="text-slate"><span className="block text-xs md:hidden">{translate(language, "date")}</span><time dateTime={row.changed_at}>{formatDateTime(row.changed_at, language)}</time></div>

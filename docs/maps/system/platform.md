@@ -97,3 +97,7 @@ Dashboard inline header filters and comparison-date owner: AppShell / [format.ts
 ### Shared data-loading feedback
 
 Owners: `LoadingSkeleton`, `RefreshIndicator`, and `RetryIconButton` in `src/components/ui`; list state in `src/lib/recruitment-list.ts`. Contract: [data loading and retry controls](../../design/controls.md#data-loading-and-retry-controls). Coverage: [loading feedback](../../../tests/e2e/loading-feedback.spec.ts), Home aggregate and read-scheduling regressions. Inspect all read-only loading/error callers when changing these primitives; preserve labeled mutation actions.
+
+Structural placeholders: [contract](../../design/controls.md#data-loading-and-retry-controls); search TableSkeletonRows, NumberSkeleton, OperationalSummaryStrip; [checks](../../../tests/e2e/loading-feedback.spec.ts).
+
+Shared attendance icon owner: [AttendanceDecisionActions](../../../src/components/ui/AttendanceDecisionActions.tsx), AttendanceOutcome; [contract](../../design/controls.md#attendance-decisions-and-structural-loading-refinements). Structural read owners: TableLoadingPlaceholder, SkeletonBlock, PerformanceReportSkeleton. [Checks](../../../tests/e2e/design-refinement.spec.ts).

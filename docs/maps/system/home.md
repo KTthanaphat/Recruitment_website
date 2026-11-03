@@ -43,3 +43,7 @@ Banner asset: [home_banner.png](../../../home_banner.png). `HomeView` consumes c
 Use caller search for additional runtime dependencies.
 
 If the task changes schema, environment or release state, cross to [Setup](../SETUP_MAP.md). For visual-only work remain in this system node and its design contract. Coverage names are search leads inherited from the feature index, not evidence that checks passed or that every named scenario has a dedicated file.
+
+Footer/loading boundaries: [contract](../../design/home.md#record-footer-placement-and-loading); search data-home-record-pagination, homeIdentity; [checks](../../../tests/e2e/design-adjustments.spec.ts).
+
+New Hire Confirmation icon pair: StartConfirmationCard and onConfirmStart(offer, outcome) → [shared attendance](../../../src/components/ui/AttendanceDecisionActions.tsx); [contract](../../design/home.md#recruitment-records); [checks](../../../tests/e2e/design-refinement.spec.ts).

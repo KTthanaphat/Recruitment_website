@@ -1,0 +1,7 @@
+# Pipeline board contract
+
+Standalone and Workspace boards preload all authorized matching card rows, including failed/passed-offer sections, retaining their current period rules. Fetch cursor pages of at most 100, verify unique application identities and a separate count, and retry a count mismatch once before returning an error. Publish all sections together; never show a partial board as complete. Preserve the previous complete same-query snapshot during refresh; reset on search/filter/user/scope changes. Keep details/action context on demand and table/history database pagination unchanged.
+
+Show five cards per stage or terminal section, sliced before Site/Owner subgrouping. Independent top-right chevrons show current page / total pages; stage headings retain candidate totals. With 23 records, page 1/5 has five and 5/5 has three. No wrapping or page-size selector. Disable boundaries/refreshing navigation, clamp after mutations, and hide empty pagers. Use localized names/tooltips and 36px desktop / 44px phone/coarse targets.
+
+Owners: [PipelineBoardView](../../src/components/pipeline/PipelineBoardView.tsx), useBoardList, BoardPagination; [complete loader](../../src/lib/recruitment-list.ts), fetchCompleteRecruitmentList. Checks: [browser](../../tests/e2e/design-adjustments.spec.ts), [unit](../../tests/unit/recruitment-complete-list.test.cjs). [Verification](../work-items/design-adjustments/implementation.md).

@@ -27,7 +27,7 @@ Soft tags use pale backgrounds with dark text: green success, amber pending, red
 
 ## Offers, interviews and disclosures
 
-Keep Offer record above Come to work; Come to work owns start confirmation/correction. Distinguish acceptance from actual start. Reference checks and rejection records retain conditional disclosures. Interview status, time and Join action take priority over transport metadata.
+Keep compact offer details above Working Confirm, which owns attendance confirmation/correction. Distinguish acceptance from actual start. Reference checks and rejection records retain conditional disclosures. Interview status, time and Join action take priority over transport metadata.
 
 Design does not authorize messages, meetings or database writes. External behavior is owned by [integration contracts](../maps/system/integrations.md).
 
@@ -60,3 +60,7 @@ Masked unmatched summaries show only ID/interests/creator/saved date and a clear
 Candidate profile reuses the same `DetailGrid` and `SectionHeading` primitives as Application details, including field icons, copy feedback, and responsive rows. Its pencil and the application plus are icon-only controls with localized accessible names/tooltips and 44px targets. Keep tabs horizontally scrollable within the drawer and all panels within its bounds.
 
 A candidate may have only one journey per group across current and historical assignments; the original journey may return through reassignment. Never offer a new journey for a previously visited group. Server validation covers inaccessible history and concurrent changes without revealing other journeys. [Implementation and verification](../work-items/candidate-detail-refinement/implementation.md).
+
+## Compact offers and Working Confirm
+
+Remove the redundant Offer record title. Keep requisition ID and a labeled pencil utility. Accepted and Start dates share a compact wrapping line; remarks remain below. Working Confirm has shared icon-only attendance actions at the right of the heading row: green #167A3D Check on pale green #E8F5EC for Accept, red #C52B40 X on pale red #FCECEF for Reject, with 8px spacing and localized accessible names/tooltips. Preselect Started work / Did not start in the existing review flow. Keep the heading/actions on one row on phones, allowing the heading to wrap. Preserve attendance status below and share these controls with Home's Confirmation action. Escape dismisses an open tooltip before the drawer; a second Escape retains normal drawer behavior. Retain reason validation, date eligibility, administrator corrections, optimistic concurrency and audit history. Attendance does not change offer acceptance. Provide Thai/English labels and 44px phone/coarse-pointer targets. [Checks](../../tests/e2e/design-refinement.spec.ts).
