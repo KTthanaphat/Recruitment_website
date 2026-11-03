@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { installMockSupabase } from "./support/mock-supabase";
 
-type ApiEvent = { url: string; path: string; bytes: number; type: string };
+type ApiEvent = { url: string; path: string; bytes: number; type: string; request_ms: number | null };
 type RpcEvent = { endpoint: string; body: Record<string, unknown> };
 
 function performanceSummary(body: Record<string, unknown>) {
@@ -48,7 +48,8 @@ async function respondJson(response: Response): Promise<ApiEvent | null> {
   if (!isApi && !isAsset) return null;
   try {
     const body = await response.body();
-    return { url, path: parsed.pathname, bytes: body.byteLength, type: isApi ? "api" : "asset" };
+    const timing = response.request().timing();
+    return { url, path: parsed.pathname, bytes: body.byteLength, type: isApi ? "api" : "asset", request_ms: timing.responseEnd >= 0 ? timing.responseEnd : null };
   } catch { return null; }
 }
 
@@ -58,7 +59,9 @@ test("synthetic growing populations keep browser reads page-bounded and warm det
   const rpcEvents: RpcEvent[] = [];
   const apiEvents: ApiEvent[] = [];
   const pendingBodies: Promise<void>[] = [];
+  let coreResponseFinishedAt = 0;
   page.on("response", response => {
+    if (new URL(response.url()).pathname.endsWith("/app_home_core_summary_v1")) pendingBodies.push(response.finished().then(() => { coreResponseFinishedAt = performance.now(); }));
     const pending = respondJson(response).then(event => { if (event) apiEvents.push(event); });
     pendingBodies.push(pending);
   });
@@ -102,12 +105,16 @@ test("synthetic growing populations keep browser reads page-bounded and warm det
   for (population of [1_000, 10_000, 100_000]) {
     const startEvents = apiEvents.length;
     const startRpc = rpcEvents.length;
+    coreResponseFinishedAt = 0;
     const bootStart = performance.now();
     await page.goto("/home");
     await expect(page.locator("[data-app-header-actions]")).toBeVisible();
     await expect(page.getByText("Loading recruitment records...")).toHaveCount(0);
     const welcome = page.getByRole("dialog", { name: /Welcome back/i });
     if (await welcome.isVisible().catch(() => false)) await welcome.getByRole("button", { name: "Close" }).last().click();
+    await expect(page.locator('[data-home-core-ready="true"]')).toBeVisible();
+    await expect.poll(() => coreResponseFinishedAt).toBeGreaterThan(0);
+    const coreDisplayGap = Math.max(0, performance.now() - coreResponseFinishedAt);
     const listStart = performance.now();
     await page.getByRole("tab", { name: "Candidate Pipeline" }).click();
     await expect(page.locator("[data-home-candidate-row]").first()).toBeVisible();
@@ -115,6 +122,8 @@ test("synthetic growing populations keep browser reads page-bounded and warm det
     const bootAndListMs = performance.now() - bootStart;
     await page.waitForLoadState("networkidle");
     await Promise.allSettled(pendingBodies);
+    await expect.poll(() => rpcEvents.slice(startRpc).some(event => event.endpoint === "app_recruitment_list_count_v1" && event.body.p_entity === "candidate_applications" && !(event.body.p_filters as Record<string, unknown>)?.candidateId)).toBe(true);
+    await page.waitForLoadState("networkidle");
     const coldRpcEnd = rpcEvents.length;
     const coldApiEnd = apiEvents.length;
     const coldHomeApi = apiEvents.slice(startEvents);
@@ -154,7 +163,7 @@ test("synthetic growing populations keep browser reads page-bounded and warm det
     await expect(page.locator("[data-performance-overview] [data-performance-report]").first()).toBeVisible();
     const reportReadyMs = performance.now() - reportStart;
     const reportRpc = rpcEvents.slice(reportRpcStart).filter(event => event.endpoint === "app_dashboard_performance_summary_v1");
-    const byteTotals = (events: ApiEvent[]) => ({ requests: events.length, body_bytes: events.reduce((sum, event) => sum + event.bytes, 0), api_requests: events.filter(event => event.type === "api").length, api_body_bytes: events.filter(event => event.type === "api").reduce((sum, event) => sum + event.bytes, 0), asset_requests: events.filter(event => event.type === "asset").length, asset_body_bytes: events.filter(event => event.type === "asset").reduce((sum, event) => sum + event.bytes, 0) });
+    const byteTotals = (events: ApiEvent[]) => ({ api_request_timings: events.filter(event => event.type === "api").map(event => ({ path: event.path, request_ms: event.request_ms })), requests: events.length, body_bytes: events.reduce((sum, event) => sum + event.bytes, 0), api_requests: events.filter(event => event.type === "api").length, api_body_bytes: events.filter(event => event.type === "api").reduce((sum, event) => sum + event.bytes, 0), asset_requests: events.filter(event => event.type === "asset").length, asset_body_bytes: events.filter(event => event.type === "asset").reduce((sum, event) => sum + event.bytes, 0) });
     await page.waitForLoadState("networkidle");
     await Promise.allSettled(pendingBodies);
     const reportApi = apiEvents.slice(reportApiStart);
@@ -171,7 +180,7 @@ test("synthetic growing populations keep browser reads page-bounded and warm det
     const reportWarmRpcCount = rpcEvents.slice(warmReportRpcStart).filter(event => event.endpoint === "app_dashboard_performance_summary_v1").length;
     const reportWarmNavigationApi = apiEvents.slice(warmReportApiStart);
     const reportWarmApi = byteTotals(reportWarmNavigationApi.filter(event => event.path.endsWith("/app_dashboard_performance_summary_v1")));
-    measurements.push({ population, bootstrap_and_first_list_ms: Number(bootAndListMs.toFixed(2)), list_first_usable_ms: Number(listReadyMs.toFixed(2)), cold_home: byteTotals(coldHomeApi), cold_home_api_rpc_request_count: coldHomeApi.filter(event => event.path.includes("/rpc/")).length, measured_list_rpc_count: rpcEvents.slice(startRpc,coldRpcEnd).length, warm_list_rpc_count: warmListNewRpc.length, warm_list_first_usable_ms: Number(warmListReadyMs.toFixed(2)),
+    measurements.push({ core_response_to_observed_display_ms: coreDisplayGap, population, bootstrap_and_first_list_ms: Number(bootAndListMs.toFixed(2)), list_first_usable_ms: Number(listReadyMs.toFixed(2)), cold_home: byteTotals(coldHomeApi), cold_home_api_rpc_request_count: coldHomeApi.filter(event => event.path.includes("/rpc/")).length, measured_list_rpc_count: rpcEvents.slice(startRpc,coldRpcEnd).length, warm_list_rpc_count: warmListNewRpc.length, warm_list_first_usable_ms: Number(warmListReadyMs.toFixed(2)),
       detail_first_usable_ms: Number(detailReadyMs.toFixed(2)), detail_cold_api: byteTotals(apiEvents.slice(coldApiEnd,detailApiEnd)), detail_warm_rpc_count: warmDetailRpc.length, detail_warm_api: byteTotals(warmDetailApi), detail_warm_first_usable_ms: Number(warmDetailReadyMs.toFixed(2)),
       report_first_usable_ms: Number(reportReadyMs.toFixed(2)), report_rpc_count: reportRpc.length, report_api: byteTotals(reportApi), report_body_bytes: reportRpc.length ? Buffer.byteLength(JSON.stringify(performanceSummary(reportRpc[0].body))) : 0, report_warm_first_usable_ms: Number(reportWarmReadyMs.toFixed(2)), report_warm_rpc_count: reportWarmRpcCount, report_warm_api: reportWarmApi, report_warm_navigation_api: byteTotals(reportWarmNavigationApi),
       all_home_rpc_count: rpcEvents.slice(startRpc,coldRpcEnd).length, app_page_limit_observed: rpcEvents.slice(startRpc,coldRpcEnd).filter(event => event.endpoint === "app_recruitment_list_v1" && event.body.p_entity === "candidate_applications").map(event => event.body.p_limit) });
@@ -182,7 +191,7 @@ test("synthetic growing populations keep browser reads page-bounded and warm det
   fs.mkdirSync(outputDir, { recursive: true });
   const sourceFiles = ["src/lib/data.ts", "src/lib/recruitment-list.ts", "src/lib/candidate-detail-loader.ts", "src/lib/dashboard-summary-client.ts", "tests/e2e/data-loading-performance.spec.ts"];
   const sourceSha256 = Object.fromEntries(sourceFiles.map(file => [file, crypto.createHash("sha256").update(fs.readFileSync(path.resolve(process.cwd(), file))).digest("hex")]));
-  const output = { generated_at: new Date().toISOString(), method: "Playwright local browser with installMockSupabase; exact page/count and summary RPCs overridden with fixed-size DTOs while totalCount scales from 1k to 100k. API/auth body bytes are separated from document/script/style/image/font assets. Byte lengths are uncompressed JavaScript response-body lengths, not wire/compressed transfer bytes. These are mocked local browser timings/bytes, not production latency.", source_sha256: sourceSha256, measurements };
+  const output = { generated_at: new Date().toISOString(), method: "Playwright local browser with installMockSupabase; exact page/count and summary RPCs overridden with fixed-size DTOs while totalCount scales from 1k to 100k. API/auth body bytes are separated from document/script/style/image/font assets. Byte lengths are uncompressed JavaScript response-body lengths, not wire/compressed transfer bytes. These are mocked local browser timings/bytes, not production latency. Response-to-observed-display includes Playwright observation/interaction overhead and is not an isolated React render duration.", source_sha256: sourceSha256, measurements };
   const outputPath = path.join(outputDir, `browser-loading-${Date.now()}.json`);
   fs.writeFileSync(outputPath, `${JSON.stringify(output, null, 2)}\n`);
   console.log(JSON.stringify({ output: outputPath, measurements }, null, 2));

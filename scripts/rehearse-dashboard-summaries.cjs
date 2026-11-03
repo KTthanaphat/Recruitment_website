@@ -106,6 +106,8 @@ async function main() {
   await db.exec(qualityScopeBaseMigration);
   await db.exec(qualityScopeMigration);
   await db.exec(qualityPrecomputeMigration);
+  const sectionsMigration = fs.readFileSync(path.join(root, 'supabase/migrations/20261103023353_home_loading_sections.sql'), 'utf8');
+  await db.exec(sectionsMigration);
   const query = async (sql, params = []) => (await db.query(sql, params)).rows[0];
   const {loadBottleneckPage}=require(path.join(root,'src/lib/dashboard-summary-client.ts'));
   const sqlQueueEnvelope={rows:[],hasMore:false,hasMoreBefore:false,nextCursor:null,previousCursor:null};
@@ -182,6 +184,46 @@ async function main() {
   assert(events.some(row => row.id==='log:13'&&row.candidateId==='CAN-2'&&row.logDate==='2026-07-20'));
   await assert.rejects(query(`select public.app_recruitment_calendar_v1('2026-01-01','2026-03-10','{}'::jsonb)`), /CALENDAR_RANGE_INVALID/);
   const home = (await query(`select public.app_home_summary_v1('{}'::jsonb) as data`)).data;
+  for (const scope of [{}, {headerSite:'HQ'}, {headerPic:'Nina'}, {priorityOnly:true}, {headerSite:'NO-SUCH-SITE'}]) {
+    const legacy = (await query('select public.app_home_summary_v1($1::jsonb) as data',[JSON.stringify(scope)])).data;
+    const core = (await query('select public.app_home_core_summary_v1($1::jsonb) as data',[JSON.stringify(scope)])).data;
+    const { workQueue, recentActivity, ...expected } = legacy;
+    const { qualityIssues, ...counts } = expected.counts;
+    assert.deepEqual(core,{...expected,counts},'core equals legacy essential fields for '+JSON.stringify(scope));
+    assert.ok(!('workQueue' in core) && !('recentActivity' in core) && !('qualityIssues' in core.counts));
+  }
+  await assert.rejects(query(`select public.app_home_core_summary_v1('{"groupId":"bad"}'::jsonb)`),/HOME_SCOPE_INVALID/);
+  if (process.argv.includes('--home-performance')) {
+    await db.exec(
+      "insert into public.requisitions(doc_id,is_priority,site,person_in_charge,status,head_count,pr_approved_date,created_at,updated_at) select 'PERF-REQ-'||i,i%2=0,'KT1','Recruiter A','ongoing',3,current_date-30,now(),now() from generate_series(1,229) i;"+
+      "insert into public.position_groups(group_id,group_position) select 'PERF-GRP-'||i,'Synthetic '||i from generate_series(1,229) i;"+
+      "insert into public.document_groups select 'PERF-DG-'||i,'PERF-REQ-'||i,'PERF-GRP-'||i from generate_series(1,229) i;"+
+      "insert into public.candidates(candidate_id,name,group_id) select 'PERF-CAN-'||i,'Synthetic '||i,'PERF-GRP-'||((i-1)%229+1) from generate_series(1,1132) i;"+
+      "insert into public.candidate_applications select ('90000000-0000-0000-0000-'||lpad(i::text,12,'0'))::uuid,'PERF-CAN-'||i,'PERF-GRP-'||((i-1)%229+1),'active' from generate_series(1,1132) i;"+
+      "insert into public.recruitment_logs(log_id,candidate_id,application_id,recruitment_process,round,result,log_date,estimated_action_date) select 10000+i*3+j,'PERF-CAN-'||i,('90000000-0000-0000-0000-'||lpad(i::text,12,'0'))::uuid,case j when 1 then 'Phone Screen' when 2 then 'HR Interview' else 'Line Interview' end,1,case when j<3 then 1 else null end,current_date-3,current_date-1 from generate_series(1,1132) i cross join generate_series(1,3) j; analyze;"
+    );
+    const legacy=(await query("select public.app_home_summary_v1('{}') data")).data;
+    const core=(await query("select public.app_home_core_summary_v1('{}') data")).data;
+    const {workQueue,recentActivity,...expected}=legacy;const {qualityIssues,...counts}=expected.counts;
+    assert.deepEqual(core,{...expected,counts},'scaled core parity');
+    const samples={legacy:[],core:[]};
+    for(let i=0;i<8;i++)for(const name of i%2?['core','legacy']:['legacy','core']){
+      const started=performance.now();await query('select public.'+(name==='core'?'app_home_core_summary_v1':'app_home_summary_v1')+"('{}')");samples[name].push(performance.now()-started);
+    }
+    const stats=values=>{const v=[...values].sort((a,b)=>a-b);return {median_ms:Number(((v[3]+v[4])/2).toFixed(2)),p95_ms:Number(v.at(-1).toFixed(2)),samples_ms:values.map(n=>Number(n.toFixed(2)))};};
+    const plans={};
+    for(const name of ['app_home_summary_v1','app_home_core_summary_v1']){
+      const source=(await query('select prosrc from pg_proc where oid=$1::regprocedure',[name+'(jsonb)'])).prosrc;
+      const statement=source.slice(source.indexOf('with scope_reqs'),source.indexOf(';',source.indexOf('into v_result'))+1).replace('into v_result','').replaceAll('p_scope',"'{}'::jsonb").replaceAll('v_today',"(now() at time zone 'Asia/Bangkok')::date");
+      plans[name]=(await db.query('explain (analyze,buffers,format json) '+statement)).rows;
+    }
+    const result={method:'Disposable PGlite, synthetic 229 requisitions/1132 applications/3396 stage rows plus existing fixture; authorization helpers are stubs, not production RLS. Alternating warmed samples. No indexes added.',legacy:stats(samples.legacy),core:stats(samples.core),plans};
+    result.median_reduction_pct=Number(((1-result.core.median_ms/result.legacy.median_ms)*100).toFixed(1));
+    fs.mkdirSync(path.join(root,'outputs/home-loading-implementation'),{recursive:true});
+    fs.writeFileSync(path.join(root,'outputs/home-loading-implementation/sql-performance.json'),JSON.stringify(result,null,2));
+    console.log(JSON.stringify({...result,plans:'saved to outputs/home-loading-implementation/sql-performance.json'}));
+    await db.close();return;
+  }
   assert.equal(home.requisitions.open, fixture.home.openRequisitions);
   assert.equal(home.requisitions.priorityOpen, fixture.home.priorityOpen);
   assert.equal(home.needsAction.pendingCandidates, fixture.home.pendingCandidates);

@@ -74,6 +74,30 @@ export type HomeSummary = {
   workQueue: { items: Array<{ id: string; title: string; meta: string; actionLabel: string; priority: number; recordId: string; tone: "primary" | "success" | "warning" | "danger" | "muted" | "teal" | "purple"; type: "requisition" | "candidate" | "sourcing" | "offer" }>; totalCount: number };
   recentActivity: { log_id: number; entity: string; entity_id: string; action: string; changed_at: string; changed_by_email: string | null }[];
 };
+export type HomeScope = Pick<DashboardSummaryScope, "headerSite" | "headerPic" | "priorityOnly">;
+export type HomeCoreSummary = Pick<HomeSummary, "requisitions" | "candidatePipeline" | "sourcing" | "needsAction"> & { counts: Omit<HomeSummary["counts"], "qualityIssues"> };
+export type HomeWorkQueue = HomeSummary["workQueue"];
+export async function loadHomeCoreSummary(client: SupabaseClient, scope: HomeScope, profileKey: string, refreshKey = 0): Promise<HomeCoreSummary> {
+  const namespace = await cacheNamespace(client, profileKey);
+  return memo(client, JSON.stringify(["home-core", namespace, scope, refreshKey]), async () => {
+    const { data, error } = await client.rpc("app_home_core_summary_v1", { p_scope: scope });
+    if (error) throw new Error(error.message);
+    const result = data as HomeCoreSummary | null;
+    if (!result || !result.requisitions || !result.sourcing || !result.needsAction || !Array.isArray(result.candidatePipeline) || !result.counts || (["openRequisitions", "activePipeline", "staleSourcing", "pendingOffers"] as const).some(key => !Number.isInteger(result.counts[key]) || result.counts[key] < 0)) throw new Error("Home core response is incomplete");
+    return result;
+  });
+}
+export async function loadHomeWorkQueue(client: SupabaseClient, scope: HomeScope, profileKey: string, refreshKey = 0): Promise<HomeWorkQueue> {
+  const namespace = await cacheNamespace(client, profileKey);
+  return memo(client, JSON.stringify(["home-work-queue", namespace, scope, refreshKey]), async () => {
+    const { data, error } = await client.rpc("app_home_work_queue_v1", { p_scope: scope });
+    if (error) throw new Error(error.message);
+    const result = data as HomeWorkQueue | null;
+    if (!result || !Array.isArray(result.items) || result.items.length > 10 || !Number.isInteger(result.totalCount) || result.totalCount < result.items.length) throw new Error("Home work queue response is incomplete");
+    return result;
+  });
+}
+
 export type WelcomeSummary = {
   openRequisitions: number;
   openVacancy: number;
@@ -85,9 +109,10 @@ export type WelcomeSummary = {
   filledResponsibleVacancyBucket: 0 | 25 | 50 | 75 | 100;
 };
 export type HomeBannerSummary = { monthlyFillCapacity: number; monthlyFilledCount: number };
-export async function loadWelcomeSummary(client: SupabaseClient, profileKey: string, refreshKey = 0): Promise<WelcomeSummary> {
+export async function loadWelcomeSummary(client: SupabaseClient, profileKey: string, refreshKey = 0, shouldRead: () => boolean = () => true): Promise<WelcomeSummary> {
   const namespace = await cacheNamespace(client, profileKey);
   return memo(client, `welcome:${namespace}:${refreshKey}`, async () => {
+    if (!shouldRead()) throw new Error("Welcome summary dismissed.");
     const { data, error } = await client.rpc("app_home_welcome_summary_v1");
     if (error) throw new Error(error.message);
     const result = data as WelcomeSummary | null;

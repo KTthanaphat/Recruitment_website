@@ -7,7 +7,7 @@ const Module = require('node:module');
 const { PGlite } = require(path.join(process.env.TEMP, 'recruitment-db-tools/node_modules/@electric-sql/pglite'));
 const root = path.resolve(__dirname, '..');
 const db = new PGlite();
-const schema = fs.readFileSync(path.join(root, 'supabase/schemas/64_home_welcome_summaries.sql'), 'utf8');
+const schema = fs.readFileSync(path.join(root, 'supabase/schemas/64_home_welcome_summaries.sql'), 'utf8').replaceAll('\r\n','\n');
 const migration = fs.readFileSync(path.join(root, 'supabase/migrations/20261102122000_home_welcome_summaries.sql'), 'utf8');
 const ts = require(path.join(root, 'node_modules/typescript'));
 const originalResolveFilename = Module._resolveFilename;
@@ -123,9 +123,12 @@ async function main() {
     create policy recruitment_log_read on public.recruitment_logs for select to authenticated using(app_private.can_read_application(application_id));
     create policy offer_read on public.offers for select to authenticated using(app_private.can_read_requisition(doc_id) and app_private.can_read_application(application_id));
   `);
-  await db.exec(schema);
-  assert.equal(migration.replaceAll('\r\n','\n').replace(/^begin;\s*/, '').replace(/\s*commit;\s*$/, '').trimEnd(), schema.trimEnd(), 'CLI migration matches declarative SQL');
   await db.exec(migration);
+  await db.exec('alter function public.app_home_welcome_summary_v1() rename to test_legacy_welcome_summary');
+  await db.exec(schema);
+  const update = fs.readFileSync(path.join(root, 'supabase/migrations/20261103023353_home_loading_sections.sql'), 'utf8');
+  assert.ok(update.includes(schema.slice(schema.indexOf('create or replace function public.app_home_welcome_summary_v1'), schema.indexOf('create or replace function public.app_home_banner_summary_v1')).trim()), 'new migration contains the canonical optimized Welcome function');
+  await db.exec(update);
   const query = async (sql, params = []) => (await db.query(sql, params)).rows;
   const maybe = (await query(`select has_function_privilege('anon','public.app_home_welcome_summary_v1()','EXECUTE') as anon_welcome, has_function_privilege('anon','public.app_home_banner_summary_v1(jsonb)','EXECUTE') as anon_banner`))[0];
   assert.equal(maybe.anon_welcome, false); assert.equal(maybe.anon_banner, false);
@@ -135,6 +138,7 @@ async function main() {
     await db.query(`select set_config('request.jwt.claim.sub',$1,false)`, [profileId]);
     await db.exec('set role authenticated');
     const result = (await query('select public.app_home_welcome_summary_v1() as welcome'))[0].welcome;
+    assert.deepEqual(result,(await query('select public.test_legacy_welcome_summary() as welcome'))[0].welcome,'optimized Welcome matches pre-change SQL');
     const rows = async (sql, params = []) => query(sql, params);
     const [reqs, offers, logs, reqLogs, apps, candidates, links] = await Promise.all([
       rows('select * from public.requisitions'), rows('select * from public.offers'), rows('select * from public.recruitment_logs'),

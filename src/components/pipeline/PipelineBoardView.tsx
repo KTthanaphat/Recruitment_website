@@ -207,7 +207,7 @@ export function PipelineBoardView({
   useEffect(() => {
     if (!serverEnabled || !listClient) return;
     let cancelled = false; setSummaryLoading(true);
-    loadPipelineSummary(listClient, accessScope, JSON.parse(scopeKey) as Record<string, unknown>, typeof listScope.groupId === "string" ? listScope.groupId : null, formatLocalDateInput(), 7)
+    loadPipelineSummary(listClient, accessScope, { scope: { headerSite: typeof listScope.headerSite === "string" ? listScope.headerSite : "", headerPic: typeof listScope.headerPic === "string" ? listScope.headerPic : "", priorityOnly: listScope.priorityOnly === true }, groupId: typeof listScope.groupId === "string" ? listScope.groupId : null, asOf: formatLocalDateInput(), recentDays: 7 })
       .then(value => { if (!cancelled) { setSummary(value); setLoadedSummaryKey(summaryKey); setSummaryError(false); } })
       .catch(() => { if (!cancelled) setSummaryError(true); }).finally(() => { if (!cancelled) setSummaryLoading(false); });
     return () => { cancelled = true; };

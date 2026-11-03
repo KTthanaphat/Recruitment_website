@@ -51,3 +51,7 @@ Inspect empty/busy months, today/selected distinctions, three-plus events, long 
 ## Record footer placement and loading
 
 Sourcing Update, Data Quality and New Hire Confirm place their whole count/page/navigation footer below and outside the bounded table viewport. Headers and rows stay inside it. Preserve independent cursors and page sizes. Skeletons reuse actual responsive column templates. Home metrics retain confirmed same-query values during refresh and reset on authorization/filter changes. [Checks](../../tests/e2e/design-adjustments.spec.ts).
+
+## Independent loading states
+
+Keep the existing layout while core metrics, calendar, and selected records load independently. Unloaded counts show a dash. Urgent items load after essential sections settle; its failure has a local retry. Data Quality starts on tab selection and uses its returned total for the badge. Reset its cursor and badge after scope/identity/refresh changes. Core failure has a local retry and does not hide successful sections. Welcome preserves the existing popup behavior while its optional summary waits behind initial data.

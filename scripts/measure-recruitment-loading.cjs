@@ -149,6 +149,9 @@ function summarize(requests) {
 }
 
 async function measurePopulation(population) {
+  const timings = [];
+  const { subscribeRecruitmentReadTimings } = require(path.join(root,'src/lib/recruitment-read-scheduler.ts'));
+  const unsubscribe = subscribeRecruitmentReadTimings(timing => timings.push(timing));
   const legacy = makeClient(population);
   const legacyStart = performance.now();
   const legacyData = await loadDashboardData(legacy);
@@ -168,7 +171,9 @@ async function measurePopulation(population) {
   const deepSearch = await fetchRecruitmentList(modern, { ...request, search: `CAN-${String(population).padStart(5,"0")}` });
   const deepSearchCount = await fetchRecruitmentListCount(modern, { ...request, search: `CAN-${String(population).padStart(5,"0")}` });
   const searchRequests = modern.requests.slice(coldRequestCount + warmRequestDelta);
+  unsubscribe();
   return {
+    scheduled_reads: timings.map(({ priority, queueMs, requestMs, status }) => ({ priority, queue_ms: Number(queueMs.toFixed(2)), request_ms: Number(requestMs.toFixed(2)), status })),
     population,
     legacy: { ...summarize(legacy.requests), elapsed_ms: Number(legacyMs.toFixed(2)), history_rows: legacyData.recruitment_log_history.length, first_rest_cap: REST_CAP, history_page_size: HISTORY_PAGE, uncapped_projection_rpc_calls: 3, uncapped_projection_rpc_return_rows: 0, note: "The three legacy projection RPCs return empty arrays in this adapter; growing body bytes come from the fully paged history table." },
     paged: { ...summarize(modern.requests.slice(0,coldRequestCount)), elapsed_ms: Number(firstListMs.toFixed(2)), bootstrap_profile_loaded: bootstrap.profile?.id === profileId, page_size: page.items.length, count, warm_navigation_requests: warmRequestDelta,

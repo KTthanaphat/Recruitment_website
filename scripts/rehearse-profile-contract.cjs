@@ -9,6 +9,16 @@ const db = new PGlite();
 const legacyRef = "8fc4b3a65614add9e137817accb0558c0665a956"; // Legacy base before additive application migrations.
 const productionUpgradeMode = process.argv.includes('--production-upgrades');
 
+
+async function checkHomeSectionParity(label) {
+  const row=(await db.query("select public.app_home_core_summary_v1('{}') core,public.app_home_summary_v1('{}') legacy,public.app_home_welcome_summary_v1() welcome,public.test_previous_welcome_summary() old_welcome")).rows[0];
+  const {workQueue,recentActivity,...expected}=row.legacy;const {qualityIssues,...counts}=expected.counts;
+  assert.deepEqual(row.core,{...expected,counts},label+' core parity under real RLS');
+  assert.deepEqual(row.welcome,row.old_welcome,label+' Welcome parity under real RLS');
+  await assert.rejects(db.query('select public.app_pipeline_summary_v1(\'{"groupId":"TEST-G1"}\')'),/RECRUITMENT_LIST_FILTER_INVALID/);
+  await db.query("select public.app_pipeline_summary_v1('{}','TEST-G1')");
+}
+
 async function seedProductionLegacyFixture() {
   await db.exec(`alter table public.candidates add column if not exists home_site text;
     insert into auth.users(id,email,raw_user_meta_data) values('11111111-1111-1111-1111-111111111111','migration@example.test','{"nickname":"Migration"}');
@@ -211,10 +221,12 @@ async function main() {
   await db.exec(fs.readFileSync(path.join(root,'supabase/migrations/20261102123100_requisition_page_enrichment_after_limit.sql'),'utf8'));
   await db.exec(fs.readFileSync(path.join(root,'supabase/migrations/20261102123200_bottleneck_authorization_key_memoization.sql'),'utf8'));
   await db.exec(fs.readFileSync(path.join(root,'supabase/migrations/20261102123300_rejection_distinct_authorization_precompute.sql'),'utf8'));
+  await db.exec('alter function public.app_home_welcome_summary_v1() rename to test_previous_welcome_summary');
+  await db.exec(fs.readFileSync(path.join(root,'supabase/migrations/20261103023353_home_loading_sections.sql'),'utf8'));
+
   assert.equal((await db.query("select to_regclass('public.idx_candidate_application_assignments_application_id') as idx")).rows[0].idx,null,'chronological index migration is not masked by the early schema20 replay');
   await db.exec(assignmentHistoryMigration);
   assert.deepEqual((await db.query("select i.indisvalid valid,i.indisready ready,i.indpred is null all_history from pg_index i where i.indexrelid='public.idx_candidate_application_assignments_application_id'::regclass")).rows[0],{valid:true,ready:true,all_history:true},'additive migration creates a valid ready all-history index without a partial predicate');
-  await db.exec(fs.readFileSync(path.join(root,'supabase/migrations/20261102123500_ytd_report_materialization.sql'),'utf8'));
   if (process.argv.includes('--inline-auth-experiment')) {
     await db.exec(fs.readFileSync(path.join(root,'tests/db/scoped-auth-inline-experiment.sql'),'utf8'));
   }
@@ -332,6 +344,7 @@ async function main() {
   if (!candidatePage.rows[0].page.items.some(row=>row.candidate_id==='TEST-C1')) throw new Error('Actual authenticated candidate list did not return the authorized legacy journey.');
   const candidateCount = await db.query("select public.app_recruitment_list_count_v1('candidate_applications','','{}'::jsonb) as count");
   assert.equal(candidateCount.rows[0].count,1,'actual list count and page share application authorization scope');
+  await checkHomeSectionParity('administrator');
   const welcomeSummary = await db.query('select public.app_home_welcome_summary_v1() as summary');
   for (const key of ['openRequisitions','openVacancy','activeCandidates','offerFinalizationNeeded','filledThisMonth','responsibleVacancyTotal','filledResponsibleVacancyRatio','filledResponsibleVacancyBucket']) assert.equal(typeof welcomeSummary.rows[0].summary[key],'number',`ordered migration returns typed welcome field ${key}`);
   const homeBanner = await db.query("select public.app_home_banner_summary_v1('{\"headerSite\":\"TEST\",\"headerPic\":\"\",\"priorityOnly\":false}'::jsonb) as summary");
@@ -378,6 +391,7 @@ async function main() {
     update public.profiles set role='site_recruiter',site='OTHER' where id='22222222-2222-2222-2222-222222222222';
     select set_config('request.jwt.claim.sub','22222222-2222-2222-2222-222222222222',false);`);
   await db.exec('set role authenticated');
+  await checkHomeSectionParity('restricted site recruiter');
   const siteReaderPage = await db.query(`select public.app_recruitment_list_v1(
     p_entity=>'candidate_applications',p_search=>'Legacy person',p_filters=>'{}'::jsonb,p_sort=>'latest_log_date',p_direction=>'desc',
     p_limit=>25,p_cursor_value=>null,p_cursor_id=>null,p_before=>false) as page`);
@@ -482,6 +496,15 @@ async function main() {
       await db.exec('reset role');
     }
   }
+  await db.exec(`reset role;
+    insert into auth.users(id,email,raw_user_meta_data) values('88888888-8888-8888-8888-888888888888','home-viewer@example.test','{"nickname":"Home Viewer"}');
+    update public.profiles set role='viewer',site=null where id='88888888-8888-8888-8888-888888888888';
+    select set_config('request.jwt.claim.sub','88888888-8888-8888-8888-888888888888',false); set role authenticated;`);
+  await checkHomeSectionParity('viewer');
+  await db.exec('reset role; set role anon');
+  await assert.rejects(db.query("select public.app_home_core_summary_v1('{}')"),/permission denied/);
+  await db.exec('reset role');
+  console.log('Home core/Welcome parity verified under administrator, restricted site recruiter and viewer RLS; anonymous execution rejected.');
   await db.close();
 }
 main().catch(async error=>{console.error(error.message);await db.close();process.exitCode=1;});

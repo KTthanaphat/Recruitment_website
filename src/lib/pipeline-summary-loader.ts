@@ -13,6 +13,9 @@ export type PipelineSummary = {
   by_stage: Array<{ stage: string; count: number }>;
 };
 
+export type PipelineSummaryScope = { headerSite: string; headerPic: string; priorityOnly: boolean };
+export type PipelineSummaryRequest = { scope: PipelineSummaryScope; groupId: string | null; asOf: string; recentDays?: number };
+
 const cache = new Map<string, { expiresAt: number; pending: Promise<PipelineSummary> }>();
 const ttlMs = 30_000;
 let revision = 0;
@@ -23,7 +26,9 @@ export function pipelineSummaryRevision() { return revision; }
 export function clearPipelineSummaryCache() { cache.clear(); revision += 1; listeners.forEach(listener => listener()); }
 
 /** Complete authorized pipeline summary; counts are independent of the current list page. */
-export async function loadPipelineSummary(client: Pick<SupabaseClient, "rpc">, accessScope: string, scope: Record<string, unknown>, groupId: string | null, asOf: string, recentDays = 7): Promise<PipelineSummary> {
+export async function loadPipelineSummary(client: Pick<SupabaseClient, "rpc">, accessScope: string, request: PipelineSummaryRequest): Promise<PipelineSummary> {
+  const scope: PipelineSummaryScope = { headerSite: request.scope.headerSite ?? "", headerPic: request.scope.headerPic ?? "", priorityOnly: request.scope.priorityOnly ?? false };
+  const { groupId, asOf, recentDays = 7 } = request;
   const key = JSON.stringify([accessScope, scope, groupId, asOf, recentDays]);
   const existing = cache.get(key);
   if (existing && existing.expiresAt > Date.now()) return existing.pending;

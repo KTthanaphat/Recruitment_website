@@ -16,7 +16,7 @@ begin
   select p.* into v_profile from public.profiles p where p.id=auth.uid();
   if not found then raise exception 'RECRUITMENT_READ_NOT_AUTHORIZED'; end if;
 
-  with responsible_requisitions as (
+  with responsible_requisitions as materialized (
     select r.doc_id,r.site,r.person_in_charge,r.status,r.head_count,r.pr_approved_date
     from public.requisitions r
     where app_private.can_read_requisition(r.doc_id)
@@ -24,22 +24,28 @@ begin
         or (coalesce(v_profile.nickname,'')<>'' and position(lower(v_profile.nickname) in lower(coalesce(r.person_in_charge,'')))>0)
         or (coalesce(v_profile.full_name,'')<>'' and position(lower(v_profile.full_name) in lower(coalesce(r.person_in_charge,'')))>0)
         or (coalesce(v_profile.site,'')<>'' and position(lower(v_profile.site) in lower(coalesce(r.site,'')))>0))
+  ), readable_offers as materialized (
+    select o.* from public.offers o where app_private.can_read_application(o.application_id)
+  ), offer_totals as (
+    select o.doc_id,count(*) filter(where o.accepted_date is not null and o.start_confirmation is distinct from 'did_not_start') as accepted,
+      max(o.accepted_date) as close_date
+    from readable_offers o group by o.doc_id
+  ), filled_dates as (
+    select l.doc_id,max(l.log_date) as close_date from public.requisition_logs l
+    join responsible_requisitions r using(doc_id) where l.status='filled' group by l.doc_id
   ), actionable_requisitions as (
     select r.doc_id,r.head_count,
-      greatest(r.head_count-coalesce((select count(*) from public.offers o
-        where o.doc_id=r.doc_id and o.accepted_date is not null and o.start_confirmation is distinct from 'did_not_start'
-          and app_private.can_read_application(o.application_id)),0),0) as open_headcount
-    from responsible_requisitions r
+      greatest(r.head_count-coalesce(o.accepted,0),0) as open_headcount
+    from responsible_requisitions r left join offer_totals o using(doc_id)
     where r.status not in ('filled','cancel')
   ), pim_requisitions as (
     select r.doc_id,r.head_count,
-      coalesce((select max(l.log_date) from public.requisition_logs l where l.doc_id=r.doc_id and l.status='filled'),
-        (select max(o.accepted_date) from public.offers o where o.doc_id=r.doc_id and app_private.can_read_application(o.application_id))) as close_date
-    from responsible_requisitions r
+      coalesce(f.close_date,o.close_date) as close_date
+    from responsible_requisitions r left join offer_totals o using(doc_id) left join filled_dates f using(doc_id)
     where r.pr_approved_date is not null and r.pr_approved_date<=v_month_end and r.status<>'cancel'
   ), eligible_pim as (
     select p.* from pim_requisitions p where p.close_date is null or p.close_date>=v_month_start
-  ), visible_apps as (
+  ), visible_apps as materialized (
     select a.application_id,a.candidate_id,a.group_id
     from public.candidate_applications a
     join public.candidates c on c.candidate_id=a.candidate_id and app_private.can_read_candidate(c.candidate_id)
@@ -57,7 +63,6 @@ begin
     select distinct on (l.application_id) l.application_id,l.recruitment_process,l.result
     from public.recruitment_logs l join visible_apps a using(application_id)
     where l.superseded_at is null and l.superseded_by_stage_instance_id is null
-      and app_private.can_read_application(l.application_id)
     order by l.application_id,
       case l.recruitment_process when 'Phone Screen' then 1 when 'HR Interview' then 2 when 'Line Interview' then 3 when 'Test' then 4 when 'Reference Check' then 5 when 'Offer' then 6 else 0 end desc,
       l.round desc,l.log_id desc
@@ -66,8 +71,8 @@ begin
     from latest_logs l join visible_apps a using(application_id)
     where l.recruitment_process in ('Phone Screen','HR Interview','Line Interview','Test','Reference Check','Offer')
       and l.result is distinct from 0
-      and not exists(select 1 from public.offers o
-        where o.application_id::text=l.application_id::text
+      and not exists(select 1 from readable_offers o
+        where o.application_id=l.application_id
           and app_private.can_read_requisition(o.doc_id)
           and app_private.can_read_application(o.application_id))
   ), counts as (
@@ -76,7 +81,7 @@ begin
       (select coalesce(sum(open_headcount),0)::integer from actionable_requisitions) as open_vacancy,
       (select count(*)::integer from active_candidates) as active_candidates,
       (select count(*)::integer from active_candidates where recruitment_process='Offer' and result=1) as offer_finalization_needed,
-      (select count(*)::integer from public.offers o join eligible_pim p using(doc_id)
+      (select count(*)::integer from readable_offers o join eligible_pim p using(doc_id)
         where o.accepted_date between v_month_start and v_today and app_private.can_read_application(o.application_id)
           and app_private.can_read_requisition(o.doc_id)) as filled_this_month,
       (select coalesce(sum(head_count),0)::integer from eligible_pim) as responsible_vacancy_total
