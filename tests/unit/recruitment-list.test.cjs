@@ -142,14 +142,14 @@ test("offer mutations refresh related applications, requisitions, groups, sourci
   try {
     invalidateRecruitmentListsForMutation("app_upsert_offer");
     assert.deepEqual(changed.sort(), ["audit_log", "candidate_applications", "candidate_registry", "offers", "pipeline_history", "pipeline_stage", "position_groups", "requisitions", "sourcing"].sort());
-    assert.deepEqual(recruitmentListDependenciesForMutation("app_unknown_write"), ["audit_log"]);
+    assert.deepEqual([...recruitmentListDependenciesForMutation("app_unknown_write")].sort(), [...entities].sort());
     changed.length = 0;
     invalidateRecruitmentListsForMutation("app_unknown_write");
-    assert.deepEqual(changed, ["audit_log"]);
+    assert.deepEqual(changed.sort(), [...entities].sort());
   } finally { unsubscribers.forEach(unsubscribe => unsubscribe()); }
 });
 
-test("application and pipeline mutations refresh mounted journey and linked-record consumers", () => {
+test("candidate mutations refresh journey consumers without unrelated offer/requisition/sourcing queries", () => {
   clearRecruitmentListCache();
   const changed = [];
   const entities = ["offers", "candidate_applications", "candidate_registry", "pipeline_stage", "pipeline_history", "requisitions", "position_groups", "sourcing", "audit_log"];
@@ -158,7 +158,7 @@ test("application and pipeline mutations refresh mounted journey and linked-reco
     for (const endpoint of ["app_complete_pipeline_stage_v2", "app_transfer_candidate_application_v1"]) {
       changed.length = 0;
       invalidateRecruitmentListsForMutation(endpoint);
-      assert.deepEqual(changed.sort(), [...entities].sort());
+      assert.deepEqual(changed.sort(), ["audit_log", "candidate_applications", "candidate_registry", "pipeline_history", "pipeline_stage"].sort());
     }
   } finally { unsubscribers.forEach(unsubscribe => unsubscribe()); }
 });
@@ -195,4 +195,11 @@ test("accepts empty and exactly-50-row terminal pages", async () => {
   const full = await fetchRecruitmentList(client({ data: { items: rows, total_count: 50, has_more: false, has_more_before: false, next_cursor: null, previous_cursor: null }, error: null }), request("full"));
   assert.deepEqual(empty.items, []);
   assert.equal(full.items.length, 50);
+});
+
+test('canceling an obsolete subscriber does not evict or abort a shared page request',async()=>{
+ clearRecruitmentListCache();let finish,calls=0;const gate=new Promise(resolve=>finish=resolve),db={rpc:()=>{calls++;return gate;}};
+ const controller=new AbortController();const a=fetchRecruitmentList(db,{...request('shared-abort'),signal:controller.signal});const b=fetchRecruitmentList(db,request('shared-abort'));
+ const rejected=assert.rejects(a,error=>error.name==='AbortError');controller.abort();await rejected;
+ const c=fetchRecruitmentList(db,request('shared-abort'));finish(page());await Promise.all([b,c]);assert.equal(calls,1);
 });

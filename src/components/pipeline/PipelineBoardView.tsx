@@ -26,6 +26,8 @@ import { translate } from "@/lib/i18n/dictionary";
 import { candidatePipelineCapability, candidateProcessDisabledReason, candidateTouchAgeDays, isCandidateAging, pipelineMoveDisabledReason, type DataQualityIssue } from "@/lib/operations";
 import { readTableUrlState, writeTableUrlValues } from "@/lib/table-url-state";
 import { updateWorkspaceUrlState } from "@/lib/workspace-url-state";
+import { candidateReceiptRevision, candidateActionReveals, subscribeCandidateReceipts, latestCandidateReceipt } from "@/lib/candidate-action-receipt";
+import { usePipelineBoardList as useBoardList } from "@/lib/pipeline-board-list";
 import { useRecruitmentList } from "@/lib/recruitment-list";
 import { clearPipelineSummaryCache, loadPipelineSummary, pipelineSummaryRevision, subscribePipelineSummary, type PipelineSummary } from "@/lib/pipeline-summary-loader";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -118,52 +120,45 @@ export function PipelineBoardView({
   const [pipelineView, setPipelineView] = useState<PipelineView>("board");
   const [actionContexts, setActionContexts] = useState<Record<string, Pick<DashboardData, "recruitment_logs" | "candidate_references" | "candidate_reference_checks">>>({});
   useEffect(() => { setActionContexts({}); setOpenStageMenu(null); setOpenMobileStageMenu(null); }, [accessScope, mutationRevision]);
+  const committedRevision = useSyncExternalStore(listener => subscribeCandidateReceipts(listClient, accessScope, listener), () => candidateReceiptRevision(listClient, accessScope), () => 0);
+  useEffect(() => {
+    const receipt = latestCandidateReceipt(listClient, accessScope); if (!receipt || !candidateActionReveals(receipt.operation)) return;
+    const card = receipt.cards[0];
+    if (!card) return;
+    const bucket = card.latest_result === 0 || (card.latest_process === "Offer" && card.latest_result === 1) ? "terminal" : card.latest_process;
+    setVisibleBuckets(previous => new Set(previous).add(bucket)); setFocusedCandidateId(receipt.candidate_id);
+    const timer = setTimeout(() => { const target = visibilityRef.current?.querySelector<HTMLElement>(`[data-read-bucket="${bucket}"]`); if (target instanceof HTMLDetailsElement) target.open = true; target?.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "nearest", inline: "nearest" }); }, 0);
+    return () => clearTimeout(timer);
+  }, [committedRevision, listClient, accessScope]);
   const serverEnabled = Boolean(listClient && accessScope);
+  const [visibleBuckets, setVisibleBuckets] = useState<Set<string>>(() => new Set(["No activity"]));
+  const visibilityRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const root = visibilityRef.current; if (!root) return;
+    const activate = (key: string | null) => { if (key) setVisibleBuckets(previous => previous.has(key) ? previous : new Set(previous).add(key)); };
+    const observer = new IntersectionObserver(entries => { for (const entry of entries) if (entry.isIntersecting && entry.target.getClientRects().length) activate(entry.target.getAttribute("data-read-bucket")); }, { threshold: 0.01 });
+    root.querySelectorAll("[data-read-bucket]").forEach(element => observer.observe(element));
+    const focus = (event: Event) => activate((event.target as HTMLElement).closest("[data-read-bucket]")?.getAttribute("data-read-bucket") ?? null);
+    const toggle = (event: Event) => { const target = event.target as HTMLDetailsElement; if (target.open) activate(target.dataset.pipelineStage ?? null); };
+    root.addEventListener("focusin", focus); root.addEventListener("toggle", toggle, true);
+    return () => { observer.disconnect(); root.removeEventListener("focusin", focus); root.removeEventListener("toggle", toggle, true); };
+  }, [pipelineView, embedded]);
   const stageFilters = { ...listScope, boardFilter, asOf: formatLocalDateInput(), recentSince: recentCutoffDate() };
   const stageSearchInput = { value: pipelineSearch, setValue: setPipelineSearch };
-  const noActivityList = useBoardList({ client: listClient, accessScope, entity: "pipeline_stage", filters: { ...stageFilters, stage: "No activity" }, sort: "board_last_update", direction: "asc", searchInput: stageSearchInput, enabled: serverEnabled && pipelineView === "board" });
-  const phoneList = useBoardList({ client: listClient, accessScope, entity: "pipeline_stage", filters: { ...stageFilters, stage: "Phone Screen" }, sort: "board_last_update", direction: "asc", searchInput: stageSearchInput, enabled: serverEnabled && pipelineView === "board" });
-  const hrInterviewList = useBoardList({ client: listClient, accessScope, entity: "pipeline_stage", filters: { ...stageFilters, stage: "HR Interview" }, sort: "board_last_update", direction: "asc", searchInput: stageSearchInput, enabled: serverEnabled && pipelineView === "board" });
-  const lineInterviewList = useBoardList({ client: listClient, accessScope, entity: "pipeline_stage", filters: { ...stageFilters, stage: "Line Interview" }, sort: "board_last_update", direction: "asc", searchInput: stageSearchInput, enabled: serverEnabled && pipelineView === "board" });
-  const testList = useBoardList({ client: listClient, accessScope, entity: "pipeline_stage", filters: { ...stageFilters, stage: "Test" }, sort: "board_last_update", direction: "asc", searchInput: stageSearchInput, enabled: serverEnabled && pipelineView === "board" });
-  const referenceList = useBoardList({ client: listClient, accessScope, entity: "pipeline_stage", filters: { ...stageFilters, stage: "Reference Check" }, sort: "board_last_update", direction: "asc", searchInput: stageSearchInput, enabled: serverEnabled && pipelineView === "board" });
-  const offerList = useBoardList({ client: listClient, accessScope, entity: "pipeline_stage", filters: { ...stageFilters, stage: "Offer" }, sort: "board_last_update", direction: "asc", searchInput: stageSearchInput, enabled: serverEnabled && pipelineView === "board" });
+  const noActivityList = useBoardList({ client: listClient, accessScope, entity: "pipeline_stage", filters: { ...stageFilters, stage: "No activity" }, sort: "board_last_update", direction: "asc", searchInput: stageSearchInput, enabled: serverEnabled && pipelineView === "board" && visibleBuckets.has("No activity") });
+  const phoneList = useBoardList({ client: listClient, accessScope, entity: "pipeline_stage", filters: { ...stageFilters, stage: "Phone Screen" }, sort: "board_last_update", direction: "asc", searchInput: stageSearchInput, enabled: serverEnabled && pipelineView === "board" && visibleBuckets.has("Phone Screen") });
+  const hrInterviewList = useBoardList({ client: listClient, accessScope, entity: "pipeline_stage", filters: { ...stageFilters, stage: "HR Interview" }, sort: "board_last_update", direction: "asc", searchInput: stageSearchInput, enabled: serverEnabled && pipelineView === "board" && visibleBuckets.has("HR Interview") });
+  const lineInterviewList = useBoardList({ client: listClient, accessScope, entity: "pipeline_stage", filters: { ...stageFilters, stage: "Line Interview" }, sort: "board_last_update", direction: "asc", searchInput: stageSearchInput, enabled: serverEnabled && pipelineView === "board" && visibleBuckets.has("Line Interview") });
+  const testList = useBoardList({ client: listClient, accessScope, entity: "pipeline_stage", filters: { ...stageFilters, stage: "Test" }, sort: "board_last_update", direction: "asc", searchInput: stageSearchInput, enabled: serverEnabled && pipelineView === "board" && visibleBuckets.has("Test") });
+  const referenceList = useBoardList({ client: listClient, accessScope, entity: "pipeline_stage", filters: { ...stageFilters, stage: "Reference Check" }, sort: "board_last_update", direction: "asc", searchInput: stageSearchInput, enabled: serverEnabled && pipelineView === "board" && visibleBuckets.has("Reference Check") });
+  const offerList = useBoardList({ client: listClient, accessScope, entity: "pipeline_stage", filters: { ...stageFilters, stage: "Offer" }, sort: "board_last_update", direction: "asc", searchInput: stageSearchInput, enabled: serverEnabled && pipelineView === "board" && visibleBuckets.has("Offer") });
   const stageLists: Array<{ stage: PipelineStageKey; list: ReturnType<typeof useBoardList> }> = [
     { stage: "No activity", list: noActivityList }, { stage: "Phone Screen", list: phoneList }, { stage: "HR Interview", list: hrInterviewList },
     { stage: "Line Interview", list: lineInterviewList }, { stage: "Test", list: testList }, { stage: "Reference Check", list: referenceList }, { stage: "Offer", list: offerList }
   ];
   const stageListByStage = new Map(stageLists.map(entry => [entry.stage, entry.list]));
-  const failedList = useBoardList({ client: listClient, accessScope, entity: "candidate_applications", filters: { ...listScope, boardFilter: "failed", asOf: formatLocalDateInput(), ...(embedded ? { embeddedAllTime: true } : { recentSince: recentCutoffDate() }) }, sort: "latest_log_date", direction: "desc", enabled: serverEnabled && pipelineView === "board" });
-  const passedOfferList = useBoardList({ client: listClient, accessScope, entity: "candidate_applications", filters: { ...listScope, boardFilter: "passed_offer", asOf: formatLocalDateInput(), ...(embedded ? { embeddedAllTime: true } : { recentSince: recentCutoffDate() }) }, sort: "latest_log_date", direction: "desc", enabled: serverEnabled && pipelineView === "board" });
-  const completeLists = [...stageLists.map(entry => entry.list), failedList, passedOfferList];
-  const boardIdentity = JSON.stringify([accessScope, listScope, boardFilter, pipelineSearch]);
-  const [boardSnapshot, setBoardSnapshot] = useState<{ identity: string; buckets: EnrichedCandidate[][] } | null>(null);
-  const boardPending = completeLists.some(list => list.loading || list.initialLoading);
-  const boardLoadError = serverEnabled && completeLists.some(list => list.error);
-  useEffect(() => {
-    if (!serverEnabled || boardPending || boardLoadError) return;
-    setBoardSnapshot({ identity: boardIdentity, buckets: completeLists.map(list => list.allItems) });
-    // Publish all buckets together; their source arrays stay stable while local pages change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [serverEnabled, boardIdentity, boardPending, boardLoadError, noActivityList.allItems, phoneList.allItems, hrInterviewList.allItems, lineInterviewList.allItems, testList.allItems, referenceList.allItems, offerList.allItems, failedList.allItems, passedOfferList.allItems]);
-  const visibleSnapshot = boardSnapshot?.identity === boardIdentity ? boardSnapshot : null;
-  const retryActions = completeLists.map(list => list.retry);
-  const retryBoard = () => retryActions.forEach(retry => retry());
-  completeLists.forEach((list, index) => {
-    if (!serverEnabled) return;
-    const all = visibleSnapshot?.buckets[index] ?? [];
-    list.pages = Math.max(1, Math.ceil(all.length / 5));
-    list.page = Math.min(list.page, list.pages);
-    list.items = all.slice((list.page - 1) * 5, list.page * 5);
-    list.totalCount = visibleSnapshot ? all.length : null;
-    list.countLabel = visibleSnapshot ? String(all.length) : <NumberSkeleton/>;
-    list.initialLoading = !visibleSnapshot && !boardLoadError;
-    list.refreshing = Boolean(visibleSnapshot && boardPending);
-    list.canNext = list.page < list.pages;
-    list.canPrevious = list.page > 1;
-    list.error = boardLoadError;
-    list.retry = retryBoard;
-  });
+  const failedList = useBoardList({ client: listClient, accessScope, entity: "candidate_applications", filters: { ...listScope, boardFilter: "failed", asOf: formatLocalDateInput(), ...(embedded ? { embeddedAllTime: true } : { recentSince: recentCutoffDate() }) }, sort: "latest_log_date", direction: "desc", enabled: serverEnabled && pipelineView === "board" && visibleBuckets.has("terminal") });
+  const passedOfferList = useBoardList({ client: listClient, accessScope, entity: "candidate_applications", filters: { ...listScope, boardFilter: "passed_offer", asOf: formatLocalDateInput(), ...(embedded ? { embeddedAllTime: true } : { recentSince: recentCutoffDate() }) }, sort: "latest_log_date", direction: "desc", enabled: serverEnabled && pipelineView === "board" && visibleBuckets.has("terminal") });
   async function openCandidateActionMenu(candidate: EnrichedCandidate, setMenu: (value: string | null | ((current: string | null) => string | null)) => void) {
     const key = applicationKey(candidate);
     if (serverEnabled && onEnsureActionContext) {
@@ -206,11 +201,11 @@ export function PipelineBoardView({
   useEffect(() => { setSummary(null); setSummaryError(false); }, [accessScope, scopeKey, serverEnabled]);
   useEffect(() => {
     if (!serverEnabled || !listClient) return;
-    let cancelled = false; setSummaryLoading(true);
-    loadPipelineSummary(listClient, accessScope, { scope: { headerSite: typeof listScope.headerSite === "string" ? listScope.headerSite : "", headerPic: typeof listScope.headerPic === "string" ? listScope.headerPic : "", priorityOnly: listScope.priorityOnly === true }, groupId: typeof listScope.groupId === "string" ? listScope.groupId : null, asOf: formatLocalDateInput(), recentDays: 7 })
+    let cancelled = false; const controller = new AbortController(); setSummaryLoading(true);
+    loadPipelineSummary(listClient, accessScope, { scope: { headerSite: typeof listScope.headerSite === "string" ? listScope.headerSite : "", headerPic: typeof listScope.headerPic === "string" ? listScope.headerPic : "", priorityOnly: listScope.priorityOnly === true }, groupId: typeof listScope.groupId === "string" ? listScope.groupId : null, asOf: formatLocalDateInput(), recentDays: 7 }, controller.signal)
       .then(value => { if (!cancelled) { setSummary(value); setLoadedSummaryKey(summaryKey); setSummaryError(false); } })
       .catch(() => { if (!cancelled) setSummaryError(true); }).finally(() => { if (!cancelled) setSummaryLoading(false); });
-    return () => { cancelled = true; };
+    return () => { cancelled = true; controller.abort(); };
   }, [summaryKey, listScope.groupId, accessScope, listClient, scopeKey, serverEnabled, summaryRevision]);
 
   useEffect(() => {
@@ -304,7 +299,8 @@ export function PipelineBoardView({
   }
 
   return (
-    <div className="grid min-w-0 max-w-full gap-5 overflow-x-clip">
+    <div ref={visibilityRef} className="grid min-w-0 max-w-full gap-5 overflow-x-clip">
+      {(stageLists.some(entry => entry.list.revealNotice === "excluded") || failedList.revealNotice === "excluded" || passedOfferList.revealNotice === "excluded") ? <p role="status" className="text-sm text-slate">{language === "th" ? "บันทึกแล้ว ผู้สมัครอยู่นอกตัวกรองปัจจุบัน" : "Saved. This candidate is outside the current filters."}</p> : null}
       <Panel variant={embedded ? "workspace" : "primary"} className={embedded ? "!rounded-none !border-0 !p-0 !shadow-none" : ""}>
         <SectionTitle
           title={translate(language, "candidatePipeline")}
@@ -396,6 +392,7 @@ export function PipelineBoardView({
               aria-label={translate(language, "candidatePipeline")}
               onChange={(event) => {
                 const stage = event.target.value;
+                setVisibleBuckets(previous => new Set(previous).add(stage));
                 if (!stage) return;
                 boardRef.current?.querySelector<HTMLElement>(`[data-pipeline-stage="${stage}"]`)?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "start" });
                 event.currentTarget.value = "";
@@ -410,6 +407,7 @@ export function PipelineBoardView({
           <PipelineCandidateCard
             candidate={candidate}
             compact
+            focused={focusedCandidateId === candidate.candidate_id}
             language={language}
             canWrite={canWrite}
             updateStages={nextStages(candidate.latest_process)}
@@ -440,6 +438,9 @@ export function PipelineBoardView({
             return (
               <section
                 key={stage}
+                tabIndex={0}
+                aria-label={processLabel(stage, language)}
+                data-read-bucket={stage}
                 data-pipeline-stage={stage}
                 className={`min-h-64 w-[calc(100vw-3.5rem)] shrink-0 rounded-xl border border-[#B8CCE4] bg-[#EAF3FF] p-2 shadow-none transition-colors md:min-h-80 md:w-[min(17rem,82vw)] md:rounded-2xl md:border-[rgb(var(--app-primary-rgb)/0.28)] md:p-2.5 ${
                   isBlocked ? "border-scarlet bg-[#FFF1F0]" : ""
@@ -474,7 +475,7 @@ export function PipelineBoardView({
                   <h3 className={`break-words text-sm font-semibold ${processIndex(stage) === 1 ? "text-scarlet" : "text-navy"}`}>
                   {processLabel(stage, language)} <span aria-hidden="true" className="ml-1 rounded bg-white/70 px-1.5 py-0.5 text-xs tabular-nums">{serverEnabled ? stageList.countLabel : stageRows.length}</span>
                   </h3>{serverEnabled ? <BoardPagination language={language} list={stageList} /> : null}</div>
-                  {serverEnabled && stageList.refreshing ? <RefreshIndicator language={language} /> : null}{serverEnabled && stageList.countError ? <RetryIconButton type="button"   onClick={stageList.retryCount} loading={stageList.countLoading}>{translate(language, "retry")}</RetryIconButton> : null}
+                  {serverEnabled && (stageList.refreshing || (stageList.countLoading && stageList.totalCount !== null)) ? <RefreshIndicator language={language} /> : null}{serverEnabled && stageList.countError ? <RetryIconButton type="button"   onClick={stageList.retryCount} loading={stageList.countLoading}>{translate(language, "retry")}</RetryIconButton> : null}
                   {serverEnabled && stageList.error ? <RetryIconButton type="button"   onClick={stageList.retry} loading={stageList.loading}>{translate(language, "retry")}</RetryIconButton> : null}
                 </div>
                 {stageRows.length === 0 ? (
@@ -532,8 +533,9 @@ export function PipelineBoardView({
         </div>
       </Panel>
 
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div data-read-bucket="terminal" className="grid gap-4 xl:grid-cols-2">
         <Panel variant="secondary">
+          <span data-read-bucket="terminal" aria-hidden="true"/>
           <SectionTitle title={translate(language, embedded ? "failedCandidatesAllTime" : "failedCandidatesLast7Days")} action={serverEnabled ? <BoardPagination language={language} list={failedList}/> : undefined} />
           {failedGroups.every((group) => group.rows.length === 0) ? (
             serverEnabled && failedList.error ? <p role="alert" className="text-sm text-danger">{translate(language,"loadFailed")}</p> : serverEnabled && failedList.initialLoading ? <LoadingSkeleton variant="cards" label={<>{translate(language, "loading")}</>} className="py-3 text-sm text-slate" /> : <EmptyState variant="quiet" message={translate(language, embedded ? "noFailedCandidatesAllTime" : "noFailedCandidatesLast7Days")} />
@@ -800,7 +802,7 @@ function MobileWorkspacePipelineStages({
         {stages.map((stage) => {
           const stageList = stageLists?.get(stage);
           const stageRows = stageList?.items ?? sortByLastUpdateAsc(rows.filter((row) => row.latest_process === stage));
-          return <details key={stage} className="group rounded-lg border border-[#E4E9F2] bg-white">
+          return <details key={stage} data-pipeline-stage={stage} className="group rounded-lg border border-[#E4E9F2] bg-white">
             <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 text-sm font-semibold text-navy focus:outline-none focus:ring-2 focus:ring-primary/30 [&::-webkit-details-marker]:hidden"><span className="min-w-0 truncate">{processLabel(stage, language)}</span><span className="inline-flex min-w-7 items-center justify-center rounded-md bg-[#F1F6FC] px-2 py-1 text-xs tabular-nums text-navy">{stageList?.countLabel ?? stageRows.length}</span></summary>
             <div className="grid gap-1 border-t border-[#E4E9F2] p-2">{stageList ? <BoardPagination language={language} list={stageList}/> : null}{stageList?.countError ? <RetryIconButton type="button"   onClick={stageList.retryCount} loading={stageList.countLoading}>{translate(language, "retry")}</RetryIconButton> : null}{stageList?.error ? <RetryIconButton type="button"   onClick={stageList.retry} loading={stageList.loading}>{translate(language, "retry")}</RetryIconButton> : null}{stageRows.length === 0 ? stageList?.initialLoading ? <LoadingSkeleton variant="cards" label={<>{translate(language, "loading")}</>} className="px-1 py-2 text-xs font-medium text-slate" /> : stageList?.error ? <p role="alert" className="px-1 py-2 text-xs font-medium text-scarlet">{translate(language, "loadError")}</p> : <p className="px-1 py-2 text-xs font-medium text-slate">{translate(language, "noData")}</p> : stageRows.map(renderCandidate)}</div>
           </details>;
@@ -814,7 +816,7 @@ function MobileWorkspacePipelineStages({
         const stageList = stageLists?.get(stage);
         const stageRows = stageList?.items ?? sortByLastUpdateAsc(rows.filter((row) => row.latest_process === stage));
         return (
-          <details key={stage} className="group rounded-lg border border-[#E4E9F2] bg-white">
+          <details key={stage} data-pipeline-stage={stage} className="group rounded-lg border border-[#E4E9F2] bg-white">
             <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 text-sm font-semibold text-navy focus:outline-none focus:ring-2 focus:ring-primary/30 [&::-webkit-details-marker]:hidden">
               <span className="min-w-0 truncate">{processLabel(stage, language)}</span>
               <span className="inline-flex min-w-7 items-center justify-center rounded-md bg-[#F1F6FC] px-2 py-1 text-xs tabular-nums text-navy">{stageList?.countLabel ?? stageRows.length}</span>
@@ -1271,22 +1273,8 @@ function groupPipelineRows(rows: EnrichedCandidate[], groupBy: PipelineGroupBy, 
     .map(([label, groupRows]) => ({ label, rows: groupRows }));
 }
 
-function useBoardList(input: Parameters<typeof useRecruitmentList<EnrichedCandidate>>[0]) {
-  const list = useRecruitmentList<EnrichedCandidate>({ ...input, complete: true, completeKey: applicationKey });
-  const identity = JSON.stringify([input.accessScope, input.entity, input.filters, list.search]);
-  const [navigation, setNavigation] = useState({ identity, page: 1 });
-  const pages = Math.max(1, Math.ceil(list.items.length / 5));
-  const page = navigation.identity === identity ? Math.min(navigation.page, pages) : 1;
-  const allItems = list.items;
-  return { ...list, items: allItems.slice((page - 1) * 5, page * 5), allItems,
-    totalCount: list.initialLoading ? null : allItems.length, countLabel: list.initialLoading ? <NumberSkeleton/> : String(allItems.length),
-    page, pageSize: 5, pages, canPrevious: page > 1, canNext: page < pages,
-    goPrevious: () => setNavigation({ identity, page: Math.max(1, page - 1) }),
-    goNext: () => setNavigation({ identity, page: Math.min(pages, page + 1) })
-  };
-}
 function BoardPagination({ language, list }: { language: Language; list: ReturnType<typeof useBoardList> }) {
-  if (list.initialLoading || list.error || !list.totalCount) return null;
+  if (list.initialLoading || (list.error && !list.items.length) || (!list.items.length && !list.canPrevious)) return null;
   return <div data-board-pagination className="ml-auto flex shrink-0 items-center justify-end gap-1 text-xs font-medium tabular-nums text-slate">
     <span aria-label={language === "th" ? "หน้าปัจจุบัน / จำนวนหน้า" : "Current page / total pages"}>{list.page}/{list.pages}</span>
     <Button type="button" size="icon-sm" variant="ghost" className="ats-compact-utility" aria-label={translate(language,"previous")} title={translate(language,"previous")} disabled={list.loading || list.refreshing || !list.canPrevious} onClick={list.goPrevious}><ChevronLeft size={16}/></Button>

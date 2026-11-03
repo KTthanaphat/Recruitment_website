@@ -31,13 +31,13 @@ async function cacheNamespace(client: SupabaseClient, profileKey: string) {
   return `${project}:${id}:${data.session?.user.id ?? "anonymous"}:${profileKey}`;
 }
 export function clearDashboardSummaryCache() { cache.clear(); }
-function memo<T>(client: SupabaseClient, key: string, fetch: () => Promise<T>): Promise<T> {
+function memo<T>(client: SupabaseClient, key: string, fetch: () => Promise<T>, outsideQueue = false): Promise<T> {
   const now = Date.now();
   for (const [entryKey, entry] of cache) if (entry.expiresAt <= now) cache.delete(entryKey);
   while (cache.size >= 100) cache.delete(cache.keys().next().value!);
   const existing = cache.get(key);
   if (existing && existing.expiresAt > now) return existing.request as Promise<T>;
-  const request = scheduleRecruitmentRead(client, fetch, 1);
+  const request = outsideQueue ? Promise.resolve().then(fetch) : scheduleRecruitmentRead(client, fetch, 1);
   cache.set(key, { expiresAt: Number.POSITIVE_INFINITY, request });
   void request.then(() => { const entry = cache.get(key); if (entry?.request === request) entry.expiresAt = Date.now() + 30_000; }, () => {});
   request.catch(() => { if (cache.get(key)?.request === request) cache.delete(key); });
@@ -119,7 +119,7 @@ export async function loadWelcomeSummary(client: SupabaseClient, profileKey: str
     const fields: (keyof WelcomeSummary)[] = ["openRequisitions", "openVacancy", "activeCandidates", "offerFinalizationNeeded", "filledThisMonth", "responsibleVacancyTotal", "filledResponsibleVacancyRatio"];
     if (!result || fields.some(field => typeof result[field] !== "number" || !Number.isFinite(result[field] as number)) || ![0, 25, 50, 75, 100].includes(result.filledResponsibleVacancyBucket)) throw new Error("Welcome summary response is incomplete");
     return result;
-  });
+  }, true);
 }
 export async function loadHomeBannerSummary(client: SupabaseClient, scope: Pick<DashboardSummaryScope, "headerSite" | "headerPic" | "priorityOnly">, profileKey: string, refreshKey = 0): Promise<HomeBannerSummary> {
   const namespace = await cacheNamespace(client, profileKey);

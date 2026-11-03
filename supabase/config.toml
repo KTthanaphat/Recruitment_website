@@ -17,6 +17,7 @@ schema_paths = [
   "./schemas/58_candidate_profile_contract.sql",
   "./schemas/59_candidate_group_claims.sql",
   "./schemas/60_recruitment_list.sql",
+  "./schemas/61_candidate_actions.sql",
   "./schemas/61_dashboard_summaries.sql",
   "./schemas/62_bottleneck_report.sql",
   "./schemas/63_operational_lookups.sql",

@@ -180,6 +180,7 @@ test("Test has a separate next-round action while Pass stage exits to Reference 
   await page.goto("/pipeline");
   await expectWorkspaceReady(page);
 
+  await page.locator('[data-pipeline-stage="Test"]').scrollIntoViewIfNeeded();
   const actions = page.getByRole("button", { name: "Candidate actions for Tina Test" });
   await actions.click();
   const menu = page.getByRole("menu", { name: "Candidate actions for Tina Test" });
@@ -359,6 +360,7 @@ test("Reference Check requires available references to be checked before Pass", 
   await page.goto("/pipeline");
   await expectWorkspaceReady(page);
 
+  await page.locator('[data-pipeline-stage="Reference Check"]').scrollIntoViewIfNeeded();
   await page.getByRole("button", { name: "Candidate actions for Rae Reference" }).click();
   const menu = page.getByRole("menu", { name: "Candidate actions for Rae Reference" });
   await expect(menu.getByRole("menuitem").filter({ hasText: "Pass stage" })).toBeDisabled();
@@ -372,7 +374,7 @@ test("Reference Check requires available references to be checked before Pass", 
   await checkDialog.getByLabel("Conversation summary").fill("Confirmed role scope and collaboration.");
   await checkDialog.getByRole("button", { name: "Review changes" }).click();
   await page.getByRole("button", { name: "Save changes" }).click();
-  await expect.poll(() => mock.rpcCalls.at(-1)?.endpoint).toBe("app_save_candidate_reference_check_v1");
+  await expect.poll(() => mock.rpcCalls.some(call => call.endpoint === "app_save_candidate_reference_check_v1")).toBe(true);
   await detail.getByRole("button", { name: "Close" }).click();
 
   await page.getByRole("button", { name: "Candidate actions for Rae Reference" }).click();

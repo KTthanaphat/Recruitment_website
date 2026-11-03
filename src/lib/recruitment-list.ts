@@ -1,4 +1,5 @@
-import { scheduleRecruitmentRead, clearRecruitmentReadQueue } from "./recruitment-read-scheduler";
+import { candidateReceiptRevision, nextCandidateReadEpoch, subscribeCandidateReceipts, patchCandidateRows, type CandidateActionReceipt } from "./candidate-action-receipt";
+import { scheduleRecruitmentRead, promoteRecruitmentRead, clearRecruitmentReadQueue } from "./recruitment-read-scheduler";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
@@ -15,12 +16,17 @@ export type RecruitmentListRequest = {
   limit?: 25 | 50 | 100;
   cursor?: RecruitmentListCursor | null;
   before?: boolean;
+  signal?: AbortSignal;
+  background?: boolean;
+  priority?: number;
+  freshAfter?: number;
 };
-export type RecruitmentListPage<T> = { items: T[]; total_count: number | null; has_more: boolean; has_more_before?: boolean; next_cursor: RecruitmentListCursor | null; previous_cursor?: RecruitmentListCursor | null };
+export type RecruitmentListPage<T> = { readStarted?: number; items: T[]; total_count: number | null; has_more: boolean; has_more_before?: boolean; next_cursor: RecruitmentListCursor | null; previous_cursor?: RecruitmentListCursor | null };
 
 type RpcClient = Pick<SupabaseClient, "rpc">;
-const pageCache = new Map<string, { promise: Promise<RecruitmentListPage<unknown>>; expiresAt: number }>();
-const countCache = new Map<string, { promise: Promise<number>; expiresAt: number }>();
+type ReadEntry<T> = { epoch: number; promise: Promise<T>; expiresAt: number; controller: AbortController; readers: number; settled: boolean };
+const pageCache = new Map<string, ReadEntry<RecruitmentListPage<unknown>>>();
+const countCache = new Map<string, ReadEntry<number>>();
 const MAX_PAGE_CACHE_ENTRIES = 250;
 const MAX_COUNT_CACHE_ENTRIES = 500;
 const clientIds = new WeakMap<object, number>();
@@ -56,15 +62,62 @@ function pruneCache<T>(cache: Map<string, { promise: Promise<T>; expiresAt: numb
   }
 }
 
+async function lease<T>(entry: ReadEntry<T>, signal?: AbortSignal): Promise<T> {
+  entry.readers++;
+  let cancel: (() => void) | undefined;
+  try {
+    if (signal?.aborted) throw Object.assign(new Error("Read canceled"), { name: "AbortError" });
+    const cancellation = new Promise<never>((_, reject) => { cancel = () => reject(Object.assign(new Error("Read canceled"), { name: "AbortError" })); signal?.addEventListener("abort", cancel, { once: true }); });
+    return await (signal ? Promise.race([entry.promise, cancellation]) : entry.promise);
+  } finally { if (cancel) signal?.removeEventListener("abort", cancel); entry.readers--; if (!entry.readers && !entry.settled) entry.controller.abort(); }
+}
+
+type QueryRevision = { kind: "records" | "count"; client: object; request: RecruitmentListRequest; revision: number; listeners: Set<() => void> };
+const queryRevisions = new Map<string, QueryRevision>();
+function queryRevisionEntry(client: object, request: RecruitmentListRequest, kind: "records" | "count" = "records") {
+ const key = JSON.stringify([clientId(client as RpcClient), request.accessScope, request.entity, request.search ?? "", request.filters ?? {}, kind]);
+ if (queryRevisions.size >= 500) for (const [oldKey, old] of queryRevisions) { if (!old.listeners.size) queryRevisions.delete(oldKey); if (queryRevisions.size < 400) break; }
+ let entry = queryRevisions.get(key); if (!entry) { entry = { kind, client, request, revision: 0, listeners: new Set() }; queryRevisions.set(key, entry); }
+ return entry;
+}
+export function recruitmentQueryRevision(client: object | null, request: RecruitmentListRequest, kind: "records" | "count" = "records") { return client ? queryRevisionEntry(client, request, kind).revision : 0; }
+export function subscribeRecruitmentQuery(client: object | null, request: RecruitmentListRequest, listener: () => void, kind: "records" | "count" = "records") {
+ if (!client) return () => {}; const entry = queryRevisionEntry(client, request, kind); entry.listeners.add(listener); return () => { entry.listeners.delete(listener); };
+}
+function affectedQuery(request: RecruitmentListRequest, receipt: CandidateActionReceipt, count = false) {
+ if (!recruitmentListDependenciesForMutation(receipt.operation).includes(request.entity)) return false;
+ const filters = request.filters ?? {};
+ if (count && request.entity !== "audit_log" && !receipt.effects.includes("counts")) {
+  const changesMembership = Boolean(request.search) || (receipt.operation === "app_upsert_candidate_profile_v2" && request.entity === "candidate_registry") || ["aging","over_sla"].includes(String(filters.boardFilter ?? ""));
+  if (!changesMembership) return false;
+ }
+ if (filters.candidateId && filters.candidateId !== receipt.candidate_id) return false;
+ if (filters.applicationId && !receipt.application_ids.includes(String(filters.applicationId))) return false;
+ if (filters.groupId && ![...receipt.source_groups, ...receipt.groups].includes(String(filters.groupId))) return false;
+ if (request.entity === "pipeline_stage" && filters.stage && ![...(receipt.source_stages ?? []), ...receipt.cards.map(row => row.latest_process)].includes(String(filters.stage))) return false;
+ return true;
+}
+/** Revalidate loaded affected criteria once; untouched stages keep their pages and requests. */
+export function invalidateCandidateRecruitmentLists(client: object, scope: string, receipts: CandidateActionReceipt[]) {
+ for (const entry of queryRevisions.values()) if (entry.client === client && entry.request.accessScope === scope && receipts.some(receipt => affectedQuery(entry.request, receipt, entry.kind === "count"))) { entry.revision++; entry.listeners.forEach(listener => listener()); }
+ for (const cache of [pageCache, countCache]) for (const key of cache.keys()) {
+  const parts = JSON.parse(key); if (parts[0] !== clientId(client as RpcClient) || parts[1] !== scope) continue;
+  const request = { accessScope: scope, entity: parts[2], search: parts[3], filters: parts[4] };
+  if (receipts.some(receipt => affectedQuery(request, receipt, cache === countCache) && (cache.get(key)?.epoch ?? 0) < (receipt.commit_epoch ?? Number.POSITIVE_INFINITY))) cache.delete(key);
+ }
+}
+
 /** Reads one filtered, sorted keyset page. Invalid RPC payloads fail closed instead of falling back to local arrays. */
 export async function fetchRecruitmentList<T>(client: RpcClient, request: RecruitmentListRequest): Promise<RecruitmentListPage<T>> {
   pruneCache(pageCache, MAX_PAGE_CACHE_ENTRIES);
+  const started = nextCandidateReadEpoch();
   const normalized = { ...request, search: request.search ?? "", filters: request.filters ?? {}, sort: request.sort ?? "", direction: request.direction ?? "asc", limit: request.limit ?? 50 };
   const key = cacheKey(client, normalized);
   let cached = pageCache.get(key);
-  if (cached && cached.expiresAt <= Date.now()) { pageCache.delete(key); cached = undefined; }
-  if (!cached) {
-    const created: Promise<RecruitmentListPage<unknown>> = scheduleRecruitmentRead(client, () => client.rpc("app_recruitment_list_v1", {
+  if (cached && (cached.expiresAt <= Date.now() || (request.freshAfter !== undefined && cached.epoch <= request.freshAfter))) { pageCache.delete(key); cached = undefined; }
+  if (!cached || cached.controller.signal.aborted) {
+    const controller = new AbortController();
+    const created: Promise<RecruitmentListPage<unknown>> = scheduleRecruitmentRead(client, () => { const call = client.rpc("app_recruitment_list_v1", {
       p_entity: normalized.entity,
       p_search: normalized.search,
       p_filters: normalized.filters,
@@ -74,7 +127,7 @@ export async function fetchRecruitmentList<T>(client: RpcClient, request: Recrui
       p_cursor_value: normalized.cursor?.value ?? null,
       p_cursor_id: normalized.cursor?.id ?? null,
       p_before: normalized.before ?? false
-    }), 0).then(({ data, error }) => {
+    }); return typeof call.abortSignal === "function" ? call.abortSignal(controller.signal) : call; }, request.priority ?? (request.background ? 20 : 0), { signal: controller.signal }).then(({ data, error }) => {
       if (error) throw new Error(error.message);
       const result = data as Partial<RecruitmentListPage<unknown>> | null;
       const limit = normalized.limit ?? 50;
@@ -82,15 +135,17 @@ export async function fetchRecruitmentList<T>(client: RpcClient, request: Recrui
       if (!result || !Array.isArray(result.items) || !(result.total_count === undefined || result.total_count === null || (typeof result.total_count === "number" && Number.isInteger(result.total_count) && result.total_count >= 0)) || result.items.length > limit || typeof result.has_more !== "boolean" || typeof result.has_more_before !== "boolean" || !cursorIsValid(result.next_cursor) || !cursorIsValid(result.previous_cursor) || (result.has_more && (!result.next_cursor || result.items.length === 0)) || (!result.has_more && result.next_cursor !== null) || (result.has_more_before !== Boolean(result.previous_cursor)) || (result.has_more_before && result.items.length === 0)) {
         throw new Error("Recruitment list returned an invalid response");
       }
-      return { ...result, total_count: result.total_count ?? null } as RecruitmentListPage<unknown>;
+      return { ...result, readStarted: started, total_count: result.total_count ?? null } as RecruitmentListPage<unknown>;
     });
-    cached = { promise: created, expiresAt: Number.POSITIVE_INFINITY };
+    cached = { epoch: nextCandidateReadEpoch(), promise: created, expiresAt: Number.POSITIVE_INFINITY, controller, readers: 0, settled: false };
+    const entry = cached; void created.then(() => { entry.settled = true; }, () => { entry.settled = true; });
     pageCache.set(key, cached);
     pruneCache(pageCache, MAX_PAGE_CACHE_ENTRIES);
     void created.then(() => { const current = pageCache.get(key); if (current?.promise === created) current.expiresAt = Date.now() + 30_000; }, () => { if (pageCache.get(key)?.promise === created) pageCache.delete(key); });
   }
-  try { return await cached.promise as RecruitmentListPage<T>; }
-  catch (error) { if (pageCache.get(key) === cached) pageCache.delete(key); throw error; }
+  if (!request.background && !cached.settled) promoteRecruitmentRead(client, cached.controller.signal, request.priority ?? 0);
+  try { const page = await lease(cached, request.signal) as RecruitmentListPage<T>; return { ...page, items: patchCandidateRows(client, request.accessScope, page.items, request, page.readStarted) }; }
+  catch (error) { if ((!request.signal?.aborted || cached.controller.signal.aborted) && pageCache.get(key) === cached) pageCache.delete(key); throw error; }
 }
 
 /** Complete card projection; never publishes a partial cursor traversal. */
@@ -128,21 +183,24 @@ export async function fetchRecruitmentListCount(client: RpcClient, request: Recr
   const key = countKey(client, normalized);
   let cached = countCache.get(key);
   if (cached && cached.expiresAt <= Date.now()) { countCache.delete(key); cached = undefined; }
-  if (!cached) {
-    const created = scheduleRecruitmentRead(client, () => client.rpc("app_recruitment_list_count_v1", {
+  if (!cached || cached.controller.signal.aborted) {
+    const controller = new AbortController();
+    const created = scheduleRecruitmentRead(client, () => { const call = client.rpc("app_recruitment_list_count_v1", {
       p_entity: normalized.entity, p_search: normalized.search, p_filters: normalized.filters
-    }), 10).then(({ data, error }) => {
+    }); return typeof call.abortSignal === "function" ? call.abortSignal(controller.signal) : call; }, request.priority ?? 10, { signal: controller.signal }).then(({ data, error }) => {
       if (error) throw new Error(error.message);
       if (typeof data !== "number" || !Number.isInteger(data) || data < 0) throw new Error("Recruitment list count returned an invalid response");
       return data;
     });
-    cached = { promise: created, expiresAt: Number.POSITIVE_INFINITY };
+    cached = { epoch: Date.now(), promise: created, expiresAt: Number.POSITIVE_INFINITY, controller, readers: 0, settled: false };
+    const entry = cached; void created.then(() => { entry.settled = true; }, () => { entry.settled = true; });
     countCache.set(key, cached);
     pruneCache(countCache, MAX_COUNT_CACHE_ENTRIES);
     void created.then(() => { const current = countCache.get(key); if (current?.promise === created) current.expiresAt = Date.now() + 30_000; }, () => { if (countCache.get(key)?.promise === created) countCache.delete(key); });
   }
-  try { return await cached.promise; }
-  catch (error) { if (countCache.get(key) === cached) countCache.delete(key); throw error; }
+  if (request.priority !== undefined && !cached.settled) promoteRecruitmentRead(client, cached.controller.signal, request.priority);
+  try { return await lease(cached, request.signal); }
+  catch (error) { if ((!request.signal?.aborted || cached.controller.signal.aborted) && countCache.get(key) === cached) countCache.delete(key); throw error; }
 }
 
 /** Invalidate only affected list families after a successful mutation. */
@@ -164,8 +222,11 @@ const APPLICATION_MUTATION_DEPENDENCIES = ["audit_log", "candidate_registry", "c
 const OFFER_MUTATION_DEPENDENCIES = ["audit_log", "offers", "candidate_registry", "candidate_applications", "pipeline_history", "pipeline_stage", "requisitions", "position_groups", "sourcing"] as const satisfies readonly RecruitmentListEntity[];
 const REQUISITION_GROUP_MUTATION_DEPENDENCIES = ["audit_log", "requisitions", "position_groups", "sourcing", "offers", "candidate_registry", "candidate_applications", "pipeline_history", "pipeline_stage"] as const satisfies readonly RecruitmentListEntity[];
 
-/** Exact post-write dependencies; unknown endpoint names invalidate audit only. */
+/** Candidate operations are narrow; other and unknown writes keep conservative invalidation. */
 export function recruitmentListDependenciesForMutation(endpoint: string): readonly RecruitmentListEntity[] {
+  if (endpoint === "app_upsert_candidate_note_v2") return ["audit_log"];
+  if (endpoint === "app_upsert_candidate_profile_v2") return ["candidate_registry", "candidate_applications", "pipeline_stage", "audit_log"];
+  if (["app_start_pipeline_stage_v2", "app_update_pipeline_pending_v2", "app_complete_pipeline_stage_v2", "app_pass_pipeline_jump_v2", "app_correct_pipeline_stage_record_v3", "app_create_candidate_application_v1", "app_transfer_candidate_application_v1"].includes(endpoint)) return ["candidate_registry", "candidate_applications", "pipeline_history", "pipeline_stage", "audit_log"];
   if (["app_upsert_offer", "app_confirm_offer_start_v1"].includes(endpoint)) return OFFER_MUTATION_DEPENDENCIES;
   if ([
     "app_create_candidate_application_v1", "app_start_pipeline_stage_v2", "app_update_pipeline_pending_v2",
@@ -179,7 +240,7 @@ export function recruitmentListDependenciesForMutation(endpoint: string): readon
     "app_upsert_vacancy_weekly_snapshot", "app_create_group_match", "app_create_and_match_sourcing_group_v2",
     "app_unmatch_group_requisition", "app_delete_recruitment_record"
   ].includes(endpoint)) return REQUISITION_GROUP_MUTATION_DEPENDENCIES;
-  return AUDIT_MUTATION_DEPENDENCIES;
+  return APPLICATION_MUTATION_DEPENDENCIES;
 }
 
 export function invalidateRecruitmentListsForMutation(endpoint: string) {
@@ -201,7 +262,10 @@ export function useRecruitmentList<T>({ client, accessScope, entity, filters = {
   const [result, setResult] = useState<RecruitmentListPage<T> | null>(null), [loadedKey, setLoadedKey] = useState(""), [loading, setLoading] = useState(false), [error, setError] = useState(false), [retry, setRetry] = useState(0);
   const [errorKey, setErrorKey] = useState("");
   const navigationPending = useRef(false);
+  useSyncExternalStore(listener => subscribeCandidateReceipts(client, accessScope, listener), () => candidateReceiptRevision(client, accessScope), () => 0);
   const listRevision = useSyncExternalStore(listener => subscribeRecruitmentLists(entity, listener), () => recruitmentListRevision(entity), () => 0);
+  const scopedRevision = useSyncExternalStore(fn => subscribeRecruitmentQuery(client, { accessScope, entity, search: debouncedSearch, filters }, fn), () => recruitmentQueryRevision(client, { accessScope, entity, search: debouncedSearch, filters }), () => 0);
+  const scopedCountRevision = useSyncExternalStore(fn => subscribeRecruitmentQuery(client, { accessScope, entity, search: debouncedSearch, filters }, fn, "count"), () => recruitmentQueryRevision(client, { accessScope, entity, search: debouncedSearch, filters }, "count"), () => 0);
   const filterKey = JSON.stringify(filters);
   const criteriaKey = JSON.stringify([client ? clientId(client) : 0, accessScope, entity, debouncedSearch, filterKey, sort, direction, pageSize, enabled, complete]);
   const effectiveCursor = cursorCriteria === criteriaKey ? cursor : null;
@@ -214,14 +278,15 @@ export function useRecruitmentList<T>({ client, accessScope, entity, filters = {
   useEffect(() => {
     if (!enabled || !client || !accessScope) { setLoading(false); return; }
     let cancelled = false;
+    const controller = new AbortController();
     setLoading(true); setError(false);
-    const request = { accessScope, entity, search: debouncedSearch, filters, sort, direction, limit: pageSize, cursor: effectiveCursor, before: effectiveBefore };
+    const request = { signal: controller.signal, accessScope, entity, search: debouncedSearch, filters, sort, direction, limit: pageSize, cursor: effectiveCursor, before: effectiveBefore };
     (complete ? fetchCompleteRecruitmentList<T>(client, request, completeKey ?? ((row) => JSON.stringify(row))) : fetchRecruitmentList<T>(client, request))
       .then(pageResult => { if (cancelled) return; setResult(pageResult); setLoadedKey(requestKey); setDisplayPage(requestPage); if (!effectiveCursor) setPage(1); })
       .catch(() => { if (!cancelled) { setError(true); setErrorKey(requestKey); } })
       .finally(() => { if (!cancelled) { setLoading(false); navigationPending.current = false; } });
-    return () => { cancelled = true; };
-  }, [accessScope, client, debouncedSearch, direction, effectiveBefore, effectiveCursor, enabled, entity, filterKey, listRevision, page, pageSize, requestKey, retry, sort, complete]);
+    return () => { cancelled = true; controller.abort(); };
+  }, [accessScope, client, debouncedSearch, direction, effectiveBefore, effectiveCursor, enabled, entity, filterKey, listRevision, scopedRevision, page, pageSize, requestKey, retry, sort, complete]);
   const countCriteriaKey = JSON.stringify([client ? clientId(client) : 0, accessScope, entity, debouncedSearch, filterKey, enabled]);
   const [countState, setCountState] = useState<{ key: string; value: number | null; loading: boolean; error: boolean }>({ key: "", value: null, loading: false, error: false });
   const [countRetry, setCountRetry] = useState(0);
@@ -229,12 +294,13 @@ export function useRecruitmentList<T>({ client, accessScope, entity, filters = {
     if (!enabled || !client || !accessScope) { setCountState({ key: countCriteriaKey, value: null, loading: false, error: false }); return; }
     if (loadedKey !== requestKey || !result || error) return;
     let cancelled = false;
+    const controller = new AbortController();
     setCountState(previous => ({ key: countCriteriaKey, value: previous.key === countCriteriaKey ? previous.value : null, loading: true, error: false }));
-    fetchRecruitmentListCount(client, { accessScope, entity, search: debouncedSearch, filters })
+    fetchRecruitmentListCount(client, { accessScope, entity, search: debouncedSearch, filters, signal: controller.signal })
       .then(value => { if (!cancelled) setCountState({ key: countCriteriaKey, value, loading: false, error: false }); })
       .catch(() => { if (!cancelled) setCountState(previous => ({ key: countCriteriaKey, value: previous.key === countCriteriaKey ? previous.value : null, loading: false, error: true })); });
-    return () => { cancelled = true; };
-  }, [accessScope, client, countCriteriaKey, countRetry, debouncedSearch, enabled, entity, filterKey, listRevision, loadedKey, requestKey, result, error]);
+    return () => { cancelled = true; controller.abort(); };
+  }, [accessScope, client, countCriteriaKey, countRetry, debouncedSearch, enabled, entity, filterKey, listRevision, scopedCountRevision, loadedKey, requestKey, result, error]);
   const searchPending = activeSearch.trim() !== debouncedSearch;
   const activeError = error && errorKey === requestKey && !searchPending;
   const current = !searchPending && loadedKey === requestKey ? result : null;
@@ -253,5 +319,5 @@ export function useRecruitmentList<T>({ client, accessScope, entity, filters = {
   const totalCount = currentCount?.value ?? null;
   const countLoading = currentCount?.loading ?? Boolean(enabled && client && accessScope);
   const countError = currentCount?.error ?? false;
-  return { settled: loadedKey === requestKey || activeError, initialLoading: Boolean(enabled && client && accessScope && !current && !activeError), refreshing: Boolean(loading && current), search: activeSearch, setSearch: searchInput?.setValue ?? setSearch, items: current?.items ?? [], totalCount, countLabel: totalCount === null ? countError ? "—" : countLoading ? "…" : "—" : String(totalCount), countLoading, countError, page: displayPage, pageSize, setPageSize: changePageSize, loading, error: activeError, canPrevious: !loading && page > 1, canNext: !loading && Boolean(current?.has_more && current.next_cursor), goPrevious, goNext, goFirst, retry: () => setRetry(value => value + 1), retryCount: () => setCountRetry(value => value + 1) };
+  return { settled: loadedKey === requestKey || activeError, initialLoading: Boolean(enabled && client && accessScope && !current && !activeError), refreshing: Boolean(loading && current), search: activeSearch, setSearch: searchInput?.setValue ?? setSearch, items: client && current ? patchCandidateRows(client, accessScope, current.items, { entity, filters, search: debouncedSearch }, current.readStarted) : [], totalCount, countLabel: totalCount === null ? countError ? "—" : countLoading ? "…" : "—" : String(totalCount), countLoading, countError, page: displayPage, pageSize, setPageSize: changePageSize, loading, error: activeError, canPrevious: !loading && page > 1, canNext: !loading && Boolean(current?.has_more && current.next_cursor), goPrevious, goNext, goFirst, retry: () => setRetry(value => value + 1), retryCount: () => setCountRetry(value => value + 1) };
 }

@@ -68,3 +68,5 @@ Owners: [drawer](../../../src/components/candidates/CandidateProfilePanel.tsx), 
 Board preload/five-card pages: [contract](../../design/pipeline.md); search useBoardList, BoardPagination, fetchCompleteRecruitmentList; [checks](../../../tests/e2e/design-adjustments.spec.ts).
 
 Candidate offer attendance icons: [shared controls](../../../src/components/ui/AttendanceDecisionActions.tsx) and confirmPendingAction/pendingSaveLock in RecruitmentWorkspace; [contract](../../design/candidate-detail.md#compact-offers-and-working-confirm); [checks](../../../tests/e2e/design-refinement.spec.ts).
+
+- Bounded stage loading and committed candidate saves: [board hook](../../../src/lib/pipeline-board-list.ts), [receipts](../../../src/lib/candidate-action-receipt.ts), [invoker RPCs](../../../supabase/schemas/61_candidate_actions.sql), [contract](../../design/pipeline.md).

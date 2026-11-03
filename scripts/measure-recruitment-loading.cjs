@@ -182,11 +182,17 @@ async function measurePopulation(population) {
 }
 
 async function main() {
-  const loaderFiles = ["src/lib/data.ts", "src/lib/recruitment-history-loader.ts", "src/lib/recruitment-list.ts"];
+  const loaderFiles = ["src/lib/data.ts", "src/lib/recruitment-history-loader.ts", "src/lib/recruitment-list.ts", "src/lib/candidate-action-receipt.ts", "src/lib/recruitment-read-scheduler.ts"];
+  const {performCandidateAction,subscribeCandidateActionTimings,markCandidateReceiptDisplayed,markCandidateReconciliation}=require('../src/lib/candidate-action-receipt.ts');
+  const actionTimings=[];const unsubscribeActions=subscribeCandidateActionTimings(value=>actionTimings.push(value));
+  const syntheticActionClient={rpc:async(_name,args)=>({data:{ok:true,action_result:{version:1,request_id:args.p_request_id}},error:null})};
+  const committed=await performCandidateAction(syntheticActionClient,'app_upsert_candidate_note_v2',{candidate_id:'SYNTHETIC'});
+  await new Promise(resolve=>setImmediate(resolve));markCandidateReceiptDisplayed(committed.action_result.request_id);
+  const reconciliationStarted=performance.now();await new Promise(resolve=>setImmediate(resolve));markCandidateReconciliation(reconciliationStarted);unsubscribeActions();
   const results = [];
   for (const population of populations) results.push(await measurePopulation(population));
   fs.mkdirSync(outputDirectory, { recursive: true });
-  const output = { generated_at: new Date().toISOString(), method: { adapter: "synthetic thenable PostgREST/RPC; fixed-width generated records", ordinary_rest_cap: REST_CAP, exact_history_page_size: HISTORY_PAGE, recruitment_list_page_size: LIST_PAGE, body_bytes: "JSON response body bytes only; synthetic, not production payload sizes", search: "The mock list RPC searches all generated IDs even above REST cap; SQL endpoint behavior is covered separately." }, source_sha256: Object.fromEntries(loaderFiles.map(file => [file, hash(file)])), results };
+  const output = { generated_at: new Date().toISOString(), method: { adapter: "synthetic thenable PostgREST/RPC; fixed-width generated records", ordinary_rest_cap: REST_CAP, exact_history_page_size: HISTORY_PAGE, recruitment_list_page_size: LIST_PAGE, body_bytes: "JSON response body bytes only; synthetic, not production payload sizes", search: "The mock list RPC searches all generated IDs even above REST cap; SQL endpoint behavior is covered separately." }, candidate_action_timings: { method: "Synthetic adapter/scheduling only; display callback is simulated, not browser paint. Production observers emit timing phases without candidate payloads.", samples: actionTimings }, source_sha256: Object.fromEntries(loaderFiles.map(file => [file, hash(file)])), results };
   const file = path.join(outputDirectory, `loader-payload-${Date.now()}.json`);
   fs.writeFileSync(file, `${JSON.stringify(output, null, 2)}\n`);
   console.log(JSON.stringify({ output: file, results }, null, 2));
