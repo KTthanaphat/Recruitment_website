@@ -140,9 +140,20 @@ export async function installMockSupabase(page: Page, options: MockSupabaseOptio
   });
 
   await page.route("**/rest/v1/rpc/**", async (route) => {
-    const endpoint = new URL(route.request().url()).pathname.split("/").at(-1) ?? "";
+    const requestedEndpoint = new URL(route.request().url()).pathname.split("/").at(-1) ?? "";
+    let endpoint = requestedEndpoint;
     const body = route.request().postDataJSON() as { payload?: Record<string, unknown>; p_entity?: string; p_search?: string; p_filters?: Record<string, unknown>; p_sort?: string; p_direction?: string; p_limit?: number; p_cursor_value?: unknown; p_cursor_id?: string | null; p_before?: boolean; p_after_group_id?: string | null; p_after_candidate_id?: string | null; p_after_application_id?: string | null; p_group_id?: string | null } | undefined;
-    const payload = body?.payload ?? {};
+    const wrapped = requestedEndpoint === "app_candidate_action_v1";
+    if (wrapped) endpoint = String(asRecord(body).p_operation);
+    const payload = wrapped ? asRecord(asRecord(body).p_payload) : body?.payload ?? {};
+    if (wrapped) rpcCalls.push({ endpoint: requestedEndpoint, payload: { ...body } });
+    if (endpoint === "app_pipeline_card_location_v1") {
+      rpcCalls.push({endpoint,payload:{...body}});
+      const criteria=asRecord(body?.p_filters), search=String(body?.p_search??"").trim().toLowerCase();
+      const rows=enrichCandidates(data).filter(row=>recruitmentPipelineRowMatches(data,row,"pipeline_stage",criteria,search)).sort((a,b)=>String(a.latest_log_date??a.updated_at??"").localeCompare(String(b.latest_log_date??b.updated_at??""))||String(a.application_id).localeCompare(String(b.application_id)));
+      const index=rows.findIndex(row=>row.application_id===asRecord(body).p_application_id), blockStart=Math.floor(index/25)*25, previous=rows[blockStart-1];
+      await json(route,index<0?{excluded:true}:{application_id:rows[index].application_id,block:Math.floor(index/25),offset:index%25,page:Math.floor(index/5)+1,cursor:previous?{value:previous.latest_log_date??previous.updated_at??"",id:previous.application_id}:null}); return;
+    }
     const admin=["system_admin","admin_recruiter"].includes(data.profile?.role??"");
     const pic=(groupId:string)=>data.document_groups.some(link=>link.group_id===groupId&&data.requisitions.some(req=>req.doc_id===link.doc_id&&[data.profile?.nickname,data.profile?.full_name].some(name=>name&&name.trim().toLowerCase()===req.person_in_charge?.trim().toLowerCase())));
     const reportScope=asRecord(body?.p_scope),reportRequisitions=()=>enrichRequisitions(data).filter(row=>(!reportScope.headerSite||row.site===reportScope.headerSite)&&(!reportScope.headerPic||row.person_in_charge?.trim().toLowerCase()===String(reportScope.headerPic).trim().toLowerCase())&&(!reportScope.priorityOnly||row.is_priority)&&(!Array.isArray(reportScope.sites)||!reportScope.sites.length||reportScope.sites.includes(row.site))&&(!Array.isArray(reportScope.departments)||!reportScope.departments.length||reportScope.departments.includes(row.department))&&(!Array.isArray(reportScope.levels)||!reportScope.levels.length||reportScope.levels.includes(row.level)));
@@ -465,7 +476,7 @@ export async function installMockSupabase(page: Page, options: MockSupabaseOptio
       const byStage=[...new Set(rows.map(row=>row.latest_process))].map(stage=>({stage,count:rows.filter(row=>row.latest_process===stage).length}));
       await json(route,{as_of:asOf,recent_since:asDate.toISOString().slice(0,10),active:active.length,aging:active.filter(row=>dateDays(row.latest_log_date)>7).length,failed:recentFailure.size,passed_offer:recentOffer.size,no_activity:active.filter(row=>row.latest_process==="No activity").length,by_stage:byStage});return;
     }
-    if(endpoint==="app_update_pipeline_pending_v2") {
+    if(endpoint==="app_update_pipeline_pending_v2" && !wrapped) {
       rpcCalls.push({endpoint,payload:{...payload}});
       const pending=asRecord(payload.pending),row=data.recruitment_logs.find(log=>log.application_id===payload.application_id&&log.stage_instance_id===payload.stage_instance_id);
       if(!row||row.candidate_id!==payload.candidate_id){await json(route,{error:"Pending stage not found"},409);return;}
@@ -505,9 +516,16 @@ export async function installMockSupabase(page: Page, options: MockSupabaseOptio
     const completedOffer = endpoint === "app_complete_pipeline_stage_v2"
       && asRecord(payload.outcome).result === "pass"
       && data.recruitment_logs.find((row) => row.stage_instance_id === payload.stage_instance_id)?.recruitment_process === "Offer";
+    let receipt: Record<string,unknown> | undefined;
+    if (wrapped) {
+      const id=String(payload.candidate_id??data.candidates.at(-1)?.candidate_id??""), candidate=data.candidates.find(row=>row.candidate_id===id)??null;
+      const apps=(data.candidate_applications??[]).filter(row=>row.candidate_id===id&&(!payload.application_id||row.application_id===payload.application_id));
+      const ids=apps.map(row=>row.application_id), history=(data.recruitment_log_history??data.recruitment_logs).filter(row=>ids.includes(row.application_id??""));
+      receipt={version:1,request_id:asRecord(body).p_request_id,operation:endpoint,candidate_id:id,application_ids:ids,profile:{candidate,capabilities:(data.candidate_profile_capabilities??[]).find(row=>row.candidate_id===id)??null,masked:null},cards:enrichCandidates(data).filter(row=>ids.includes(row.application_id??"")),applications:apps,history,assignments:(data.candidate_application_assignments??[]).filter(row=>ids.includes(row.application_id)),notes:(data.candidate_notes??[]).filter(row=>row.candidate_id===id),references:data.candidate_references.filter(row=>row.candidate_id===id),removed_applications:[],source_stages:ACTIVE_PIPELINE_STAGES,source_groups:apps.map(row=>row.group_id),groups:apps.map(row=>row.group_id),effects:endpoint==="app_upsert_candidate_note_v2"?["detail","audit"]:["records","detail","counts","summary","calendar","reports","audit"]};
+    }
     await json(route, completedOffer
-      ? { ok: true, id: generatedIdForEndpoint(endpoint), offer_handoff: { candidate_id: payload.candidate_id, passed_date: asRecord(payload.outcome).date, requisitions: [{ doc_id: "REQ-HQ-1" }] } }
-      : { ok: true, id: generatedIdForEndpoint(endpoint) });
+      ? { ok: true, id: generatedIdForEndpoint(endpoint), ...(receipt?{action_result:receipt}:{}), offer_handoff: { candidate_id: payload.candidate_id, passed_date: asRecord(payload.outcome).date, requisitions: [{ doc_id: "REQ-HQ-1" }] } }
+      : { ok: true, id: generatedIdForEndpoint(endpoint), ...(receipt?{action_result:receipt}:{}) });
   });
 
   await page.route("**/rest/v1/**", async (route) => {
@@ -1001,6 +1019,7 @@ function applyRpcMutation(data: DashboardData, endpoint: string, payload: Record
       data.candidate_reference_checks.push({
         check_id: "20000000-0000-4000-8000-"+String(data.candidate_reference_checks.length + 1).padStart(12, "0"),
         reference_id: referenceId,
+        application_id: String(payload.application_id ?? data.candidate_applications?.find(app => app.candidate_id === payload.candidate_id)?.application_id ?? ""),
         checked_date: String(payload.checked_date ?? "2026-07-24"),
         duration_minutes: Number(payload.duration_minutes ?? 0),
         conversation_summary: String(payload.conversation_summary ?? ""),
@@ -1034,7 +1053,7 @@ function applyRpcMutation(data: DashboardData, endpoint: string, payload: Record
     current.outcome_recorded_at = "2026-07-24T05:00:00.000Z";
     current.updated_at = "2026-07-24T05:00:00.000Z";
     const next = asRecord(payload.next_pending);
-    if (current.result === 1 && Object.keys(next).length) addCanonicalPending(data, candidateId, { ...next, opened_date: current.outcome_date });
+    if (current.result === 1 && Object.keys(next).length) addCanonicalPending(data, candidateId, { ...next, application_id: current.application_id, opened_date: current.outcome_date });
     appendPipelineAudit(data, current.log_id, "pipeline:completion", current);
   }
   if (endpoint === "app_pass_pipeline_jump_v2") {
@@ -1057,7 +1076,7 @@ function applyRpcMutation(data: DashboardData, endpoint: string, payload: Record
       row.updated_at = "2026-07-24T05:00:00.000Z";
       appendPipelineAudit(data, row.log_id, "pipeline:jump", row);
     }
-    addCanonicalPending(data, candidateId, asRecord(payload.target_pending));
+    addCanonicalPending(data, candidateId, { ...asRecord(payload.target_pending), application_id: payload.application_id });
   }
 }
 
@@ -1174,6 +1193,7 @@ function addCanonicalPending(data: DashboardData, candidateId: string, pending: 
   row.interviewer = nullableText(pending.interviewer);
   row.remark = nullableText(pending.remark);
   row.record_origin = "auto";
+  row.application_id = String(pending.application_id ?? data.candidate_applications?.find(app => app.candidate_id === candidateId)?.application_id ?? "");
   data.recruitment_logs.push(row);
   appendPipelineAudit(data, row.log_id, "pipeline:pending-create", row);
 }

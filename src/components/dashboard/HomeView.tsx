@@ -107,6 +107,7 @@ export function HomeView({
   const handleTodayEventsChange = useCallback((payload: { date: string; events: CalendarEvent[] }) => setTodayEventData(payload), []);
   const summaryScopeKey = JSON.stringify(summaryScope ?? null);
   const sectionKey = JSON.stringify([accessScope, summaryScopeKey, refreshKey]);
+  const sameSectionScope = useCallback((key: string) => key.startsWith(JSON.stringify([accessScope, summaryScopeKey]).slice(0, -1) + ","), [accessScope, summaryScopeKey]);
   const [core, setCore] = useState<{ key: string; data: HomeCoreSummary | null; error: boolean }>({ key: "", data: null, error: false });
   const [coreRetry, setCoreRetry] = useState(0);
   const [coreLoading, setCoreLoading] = useState(false);
@@ -117,30 +118,30 @@ export function HomeView({
   const [calendarSettledKey, setCalendarSettledKey] = useState("");
   const handleRecordsSettled = useCallback(() => setRecordsSettledKey(sectionKey), [sectionKey]);
   const handleCalendarSettled = useCallback(() => setCalendarSettledKey(sectionKey), [sectionKey]);
-  const homeSummary = core.key === sectionKey ? core.data : null;
+  const homeSummary = sameSectionScope(core.key) ? core.data : null;
   const summaryError = core.key === sectionKey && core.error;
   const initialSettled = core.key === sectionKey && !bannerSummaryLoading && recordsSettledKey === sectionKey && calendarSettledKey === sectionKey;
   useEffect(() => { if (initialSettled) onInitialDataSettled?.(); }, [initialSettled, onInitialDataSettled]);
   useEffect(() => {
-    if (!listClient || !summaryScope || !accessScope) return;
+    if (!listClient || summaryScopeKey === "null" || !accessScope) return;
     let cancelled = false;
     setCoreLoading(true);
     loadHomeCoreSummary(listClient, JSON.parse(summaryScopeKey), accessScope, refreshKey + coreRetry)
       .then(data => { if (!cancelled) setCore({ key: sectionKey, data, error: false }); })
-      .catch(() => { if (!cancelled) setCore({ key: sectionKey, data: null, error: true }); })
+      .catch(() => { if (!cancelled) setCore(previous => ({ key: sectionKey, data: sameSectionScope(previous.key) ? previous.data : null, error: true })); })
       .finally(() => { if (!cancelled) setCoreLoading(false); });
     return () => { cancelled = true; };
-  }, [accessScope, listClient, summaryScopeKey, refreshKey, coreRetry, sectionKey]);
+  }, [accessScope, listClient, summaryScopeKey, refreshKey, coreRetry, sectionKey, sameSectionScope]);
   useEffect(() => {
     if (!initialSettled || !listClient || !accessScope) return;
     let cancelled = false;
     setQueueLoading(true);
     loadHomeWorkQueue(listClient, JSON.parse(summaryScopeKey), accessScope, refreshKey + queueRetry)
       .then(data => { if (!cancelled) setQueue({ key: sectionKey, data, error: false }); })
-      .catch(() => { if (!cancelled) setQueue({ key: sectionKey, data: null, error: true }); })
+      .catch(() => { if (!cancelled) setQueue(previous => ({ key: sectionKey, data: sameSectionScope(previous.key) ? previous.data : null, error: true })); })
       .finally(() => { if (!cancelled) setQueueLoading(false); });
     return () => { cancelled = true; };
-  }, [initialSettled, accessScope, listClient, summaryScopeKey, refreshKey, queueRetry, sectionKey]);
+  }, [initialSettled, accessScope, listClient, summaryScopeKey, refreshKey, queueRetry, sectionKey, sameSectionScope]);
   const [qualityCount, setQualityCount] = useState<{ key: string; count: number } | null>(null);
   const handleQualityCount = useCallback((count: number) => setQualityCount({ key: sectionKey, count }), [sectionKey]);
   const notFilledRequisitions = requisitions.filter((row) => row.status !== "filled" && row.status !== "cancel");
@@ -167,7 +168,7 @@ export function HomeView({
   const homeOpenCount = homeSummary?.counts.openRequisitions ?? null;
   const homePipelineCount = homeSummary?.counts.activePipeline ?? null;
   const homeStaleGroups = homeSummary?.counts.staleSourcing ?? null;
-  const homeWorkQueueCount = queue.key === sectionKey ? queue.data?.totalCount ?? null : null;
+  const homeWorkQueueCount = sameSectionScope(queue.key) ? queue.data?.totalCount ?? null : null;
   const tabs: HomeTab[] = [
     { key: "open_headcount", label: translate(language, "openHeadcount"), count: homeOpenCount },
     { key: "candidate_pipeline", label: translate(language, "candidatePipeline"), count: homePipelineCount },
@@ -225,7 +226,7 @@ export function HomeView({
             ]}
           />
         </div>
-        {coreLoading ? <p role="status" className="px-4 pb-2 text-xs text-slate">{translate(language, "loading")}</p> : null}
+        {coreLoading ? <p role="status" className="px-4 pb-2 text-xs text-slate">{homeSummary ? (language === "th" ? "กำลังอัปเดต" : "Updating") : translate(language, "loading")}</p> : null}
         {queueLoading ? <p role="status" className="px-4 pb-2 text-xs text-slate">{translate(language, "urgentItems")}: {translate(language, "loading")}</p> : null}
         {summaryError ? <div role="alert" className="px-4 pb-3 text-sm text-scarlet">{translate(language, "loadFailed")} <Button variant="secondary" disabled={coreLoading} onClick={() => setCoreRetry(value => value + 1)}>{translate(language, "retry")}</Button></div> : null}
         {queue.key === sectionKey && queue.error ? <div role="alert" className="px-4 pb-3 text-sm text-scarlet">{translate(language, "urgentItems")}: {translate(language, "loadFailed")} <Button variant="secondary" disabled={queueLoading} onClick={() => setQueueRetry(value => value + 1)}>{translate(language, "retry")}</Button></div> : null}

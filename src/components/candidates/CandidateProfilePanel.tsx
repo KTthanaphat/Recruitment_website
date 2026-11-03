@@ -7,7 +7,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { Building2, CalendarDays, ContactRound, Hash, LockKeyhole, Mail, Pencil, Phone, Plus, UserRound, UsersRound } from "lucide-react";
 import { DetailGrid, SectionHeading } from "@/components/ui/RecordDetailFields";
 import { InlineDataQualityIssues } from "@/components/ui/Workflow";
-import { deriveDataQualityIssues } from "@/lib/operations";
+import { scheduleRecruitmentRead } from "@/lib/recruitment-read-scheduler";
+import { loadCachedScopedDetail } from "@/lib/scoped-detail-cache";
+import { deriveDataQualityIssues, type DataQualityIssue } from "@/lib/operations";
 import { Button } from "@/components/ui/Button";
 import { formatDate, formatDateTime, formatRecruitmentId } from "@/lib/format";
 import { processLabel } from "@/lib/constants";
@@ -46,6 +48,19 @@ export function CandidateProfilePanel({candidateId, applicationId, data, languag
   const t=(en:string,th:string)=>language==="th"?th:en;
   const candidate=data.candidates.find(row=>row.candidate_id===candidateId);
   const masked=data.masked_candidate_pool?.find(row=>row.candidate_id===candidateId);
+  const duplicateKey=JSON.stringify([accessScope,candidateId,candidate?.phone_no,candidate?.email,candidate?.updated_at]);
+  const [contactDuplicates,setContactDuplicates]=useState<{key:string;fields:string}>({key:"",fields:""});
+  useEffect(()=>{
+    if(!client||!candidate||!data.profile||data.profile.role==="viewer")return;
+    let active=true;const controller=new AbortController();
+    void loadCachedScopedDetail(client,{profileId:data.profile.id,key:accessScope},JSON.stringify(["candidate-duplicates",duplicateKey]),signal=>scheduleRecruitmentRead(client,async()=>{
+      const response=await client.rpc("app_candidate_duplicate_matches_v1",{payload:{candidate_id:candidateId,phone_no:candidate.phone_no,email:candidate.email}}).abortSignal(signal);
+      if(response.error)throw new Error(response.error.message);
+      const matches=Array.isArray(response.data)?response.data:[];
+      return [matches.some(row=>row.phone)?"phone":null,matches.some(row=>row.email)?"email":null].filter(Boolean).join(",");
+    },1,{signal}),controller.signal).then(fields=>{if(active)setContactDuplicates({key:duplicateKey,fields});}).catch(()=>{ /* Existing local warnings remain available if the optional read fails. */ });
+    return()=>{active=false;controller.abort();};
+  },[client,duplicateKey,candidate,data.profile,candidateId,accessScope]);
   if(!candidate) return masked ? <section className="grid gap-4" aria-label={t("Masked candidate profile","ข้อมูลผู้สมัครที่ปกปิด")}>
     <h3 className="text-lg font-semibold text-navy">{formatRecruitmentId(masked.candidate_id)}</h3>
     <p className="text-sm text-slate">{t("Position interests","ตำแหน่งที่สนใจ")}: {masked.position_interests??"—"}</p>
@@ -61,6 +76,10 @@ export function CandidateProfilePanel({candidateId, applicationId, data, languag
   const canTransfer=Boolean(selected?.state==="active"&&canManageApplicationGroup(data,selected.group_id));
   const destinations=destinationRows.filter(row=>(intent!=="transfer"||row.group_id!==selected?.group_id)&&candidateCanUseGroup(data,candidateId,row.group_id,intent==="transfer"?selected?.application_id:undefined));
   const profileWarnings = deriveDataQualityIssues(data).filter((issue,index,all)=>issue.entityId===candidateId&&issue.workspaceCode==="duplicateCandidate"&&all.findIndex(other=>other.id===issue.id)===index);
+  if(!profileWarnings.length&&contactDuplicates.key===duplicateKey&&contactDuplicates.fields){
+    const warning:DataQualityIssue={id:"duplicate-contact:"+candidateId,severity:"warning",entity:"candidate",entityId:candidateId,title:"Possible duplicate candidate",detail:"Another readable record has the same contact details.",workspaceCode:"duplicateCandidate",workspaceParams:{fields:contactDuplicates.fields}};
+    profileWarnings.push(warning);
+  }
   const groupName=(id:string)=>data.position_groups.find(row=>row.group_id===id)?.group_position??data.application_destinations?.find(row=>row.group_id===id)?.group_position??formatRecruitmentId(id);
   const fields = [
     {label:t("Candidate name","ชื่อผู้สมัคร"),value:candidate.name,icon:<UserRound size={18}/>},

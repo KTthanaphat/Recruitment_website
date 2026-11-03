@@ -101,3 +101,6 @@ grant execute on function public.app_home_welcome_summary_v1(), public.app_home_
 -- Essential Home metrics are an additive authenticated invoker RPC.
 revoke all on function public.app_home_core_summary_v1(jsonb) from public,anon,authenticated;
 grant execute on function public.app_home_core_summary_v1(jsonb) to authenticated;
+
+revoke all on function public.app_candidate_action_v1(text,jsonb,uuid), public.app_pipeline_card_location_v1(uuid,text,jsonb,text,text), app_private.candidate_action_cards_v1(uuid[],date) from public,anon;
+grant execute on function public.app_candidate_action_v1(text,jsonb,uuid), public.app_pipeline_card_location_v1(uuid,text,jsonb,text,text), app_private.candidate_action_cards_v1(uuid[],date) to authenticated;

@@ -36,9 +36,18 @@ begin
   else v_since := v_as_of - 7; end if;
   if p_cursor_value is not null and (jsonb_typeof(p_cursor_value)<>'string' or nullif(p_cursor_id,'') is null) then raise exception 'RECRUITMENT_LIST_CURSOR_INVALID'; end if;
   if p_before and p_cursor_value is null then raise exception 'RECRUITMENT_LIST_CURSOR_INVALID'; end if;
-  with latest as (
+  with eligible_applications as materialized (
+    select a.* from public.candidate_applications a
+    where case when v_global_reader then true else app_private.can_read_application(a.application_id) end and case when v_global_reader then true else app_private.can_read_candidate(a.candidate_id) end
+      and (coalesce(p_filters->>'candidateId','')='' or a.candidate_id=p_filters->>'candidateId')
+      and (v_group='' or a.group_id=v_group)
+      and (coalesce(p_filters->>'headerSite','')='' or exists(select 1 from public.document_groups d join public.requisitions r using(doc_id) where d.group_id=a.group_id and r.site=p_filters->>'headerSite'))
+      and (coalesce(p_filters->>'headerPic','')='' or exists(select 1 from public.document_groups d join public.requisitions r using(doc_id) where d.group_id=a.group_id and lower(btrim(r.person_in_charge))=lower(btrim(p_filters->>'headerPic'))))
+      and (not coalesce((p_filters->>'priorityOnly')::boolean,false) or exists(select 1 from public.document_groups d join public.requisitions r using(doc_id) where d.group_id=a.group_id and r.is_priority))
+
+  ), latest as (
     select distinct on (l.application_id) l.application_id,l.recruitment_process,l.result,l.log_date,l.outcome_date,l.round,l.log_id
-    from public.recruitment_logs l
+    from public.recruitment_logs l join eligible_applications eligible on eligible.application_id=l.application_id
     where l.superseded_at is null and l.superseded_by_stage_instance_id is null
     order by l.application_id,
       case l.recruitment_process when 'Phone Screen' then 1 when 'HR Interview' then 2 when 'Line Interview' then 3 when 'Test' then 4 when 'Reference Check' then 5 when 'Offer' then 6 else 0 end desc,
@@ -64,17 +73,8 @@ begin
       (lat.log_date is null) as no_activity,
       (lat.log_date is not null and v_as_of-lat.log_date>7 and lat.result is distinct from 0 and off.accepted_date is null
        and lat.recruitment_process in ('Phone Screen','HR Interview','Line Interview','Test','Reference Check','Offer')) as aging,
-      coalesce(lat.recruitment_process='Offer' and lat.result=1,false) as passed_offer,
-      jsonb_build_object('candidate_id',c.candidate_id,'name',c.name,'nickname',c.nickname,'phone_no',c.phone_no,'email',c.email,'home_site',c.home_site,
-        'created_by',c.created_by,'responsible_recruiter_id',c.responsible_recruiter_id,'doc_group_id',c.doc_group_id,'ref_name',c.ref_name,'candidate_folder_url',c.candidate_folder_url,
-        'first_contact_date',c.first_contact_date,'channel',c.channel,'updated_at',c.updated_at,'created_at',a.created_at,
-        'application_id',a.application_id,'application_state',a.state,'group_id',a.group_id,'doc_ids',coalesce(ctx.doc_ids,'{}'::text[]),
-        'doc_id',array_to_string(ctx.doc_ids,', '),'group_position',pg.group_position,'sites',coalesce(ctx.sites,'{}'::text[]),
-        'person_in_charges',coalesce(ctx.owners,'{}'::text[]),'site',array_to_string(ctx.sites,', '),
-        'person_in_charge',array_to_string(ctx.owners,', '),'latest_process',coalesce(lat.recruitment_process,'No activity'),
-        'latest_result',lat.result,'latest_log_date',lat.log_date,'accepted_date',off.accepted_date,
-        'home_last_touch_date',coalesce(home_touch.last_touch,case when c.first_contact_date<=v_as_of then c.first_contact_date end),'home_pending_remark',(select l2.remark from public.recruitment_logs l2 where l2.application_id=a.application_id and l2.superseded_at is null and l2.superseded_by_stage_instance_id is null and l2.result is null order by case l2.recruitment_process when 'Phone Screen' then 1 when 'HR Interview' then 2 when 'Line Interview' then 3 when 'Test' then 4 when 'Reference Check' then 5 when 'Offer' then 6 else 0 end desc,l2.round desc,l2.log_id desc limit 1)) as item
-    from public.candidate_applications a
+      coalesce(lat.recruitment_process='Offer' and lat.result=1,false) as passed_offer
+    from eligible_applications a
     join public.candidates c on c.candidate_id=a.candidate_id
     left join public.position_groups pg on pg.group_id=a.group_id
     left join latest lat on lat.application_id=a.application_id
@@ -86,12 +86,7 @@ begin
         array_agg(distinct r.person_in_charge order by r.person_in_charge) filter(where nullif(btrim(r.person_in_charge),'') is not null) owners
       from public.document_groups d join public.requisitions r on r.doc_id=d.doc_id where d.group_id=a.group_id
     ) ctx on true
-    where case when v_global_reader then true else app_private.can_read_application(a.application_id) end and case when v_global_reader then true else app_private.can_read_candidate(a.candidate_id) end
-      and (coalesce(p_filters->>'candidateId','')='' or c.candidate_id=p_filters->>'candidateId')
-      and (v_group='' or a.group_id=v_group)
-      and (coalesce(p_filters->>'headerSite','')='' or exists(select 1 from public.document_groups d join public.requisitions r using(doc_id) where d.group_id=a.group_id and r.site=p_filters->>'headerSite'))
-      and (coalesce(p_filters->>'headerPic','')='' or exists(select 1 from public.document_groups d join public.requisitions r using(doc_id) where d.group_id=a.group_id and lower(btrim(r.person_in_charge))=lower(btrim(p_filters->>'headerPic'))))
-      and (not coalesce((p_filters->>'priorityOnly')::boolean,false) or exists(select 1 from public.document_groups d join public.requisitions r using(doc_id) where d.group_id=a.group_id and r.is_priority))
+    where true
       and (v_stage='' or coalesce(lat.recruitment_process,'No activity')=v_stage)
       and (not v_active_board or (coalesce(lat.recruitment_process,'No activity') in ('No activity','Phone Screen','HR Interview','Line Interview','Test','Reference Check','Offer') and lat.result is distinct from 0 and not coalesce(lat.recruitment_process='Offer' and lat.result=1,false)))
       and (not v_active_board or v_board<>'offer_pending' or off.accepted_date is null)
@@ -117,8 +112,13 @@ begin
       case when p_before and v_direction='desc' then sort_value end asc,
       case when p_before and v_direction='asc' then sort_value end desc,
       case when p_before then application_id end desc, case when not p_before then application_id end asc limit p_limit+1
-  ), page_keys as (select * from page_raw order by case when not p_before and v_direction='desc' then sort_value end desc,case when not p_before and v_direction='asc' then sort_value end asc,case when p_before and v_direction='desc' then sort_value end asc,case when p_before and v_direction='asc' then sort_value end desc,case when p_before then application_id end desc,case when not p_before then application_id end asc limit p_limit
-  ), page_rows as (select k.application_id,k.sort_value,r.item from page_keys k join app_rows r using(application_id)), edges as (
+  ), page_keys as materialized (select * from page_raw order by case when not p_before and v_direction='desc' then sort_value end desc,case when not p_before and v_direction='asc' then sort_value end asc,case when p_before and v_direction='desc' then sort_value end asc,case when p_before and v_direction='asc' then sort_value end desc,case when p_before then application_id end desc,case when not p_before then application_id end asc limit p_limit
+  ), page_projection as materialized (
+    select card from jsonb_array_elements(app_private.candidate_action_cards_v1(array(select application_id from page_keys),v_as_of)) card
+  ), page_rows as (
+    select k.application_id,k.sort_value,p.card-'has_readable_offer'-'has_priority_requisition' item
+    from page_keys k join page_projection p on p.card->>'application_id'=k.application_id::text
+  ), edges as (
     select (array_agg(sort_value order by case when v_direction='desc' then sort_value end desc,case when v_direction='asc' then sort_value end asc,application_id asc))[1] first_sort,
       (array_agg(application_id::text order by case when v_direction='desc' then sort_value end desc,case when v_direction='asc' then sort_value end asc,application_id asc))[1] first_id,
       (array_agg(sort_value order by case when v_direction='desc' then sort_value end asc,case when v_direction='asc' then sort_value end desc,application_id desc))[1] last_sort,
@@ -134,6 +134,9 @@ begin
   into v_result from edges cross join page_info;
   return v_result;
 end; $$;
+
+revoke all on function public.app_recruitment_applications_page_v1(text,jsonb,text,text,integer,jsonb,text,boolean,boolean) from public,anon;
+grant execute on function public.app_recruitment_applications_page_v1(text,jsonb,text,text,integer,jsonb,text,boolean,boolean) to authenticated;
 
 create or replace function public.app_recruitment_list_count_v1(
   p_entity text, p_search text default '', p_filters jsonb default '{}'::jsonb

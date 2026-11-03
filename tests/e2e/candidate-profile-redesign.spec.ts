@@ -148,21 +148,21 @@ test("destination choices exclude historical groups for new journeys but allow t
  const originalGroup=app.group_id;app.group_id="GRP-TECH";
  await page.goto(`/candidates?detailType=candidate&detailId=C-HR&applicationId=${app.application_id}`);await expectWorkspaceReady(page);
  await page.getByRole("button",{name:"Add application",exact:true}).click();
- await expect(page.getByLabel("Destination group").locator(`option[value="${originalGroup}"]`)).toHaveCount(0);
+ await expect(page.getByLabel("Destination group",{exact:true}).locator(`option[value="${originalGroup}"]`)).toHaveCount(0);
  await page.getByRole("button",{name:"Cancel",exact:true}).click();
  await page.getByRole("button",{name:"Reassign application",exact:true}).click();
- await expect(page.getByLabel("Destination group").locator(`option[value="${originalGroup}"]`)).toHaveCount(1);
+ await expect(page.getByLabel("Destination group",{exact:true}).locator(`option[value="${originalGroup}"]`)).toHaveCount(1);
 });
 
 test("a server-side historical-group rejection explains the rule and preserves the application draft",async({page})=>{
  await installMockSupabase(page);
- await page.route("**/rest/v1/rpc/app_create_candidate_application_v1",route=>route.fulfill({status:400,contentType:"application/json",body:JSON.stringify({code:"P0001",message:"APPLICATION_GROUP_ALREADY_USED"})}));
+ await page.route("**/rest/v1/rpc/app_candidate_action_v1",route=>route.fulfill({status:400,contentType:"application/json",body:JSON.stringify({code:"P0001",message:"APPLICATION_GROUP_ALREADY_USED"})}));
  await page.goto("/candidates?detailType=candidate&detailId=C-HR");await expectWorkspaceReady(page);
- await page.getByRole("button",{name:"Add application",exact:true}).click();await page.getByLabel("Destination group").selectOption("GRP-TECH");
+ await page.getByRole("button",{name:"Add application",exact:true}).click();await page.getByLabel("Destination group",{exact:true}).selectOption("GRP-TECH");
  await page.getByRole("button",{name:"Review application",exact:true}).click();await confirm(page);
  await expect(page.getByText("This candidate already has a journey for this group. Choose another group, or return the original journey.",{exact:true})).toBeVisible();
  await page.getByRole("button",{name:"Review and edit",exact:true}).click();
- await expect(page.getByLabel("Destination group")).toHaveValue("GRP-TECH");
+ await expect(page.getByLabel("Destination group",{exact:true})).toHaveValue("GRP-TECH");
 });
 
 for(const language of ["en","th"] as const) for(const width of [360,390,768,1440]) test(`profile drawer ${language} ${width}px has no page overflow`,async({page})=>{

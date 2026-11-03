@@ -178,7 +178,7 @@ export function HiringWorkspaceView({
     }
     let cancelled = false;
     setQualityState(previous => ({ key: qualityRequestKey, loading: true, error: false, page: previous.key === qualityRequestKey ? previous.page : null }));
-    void loadHomeQualityPage(listClient, { scope: qualityScope, groupId: selectedTarget.type === "group" ? selectedTarget.id : null, docId: selectedTarget.type === "requisition" ? selectedTarget.id : null, today: qualityToday, profileKey: accessScope, limit: 25 })
+    void loadHomeQualityPage(listClient, { scope: qualityScope, groupId: selectedTarget.type === "group" ? selectedTarget.id : null, docId: selectedTarget.type === "requisition" ? selectedTarget.id : null, today: qualityToday, profileKey: accessScope, limit: 25, refreshKey: refreshKey + qualityRetry })
       .then(page => { if (!cancelled) setQualityState({ key: qualityRequestKey, loading: false, error: false, page }); })
       .catch(() => { if (!cancelled) setQualityState({ key: qualityRequestKey, loading: false, error: true, page: null }); });
     return () => { cancelled = true; };

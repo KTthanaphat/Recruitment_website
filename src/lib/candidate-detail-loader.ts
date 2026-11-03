@@ -1,3 +1,4 @@
+import { scheduleRecruitmentRead } from "./recruitment-read-scheduler";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ApplicationAssignment, Candidate, CandidateApplication, CandidateNote, CandidateReference, CandidateReferenceCheck, CandidateProfileCapabilities, DashboardData, MaskedCandidateSummary, RecruitmentLog, RejectionLetterDraft, Requisition, RequisitionLog } from "@/types/recruitment";
 import { fetchRecruitmentList, fetchRecruitmentListCount, type RecruitmentListPage } from "@/lib/recruitment-list";
@@ -8,11 +9,11 @@ type DetailProjection = { candidate: Omit<Candidate, "application_id" | "applica
 type QueryRows<T> = { data: T[] | null; error: { message: string } | null; count?: number | null };
 type ScopedClient = Pick<SupabaseClient, "rpc"> & { from: (table: string) => any };
 
-async function readComplete<T>(makePage: (from: number, to: number) => PromiseLike<QueryRows<T>>, rowId: (row: T) => string, label: string): Promise<T[]> {
+async function readComplete<T>(client: object, makePage: (from: number, to: number) => PromiseLike<QueryRows<T>>, rowId: (row: T) => string, label: string, signal?: AbortSignal): Promise<T[]> {
   const size = 200, output: T[] = [], seen = new Set<string>();
   let expected: number | null = null;
   for (let offset = 0; ; offset += size) {
-    const result = await makePage(offset, offset + size - 1);
+    const result = await scheduleRecruitmentRead(client, () => { const request = makePage(offset, offset + size - 1) as PromiseLike<QueryRows<T>> & { abortSignal?: (signal: AbortSignal) => PromiseLike<QueryRows<T>> }; return signal && request.abortSignal ? request.abortSignal(signal) : request; }, -1, {signal});
     if (result.error) throw new Error(result.error.message || `Could not load ${label}.`);
     if (typeof result.count !== "number" || !Number.isInteger(result.count) || result.count < 0) throw new Error(`Could not verify complete ${label}.`);
     if (expected !== null && expected !== result.count) throw new Error(`${label} changed while loading. Please retry.`);
@@ -28,11 +29,11 @@ async function readComplete<T>(makePage: (from: number, to: number) => PromiseLi
   }
 }
 
-async function readScoped<T>(client: ScopedClient, table: string, column: string, value: string, order: keyof T & string, label: string): Promise<T[]> {
-  return readComplete<T>(
+async function readScoped<T>(client: ScopedClient, table: string, column: string, value: string, order: keyof T & string, label: string, signal?: AbortSignal): Promise<T[]> {
+  return readComplete<T>(client,
     (from, to) => client.from(table).select("*", { count: "exact" }).eq(column, value).order(order, { ascending: true }).range(from, to),
     row => String((row as Record<string, unknown>)[order] ?? ""),
-    label
+    label, signal
   );
 }
 
@@ -49,13 +50,13 @@ async function readInChunks<T>(values: readonly string[], loadChunk: (chunk: str
   return rows;
 }
 
-async function readList<T>(client: SupabaseClient, accessScope: string, filters: Record<string, unknown>, label: string): Promise<T[]> {
+async function readList<T>(client: SupabaseClient, accessScope: string, filters: Record<string, unknown>, label: string, signal?: AbortSignal): Promise<T[]> {
   const output: T[] = [], seen = new Set<string>();
-  const total = await fetchRecruitmentListCount(client, { accessScope, entity: "pipeline_history", filters });
+  const total = await fetchRecruitmentListCount(client, { accessScope, entity: "pipeline_history", filters, priority: -1, signal });
   let cursor: { value: unknown; id: string } | null = null;
   const anchors = new Set<string>();
   for (let pageNumber = 0; pageNumber < 1000; pageNumber++) {
-    const page: RecruitmentListPage<T> = await fetchRecruitmentList<T>(client, { accessScope, entity: "pipeline_history", filters, sort: "log_id", direction: "asc", limit: 100, cursor });
+    const page: RecruitmentListPage<T> = await fetchRecruitmentList<T>(client, { accessScope, entity: "pipeline_history", filters, signal, sort: "log_id", direction: "asc", limit: 100, cursor });
     if (page.total_count !== null && total !== page.total_count) throw new Error(`${label} changed while loading. Please retry.`);
     for (const item of page.items) {
       const id = String((item as { log?: { log_id?: unknown } }).log?.log_id ?? "");
@@ -72,13 +73,13 @@ async function readList<T>(client: SupabaseClient, accessScope: string, filters:
 }
 
 /** Resolves profile privacy first, then hydrates application headers and only the selected journey. All reads remain subject to RLS. */
-export function loadCandidateDetail(client: SupabaseClient, accessScope: ScopedAccessIdentity, candidateId: string, applicationId: string | null, base: DashboardData): Promise<DashboardData> {
+export function loadCandidateDetail(client: SupabaseClient, accessScope: ScopedAccessIdentity, candidateId: string, applicationId: string | null, base: DashboardData, signal?: AbortSignal): Promise<DashboardData> {
   const key = JSON.stringify(["candidate", candidateId, applicationId]);
-  return loadCachedScopedDetail(client, accessScope, key, () => loadCandidateDetailUncached(client, accessScope.key, candidateId, applicationId, base));
+  return loadCachedScopedDetail(client, accessScope, key, requestSignal => loadCandidateDetailUncached(client, accessScope.key, candidateId, applicationId, base, requestSignal), signal);
 }
 
-async function loadCandidateDetailUncached(client: SupabaseClient, accessScope: string, candidateId: string, applicationId: string | null, base: DashboardData): Promise<DashboardData> {
-  const { data: projected, error: projectionError } = await client.rpc("app_candidate_profile_detail_v1", { p_candidate_id: candidateId });
+async function loadCandidateDetailUncached(client: SupabaseClient, accessScope: string, candidateId: string, applicationId: string | null, base: DashboardData, signal?: AbortSignal): Promise<DashboardData> {
+  const { data: projected, error: projectionError } = await scheduleRecruitmentRead(client, () => client.rpc("app_candidate_profile_detail_v1", { p_candidate_id: candidateId }).abortSignal(signal ?? new AbortController().signal), -1, {signal});
   if (projectionError) throw new Error(projectionError.message);
   const projection = projected as DetailProjection | null;
   if (!projection || (!projection.candidate && !projection.masked)) throw new Error("This candidate is unavailable or access has changed.");
@@ -94,9 +95,9 @@ async function loadCandidateDetailUncached(client: SupabaseClient, accessScope: 
 
   const appRows: Record<string, unknown>[] = [], appIds = new Set<string>(), anchors = new Set<string>();
   let cursor: { value: unknown; id: string } | null = null;
-  const expectedApps = await fetchRecruitmentListCount(client, { accessScope, entity: "candidate_applications", filters: { candidateId } });
+  const expectedApps = await fetchRecruitmentListCount(client, { accessScope, entity: "candidate_applications", filters: { candidateId }, priority: -1, signal });
   for (let pageNumber = 0; pageNumber < 1000; pageNumber++) {
-    const page: RecruitmentListPage<Record<string, unknown>> = await fetchRecruitmentList<Record<string, unknown>>(client, { accessScope, entity: "candidate_applications", filters: { candidateId }, limit: 100, cursor });
+    const page: RecruitmentListPage<Record<string, unknown>> = await fetchRecruitmentList<Record<string, unknown>>(client, { accessScope, entity: "candidate_applications", filters: { candidateId }, limit: 100, cursor, signal });
     if (page.total_count !== null && expectedApps !== page.total_count) throw new Error("Candidate applications changed while loading. Please retry.");
     for (const row of page.items) {
       const id = String(row.application_id ?? "");
@@ -127,7 +128,7 @@ async function loadCandidateDetailUncached(client: SupabaseClient, accessScope: 
   let selected = selectedId ? visibleApps.find(row => row.application_id === selectedId) : null;
   if (selectedId && !selected) throw new Error("This application is no longer available to your account.");
   if (selectedId) {
-    const { data: selectedMetadata, error: selectedError } = await client.from("candidate_applications").select("*").eq("application_id", selectedId).maybeSingle();
+    const { data: selectedMetadata, error: selectedError } = await scheduleRecruitmentRead(client, () => client.from("candidate_applications").select("*").eq("application_id", selectedId).abortSignal(signal ?? new AbortController().signal).maybeSingle(), -1, {signal});
     if (selectedError) throw new Error(selectedError.message);
     if (!selectedMetadata || selectedMetadata.candidate_id !== candidateId) throw new Error("This application is no longer available to your account.");
     selected = selectedMetadata as CandidateApplication;
@@ -138,21 +139,21 @@ async function loadCandidateDetailUncached(client: SupabaseClient, accessScope: 
     visibleApps[selectedIndex] = selected;
   }
   const groupIds = [...new Set(visibleApps.map(row => row.group_id))];
-  const visibleGroups = await readInChunks<DashboardData["position_groups"][number]>(groupIds, chunk => readComplete<DashboardData["position_groups"][number]>(
+  const visibleGroups = await readInChunks<DashboardData["position_groups"][number]>(groupIds, chunk => readComplete<DashboardData["position_groups"][number]>(client,
     (from, to) => client.from("position_groups").select("*", { count: "exact" }).in("group_id", chunk).order("group_id", { ascending: true }).range(from, to),
-    row => row.group_id, "candidate application groups"
+    row => row.group_id, "candidate application groups", signal
   ), row => row.group_id, "candidate application groups");
 
   let assignments: ApplicationAssignment[] = [], history: RecruitmentLog[] = [], checks: CandidateReferenceCheck[] = [], offers: DashboardData["offers"] = [], meetings: DashboardData["interview_meetings"] = [], references: CandidateReference[] = [], notes: CandidateNote[] = [], rejectionDrafts: RejectionLetterDraft[] = [], requisitions: Requisition[] = [], requisitionLogs: RequisitionLog[] = [];
   if (selected) {
     const [historyItems, assignmentRows, referenceRows, noteRows, checkRows, offerRows, docGroupRows] = await Promise.all([
-      readList<{ candidate: Record<string, unknown>; log: RecruitmentLog; audit: boolean }>(client, accessScope, { candidateId, applicationId: selected.application_id, showAudit: true }, "candidate history"),
-      readScoped<ApplicationAssignment>(client as ScopedClient, "candidate_application_assignments", "application_id", selected.application_id, "assignment_id", "assignment history"),
-      readScoped<CandidateReference>(client as ScopedClient, "candidate_references", "candidate_id", candidateId, "reference_id", "reference rows"),
-      projection.capabilities?.can_read_note ? readScoped<CandidateNote>(client as ScopedClient, "candidate_notes", "candidate_id", candidateId, "note_id", "candidate note") : Promise.resolve([]),
-      readScoped<CandidateReferenceCheck>(client as ScopedClient, "candidate_reference_checks", "application_id", selected.application_id, "check_id", "reference checks"),
-      readScoped<DashboardData["offers"][number]>(client as ScopedClient, "offers", "application_id", selected.application_id, "offer_id", "offers"),
-      readComplete<DashboardData["document_groups"][number]>((from, to) => client.from("document_groups").select("*", { count: "exact" }).eq("group_id", selected.group_id).order("doc_group_id", { ascending: true }).range(from, to), row => row.doc_group_id, "candidate group requisitions")
+      readList<{ candidate: Record<string, unknown>; log: RecruitmentLog; audit: boolean }>(client, accessScope, { candidateId, applicationId: selected.application_id, showAudit: true }, "candidate history", signal),
+      readScoped<ApplicationAssignment>(client as ScopedClient, "candidate_application_assignments", "application_id", selected.application_id, "assignment_id", "assignment history", signal),
+      readScoped<CandidateReference>(client as ScopedClient, "candidate_references", "candidate_id", candidateId, "reference_id", "reference rows", signal),
+      projection.capabilities?.can_read_note ? readScoped<CandidateNote>(client as ScopedClient, "candidate_notes", "candidate_id", candidateId, "note_id", "candidate note", signal) : Promise.resolve([]),
+      readScoped<CandidateReferenceCheck>(client as ScopedClient, "candidate_reference_checks", "application_id", selected.application_id, "check_id", "reference checks", signal),
+      readScoped<DashboardData["offers"][number]>(client as ScopedClient, "offers", "application_id", selected.application_id, "offer_id", "offers", signal),
+      readComplete<DashboardData["document_groups"][number]>(client, (from, to) => client.from("document_groups").select("*", { count: "exact" }).eq("group_id", selected.group_id).order("doc_group_id", { ascending: true }).range(from, to), row => row.doc_group_id, "candidate group requisitions", signal)
     ]);
     history = historyItems.map(item => item.log);
     assignments = assignmentRows;
@@ -163,22 +164,22 @@ async function loadCandidateDetailUncached(client: SupabaseClient, accessScope: 
     const docIds = docGroupRows.map(row => row.doc_id);
     if (docIds.length) {
       const [reqRows, logRows] = await Promise.all([
-        readInChunks<Requisition>(docIds, chunk => readComplete<Requisition>((from, to) => client.from("requisitions").select("*", { count: "exact" }).in("doc_id", chunk).order("doc_id", { ascending: true }).range(from, to), row => row.doc_id, "linked requisitions"), row => row.doc_id, "linked requisitions"),
-        readInChunks<RequisitionLog>(docIds, chunk => readComplete<RequisitionLog>((from, to) => client.from("requisition_logs").select("*", { count: "exact" }).in("doc_id", chunk).order("log_id", { ascending: true }).range(from, to), row => String(row.log_id), "requisition history"), row => String(row.log_id), "requisition history")
+        readInChunks<Requisition>(docIds, chunk => readComplete<Requisition>(client, (from, to) => client.from("requisitions").select("*", { count: "exact" }).in("doc_id", chunk).order("doc_id", { ascending: true }).range(from, to), row => row.doc_id, "linked requisitions", signal), row => row.doc_id, "linked requisitions"),
+        readInChunks<RequisitionLog>(docIds, chunk => readComplete<RequisitionLog>(client, (from, to) => client.from("requisition_logs").select("*", { count: "exact" }).in("doc_id", chunk).order("log_id", { ascending: true }).range(from, to), row => String(row.log_id), "requisition history", signal), row => String(row.log_id), "requisition history")
       ]);
       requisitions = reqRows; requisitionLogs = logRows;
     }
     const instances = new Set(history.map(row => row.stage_instance_id).filter((id): id is string => Boolean(id)));
     if (instances.size) {
-      rejectionDrafts = await readInChunks<RejectionLetterDraft>([...instances], chunk => readComplete<RejectionLetterDraft>(
+      rejectionDrafts = await readInChunks<RejectionLetterDraft>([...instances], chunk => readComplete<RejectionLetterDraft>(client,
         (from, to) => client.from("rejection_letter_drafts").select("*", { count: "exact" }).eq("candidate_id", candidateId).in("failed_stage_instance_id", chunk).order("draft_id", { ascending: true }).range(from, to),
-        row => row.draft_id, "rejection letter history"
+        row => row.draft_id, "rejection letter history", signal
       ), row => row.draft_id, "rejection letter history");
     }
     if (instances.size) {
-      meetings = await readInChunks<DashboardData["interview_meetings"][number]>([...instances], chunk => readComplete<DashboardData["interview_meetings"][number]>(
+      meetings = await readInChunks<DashboardData["interview_meetings"][number]>([...instances], chunk => readComplete<DashboardData["interview_meetings"][number]>(client,
         (from, to) => client.from("interview_meetings").select("*", { count: "exact" }).in("stage_instance_id", chunk).order("meeting_id", { ascending: true }).range(from, to),
-        row => row.meeting_id, "interview meetings"
+        row => row.meeting_id, "interview meetings", signal
       ), row => row.meeting_id, "interview meetings");
     }
     const canonical = history.filter(row => !row.superseded_at && !row.superseded_by_stage_instance_id);
@@ -208,7 +209,7 @@ async function loadCandidateDetailUncached(client: SupabaseClient, accessScope: 
   }
 
   const profileNotes = projection.capabilities?.can_read_note
-    ? await readScoped<CandidateNote>(client as ScopedClient, "candidate_notes", "candidate_id", candidateId, "note_id", "candidate note")
+    ? await readScoped<CandidateNote>(client as ScopedClient, "candidate_notes", "candidate_id", candidateId, "note_id", "candidate note", signal)
     : [];
   return {
     ...base,
