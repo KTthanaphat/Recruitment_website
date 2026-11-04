@@ -58,3 +58,5 @@ Migration `20261104015609_reconcile_recruiter_read_authorization.sql` reconciles
 ## Committed requisition actions
 
 [65_requisition_actions.sql](65_requisition_actions.sql) owns the invoker allowlist wrapper and exact-ID authorized receipts. The status function in 50 adds compatible returned identity/log fields. Migration 20261104063648_requisition_committed_results.sql must precede the frontend. Verify with `node scripts/rehearse-profile-contract.cjs --requisition-actions` in disposable PGlite. Existing validation, audit, automatic status and priority concurrency remain delegated to legacy operations; policies/grants are not broadened. [Delivery evidence](../../docs/work-items/requisition-committed-updates/implementation.md).
+
+The requisition receipt release also requires forward migration 20261104073701_requisition_receipt_projection.sql. It uses existing group/candidate indexes to bound RLS evaluation before counting exact distinct candidates. Main EXPLAIN and rollback timing evidence is recorded in the feature implementation; no index or policy changes are included.

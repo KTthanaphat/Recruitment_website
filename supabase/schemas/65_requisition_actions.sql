@@ -35,12 +35,22 @@ begin
   select coalesce(jsonb_agg(distinct d.group_id) filter(where d.group_id is not null),'[]') into v_groups
     from public.document_groups d join public.position_groups g using(group_id) where d.doc_id=v_id;
   if v_after is not null then
-    with links as (select array_agg(distinct d.group_id order by d.group_id) filter(where d.group_id is not null) ids from public.document_groups d where d.doc_id=v_id),
+    with linked_groups as materialized (select distinct d.group_id from public.document_groups d where d.doc_id=v_id and d.group_id is not null),
+    links as (select array_agg(group_id order by group_id) ids from linked_groups),
     offers as (select count(*) filter(where o.accepted_date is not null and o.start_confirmation is distinct from 'did_not_start')::integer accepted,
       max(o.start_confirmed_at::date) filter(where o.start_confirmation='did_not_start') restart
       from public.offers o where o.doc_id=v_id and app_private.can_read_application(o.application_id)),
-    candidates as (select count(distinct c.candidate_id)::integer total from public.candidate_applications a join public.candidates c using(candidate_id),links
-      where a.group_id=any(coalesce(links.ids,'{}'::text[])) and app_private.can_read_application(a.application_id) and app_private.can_read_candidate(c.candidate_id))
+    eligible_applications as materialized (
+      select a.candidate_id from linked_groups g cross join lateral (
+        select a.candidate_id from public.candidate_applications a where a.group_id=g.group_id
+          and app_private.can_read_application(a.application_id) offset 0
+      ) a
+    ),
+    candidate_keys as materialized (select distinct candidate_id from eligible_applications),
+    candidates as (select count(*)::integer total from candidate_keys k cross join lateral (
+      select c.candidate_id from public.candidates c where c.candidate_id=k.candidate_id
+        and app_private.can_read_candidate(c.candidate_id) limit 1
+    ) readable)
     select jsonb_build_object('sourcing_group_ids',coalesce(links.ids,'{}'::text[]),'accepted_count',offers.accepted,
       'open_headcount',greatest((v_after->>'head_count')::integer-offers.accepted,0),'candidate_count',candidates.total,'sla_restart_date',offers.restart)
       into v_display from links,offers,candidates;
