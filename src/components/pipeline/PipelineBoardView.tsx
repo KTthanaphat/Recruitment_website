@@ -125,7 +125,7 @@ export function PipelineBoardView({
     const receipt = latestCandidateReceipt(listClient, accessScope); if (!receipt || !candidateActionReveals(receipt.operation)) return;
     const card = receipt.cards[0];
     if (!card) return;
-    const bucket = card.latest_result === 0 || (card.latest_process === "Offer" && card.latest_result === 1) ? "terminal" : card.latest_process;
+    const bucket = card.latest_result === 0 ? `failed:${card.latest_process}` : card.latest_process === "Offer" && card.latest_result === 1 ? "terminal" : card.latest_process;
     setVisibleBuckets(previous => new Set(previous).add(bucket)); setFocusedCandidateId(receipt.candidate_id);
     const timer = setTimeout(() => { const target = visibilityRef.current?.querySelector<HTMLElement>(`[data-read-bucket="${bucket}"]`); if (target instanceof HTMLDetailsElement) target.open = true; target?.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "nearest", inline: "nearest" }); }, 0);
     return () => clearTimeout(timer);
@@ -157,7 +157,6 @@ export function PipelineBoardView({
     { stage: "Line Interview", list: lineInterviewList }, { stage: "Test", list: testList }, { stage: "Reference Check", list: referenceList }, { stage: "Offer", list: offerList }
   ];
   const stageListByStage = new Map(stageLists.map(entry => [entry.stage, entry.list]));
-  const failedList = useBoardList({ client: listClient, accessScope, entity: "candidate_applications", filters: { ...listScope, boardFilter: "failed", asOf: formatLocalDateInput(), ...(embedded ? { embeddedAllTime: true } : { recentSince: recentCutoffDate() }) }, sort: "latest_log_date", direction: "desc", enabled: serverEnabled && pipelineView === "board" && visibleBuckets.has("terminal") });
   const passedOfferList = useBoardList({ client: listClient, accessScope, entity: "candidate_applications", filters: { ...listScope, boardFilter: "passed_offer", asOf: formatLocalDateInput(), ...(embedded ? { embeddedAllTime: true } : { recentSince: recentCutoffDate() }) }, sort: "latest_log_date", direction: "desc", enabled: serverEnabled && pipelineView === "board" && visibleBuckets.has("terminal") });
   async function openCandidateActionMenu(candidate: EnrichedCandidate, setMenu: (value: string | null | ((current: string | null) => string | null)) => void) {
     const key = applicationKey(candidate);
@@ -191,13 +190,13 @@ export function PipelineBoardView({
   const activeFilterCount = Number(Boolean(pipelineSearch.trim())) + Number(boardFilter !== "all");
   const activeRowsBase = rows.filter((row) => row.latest_result !== 0 && !(row.latest_process === "Offer" && row.latest_result === 1));
   const activeRows = serverEnabled ? rows : filterBoardRows(filterPipelineRows(activeRowsBase, pipelineSearch), boardFilter);
-  const failedGroups = serverEnabled ? failedGroupsFromPage(failedList.items) : failedCandidatesByStage(filterPipelineRows(initialRows, pipelineSearch), recruitmentLogs, embedded ? null : recentCutoffDate());
+  const failedGroups = failedCandidatesByStage(filterPipelineRows(initialRows, pipelineSearch), recruitmentLogs, embedded ? null : recentCutoffDate());
   const passedOfferRows = serverEnabled ? passedOfferList.items : passedOfferCandidates(filterPipelineRows(initialRows, pipelineSearch), embedded ? null : recentCutoffDate());
   const agingRows = activeRows.filter(isCandidateAging);
   const noActivityRows = activeRows.filter((row) => row.latest_process === "No activity");
   const displayStages: PipelineStageKey[] = ["No activity", ...ACTIVE_PIPELINE_STAGES];
 
-  useEffect(() => { if (serverEnabled) { failedList.setSearch(pipelineSearch); passedOfferList.setSearch(pipelineSearch); } }, [pipelineSearch, serverEnabled]);
+  useEffect(() => { if (serverEnabled) { passedOfferList.setSearch(pipelineSearch); } }, [pipelineSearch, serverEnabled]);
   useEffect(() => { setSummary(null); setSummaryError(false); }, [accessScope, scopeKey, serverEnabled]);
   useEffect(() => {
     if (!serverEnabled || !listClient) return;
@@ -300,7 +299,7 @@ export function PipelineBoardView({
 
   return (
     <div ref={visibilityRef} className="grid min-w-0 max-w-full gap-5 overflow-x-clip">
-      {(stageLists.some(entry => entry.list.revealNotice === "excluded") || failedList.revealNotice === "excluded" || passedOfferList.revealNotice === "excluded") ? <p role="status" className="text-sm text-slate">{language === "th" ? "บันทึกแล้ว ผู้สมัครอยู่นอกตัวกรองปัจจุบัน" : "Saved. This candidate is outside the current filters."}</p> : null}
+      {(stageLists.some(entry => entry.list.revealNotice === "excluded") || passedOfferList.revealNotice === "excluded") ? <p role="status" className="text-sm text-slate">{language === "th" ? "บันทึกแล้ว ผู้สมัครอยู่นอกตัวกรองปัจจุบัน" : "Saved. This candidate is outside the current filters."}</p> : null}
       <Panel variant={embedded ? "workspace" : "primary"} className={embedded ? "!rounded-none !border-0 !p-0 !shadow-none" : ""}>
         <SectionTitle
           title={translate(language, "candidatePipeline")}
@@ -536,37 +535,15 @@ export function PipelineBoardView({
       <div data-read-bucket="terminal" className="grid gap-4 xl:grid-cols-2">
         <Panel variant="secondary">
           <span data-read-bucket="terminal" aria-hidden="true"/>
-          <SectionTitle title={translate(language, embedded ? "failedCandidatesAllTime" : "failedCandidatesLast7Days")} action={serverEnabled ? <BoardPagination language={language} list={failedList}/> : undefined} />
-          {failedGroups.every((group) => group.rows.length === 0) ? (
-            serverEnabled && failedList.error ? <p role="alert" className="text-sm text-danger">{translate(language,"loadFailed")}</p> : serverEnabled && failedList.initialLoading ? <LoadingSkeleton variant="cards" label={<>{translate(language, "loading")}</>} className="py-3 text-sm text-slate" /> : <EmptyState variant="quiet" message={translate(language, embedded ? "noFailedCandidatesAllTime" : "noFailedCandidatesLast7Days")} />
-          ) : (
-            <div className="grid grid-flow-col gap-3 overflow-x-auto pb-2" style={{ gridAutoColumns: "minmax(240px, 1fr)" }}>
-              {failedGroups.map((group) => (
-                <section key={group.stage} className="min-h-48 rounded-2xl border border-[#F4B4AE] bg-[#FFF8F7] p-2.5">
-                  <div className="mb-2 flex items-center justify-between gap-2">
-                    <strong className="text-sm text-scarlet">{processLabel(group.stage, language)}</strong>
-                    <Tag tone="danger">{group.rows.length}</Tag>
-                  </div>
-                  <div className="grid gap-2">
-                    {group.rows.map((candidate) => (
-                      <PipelineCandidateCard
-                        key={applicationKey(candidate)}
-                        candidate={candidate}
-                        language={language}
-                        canWrite={false}
-                        tone="failed"
-                        focused={focusedCandidateId === candidate.candidate_id}
-                        onOpen={onOpen}
-                        onCreateRejectionLetter={canWrite ? onCreateRejectionLetter : undefined}
-                        rejectionLetterSent={rejectionLetterSentCandidateIds?.has(applicationKey(candidate))}
-                      />
-                    ))}
-                  </div>
-                </section>
-              ))}
-            </div>
-          )}
-          {serverEnabled ? <div className="mt-3 flex items-center justify-end gap-2"><span className="text-xs text-slate">{failedList.totalCount === null && failedList.countLoading ? <NumberSkeleton/> : failedList.countLabel} · {translate(language, "pipelineRecords")}</span>{failedList.countError ? <RetryIconButton type="button"   onClick={failedList.retryCount} loading={failedList.countLoading}>{translate(language, "retry")}</RetryIconButton> : null}{failedList.error ? <RetryIconButton type="button"   onClick={failedList.retry} loading={failedList.loading}>{translate(language, "retry")}</RetryIconButton> : null}</div> : null}
+          <SectionTitle title={translate(language, embedded ? "failedCandidatesAllTime" : "failedCandidatesLast7Days")} />
+          <div className="grid grid-flow-col gap-3 overflow-x-auto pb-2" style={{ gridAutoColumns: "minmax(260px, 1fr)" }}>
+            {ACTIVE_PIPELINE_STAGES.map(stage => <FailedStageColumn key={stage} stage={stage} language={language}
+              client={listClient} accessScope={accessScope} scope={listScope} search={pipelineSearch} embedded={embedded}
+              enabled={pipelineView === "board"} forceVisible={visibleBuckets.has(`failed:${stage}`)}
+              localRows={failedGroups.find(group => group.stage === stage)?.rows ?? []}
+              focusedCandidateId={focusedCandidateId} canWrite={canWrite} onOpen={onOpen}
+              onCreateRejectionLetter={onCreateRejectionLetter} rejectionLetterSentCandidateIds={rejectionLetterSentCandidateIds} />)}
+          </div>
         </Panel>
 
         <Panel variant="secondary">
@@ -749,10 +726,6 @@ function failedCandidatesByStage(rows: EnrichedCandidate[], recruitmentLogs: Rec
     stage,
     rows: sortByLastUpdateAsc(groups.get(stage) ?? [])
   }));
-}
-
-function failedGroupsFromPage(rows: EnrichedCandidate[]) {
-  return ACTIVE_PIPELINE_STAGES.map(stage => ({ stage, rows: rows.filter(row => row.latest_process === stage) }));
 }
 
 function passedOfferCandidates(rows: EnrichedCandidate[], cutoff: string | null) {
@@ -1273,11 +1246,58 @@ function groupPipelineRows(rows: EnrichedCandidate[], groupBy: PipelineGroupBy, 
     .map(([label, groupRows]) => ({ label, rows: groupRows }));
 }
 
+function FailedStageColumn({ stage, language, client, accessScope, scope, search, embedded, enabled, forceVisible, localRows, focusedCandidateId, canWrite, onOpen, onCreateRejectionLetter, rejectionLetterSentCandidateIds }: {
+  stage: ProcessStage; language: Language; client: SupabaseClient | null; accessScope: string; scope: Record<string, unknown>;
+  search: string; embedded: boolean; enabled: boolean; forceVisible: boolean; localRows: EnrichedCandidate[];
+  focusedCandidateId: string | null; canWrite: boolean;
+  onOpen: Parameters<typeof PipelineCandidateCard>[0]["onOpen"];
+  onCreateRejectionLetter: Parameters<typeof PipelineCandidateCard>[0]["onCreateRejectionLetter"];
+  rejectionLetterSentCandidateIds?: ReadonlySet<string>;
+}) {
+  const root = useRef<HTMLElement>(null);
+  const [visible, setVisible] = useState(false);
+  const [localPage, setLocalPage] = useState(1);
+  const scopeKey = JSON.stringify([accessScope, scope, search]);
+  useEffect(() => { setLocalPage(1); setVisible(false); }, [scopeKey]);
+  useEffect(() => {
+    const element = root.current; if (!element || !enabled) return;
+    const observer = new IntersectionObserver(entries => { if (entries.some(entry => entry.isIntersecting)) setVisible(true); }, { threshold: 0.01 });
+    observer.observe(element); return () => observer.disconnect();
+  }, [enabled, scopeKey]);
+  const server = Boolean(client && accessScope);
+  const list = useBoardList({ client, accessScope, entity: "candidate_applications",
+    filters: { ...scope, boardFilter: "failed", stage, asOf: formatLocalDateInput(), ...(embedded ? { embeddedAllTime: true } : { recentSince: recentCutoffDate() }) },
+    sort: "latest_log_date", direction: "desc", searchInput: { value: search, setValue: () => {} },
+    enabled: server && enabled && (visible || forceVisible) });
+  const page = Math.min(localPage, Math.max(1, Math.ceil(localRows.length / 5)));
+  const rows = server ? list.items : localRows.slice((page - 1) * 5, page * 5);
+  const pager = server ? list : { ...list, items: rows, page, pages: Math.max(1, Math.ceil(localRows.length / 5)),
+    canPrevious: page > 1, canNext: page * 5 < localRows.length, goPrevious: () => setLocalPage(page - 1), goNext: () => setLocalPage(page + 1) };
+  return <section ref={root} tabIndex={0} data-failed-stage={stage} data-read-bucket={`failed:${stage}`}
+    aria-label={`${translate(language, embedded ? "failedCandidatesAllTime" : "failedCandidatesLast7Days")} · ${processLabel(stage, language)}`}
+    aria-busy={server && list.initialLoading} onFocus={() => setVisible(true)} className="min-h-48 rounded-2xl border border-[#F4B4AE] bg-[#FFF8F7] p-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+    <div className="mb-2 flex min-w-0 items-center justify-between gap-1">
+      <strong className="min-w-0 flex-1 truncate text-sm text-scarlet" title={processLabel(stage, language)}>{processLabel(stage, language)}</strong>
+      <span data-failed-stage-count><Tag tone="danger">{server ? list.countLabel : localRows.length}</Tag></span>
+      <BoardPagination language={language} list={pager}/>
+    </div>
+    {server && list.error ? <div role="alert" className="mb-2 text-xs text-danger">{translate(language,"loadFailed")} <RetryIconButton onClick={list.retry} loading={list.loading}>{translate(language,"retry")}</RetryIconButton></div> : null}
+    {server && list.countError ? <RetryIconButton onClick={list.retryCount} loading={list.countLoading}>{translate(language,"retry")}</RetryIconButton> : null}
+    {list.revealNotice === "excluded" ? <p role="status" className="text-xs text-slate">{language === "th" ? "บันทึกแล้ว ผู้สมัครอยู่นอกตัวกรองปัจจุบัน" : "Saved. This candidate is outside the current filters."}</p> : null}
+    <div className="grid gap-2">
+      {rows.length ? rows.map(candidate => <PipelineCandidateCard key={applicationKey(candidate)} candidate={candidate} language={language} canWrite={false}
+        tone="failed" focused={focusedCandidateId === candidate.candidate_id} onOpen={onOpen}
+        onCreateRejectionLetter={canWrite ? onCreateRejectionLetter : undefined} rejectionLetterSent={rejectionLetterSentCandidateIds?.has(applicationKey(candidate))}/>)
+        : server && list.initialLoading ? <LoadingSkeleton variant="cards" count={1} language={language}/> : !list.error ? <EmptyState variant="quiet" message={translate(language,"noData")}/> : null}
+    </div>
+  </section>;
+}
+
 function BoardPagination({ language, list }: { language: Language; list: ReturnType<typeof useBoardList> }) {
   if (list.initialLoading || (list.error && !list.items.length) || (!list.items.length && !list.canPrevious)) return null;
-  return <div data-board-pagination className="ml-auto flex shrink-0 items-center justify-end gap-1 text-xs font-medium tabular-nums text-slate">
-    <span aria-label={language === "th" ? "หน้าปัจจุบัน / จำนวนหน้า" : "Current page / total pages"}>{list.page}/{list.pages}</span>
-    <Button type="button" size="icon-sm" variant="ghost" className="ats-compact-utility" aria-label={translate(language,"previous")} title={translate(language,"previous")} disabled={list.loading || list.refreshing || !list.canPrevious} onClick={list.goPrevious}><ChevronLeft size={16}/></Button>
-    <Button type="button" size="icon-sm" variant="ghost" className="ats-compact-utility" aria-label={translate(language,"next")} title={translate(language,"next")} disabled={list.loading || list.refreshing || !list.canNext} onClick={list.goNext}><ChevronRight size={16}/></Button>
+  return <div data-board-pagination className="ml-auto inline-flex shrink-0 items-center gap-0.5 whitespace-nowrap text-xs font-medium tabular-nums text-slate">
+    <Button type="button" size="icon-sm" variant="ghost" className="ats-pipeline-page-button" aria-label={translate(language,"previous")} title={translate(language,"previous")} disabled={list.loading || list.refreshing || !list.canPrevious} onClick={list.goPrevious}><ChevronLeft size={14}/></Button>
+    <span className="min-w-7 text-center" aria-label={language === "th" ? "หน้าปัจจุบัน / จำนวนหน้า" : "Current page / total pages"}>{list.page}/{list.pages}</span>
+    <Button type="button" size="icon-sm" variant="ghost" className="ats-pipeline-page-button" aria-label={translate(language,"next")} title={translate(language,"next")} disabled={list.loading || list.refreshing || !list.canNext} onClick={list.goNext}><ChevronRight size={14}/></Button>
   </div>;
 }

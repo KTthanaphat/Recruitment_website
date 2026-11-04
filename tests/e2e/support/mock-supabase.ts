@@ -287,7 +287,7 @@ export async function installMockSupabase(page: Page, options: MockSupabaseOptio
       if(entity==="requisitions") { call.response=requisitionListRows(data,filters,search).length; await json(route,call.response);return; }
       if(entity==="offers") { await json(route,offerListRows(data,filters,search).length);return; }
       if(entity==="position_groups") { await json(route,workspaceGroupRows(data,filters,search).length);return; }
-      if(entity==="sourcing") { await json(route,sourcingListRows(data,filters,search).length);return; }
+      if(entity==="sourcing" || entity==="sourcing_records") { await json(route,sourcingListRows(data,filters,search,options.now ?? fixtureNow).length);return; }
       await json(route,{message:"Mock does not implement this recruitment list count entity."},501);return;
     }
     if(endpoint==="app_candidate_profile_capabilities_v1") { await json(route,data.candidate_profile_capabilities??data.candidates.map(candidate=>{const creator=candidate.created_by===data.profile?.id,groupPIC=data.candidate_applications?.some(app=>app.candidate_id===candidate.candidate_id&&pic(app.group_id))??false;return {candidate_id:candidate.candidate_id,creator_label:data.profiles.find(profile=>profile.id===candidate.created_by)?.nickname??"Creator",can_edit:data.profile?.role!=="viewer"&&(admin||creator||groupPIC),can_read_note:admin||creator||groupPIC,can_edit_note:data.profile?.role!=="viewer"&&(admin||creator),can_add_application:data.profile?.role!=="viewer"&&(admin||creator||groupPIC),is_unmatched:!data.candidate_applications?.some(app=>app.candidate_id===candidate.candidate_id)};}));return; }
@@ -366,8 +366,8 @@ export async function installMockSupabase(page: Page, options: MockSupabaseOptio
         const cursorId=String(body.p_cursor_id??""),cursorIndex=cursorId?sorted.findIndex(row=>row.group_id===cursorId):-1,before=body.p_before===true,start=cursorIndex<0?0:before?Math.max(0,cursorIndex-limit):cursorIndex+1,end=cursorIndex<0?Math.min(limit,sorted.length):before?cursorIndex:Math.min(sorted.length,cursorIndex+1+limit),items=sorted.slice(start,end),hasMore=end<sorted.length,hasMoreBefore=start>0,anchor=(row:typeof sorted[number])=>({value:sort==="name"?row.group_position:sort==="oldest"?row.latest_saved_at??"":`${rank(row.readiness_label)}:${row.open_headcount}`,id:row.group_id});
         await json(route,{items,total_count:sorted.length,has_more:hasMore,has_more_before:hasMoreBefore,next_cursor:hasMore&&items.length?anchor(items.at(-1)!):null,previous_cursor:hasMoreBefore&&items.length?anchor(items[0]):null});return;
       }
-      if(body?.p_entity==="sourcing") {
-        const rows=sourcingListRows(data,filters,search),sort=String(body.p_sort??"group"),direction=String(body.p_direction??"asc");
+      if(body?.p_entity==="sourcing" || body?.p_entity==="sourcing_records") {
+        const rows=sourcingListRows(data,filters,search,options.now ?? fixtureNow),sort=String(body.p_sort??"group"),direction=String(body.p_direction??"asc");
         const value=(row:typeof rows[number])=>sort==="position"?row.group.group_position:sort==="week"?row.week_start:sort==="status"?row.status:sort==="applicants"?String(row.applicants??-1):sort==="saved"?String(row.update?.updated_at??""):row.group.group_id;
         const sorted=[...rows].sort((a,b)=>{const delta=value(a).localeCompare(value(b),"en",{numeric:true,sensitivity:"base"});return (direction==="desc"?-delta:delta)||a.group.group_id.localeCompare(b.group.group_id)||a.week_start.localeCompare(b.week_start);});
         const anchorId=(row:typeof sorted[number])=>row.group.group_id+"|"+row.week_start,cursorId=String(body.p_cursor_id??""),cursorIndex=cursorId?sorted.findIndex(row=>anchorId(row)===cursorId):-1,before=body.p_before===true,limit=Number(body.p_limit??50),start=cursorIndex<0?0:before?Math.max(0,cursorIndex-limit):cursorIndex+1,end=cursorIndex<0?Math.min(limit,sorted.length):before?cursorIndex:Math.min(sorted.length,cursorIndex+1+limit),items=sorted.slice(start,end),hasMore=end<sorted.length,hasMoreBefore=start>0,anchor=(row:typeof sorted[number])=>({value:value(row),id:anchorId(row)});
@@ -675,15 +675,15 @@ function workspaceGroupRows(data: DashboardData, filters: Record<string, unknown
   });
 }
 
-function sourcingListRows(data: DashboardData, filters: Record<string, unknown>, search: string) {
+function sourcingListRows(data: DashboardData, filters: Record<string, unknown>, search: string, now = fixtureNow) {
   const selectedWeek=String(filters.weekStart??filters.week??"2026-07-18");
   const rows = enrichWorkspaceLinkedGroups(data, selectedWeek).flatMap(group => {
     const requestedWeek=filters.week??(filters.surface==="board"?selectedWeek:"");
     const updates = data.sourcing_weekly_updates.filter(row => row.group_id === group.group_id && (!requestedWeek || sourcingCycleSaturday(row.week_start) === requestedWeek));
     const reqs = data.requisitions.filter(req => group.doc_ids.includes(req.doc_id));
-    const first = sourcingCycleSaturday(reqs.map(req=>req.pr_approved_date).filter((day):day is string=>Boolean(day)).sort()[0] ?? fixtureNow.toISOString().slice(0,10));
+    const first = sourcingCycleSaturday(reqs.map(req=>req.pr_approved_date).filter((day):day is string=>Boolean(day)).sort()[0] ?? now.toISOString().slice(0,10));
     const terminal = reqs.length > 0 && reqs.every(req=>["filled","cancel"].includes(req.status));
-    const last = sourcingCycleSaturday(terminal ? reqs.map(req=>data.requisition_logs.filter(log=>log.doc_id===req.doc_id&&["filled","cancel"].includes(log.status)).map(log=>log.log_date).sort().at(-1) ?? req.updated_at.slice(0,10)).sort().at(-1)! : fixtureNow.toISOString().slice(0,10));
+    const last = sourcingCycleSaturday(terminal ? reqs.map(req=>data.requisition_logs.filter(log=>log.doc_id===req.doc_id&&["filled","cancel"].includes(log.status)).map(log=>log.log_date).sort().at(-1) ?? req.updated_at.slice(0,10)).sort().at(-1)! : now.toISOString().slice(0,10));
     const expectedWeeks: string[]=[];
     for(let date=new Date(first+"T00:00:00Z");date.toISOString().slice(0,10)<=last;date.setUTCDate(date.getUTCDate()+7)) expectedWeeks.push(date.toISOString().slice(0,10));
     const weeks = requestedWeek ? expectedWeeks.filter(week=>week===String(requestedWeek)) : expectedWeeks.reverse();
@@ -693,6 +693,8 @@ function sourcingListRows(data: DashboardData, filters: Record<string, unknown>,
     });
   });
   return rows.filter(row => {
+    if (filters.from && row.week_start < String(filters.from)) return false;
+    if (filters.to && row.week_start > String(filters.to)) return false;
     if (filters.groupId && row.group.group_id !== String(filters.groupId)) return false;
     if (filters.groupId && row.group.group_id !== String(filters.groupId)) return false;
     if (filters.group && !row.group.group_id.toLowerCase().includes(String(filters.group).toLowerCase())) return false;

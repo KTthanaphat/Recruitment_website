@@ -46,3 +46,11 @@ Regression: `node scripts/rehearse-repeat-round-dates.cjs tests/db/fixtures/repe
 ## Committed candidate actions and bounded Pipeline
 
 [61_candidate_actions.sql](61_candidate_actions.sql) adds allowlisted invoker candidate writes with exact-ID authorized receipts and the board location RPC. The application-page query in 60 selects eligible applications before canonical stage/touch processing and materializes page keys before display enrichment. No indexes were added. Migration `20261103080120_candidate_pipeline_latency.sql` precedes the frontend and keeps existing mutation/list interfaces. Run `node scripts/rehearse-profile-contract.cjs --candidate-latency` in disposable PGlite for full-schema RLS, mutation and cursor/location parity; production performance remains a release gate.
+
+## Bounded sourcing records
+
+`60_recruitment_list.sql` adds invoker `app_recruitment_sourcing_records_page_v1` and the `sourcing_records` dispatcher entity. It aggregates authorized requisition/group data without nested group-list or candidate-stage queries. Legacy sourcing APIs remain compatible. Migration `20261103154920_sourcing_records_loading.sql` must precede the frontend. Verify with `node scripts/rehearse-profile-contract.cjs --sourcing-records`; its disposable full-schema RLS fixture also saves an analyzed execution plan under `outputs/sourcing-records/`. No indexes are added; fixture plans do not establish production latency.
+
+## Reconcile deployed recruiter read authorization
+
+Migration `20261104015609_reconcile_recruiter_read_authorization.sql` reconciles the final private read helpers from canonical 30/32 without changing policies or broadening grants, and bounds `app_pipeline_summary_v1` history/offers to its authorized application population. It is a new forward migration; historical migrations are not edited. The deployed November 4 inventory is captured as metadata in `tests/db/fixtures/deployed-authorization-20261104.json`. Rehearse with `node scripts/rehearse-profile-contract.cjs --recruiter-read-upgrade`; it restores the actual live helper and policy definitions inside disposable PGlite before comparing the upgrade. This includes the deployed position-group policy difference from fresh-schema replay. Outputs under `outputs/recruiter-read-upgrade/` are fixture evidence, not production performance. No indexes were added.

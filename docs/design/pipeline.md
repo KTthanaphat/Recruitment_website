@@ -7,3 +7,9 @@ Show five cards per stage or terminal section, sliced before Site/Owner subgroup
 Candidate workflows publish only committed server receipts, then reconcile affected loaded criteria once after a 100 ms batch. Source cards leaving their filter are removed immediately; location reads fetch only the destination block and highlight its card. Excluded candidates produce a saved-result message without changing filters. Application removals never disclose restricted destination records. Existing writes, business rules and legacy RPCs remain available; exports retain verified complete traversal.
 
 Owners: [board](../../src/components/pipeline/PipelineBoardView.tsx), [bounded hook](../../src/lib/pipeline-board-list.ts), [candidate receipts](../../src/lib/candidate-action-receipt.ts), [list/cache revisions](../../src/lib/recruitment-list.ts), [SQL](../../supabase/schemas/61_candidate_actions.sql). Verification and release gates: [implementation record](../work-items/candidate-pipeline-latency/implementation.md).
+
+## Compact stage pagination and failed columns
+
+Active, failed and passed-offer pagers use the order `< current/total >`: 14px chevrons, 28px desktop buttons, 2px gaps and 44px phone touch targets. Counts remain eventual (`1/…` while unknown); empty pagers are hidden. Keyboard focus and localized names remain visible. History-table pagination is separate.
+
+Each failed stage owns a five-card page within 25-record cursor blocks, its exact count, loading/error/retry state and cached navigation. The section has no shared pager. Offscreen columns activate on intersection or focus; changing a page leaves other stages' positions unchanged. Search, header/group scope and identity reset their pages. Standalone last-seven-days and embedded all-time failure membership remain unchanged. Refresh/reconciliation recovers an emptied page without inventing counts. Committed receipts invalidate source/destination failed stages only.

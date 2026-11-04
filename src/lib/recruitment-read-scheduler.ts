@@ -27,12 +27,18 @@ export function scheduleRecruitmentRead<T>(client: object, run: () => PromiseLik
   let lane = lanes.get(client);
   if (!lane) { lane = { active: 0, background: 0, pending: [], scheduled: false }; lanes.set(client, lane); }
   if (lane.pending.length >= 100) return Promise.reject(new Error("Too many pending recruitment reads. Please retry."));
-  const current = lane, queuedAt = timingObservers.size ? performance.now() : null;
+  const browserDiagnostics = typeof window !== "undefined" && (window as Window & { __recruitmentMeasureReads?: boolean }).__recruitmentMeasureReads === true;
+  const current = lane, queuedAt = timingObservers.size || browserDiagnostics ? performance.now() : null;
   return new Promise<T>((resolve, reject) => {
     const job: Job = { priority, signal: options.signal, detach: () => {}, resolve: value => resolve(value as T), reject,
       run: () => {
         const started = performance.now();
-        const emit = (status: RecruitmentReadTiming["status"]) => { if (queuedAt === null) return; for (const observer of timingObservers) { try { observer({ priority, queueMs: started - queuedAt, requestMs: performance.now() - started, status }); } catch { /* Diagnostics never affect reads. */ } } };
+        const emit = (status: RecruitmentReadTiming["status"]) => {
+          if (queuedAt === null) return;
+          const timing: RecruitmentReadTiming = { priority, queueMs: started - queuedAt, requestMs: performance.now() - started, status };
+          for (const observer of timingObservers) { try { observer(timing); } catch { /* Diagnostics never affect reads. */ } }
+          if (browserDiagnostics) window.dispatchEvent(new CustomEvent("recruitment:read-timing", { detail: timing }));
+        };
         return Promise.resolve().then(run).then(value => { emit("fulfilled"); return value; }, error => { emit("rejected"); throw error; });
       } };
     const cancel = () => { const index = current.pending.indexOf(job); if (index >= 0) { current.pending.splice(index, 1); job.detach(); reject(aborted()); drain(current); } };

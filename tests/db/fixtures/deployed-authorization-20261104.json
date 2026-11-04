@@ -1,0 +1,1082 @@
+{
+  "capturedAt": "2026-11-04",
+  "helpers": [
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "name": "can_read_application",
+      "owner": "postgres",
+      "definition": "CREATE OR REPLACE FUNCTION app_private.can_read_application(p_id uuid)\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'public', 'app_private'\nAS $function$\n select exists(select 1 from public.candidate_applications a where a.application_id=p_id and (app_private.is_global_recruitment_reader() or app_private.can_read_position_group(a.group_id)))\n$function$\n"
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "name": "can_read_candidate",
+      "owner": "postgres",
+      "definition": "CREATE OR REPLACE FUNCTION app_private.can_read_candidate(p_candidate_id text)\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'public', 'app_private'\nAS $function$\n select app_private.is_recruitment_reader() and exists(select 1 from public.candidates c where c.candidate_id=p_candidate_id and (\n app_private.is_profile_admin() or c.created_by=auth.uid() or (exists(select 1 from public.candidate_applications a where a.candidate_id=c.candidate_id) and (\n app_private.is_global_recruitment_reader() or c.home_site=app_private.current_profile_site() or exists(select 1 from public.candidate_applications a where a.candidate_id=c.candidate_id and app_private.can_read_application(a.application_id))))))\n$function$\n"
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "name": "can_read_position_group",
+      "owner": "postgres",
+      "definition": "CREATE OR REPLACE FUNCTION app_private.can_read_position_group(p_group_id text)\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\n  select\n    app_private.current_app_role() in ('system_admin', 'admin_recruiter')\n    or exists (\n      select 1\n      from public.document_groups dg\n      where dg.group_id = p_group_id\n        and app_private.can_read_requisition(dg.doc_id)\n    )\n$function$\n"
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "name": "can_read_requisition",
+      "owner": "postgres",
+      "definition": "CREATE OR REPLACE FUNCTION app_private.can_read_requisition(p_doc_id text)\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'public', 'app_private'\nAS $function$\n select app_private.is_global_recruitment_reader() or exists(select 1 from public.requisitions r where r.doc_id=p_doc_id and app_private.current_app_role()='site_recruiter' and (r.site=app_private.current_profile_site() or lower(btrim(r.person_in_charge)) in (select lower(btrim(p.nickname)) from public.profiles p where p.id=auth.uid()) or lower(btrim(r.person_in_charge)) in (select lower(btrim(p.full_name)) from public.profiles p where p.id=auth.uid()) or exists(select 1 from public.document_groups d where d.doc_id=r.doc_id and app_private.is_group_pic(d.group_id))))\n$function$\n"
+    }
+  ],
+  "policies": [
+    {
+      "cmd": "SELECT",
+      "qual": "app_private.can_read_application(application_id)",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "candidate_application_assignments",
+      "permissive": "PERMISSIVE",
+      "policyname": "assignment_read",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "app_private.can_read_application(application_id)",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "candidate_applications",
+      "permissive": "PERMISSIVE",
+      "policyname": "application_read",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "app_private.can_read_profile_note(candidate_id)",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "candidate_notes",
+      "permissive": "PERMISSIVE",
+      "policyname": "note_read",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "(EXISTS ( SELECT 1\n   FROM candidate_references reference\n  WHERE ((reference.reference_id = candidate_reference_checks.reference_id) AND ( SELECT app_private.can_read_application(candidate_reference_checks.application_id) AS can_read_application))))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "candidate_reference_checks",
+      "permissive": "PERMISSIVE",
+      "policyname": "candidate_reference_checks_scoped_read",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "( SELECT app_private.can_read_candidate(candidate_references.candidate_id) AS can_read_candidate)",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "candidate_references",
+      "permissive": "PERMISSIVE",
+      "policyname": "candidate_references_scoped_read",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "(app_private.can_read_requisition(doc_id) AND app_private.can_read_application(application_id))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "candidate_requisitions",
+      "permissive": "PERMISSIVE",
+      "policyname": "candidate_requisitions_scoped_read",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "app_private.can_read_candidate(candidate_id)",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "candidates",
+      "permissive": "PERMISSIVE",
+      "policyname": "candidates_read",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "app_private.can_read_candidate_audit(entity, entity_id, old_data, new_data)",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "change_logs",
+      "permissive": "PERMISSIVE",
+      "policyname": "change_logs_read",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "app_private.can_read_requisition(doc_id)",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "document_groups",
+      "permissive": "PERMISSIVE",
+      "policyname": "document_groups_read",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "(active OR (app_private.current_app_role() = ANY (ARRAY['system_admin'::text, 'admin_recruiter'::text])))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "interview_invitation_templates",
+      "permissive": "PERMISSIVE",
+      "policyname": "interview_invitation_templates_read",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "(EXISTS ( SELECT 1\n   FROM recruitment_logs l\n  WHERE ((l.stage_instance_id = interview_meetings.stage_instance_id) AND app_private.can_read_application(l.application_id))))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "interview_meetings",
+      "permissive": "PERMISSIVE",
+      "policyname": "interview_meetings_read",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "(app_private.can_read_requisition(doc_id) AND app_private.can_read_application(application_id))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "offers",
+      "permissive": "PERMISSIVE",
+      "policyname": "offers_read",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "app_private.is_recruitment_reader()",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "position_groups",
+      "permissive": "PERMISSIVE",
+      "policyname": "position_groups_read",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "UPDATE",
+      "qual": "app_private.is_system_admin()",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "profiles",
+      "permissive": "PERMISSIVE",
+      "policyname": "profiles_admin_update",
+      "schemaname": "public",
+      "with_check": "app_private.is_system_admin()"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "((id = ( SELECT auth.uid() AS uid)) OR (app_private.current_app_role() = ANY (ARRAY['system_admin'::text, 'admin_recruiter'::text])))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "profiles",
+      "permissive": "PERMISSIVE",
+      "policyname": "profiles_select_self_or_recruiter_admin",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "app_private.can_read_application(application_id)",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "recruitment_logs",
+      "permissive": "PERMISSIVE",
+      "policyname": "recruitment_logs_read",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "(EXISTS ( SELECT 1\n   FROM recruitment_logs l\n  WHERE ((l.stage_instance_id = rejection_letter_drafts.failed_stage_instance_id) AND app_private.can_read_application(l.application_id))))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "rejection_letter_drafts",
+      "permissive": "PERMISSIVE",
+      "policyname": "rejection_letter_drafts_read",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "(active OR (app_private.current_app_role() = ANY (ARRAY['system_admin'::text, 'admin_recruiter'::text])))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "rejection_letter_templates",
+      "permissive": "PERMISSIVE",
+      "policyname": "rejection_letter_templates_read",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "INSERT",
+      "qual": null,
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "rejection_reasons",
+      "permissive": "PERMISSIVE",
+      "policyname": "rejection_reasons_insert",
+      "schemaname": "public",
+      "with_check": "(app_private.current_app_role() = ANY (ARRAY['system_admin'::text, 'admin_recruiter'::text]))"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "(active OR (app_private.current_app_role() = ANY (ARRAY['system_admin'::text, 'admin_recruiter'::text])))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "rejection_reasons",
+      "permissive": "PERMISSIVE",
+      "policyname": "rejection_reasons_read",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "UPDATE",
+      "qual": "(app_private.current_app_role() = ANY (ARRAY['system_admin'::text, 'admin_recruiter'::text]))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "rejection_reasons",
+      "permissive": "PERMISSIVE",
+      "policyname": "rejection_reasons_update",
+      "schemaname": "public",
+      "with_check": "(app_private.current_app_role() = ANY (ARRAY['system_admin'::text, 'admin_recruiter'::text]))"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "app_private.can_read_requisition(doc_id)",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "requisition_logs",
+      "permissive": "PERMISSIVE",
+      "policyname": "requisition_logs_read",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "app_private.can_read_requisition(doc_id)",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "requisitions",
+      "permissive": "PERMISSIVE",
+      "policyname": "requisitions_read",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "app_private.can_read_sourcing_group(group_id)",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "sourcing_weekly_updates",
+      "permissive": "PERMISSIVE",
+      "policyname": "sourcing_weekly_updates_read",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "(app_private.is_global_recruitment_reader() OR ((app_private.current_app_role() = 'site_recruiter'::text) AND (site = app_private.current_profile_site())))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "vacancy_weekly_snapshots",
+      "permissive": "PERMISSIVE",
+      "policyname": "vacancy_weekly_snapshots_read",
+      "schemaname": "public",
+      "with_check": null
+    }
+  ],
+  "projects": {
+    "develop": {
+      "migrations": [
+        {
+          "name": "recruitment_tracking_v1",
+          "version": "202606270001"
+        },
+        {
+          "name": "admin_recruiter_profile_read",
+          "version": "20260719120636"
+        },
+        {
+          "name": "declarative_schema_transition",
+          "version": "20260720170548"
+        },
+        {
+          "name": "sourcing_unmatch_admin_delete",
+          "version": "20260801171652"
+        },
+        {
+          "name": "pipeline_pending_then_pass",
+          "version": "20260801171706"
+        },
+        {
+          "name": "company_dashboard_report",
+          "version": "20260809105012"
+        },
+        {
+          "name": "company_dashboard_report_permissions",
+          "version": "20260809105038"
+        },
+        {
+          "name": "company_dashboard_report_filter_context",
+          "version": "20260809133731"
+        },
+        {
+          "name": "normalize_requisition_levels",
+          "version": "20260824064209"
+        },
+        {
+          "name": "pipeline_next_pending_from_outcome_crlf_safe",
+          "version": "20260811021421"
+        },
+        {
+          "name": "candidate_creation_group_eligibility",
+          "version": "20260811032417"
+        },
+        {
+          "name": "candidate_nickname_phone_validation",
+          "version": "20260811065058"
+        },
+        {
+          "name": "candidate_pipeline_record_register",
+          "version": "20260815050505"
+        },
+        {
+          "name": "pipeline_estimated_action_calendar",
+          "version": "20260815071001"
+        },
+        {
+          "name": "derived_pipeline_pending_dates",
+          "version": "20260815103439"
+        },
+        {
+          "name": "offer_start_confirmation",
+          "version": "20260815161420"
+        },
+        {
+          "name": "no_show_dashboard_report",
+          "version": "20260816044533"
+        },
+        {
+          "name": "sourcing_channel_history",
+          "version": "20260816051627"
+        },
+        {
+          "name": "sourcing_lifecycle_controls",
+          "version": "20260816061409"
+        },
+        {
+          "name": "sourcing_lifecycle_weekly_upsert",
+          "version": "20260816063412"
+        },
+        {
+          "name": "system_admin_outcome_history_correction",
+          "version": "20260817042119"
+        },
+        {
+          "name": "system_admin_pending_date_correction",
+          "version": "20260817042745"
+        },
+        {
+          "name": "add_jobbkk_sourcing_channel",
+          "version": "20260817133005"
+        },
+        {
+          "name": "repair_jobbkk_group_match",
+          "version": "20260817133336"
+        },
+        {
+          "name": "site_recruiter_pic_cross_site_read",
+          "version": "20260818015700"
+        },
+        {
+          "name": "repair_position_group_jobbkk_column",
+          "version": "20260818021011"
+        },
+        {
+          "name": "restore_create_and_match_sourcing_group_rpc",
+          "version": "20260820063610"
+        },
+        {
+          "name": "atomic_multi_requisition_group_setup",
+          "version": "20260820155424"
+        },
+        {
+          "name": "fix_line_interview_round_date_derivation",
+          "version": "20261101232243"
+        },
+        {
+          "name": "site_recruiter_pic_or_site_write",
+          "version": "20260822025708"
+        },
+        {
+          "name": "refresh_requisition_after_candidate_delete",
+          "version": "20260822050834"
+        },
+        {
+          "name": "refresh_requisition_after_candidate_delete",
+          "version": "20260822051202"
+        },
+        {
+          "name": "candidate_group_pool",
+          "version": "20260822122310"
+        },
+        {
+          "name": "candidate_group_pool_compatibility",
+          "version": "20260822122621"
+        },
+        {
+          "name": "allow_group_candidate_unmatch",
+          "version": "20260822124036"
+        },
+        {
+          "name": "allow_null_jobbkk_weekly_applicants",
+          "version": "20260824014718"
+        },
+        {
+          "name": "allow_jobbkk_group_channel_updates",
+          "version": "20260824050712"
+        },
+        {
+          "name": "make_new_candidate_phone_optional",
+          "version": "20260825020507"
+        },
+        {
+          "name": "add_candidate_email",
+          "version": "20260825020515"
+        },
+        {
+          "name": "refresh_requisition_status_on_offer_change",
+          "version": "20260827101657"
+        },
+        {
+          "name": "dashboard_period_end_status_history",
+          "version": "20260828184620"
+        },
+        {
+          "name": "rejection_letter_drafts",
+          "version": "20260829065357"
+        },
+        {
+          "name": "fix_rejection_letter_recipient_email_validation",
+          "version": "20260829172829"
+        },
+        {
+          "name": "sourcing_saturday_reporting_cycle",
+          "version": "20260904103709"
+        },
+        {
+          "name": "offer_pass_open_headcount_respects_did_not_start",
+          "version": "20260924073536"
+        },
+        {
+          "name": "requisition_priority",
+          "version": "20260928111256"
+        },
+        {
+          "name": "admin_cross_site_group_matches",
+          "version": "20260929041809"
+        },
+        {
+          "name": "rejection_reason_catalog",
+          "version": "20260930040924"
+        },
+        {
+          "name": "candidate_requisition_associations",
+          "version": "20261002043338"
+        },
+        {
+          "name": "editable_requisition_id",
+          "version": "20261002043354"
+        },
+        {
+          "name": "optional_department_directory_for_requisition",
+          "version": "20261002045555"
+        },
+        {
+          "name": "offer_backed_candidate_requisition_links",
+          "version": "20261002103836"
+        },
+        {
+          "name": "headcount_exclude_did_not_start",
+          "version": "20261003032748"
+        },
+        {
+          "name": "sync_develop_database_to_main",
+          "version": "20261003134246"
+        },
+        {
+          "name": "independent_candidate_applications",
+          "version": "20261011160210"
+        },
+        {
+          "name": "application_context_hardening",
+          "version": "20261011160911"
+        },
+        {
+          "name": "application_no_show_reapplication",
+          "version": "20261011162812"
+        },
+        {
+          "name": "application_correction_attribution",
+          "version": "20261011163338"
+        },
+        {
+          "name": "application_stage_chronology",
+          "version": "20261011165704"
+        },
+        {
+          "name": "candidate_profile_privacy_tabs",
+          "version": "20261015080003"
+        },
+        {
+          "name": "profile_registry_context",
+          "version": "20261015081017"
+        },
+        {
+          "name": "group_pic_offer_context",
+          "version": "20261015083536"
+        },
+        {
+          "name": "candidate_group_journey_claims",
+          "version": "20261015091726"
+        },
+        {
+          "name": "five_digit_app_ids",
+          "version": "20261101232248"
+        },
+        {
+          "name": "candidate_registry_list",
+          "version": "20261101232253"
+        },
+        {
+          "name": "dashboard_summaries",
+          "version": "20261101232315"
+        },
+        {
+          "name": "operational_pipeline_lists",
+          "version": "20261101232319"
+        },
+        {
+          "name": "pipeline_history_list",
+          "version": "20261101232507"
+        },
+        {
+          "name": "pipeline_history_sort_filter_contract",
+          "version": "20261101232510"
+        },
+        {
+          "name": "requisition_list_endpoint",
+          "version": "20261101232518"
+        },
+        {
+          "name": "recruitment_list_optimization",
+          "version": "20261101232541"
+        },
+        {
+          "name": "stage_bottleneck_summaries",
+          "version": "20261101232547"
+        },
+        {
+          "name": "async_application_destinations_lookup",
+          "version": "20261101232551"
+        },
+        {
+          "name": "offer_candidates_lookup",
+          "version": "20261101232623"
+        },
+        {
+          "name": "rejection_id_alias_search",
+          "version": "20261101233106"
+        },
+        {
+          "name": "home_recruitment_list_filters",
+          "version": "20261101233127"
+        },
+        {
+          "name": "home_quality_detail_scope",
+          "version": "20261101233133"
+        },
+        {
+          "name": "home_quality_exact_group_scope",
+          "version": "20261101233137"
+        },
+        {
+          "name": "pipeline_stage_board_membership",
+          "version": "20261101233143"
+        },
+        {
+          "name": "requisition_link_option_filters",
+          "version": "20261101233147"
+        },
+        {
+          "name": "home_welcome_summaries",
+          "version": "20261101233151"
+        },
+        {
+          "name": "dashboard_owner_filter_options",
+          "version": "20261101233713"
+        },
+        {
+          "name": "home_quality_duplicate_key_precompute",
+          "version": "20261102123000"
+        },
+        {
+          "name": "requisition_page_enrichment_after_limit",
+          "version": "20261102123100"
+        },
+        {
+          "name": "bottleneck_authorization_key_memoization",
+          "version": "20261102123200"
+        },
+        {
+          "name": "rejection_distinct_authorization_precompute",
+          "version": "20261102123300"
+        },
+        {
+          "name": "candidate_assignment_application_history_index",
+          "version": "20261102123400"
+        },
+        {
+          "name": "ytd_report_materialization",
+          "version": "20261102123500"
+        },
+        {
+          "name": "home_loading_sections",
+          "version": "20261103031004"
+        },
+        {
+          "name": "candidate_pipeline_latency",
+          "version": "20261103143424"
+        }
+      ]
+    },
+    "main": {
+      "migrations": [
+        {
+          "name": "company_dashboard_report",
+          "version": "20260809121358"
+        },
+        {
+          "name": "company_dashboard_report_permissions",
+          "version": "20260809121410"
+        },
+        {
+          "name": "company_dashboard_report_filter_context",
+          "version": "20260809134542"
+        },
+        {
+          "name": "daily_recruitment_summary",
+          "version": "20260809154648"
+        },
+        {
+          "name": "enhance_daily_recruitment_summary",
+          "version": "20260809160133"
+        },
+        {
+          "name": "split_daily_summary_new_candidates",
+          "version": "20260809163542"
+        },
+        {
+          "name": "pipeline_next_pending_from_outcome_v2",
+          "version": "20260811040258"
+        },
+        {
+          "name": "normalize_requisition_levels",
+          "version": "20260824064213"
+        },
+        {
+          "name": "candidate_creation_group_eligibility_preserve_references",
+          "version": "20260811040354"
+        },
+        {
+          "name": "candidate_nickname_phone_validation",
+          "version": "20260811065103"
+        },
+        {
+          "name": "candidate_pipeline_record_register",
+          "version": "20260815050854"
+        },
+        {
+          "name": "pipeline_estimated_action_calendar",
+          "version": "20260815123504"
+        },
+        {
+          "name": "derived_pipeline_pending_dates",
+          "version": "20260815123516"
+        },
+        {
+          "name": "offer_start_confirmation",
+          "version": "20260816101538"
+        },
+        {
+          "name": "no_show_dashboard_report",
+          "version": "20260816101608"
+        },
+        {
+          "name": "sourcing_channel_history",
+          "version": "20260816101630"
+        },
+        {
+          "name": "sourcing_lifecycle_controls",
+          "version": "20260816101705"
+        },
+        {
+          "name": "sourcing_lifecycle_weekly_upsert",
+          "version": "20260816101744"
+        },
+        {
+          "name": "system_admin_outcome_history_correction",
+          "version": "20260817042145"
+        },
+        {
+          "name": "system_admin_pending_date_correction",
+          "version": "20260817042819"
+        },
+        {
+          "name": "add_jobbkk_sourcing_channel",
+          "version": "20260817133238"
+        },
+        {
+          "name": "repair_jobbkk_group_match",
+          "version": "20260817133340"
+        },
+        {
+          "name": "site_recruiter_pic_cross_site_read",
+          "version": "20260818015705"
+        },
+        {
+          "name": "repair_position_group_jobbkk_column",
+          "version": "20260818021015"
+        },
+        {
+          "name": "restore_create_and_match_sourcing_group_rpc",
+          "version": "20260820063614"
+        },
+        {
+          "name": "atomic_multi_requisition_group_setup",
+          "version": "20260820165203"
+        },
+        {
+          "name": "reopen_sourcing_after_did_not_start",
+          "version": "20260912041508"
+        },
+        {
+          "name": "site_recruiter_pic_or_site_write",
+          "version": "20260822025715"
+        },
+        {
+          "name": "refresh_requisition_after_candidate_delete",
+          "version": "20260822050840"
+        },
+        {
+          "name": "refresh_requisition_after_candidate_delete",
+          "version": "20260822051207"
+        },
+        {
+          "name": "candidate_group_pool",
+          "version": "20260822122316"
+        },
+        {
+          "name": "candidate_group_pool_compatibility",
+          "version": "20260822122625"
+        },
+        {
+          "name": "allow_group_candidate_unmatch",
+          "version": "20260822124039"
+        },
+        {
+          "name": "allow_null_jobbkk_weekly_applicants",
+          "version": "20260824014722"
+        },
+        {
+          "name": "allow_jobbkk_group_channel_updates",
+          "version": "20260824050717"
+        },
+        {
+          "name": "make_new_candidate_phone_optional",
+          "version": "20260825020518"
+        },
+        {
+          "name": "add_candidate_email",
+          "version": "20260825020524"
+        },
+        {
+          "name": "refresh_requisition_status_on_offer_change",
+          "version": "20260827095634"
+        },
+        {
+          "name": "dashboard_period_end_status_history",
+          "version": "20260828184615"
+        },
+        {
+          "name": "sourcing_saturday_reporting_cycle",
+          "version": "20260904103702"
+        },
+        {
+          "name": "line_interview_repeat_rounds",
+          "version": "20260906104156"
+        },
+        {
+          "name": "rejection_letter_drafts",
+          "version": "20260906104205"
+        },
+        {
+          "name": "fix_rejection_letter_recipient_email_validation",
+          "version": "20260906104211"
+        },
+        {
+          "name": "rejection_letter_configuration",
+          "version": "20260906104218"
+        },
+        {
+          "name": "rejection_letter_email_delivery",
+          "version": "20260906104526"
+        },
+        {
+          "name": "prevent_duplicate_rejection_letter_delivery",
+          "version": "20260906111103"
+        },
+        {
+          "name": "interview_meetings",
+          "version": "20260912165749"
+        },
+        {
+          "name": "interview_invitation_templates",
+          "version": "20260912175427"
+        },
+        {
+          "name": "offer_pass_open_headcount_respects_did_not_start",
+          "version": "20260924072452"
+        },
+        {
+          "name": "requisition_priority",
+          "version": "20260928111351"
+        },
+        {
+          "name": "admin_cross_site_group_matches",
+          "version": "20260929041809"
+        },
+        {
+          "name": "rejection_reason_catalog",
+          "version": "20260930075803"
+        },
+        {
+          "name": "candidate_requisition_associations",
+          "version": "20261002043411"
+        },
+        {
+          "name": "editable_requisition_id",
+          "version": "20261002043426"
+        },
+        {
+          "name": "optional_department_directory_for_requisition",
+          "version": "20261002045614"
+        },
+        {
+          "name": "offer_backed_candidate_requisition_links",
+          "version": "20261002103846"
+        },
+        {
+          "name": "headcount_exclude_did_not_start",
+          "version": "20261003032803"
+        },
+        {
+          "name": "fix_line_interview_round_date_derivation",
+          "version": "20261026040217"
+        },
+        {
+          "name": "production_application_site_backfill",
+          "version": "20261011153944"
+        },
+        {
+          "name": "application_context_hardening",
+          "version": "20261011160759"
+        },
+        {
+          "name": "application_no_show_reapplication",
+          "version": "20261011162307"
+        },
+        {
+          "name": "application_correction_attribution",
+          "version": "20261011163003"
+        },
+        {
+          "name": "application_stage_chronology",
+          "version": "20261011165617"
+        },
+        {
+          "name": "production_creator_provenance_prep",
+          "version": "20261102001228"
+        },
+        {
+          "name": "candidate_profile_privacy_tabs",
+          "version": "20261015074832"
+        },
+        {
+          "name": "offer_candidates_lookup",
+          "version": "20261101174258"
+        },
+        {
+          "name": "rejection_id_alias_search",
+          "version": "20261101184800"
+        },
+        {
+          "name": "profile_registry_context",
+          "version": "20261015080617"
+        },
+        {
+          "name": "group_pic_offer_context",
+          "version": "20261015083414"
+        },
+        {
+          "name": "candidate_group_journey_claims",
+          "version": "20261015091726"
+        },
+        {
+          "name": "five_digit_app_ids",
+          "version": "20261101124015"
+        },
+        {
+          "name": "candidate_registry_list",
+          "version": "20261101125118"
+        },
+        {
+          "name": "dashboard_summaries",
+          "version": "20261101130623"
+        },
+        {
+          "name": "operational_pipeline_lists",
+          "version": "20261101130720"
+        },
+        {
+          "name": "pipeline_history_list",
+          "version": "20261101133343"
+        },
+        {
+          "name": "pipeline_history_sort_filter_contract",
+          "version": "20261101134435"
+        },
+        {
+          "name": "requisition_list_endpoint",
+          "version": "20261101134656"
+        },
+        {
+          "name": "recruitment_list_optimization",
+          "version": "20261101140739"
+        },
+        {
+          "name": "stage_bottleneck_summaries",
+          "version": "20261101152821"
+        },
+        {
+          "name": "async_application_destinations_lookup",
+          "version": "20261101170913"
+        },
+        {
+          "name": "dashboard_owner_filter_options",
+          "version": "20261101183700"
+        },
+        {
+          "name": "home_recruitment_list_filters",
+          "version": "20261102101500"
+        },
+        {
+          "name": "home_quality_detail_scope",
+          "version": "20261102113000"
+        },
+        {
+          "name": "home_quality_exact_group_scope",
+          "version": "20261102114500"
+        },
+        {
+          "name": "pipeline_stage_board_membership",
+          "version": "20261102120000"
+        },
+        {
+          "name": "requisition_link_option_filters",
+          "version": "20261102121000"
+        },
+        {
+          "name": "home_welcome_summaries",
+          "version": "20261102122000"
+        },
+        {
+          "name": "home_quality_duplicate_key_precompute",
+          "version": "20261102123000"
+        },
+        {
+          "name": "requisition_page_enrichment_after_limit",
+          "version": "20261102123100"
+        },
+        {
+          "name": "bottleneck_authorization_key_memoization",
+          "version": "20261102123200"
+        },
+        {
+          "name": "rejection_distinct_authorization_precompute",
+          "version": "20261102123300"
+        },
+        {
+          "name": "candidate_assignment_application_history_index",
+          "version": "20261102123400"
+        },
+        {
+          "name": "ytd_report_materialization",
+          "version": "20261102123500"
+        },
+        {
+          "name": "home_loading_sections",
+          "version": "20261103031915"
+        },
+        {
+          "name": "candidate_pipeline_latency",
+          "version": "20261103144136"
+        }
+      ]
+    }
+  },
+  "normalized_helpers_equal_in_develop_and_main": true
+}
