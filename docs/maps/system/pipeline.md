@@ -25,6 +25,8 @@ Dashboard Stage Bottleneck detail entry: [report loader](../../../src/lib/dashbo
 - Entry: `/pipeline`.
 - Existing check/search: [tests/e2e/pipeline-actions.spec.ts](../../../tests/e2e/pipeline-actions.spec.ts), [tests/e2e/pipeline-board.spec.ts](../../../tests/e2e/pipeline-board.spec.ts), [tests/db/candidate-pipeline-paired-status.sql](../../../tests/db/candidate-pipeline-paired-status.sql).
 
+- Stage pagination: compact `< current/total >` controls are independent for each active and failed stage; terminal failure queries carry both `boardFilter=failed` and `stage`. See [Pipeline contract](../../design/pipeline.md#compact-stage-pagination-and-failed-columns) and [release evidence](../../work-items/pipeline-pagination-recruiter-loading/implementation.md).
+
 ### F23: Repeatable interview rounds and dashboard stage metrics
 
 - Owner/search: [StageRail.tsx](../../../src/components/ui/StageRail.tsx), [HomeView.tsx](../../../src/components/dashboard/HomeView.tsx), [PipelineBoardView.tsx](../../../src/components/pipeline/PipelineBoardView.tsx), [RecruitmentWorkspace.tsx](../../../src/components/RecruitmentWorkspace.tsx), [VacancyWaterfallView.tsx](../../../src/components/dashboard/VacancyWaterfallView.tsx), `202609050001_line_interview_repeat_rounds.sql`.

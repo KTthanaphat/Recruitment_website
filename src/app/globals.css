@@ -655,3 +655,7 @@ button.ats-attendance-button:disabled { background: #E4E9F2; color: #7D8DA8; }
 @media (max-width: 639px), (pointer: coarse) {
   .ats-attendance-button, .ats-attendance-placeholder { height: 44px; width: 44px; }
 }
+
+/* Pipeline pagers stay visually compact and retain phone touch targets. */
+.ats-pipeline-page-button { width: 28px; height: 28px; }
+@media (max-width: 767px) { .ats-pipeline-page-button { width: 44px; height: 44px; } }

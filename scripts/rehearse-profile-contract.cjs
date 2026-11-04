@@ -228,6 +228,10 @@ async function main() {
     await db.exec('alter function public.app_recruitment_applications_page_v1(text,jsonb,text,text,integer,jsonb,text,boolean,boolean) rename to test_previous_candidate_page');
   }
   await db.exec(fs.readFileSync(path.join(root,'supabase/migrations/20261103080120_candidate_pipeline_latency.sql'),'utf8'));
+  if (process.argv.includes('--sourcing-records')) {
+    const migration = fs.readdirSync(path.join(root,'supabase/migrations')).find(name => name.endsWith('_sourcing_records_loading.sql'));
+    await db.exec(fs.readFileSync(path.join(root,'supabase/migrations',migration),'utf8'));
+  }
   assert.equal((await db.query("select to_regclass('public.idx_candidate_application_assignments_application_id') as idx")).rows[0].idx,null,'chronological index migration is not masked by the early schema20 replay');
   await db.exec(assignmentHistoryMigration);
   assert.deepEqual((await db.query("select i.indisvalid valid,i.indisready ready,i.indpred is null all_history from pg_index i where i.indexrelid='public.idx_candidate_application_assignments_application_id'::regclass")).rows[0],{valid:true,ready:true,all_history:true},'additive migration creates a valid ready all-history index without a partial predicate');
@@ -510,6 +514,8 @@ async function main() {
   await db.exec('reset role');
   console.log('Home core/Welcome parity verified under administrator, restricted site recruiter and viewer RLS; anonymous execution rejected.');
   if (process.argv.includes('--candidate-latency')) await require('./verify-candidate-latency.cjs')(db, root);
+  if (process.argv.includes('--sourcing-records')) await require('./verify-sourcing-records.cjs')(db, root);
+  if (process.argv.includes('--recruiter-read-upgrade')) await require('./verify-recruiter-read-upgrade.cjs')(db, root);
   await db.close();
 }
 main().catch(async error=>{console.error(error.message);await db.close();process.exitCode=1;});

@@ -601,3 +601,11 @@ Home essential metrics use `app_home_core_summary_v1`, independently of calendar
 ### Candidate Pipeline loading and committed saves
 
 Operational boards load visible stages independently in cursor blocks of 25, display five cards before grouping, and defer exact totals. Offscreen stages load on scroll/focus; phone disclosure stages load when opened. Home keeps its existing bounded page/sort/cursor behavior and shows records before counts. Selected candidate workflows apply authorized successful receipts to visible rows and open detail, then combine affected refreshes for 100 ms. A stage change reveals its destination block without resetting other stages; excluded candidates retain the filters and receive a saved-result message. Pending saves do not speculate about completed stages. See the [Pipeline contract](design/pipeline.md).
+
+### Record Sourcing loading
+
+Record Sourcing uses the bounded `sourcing_records` projection; legacy sourcing interfaces remain compatible. Only the visible Board or History requests records/counts, and standalone Sourcing does not request embedded charts. The selected embedded week and preceding-week comparison load independently before the 25-week navigator and summary charts. Load more appends older weeks on demand; the date picker opens any lifecycle week without traversing earlier pages. Navigator/chart results do not reset the draft. Editor, navigator and chart failures have independent retry states; unknown counts remain a dash.
+
+### Pipeline stage pagination
+
+Pipeline board controls use `< current/total >`, with unknown totals shown as an ellipsis and no pager for empty results. Active stages and each Failed Candidates stage retain independent five-card pages, 25-record cursor blocks, eventual exact totals, loading/error states and retries. There is no section-wide Failed Candidates page. Standalone failures retain their recent period; embedded failures retain all-time group scope. Phone controls keep 44px touch targets. Pipeline history-table pagination is unchanged.

@@ -3,7 +3,7 @@ import { scheduleRecruitmentRead, promoteRecruitmentRead, clearRecruitmentReadQu
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
-export type RecruitmentListEntity = "candidate_registry" | "candidate_applications" | "pipeline_history" | "pipeline_stage" | "requisitions" | "position_groups" | "sourcing" | "offers" | "audit_log";
+export type RecruitmentListEntity = "candidate_registry" | "candidate_applications" | "pipeline_history" | "pipeline_stage" | "requisitions" | "position_groups" | "sourcing" | "sourcing_records" | "offers" | "audit_log";
 export type RecruitmentListCursor = { value: unknown; id: string };
 export type RecruitmentListRequest = {
   /** Auth/project identity tuple. Prevents cross-session or cross-environment cache reuse. */
@@ -21,7 +21,8 @@ export type RecruitmentListRequest = {
   priority?: number;
   freshAfter?: number;
 };
-export type RecruitmentListPage<T> = { readStarted?: number; items: T[]; total_count: number | null; has_more: boolean; has_more_before?: boolean; next_cursor: RecruitmentListCursor | null; previous_cursor?: RecruitmentListCursor | null };
+export type RecruitmentReadPhases = { queueMs: number; requestMs: number; receivedAt: number; cacheHit: boolean };
+export type RecruitmentListPage<T> = { readStarted?: number; readTiming?: RecruitmentReadPhases; items: T[]; total_count: number | null; has_more: boolean; has_more_before?: boolean; next_cursor: RecruitmentListCursor | null; previous_cursor?: RecruitmentListCursor | null };
 
 type RpcClient = Pick<SupabaseClient, "rpc">;
 type ReadEntry<T> = { epoch: number; promise: Promise<T>; expiresAt: number; controller: AbortController; readers: number; settled: boolean };
@@ -94,7 +95,7 @@ function affectedQuery(request: RecruitmentListRequest, receipt: CandidateAction
  if (filters.candidateId && filters.candidateId !== receipt.candidate_id) return false;
  if (filters.applicationId && !receipt.application_ids.includes(String(filters.applicationId))) return false;
  if (filters.groupId && ![...receipt.source_groups, ...receipt.groups].includes(String(filters.groupId))) return false;
- if (request.entity === "pipeline_stage" && filters.stage && ![...(receipt.source_stages ?? []), ...receipt.cards.map(row => row.latest_process)].includes(String(filters.stage))) return false;
+ if ((request.entity === "pipeline_stage" || request.entity === "candidate_applications" && filters.boardFilter === "failed") && filters.stage && ![...(receipt.source_stages ?? []), ...receipt.cards.map(row => row.latest_process)].includes(String(filters.stage))) return false;
  return true;
 }
 /** Revalidate loaded affected criteria once; untouched stages keep their pages and requests. */
@@ -115,9 +116,12 @@ export async function fetchRecruitmentList<T>(client: RpcClient, request: Recrui
   const key = cacheKey(client, normalized);
   let cached = pageCache.get(key);
   if (cached && (cached.expiresAt <= Date.now() || (request.freshAfter !== undefined && cached.epoch <= request.freshAfter))) { pageCache.delete(key); cached = undefined; }
+  const fromCache = Boolean(cached?.settled && !cached.controller.signal.aborted);
   if (!cached || cached.controller.signal.aborted) {
+    const queuedAt = performance.now();
+    let requestStarted = queuedAt;
     const controller = new AbortController();
-    const created: Promise<RecruitmentListPage<unknown>> = scheduleRecruitmentRead(client, () => { const call = client.rpc("app_recruitment_list_v1", {
+    const created: Promise<RecruitmentListPage<unknown>> = scheduleRecruitmentRead(client, () => { requestStarted = performance.now(); const call = client.rpc("app_recruitment_list_v1", {
       p_entity: normalized.entity,
       p_search: normalized.search,
       p_filters: normalized.filters,
@@ -135,7 +139,7 @@ export async function fetchRecruitmentList<T>(client: RpcClient, request: Recrui
       if (!result || !Array.isArray(result.items) || !(result.total_count === undefined || result.total_count === null || (typeof result.total_count === "number" && Number.isInteger(result.total_count) && result.total_count >= 0)) || result.items.length > limit || typeof result.has_more !== "boolean" || typeof result.has_more_before !== "boolean" || !cursorIsValid(result.next_cursor) || !cursorIsValid(result.previous_cursor) || (result.has_more && (!result.next_cursor || result.items.length === 0)) || (!result.has_more && result.next_cursor !== null) || (result.has_more_before !== Boolean(result.previous_cursor)) || (result.has_more_before && result.items.length === 0)) {
         throw new Error("Recruitment list returned an invalid response");
       }
-      return { ...result, readStarted: started, total_count: result.total_count ?? null } as RecruitmentListPage<unknown>;
+      return { ...result, readStarted: started, total_count: result.total_count ?? null, ...(normalized.entity === "sourcing_records" ? { readTiming: { queueMs: requestStarted - queuedAt, requestMs: performance.now() - requestStarted, receivedAt: performance.now(), cacheHit: false } } : {}) } as RecruitmentListPage<unknown>;
     });
     cached = { epoch: nextCandidateReadEpoch(), promise: created, expiresAt: Number.POSITIVE_INFINITY, controller, readers: 0, settled: false };
     const entry = cached; void created.then(() => { entry.settled = true; }, () => { entry.settled = true; });
@@ -144,7 +148,7 @@ export async function fetchRecruitmentList<T>(client: RpcClient, request: Recrui
     void created.then(() => { const current = pageCache.get(key); if (current?.promise === created) current.expiresAt = Date.now() + 30_000; }, () => { if (pageCache.get(key)?.promise === created) pageCache.delete(key); });
   }
   if (!request.background && !cached.settled) promoteRecruitmentRead(client, cached.controller.signal, request.priority ?? 0);
-  try { const page = await lease(cached, request.signal) as RecruitmentListPage<T>; return { ...page, items: patchCandidateRows(client, request.accessScope, page.items, request, page.readStarted) }; }
+  try { const page = await lease(cached, request.signal) as RecruitmentListPage<T>; return { ...page, ...(page.readTiming && fromCache ? { readTiming: { queueMs: 0, requestMs: 0, receivedAt: performance.now(), cacheHit: true } } : {}), items: patchCandidateRows(client, request.accessScope, page.items, request, page.readStarted) }; }
   catch (error) { if ((!request.signal?.aborted || cached.controller.signal.aborted) && pageCache.get(key) === cached) pageCache.delete(key); throw error; }
 }
 
@@ -218,9 +222,9 @@ export function invalidateRecruitmentLists(...entities: RecruitmentListEntity[])
 }
 
 const AUDIT_MUTATION_DEPENDENCIES = ["audit_log"] as const satisfies readonly RecruitmentListEntity[];
-const APPLICATION_MUTATION_DEPENDENCIES = ["audit_log", "candidate_registry", "candidate_applications", "pipeline_history", "pipeline_stage", "offers", "requisitions", "position_groups", "sourcing"] as const satisfies readonly RecruitmentListEntity[];
-const OFFER_MUTATION_DEPENDENCIES = ["audit_log", "offers", "candidate_registry", "candidate_applications", "pipeline_history", "pipeline_stage", "requisitions", "position_groups", "sourcing"] as const satisfies readonly RecruitmentListEntity[];
-const REQUISITION_GROUP_MUTATION_DEPENDENCIES = ["audit_log", "requisitions", "position_groups", "sourcing", "offers", "candidate_registry", "candidate_applications", "pipeline_history", "pipeline_stage"] as const satisfies readonly RecruitmentListEntity[];
+const APPLICATION_MUTATION_DEPENDENCIES = ["audit_log", "candidate_registry", "candidate_applications", "pipeline_history", "pipeline_stage", "offers", "requisitions", "position_groups", "sourcing", "sourcing_records"] as const satisfies readonly RecruitmentListEntity[];
+const OFFER_MUTATION_DEPENDENCIES = ["audit_log", "offers", "candidate_registry", "candidate_applications", "pipeline_history", "pipeline_stage", "requisitions", "position_groups", "sourcing", "sourcing_records"] as const satisfies readonly RecruitmentListEntity[];
+const REQUISITION_GROUP_MUTATION_DEPENDENCIES = ["audit_log", "requisitions", "position_groups", "sourcing", "sourcing_records", "offers", "candidate_registry", "candidate_applications", "pipeline_history", "pipeline_stage"] as const satisfies readonly RecruitmentListEntity[];
 
 /** Candidate operations are narrow; other and unknown writes keep conservative invalidation. */
 export function recruitmentListDependenciesForMutation(endpoint: string): readonly RecruitmentListEntity[] {
@@ -319,5 +323,5 @@ export function useRecruitmentList<T>({ client, accessScope, entity, filters = {
   const totalCount = currentCount?.value ?? null;
   const countLoading = currentCount?.loading ?? Boolean(enabled && client && accessScope);
   const countError = currentCount?.error ?? false;
-  return { settled: loadedKey === requestKey || activeError, initialLoading: Boolean(enabled && client && accessScope && !current && !activeError), refreshing: Boolean(loading && current), search: activeSearch, setSearch: searchInput?.setValue ?? setSearch, items: client && current ? patchCandidateRows(client, accessScope, current.items, { entity, filters, search: debouncedSearch }, current.readStarted) : [], totalCount, countLabel: totalCount === null ? countError ? "—" : countLoading ? "…" : "—" : String(totalCount), countLoading, countError, page: displayPage, pageSize, setPageSize: changePageSize, loading, error: activeError, canPrevious: !loading && page > 1, canNext: !loading && Boolean(current?.has_more && current.next_cursor), goPrevious, goNext, goFirst, retry: () => setRetry(value => value + 1), retryCount: () => setCountRetry(value => value + 1) };
+  return { readTiming: current?.readTiming, settled: loadedKey === requestKey || activeError, initialLoading: Boolean(enabled && client && accessScope && !current && !activeError), refreshing: Boolean(loading && current), search: activeSearch, setSearch: searchInput?.setValue ?? setSearch, items: client && current ? patchCandidateRows(client, accessScope, current.items, { entity, filters, search: debouncedSearch }, current.readStarted) : [], totalCount, countLabel: totalCount === null ? countError ? "—" : countLoading ? "…" : "—" : String(totalCount), countLoading, countError, page: displayPage, pageSize, setPageSize: changePageSize, loading, error: activeError, canPrevious: !loading && page > 1, canNext: !loading && Boolean(current?.has_more && current.next_cursor), goPrevious, goNext, goFirst, retry: () => setRetry(value => value + 1), retryCount: () => setCountRetry(value => value + 1) };
 }

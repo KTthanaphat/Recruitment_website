@@ -62,6 +62,8 @@ Read this node for this feature only. It indexes ownership; product rules remain
 - Entry: `/sourcing`, Workspace.
 - Existing check/search: [tests/e2e/wave-4.spec.ts](../../../tests/e2e/wave-4.spec.ts).
 
+- Loading ownership: `sourcing_records` uses a sourcing-only projection; the legacy `sourcing` contract remains available. Embedded selected-week loading is independent of the 25-week navigator and charts. See [Workspace loading behavior](../../design/workspace.md#independent-sourcing-loading). Checks: `sourcing-list-query.spec.ts` and `node scripts/rehearse-profile-contract.cjs --sourcing-records`.
+
 ## Dependency edges
 
 | Edge | Target | Follow when |

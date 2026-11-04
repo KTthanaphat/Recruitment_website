@@ -137,11 +137,11 @@ test("scoped invalidation notifies mounted consumers of only that entity", () =>
 test("offer mutations refresh related applications, requisitions, groups, sourcing and audit consumers", () => {
   clearRecruitmentListCache();
   const changed = [];
-  const entities = ["offers", "candidate_applications", "candidate_registry", "pipeline_stage", "pipeline_history", "requisitions", "position_groups", "sourcing", "audit_log"];
+  const entities = ["offers", "candidate_applications", "candidate_registry", "pipeline_stage", "pipeline_history", "requisitions", "position_groups", "sourcing", "sourcing_records", "audit_log"];
   const unsubscribers = entities.map(entity => subscribeRecruitmentLists(entity, () => changed.push(entity)));
   try {
     invalidateRecruitmentListsForMutation("app_upsert_offer");
-    assert.deepEqual(changed.sort(), ["audit_log", "candidate_applications", "candidate_registry", "offers", "pipeline_history", "pipeline_stage", "position_groups", "requisitions", "sourcing"].sort());
+    assert.deepEqual(changed.sort(), ["audit_log", "candidate_applications", "candidate_registry", "offers", "pipeline_history", "pipeline_stage", "position_groups", "requisitions", "sourcing", "sourcing_records"].sort());
     assert.deepEqual([...recruitmentListDependenciesForMutation("app_unknown_write")].sort(), [...entities].sort());
     changed.length = 0;
     invalidateRecruitmentListsForMutation("app_unknown_write");
@@ -152,7 +152,7 @@ test("offer mutations refresh related applications, requisitions, groups, sourci
 test("candidate mutations refresh journey consumers without unrelated offer/requisition/sourcing queries", () => {
   clearRecruitmentListCache();
   const changed = [];
-  const entities = ["offers", "candidate_applications", "candidate_registry", "pipeline_stage", "pipeline_history", "requisitions", "position_groups", "sourcing", "audit_log"];
+  const entities = ["offers", "candidate_applications", "candidate_registry", "pipeline_stage", "pipeline_history", "requisitions", "position_groups", "sourcing", "sourcing_records", "audit_log"];
   const unsubscribers = entities.map(entity => subscribeRecruitmentLists(entity, () => changed.push(entity)));
   try {
     for (const endpoint of ["app_complete_pipeline_stage_v2", "app_transfer_candidate_application_v1"]) {

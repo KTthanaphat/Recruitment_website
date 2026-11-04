@@ -52,3 +52,16 @@ test("a queued prefetch is promoted when it becomes the user's visible block",as
  const prefetch=scheduleRecruitmentRead(client,async()=>{started=true;},20,{signal:signal.signal});await tick();assert.equal(started,false);
  promoteRecruitmentRead(client,signal.signal);await prefetch;assert.equal(started,true);gate.resolve();await background;
 });
+
+
+test("browser read diagnostics are opt-in and expose only numeric phases/status", async()=>{
+  const previous=global.window;const events=[];
+  global.window={__recruitmentMeasureReads:true,dispatchEvent:event=>events.push(event.detail)};
+  try{
+    await scheduleRecruitmentRead({},async()=>({candidate_id:"private-fixture"}),0);
+    assert.equal(events.length,1);
+    assert.deepEqual(Object.keys(events[0]).sort(),["priority","queueMs","requestMs","status"].sort());
+    assert.equal(events[0].status,"fulfilled");assert(events[0].queueMs>=0);assert(events[0].requestMs>=0);
+    global.window.__recruitmentMeasureReads=false;await scheduleRecruitmentRead({},async()=>1,0);assert.equal(events.length,1);
+  }finally{if(previous===undefined)delete global.window;else global.window=previous;}
+});

@@ -10,16 +10,17 @@ import { SOURCING_CHANNELS } from "@/lib/constants";
 import { formatDate, formatSourcingWeekRange } from "@/lib/format";
 import { translate } from "@/lib/i18n/dictionary";
 import { SOURCING_CHANNEL_COLORS } from "@/lib/sourcing-colors";
-import type { EnrichedSourcingGroup, Language, Profile, SourcingLifecycleRow, SourcingWeeklyUpdate } from "@/types/recruitment";
+import type { SourcingRecordGroup, Language, Profile, SourcingRecordRow, SourcingWeeklyUpdate } from "@/types/recruitment";
 
 type Channel = (typeof SOURCING_CHANNELS)[number];
 
-export function EmbeddedSourcingPanel({ loading = false, refreshing = false, error = false, onRetry, language, rows, selectedWeek, selectedRow, previousUpdate, previousApplicants, profile, canWrite, onWeekChange, onDirty, onSave, onOpenGroup }: {
+export function EmbeddedSourcingPanel({ loading = false, refreshing = false, error = false, onRetry, historyLoading = false, historyError = false, onRetryHistory, hasMore = false, onLoadMore, language, rows, selectedWeek, selectedRow, previousUpdate, previousApplicants, profile, canWrite, onWeekChange, onDirty, onSave, onOpenGroup }: {
+  historyLoading?: boolean; historyError?: boolean; onRetryHistory?: () => void; hasMore?: boolean; onLoadMore?: () => void;
   loading?: boolean; refreshing?: boolean; error?: boolean; onRetry?: () => void;
   language: Language;
-  rows: SourcingLifecycleRow[];
+  rows: SourcingRecordRow[];
   selectedWeek: string;
-  selectedRow: SourcingLifecycleRow | null;
+  selectedRow: SourcingRecordRow | null;
   previousUpdate: SourcingWeeklyUpdate | null;
   previousApplicants: number | null;
   profile: Profile | null;
@@ -27,36 +28,37 @@ export function EmbeddedSourcingPanel({ loading = false, refreshing = false, err
   onWeekChange: (value: string) => void;
   onDirty: () => void;
   onSave: (payload: Record<string, unknown>, summary: string) => void;
-  onOpenGroup: (group: EnrichedSourcingGroup) => void;
+  onOpenGroup: (group: SourcingRecordGroup) => void;
 }) {
   return <section aria-busy={loading || refreshing} className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]" data-testid="workspace-sourcing-layout">
     <div className="min-w-0 rounded-xl border border-[#D7DEE8] bg-white p-3 sm:p-4">
       <div data-testid="workspace-sourcing-week-header" className="flex min-h-[4.5rem] items-start border-b border-[#E4E9F2] pb-3"><h2 className="text-lg font-semibold text-navy">{translate(language, "sourcingSelectWeek")}</h2></div>
       <div data-testid="workspace-sourcing-dates" className="mt-2 max-h-72 min-w-0 divide-y divide-[#E4E9F2] overflow-y-auto lg:max-h-[28rem]">
-        {loading ? <LoadingSkeleton variant="lookup" language={language}/> : error ? <div role="alert" className="py-3 text-sm text-danger">{translate(language,"loadFailed")} <RetryIconButton onClick={onRetry} loading={loading}>{translate(language,"retry")}</RetryIconButton></div> : null}{refreshing ? <RefreshIndicator language={language}/> : null}{rows.map((row) => {
+        {historyLoading && rows.length === 0 ? <LoadingSkeleton variant="lookup" language={language}/> : historyError ? <div role="alert" className="py-3 text-sm text-danger">{translate(language,"loadFailed")} <RetryIconButton onClick={onRetryHistory} loading={historyLoading}>{translate(language,"retry")}</RetryIconButton></div> : null}{refreshing ? <RefreshIndicator language={language}/> : null}{[...(selectedRow && !rows.some(row => row.week_start === selectedRow.week_start) ? [selectedRow] : []), ...rows].map((row) => {
           const selected = row.week_start === selectedWeek;
-          return <button key={`${row.group.group_id}:${row.week_start}`} type="button" aria-current={selected ? "date" : undefined} aria-label={`${formatDate(row.week_start, language)} ${translate(language, row.status === "saved" ? "recorded" : row.update ? "workspaceIncompleteWeek" : "workspaceMissingUpdate")}`} aria-description={formatSourcingWeekRange(row.week_start, language)} onClick={() => onWeekChange(row.week_start)} className={`flex min-h-14 w-full min-w-0 items-center gap-2 border-l-[3px] px-3 py-2 text-left hover:bg-[#F1F6FC] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary ${selected ? "border-primary bg-[#F1F6FC]" : "border-transparent"}`}>
-            <span className="min-w-0 flex-1"><span className="block text-sm font-semibold tabular-nums text-navy">{formatDate(row.week_start, language)}</span><span className="block text-xs tabular-nums text-slate">{formatSourcingWeekRange(row.week_start, language)}</span></span>
+          return <button key={`${row.group.group_id}:${row.week_start}`} type="button" aria-current={selected ? "date" : undefined} aria-label={`${formatDate(row.week_start, language)} ${translate(language, row.status === "saved" ? "recorded" : row.update ? "workspaceIncompleteWeek" : "workspaceMissingUpdate")}`} aria-describedby={`sourcing-period-${row.group.group_id}-${row.week_start}`} onClick={() => onWeekChange(row.week_start)} className={`flex min-h-14 w-full min-w-0 items-center gap-2 border-l-[3px] px-3 py-2 text-left hover:bg-[#F1F6FC] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary ${selected ? "border-primary bg-[#F1F6FC]" : "border-transparent"}`}>
+            <span className="min-w-0 flex-1"><span className="block text-sm font-semibold tabular-nums text-navy">{formatDate(row.week_start, language)}</span><span id={`sourcing-period-${row.group.group_id}-${row.week_start}`} className="block text-xs tabular-nums text-slate">{formatSourcingWeekRange(row.week_start, language)}</span></span>
             <Tag appearance="soft" tone={row.status === "saved" ? "success" : "warning"}>{translate(language, row.status === "saved" ? "recorded" : row.update ? "workspaceIncompleteWeek" : "workspaceMissingUpdate")}</Tag>
             <ChevronRight className="h-4 w-4 shrink-0 text-slate" aria-hidden="true" />
           </button>;
         })}
-        {rows.length === 0 && !loading && !error ? <EmptyState variant="quiet" message={translate(language, "noOpenSourcingWorkspace")} /> : null}
+        {rows.length === 0 && !selectedRow && !historyLoading && !historyError ? <EmptyState variant="quiet" message={translate(language, "noOpenSourcingWorkspace")} /> : null}
       </div>
+      {hasMore ? <Button type="button" variant="secondary" className="mt-3 w-full" disabled={historyLoading} onClick={onLoadMore}>{language === "th" ? "โหลดเพิ่มเติม" : "Load more"}</Button> : null}
     </div>
     <div className="min-w-0 rounded-xl border border-[#D7DEE8] bg-white p-3 sm:p-4">
       <div data-testid="workspace-sourcing-update-header" className="flex min-h-[4.5rem] min-w-0 flex-wrap items-start justify-between gap-3 border-b border-[#E4E9F2] pb-3">
         <div className="min-w-0"><h2 className="break-words text-lg font-semibold text-navy">{translate(language, "sourcingUpdateForDate", { date: formatDate(selectedWeek, language) })}</h2><p className="mt-1 text-xs tabular-nums text-slate">{formatSourcingWeekRange(selectedWeek, language)}</p></div>
         <div className="flex min-w-0 flex-wrap items-center gap-2"><DayDateSelector ariaLabel={translate(language, "weekStarting")} language={language} name="workspace_sourcing_week" value={selectedWeek} onChange={(event) => onWeekChange(event.target.value)} required />{selectedRow ? <Button type="button" size="sm" variant="secondary" onClick={() => onOpenGroup(selectedRow.group)}>{translate(language, "details")}</Button> : null}</div>
       </div>
-      {loading ? <LoadingSkeleton variant="detail" language={language}/> : error && !selectedRow ? <p role="alert" className="py-3 text-sm text-danger">{translate(language,"loadFailed")}</p> : selectedRow ? <SourcingDraftForm key={`${selectedRow.group.group_id}:${selectedRow.week_start}:${selectedRow.update?.updated_at ?? "new"}`} language={language} row={selectedRow} previousUpdate={previousUpdate} previousApplicants={previousApplicants} profile={profile} canWrite={canWrite} onDirty={onDirty} onSave={onSave} /> : <EmptyState variant="quiet" message={translate(language, "noOpenSourcingWorkspace")} />}
+      {loading ? <LoadingSkeleton variant="detail" language={language}/> : error && !selectedRow ? <p role="alert" className="py-3 text-sm text-danger">{translate(language,"loadFailed")} <RetryIconButton onClick={onRetry}>{translate(language,"retry")}</RetryIconButton></p> : selectedRow ? <SourcingDraftForm key={`${selectedRow.group.group_id}:${selectedRow.week_start}:${selectedRow.update?.updated_at ?? "new"}`} language={language} row={selectedRow} previousUpdate={previousUpdate} previousApplicants={previousApplicants} profile={profile} canWrite={canWrite} onDirty={onDirty} onSave={onSave} /> : <EmptyState variant="quiet" message={translate(language, "noOpenSourcingWorkspace")} />}
     </div>
   </section>;
 }
 
 function SourcingDraftForm({ language, row, previousUpdate, previousApplicants, profile, canWrite, onDirty, onSave }: {
   language: Language;
-  row: SourcingLifecycleRow;
+  row: SourcingRecordRow;
   previousUpdate: SourcingWeeklyUpdate | null;
   previousApplicants: number | null;
   profile: Profile | null;

@@ -27,7 +27,7 @@ export function usePipelineBoardList(input: Parameters<typeof useRecruitmentList
   function revealCard() {
     const receipt = latestCandidateReceipt(client, accessScope);
     if (!receipt || !candidateActionReveals(receipt.operation) || handledReveal.current === receipt.request_id) return null;
-    const card = receipt.cards.find(value => filters.boardFilter === "failed" ? value.latest_result === 0 : filters.boardFilter === "passed_offer" ? value.latest_process === "Offer" && value.latest_result === 1 : value.latest_process === filters.stage && value.latest_result !== 0 && !(value.latest_process === "Offer" && value.latest_result === 1));
+    const card = receipt.cards.find(value => filters.boardFilter === "failed" ? value.latest_result === 0 && (!filters.stage || value.latest_process === filters.stage) : filters.boardFilter === "passed_offer" ? value.latest_process === "Offer" && value.latest_result === 1 : value.latest_process === filters.stage && value.latest_result !== 0 && !(value.latest_process === "Offer" && value.latest_result === 1));
     return card ? { receipt, card } : null;
   }
   const desired = useRef(1); const controllers = useRef(new Set<AbortController>());
@@ -45,7 +45,16 @@ export function usePipelineBoardList(input: Parameters<typeof useRecruitmentList
     const requests = controllers.current; const controller = new AbortController(); requests.add(controller);
     setState(previous => ({ identity, revision, blocks: previous.identity === identity ? previous.blocks : new Map(), page: targetPage, loading: true, error: false }));
     fetchRecruitmentList<EnrichedCandidate>(client, { accessScope, entity, filters, sort, direction, search: debounced, limit: 25, cursor: anchor.current.cursors.get(targetBlock), before: anchor.current.before.has(targetBlock), signal: controller.signal })
-      .then(result => { if (!canceled) setState({ identity, revision, blocks: new Map([[targetBlock, result]]), page: targetPage, loading: false, error: false }); })
+      .then(result => {
+        if (canceled) return;
+        if (!result.items.length && targetPage > 1) {
+          anchor.current = { identity, cursors: new Map([[0, null]]), before: new Set(), page: 1 };
+          desired.current = 1; setRetry(value => value + 1); return;
+        }
+        const availablePage = Math.min(targetPage, targetBlock * 5 + Math.max(1, Math.ceil(result.items.length / 5)));
+        anchor.current.page = availablePage; desired.current = availablePage;
+        setState({ identity, revision, blocks: new Map([[targetBlock, result]]), page: availablePage, loading: false, error: false });
+      })
       .catch(() => { if (!canceled) setState(previous => ({ ...previous, loading: false, error: true })); });
     return () => { canceled = true; for (const request of requests) request.abort(); requests.clear(); };
     // Serialized identity and generation keys cover the request values above.

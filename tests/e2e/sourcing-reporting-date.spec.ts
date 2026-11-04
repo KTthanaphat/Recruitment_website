@@ -33,8 +33,8 @@ for (const existing of [false, true]) {
     const confirmation = page.getByRole("dialog", { name: "Confirm Save" });
     await expect(confirmation.locator("pre")).toContainText('"week_start": "2026-10-10"');
     await confirmation.getByRole("button", { name: "Save changes" }).click();
-    await expect.poll(() => mock.rpcCalls.at(-1)?.endpoint).toBe("app_upsert_sourcing_weekly_update");
-    const payload = mock.rpcCalls.at(-1)?.payload;
+    await expect.poll(() => mock.rpcCalls.some(call => call.endpoint === "app_upsert_sourcing_weekly_update")).toBe(true);
+    const payload = mock.rpcCalls.findLast(call => call.endpoint === "app_upsert_sourcing_weekly_update")?.payload;
     expect(payload).toMatchObject({ group_id: "GRP-ENG", week_start: "2026-10-10", applicants_fb: "9" });
     expect(payload?.expected_updated_at).toBe(savedTimestamp);
     expect(mock.data.sourcing_weekly_updates.filter((row) => row.group_id === "GRP-ENG" && row.week_start === "2026-10-10")).toHaveLength(1);
@@ -51,6 +51,6 @@ test("sourcing channel changes send the selected Saturday effective date", async
   const confirmation = page.getByRole("dialog", { name: "Confirm Save" });
   await expect(confirmation.locator("pre")).toContainText('"effective_week": "2026-10-10"');
   await confirmation.getByRole("button", { name: "Save changes" }).click();
-  await expect.poll(() => mock.rpcCalls.at(-1)?.endpoint).toBe("app_set_sourcing_group_channel_v1");
-  expect(mock.rpcCalls.at(-1)?.payload).toMatchObject({ group_id: "GRP-ENG", effective_week: "2026-10-10" });
+  await expect.poll(() => mock.rpcCalls.some(call => call.endpoint === "app_set_sourcing_group_channel_v1")).toBe(true);
+  expect(mock.rpcCalls.findLast(call => call.endpoint === "app_set_sourcing_group_channel_v1")?.payload).toMatchObject({ group_id: "GRP-ENG", effective_week: "2026-10-10" });
 });

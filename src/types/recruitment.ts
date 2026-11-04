@@ -499,6 +499,18 @@ export type EnrichedSourcingGroup = {
   latest_saved_at?: string | null;
 };
 
+/** Operational sourcing projection, without candidate or Pipeline aggregates. */
+export type SourcingRecordGroup = Pick<EnrichedSourcingGroup,
+  "group_id" | "group_position" | "sites" | "owners" | "doc_ids" | "open_headcount" |
+  "channel_fb" | "channel_jobthai" | "channel_jobtopgun" | "channel_jobdb" | "channel_jobbkk" |
+  "channel_linkedin" | "channel_walkin" | "channel_referral" | "channel_others" | "latest_update">;
+export type SourcingRecordRow = {
+  group: SourcingRecordGroup;
+  week_start: string;
+  update: SourcingWeeklyUpdate | null;
+  status: "saved" | "needs_recording";
+};
+
 /** A saved or expected Monday slot within one position group's sourcing lifecycle. */
 export type SourcingLifecycleRow = {
   group: EnrichedSourcingGroup;

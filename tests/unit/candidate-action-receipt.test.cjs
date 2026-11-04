@@ -42,3 +42,15 @@ test('sequential saves for separate applications of one candidate cannot revive 
  const rows=patchCandidateRows(client,'scope',[{candidate_id:'CAN-1',application_id:'app-1'},{candidate_id:'CAN-1',application_id:'app-2'}],{entity:'candidate_applications'});
  assert.deepEqual(rows.map(row=>row.latest_process),['HR Interview','Test']);
 });
+
+
+test('failed-stage invalidation and committed patches stay inside source/destination stages',()=>{
+ const client={},scope='failed-stage-scope',changes=[];
+ const requests=['Phone Screen','HR Interview','Test'].map(stage=>({accessScope:scope,entity:'candidate_applications',filters:{boardFilter:'failed',stage}}));
+ const unsubscribe=requests.map((request,index)=>subscribeRecruitmentQuery(client,request,()=>changes.push(index)));
+ const committed=receipt({cards:[{candidate_id:'CAN-1',application_id:'app-1',latest_process:'HR Interview',latest_result:0,group_id:'GRP-2',sites:[],person_in_charges:[],doc_ids:[]}],effects:['records','counts']});
+ invalidateCandidateRecruitmentLists(client,scope,[committed]);assert.deepEqual(changes,[0,1]);
+ publishCandidateReceipt(client,scope,committed);
+ assert.deepEqual(patchCandidateRows(client,scope,[{candidate_id:'CAN-1',application_id:'app-1',latest_process:'Phone Screen',latest_result:0}],requests[0]),[]);
+ unsubscribe.forEach(stop=>stop());
+});

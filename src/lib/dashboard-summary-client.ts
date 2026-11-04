@@ -30,7 +30,7 @@ async function cacheNamespace(client: SupabaseClient, profileKey: string) {
   const project = (client as unknown as { supabaseUrl?: string }).supabaseUrl ?? "supabase";
   return `${project}:${id}:${data.session?.user.id ?? "anonymous"}:${profileKey}`;
 }
-export function clearDashboardSummaryCache() { cache.clear(); }
+export function clearDashboardSummaryCache() { cache.clear(); sourcingSummaryReads.clear(); }
 function memo<T>(client: SupabaseClient, key: string, fetch: () => Promise<T>, outsideQueue = false): Promise<T> {
   const now = Date.now();
   for (const [entryKey, entry] of cache) if (entry.expiresAt <= now) cache.delete(entryKey);
@@ -170,10 +170,41 @@ export async function loadHomeQualityPage(client: SupabaseClient,input:{scope:Pi
     return result;
   });
 }
-export async function loadSourcingSummary(client:SupabaseClient,input:{selectedWeek:string;groupId?:string|null;scope:Pick<DashboardSummaryScope,"headerSite"|"headerPic"|"priorityOnly">;profileKey:string;refreshKey?:number}):Promise<SourcingSummary>{
+type SourcingSummaryRead = { promise: Promise<SourcingSummary>; controller: AbortController; readers: number; settled: boolean; expiresAt: number };
+const sourcingSummaryReads = new Map<string, SourcingSummaryRead>();
+async function sourcingSummaryLease(client: SupabaseClient, key: string, signal: AbortSignal | undefined, fetch: (signal: AbortSignal) => Promise<SourcingSummary>) {
+  if (signal?.aborted) throw new DOMException("Read canceled", "AbortError");
+  for (const [oldKey, entry] of sourcingSummaryReads) if (entry.expiresAt <= Date.now()) sourcingSummaryReads.delete(oldKey);
+  let entry = sourcingSummaryReads.get(key);
+  if (!entry) {
+    const controller = new AbortController();
+    const promise = scheduleRecruitmentRead(client, () => fetch(controller.signal), 1, { signal: controller.signal });
+    entry = { promise, controller, readers: 0, settled: false, expiresAt: Infinity };
+    const created = entry;
+    sourcingSummaryReads.set(key, created);
+    void promise.then(() => { created.settled = true; created.expiresAt = Date.now() + 30_000; }, () => { created.settled = true; if (sourcingSummaryReads.get(key) === created) sourcingSummaryReads.delete(key); });
+    while (sourcingSummaryReads.size > 100) sourcingSummaryReads.delete(sourcingSummaryReads.keys().next().value!);
+  }
+  const leased = entry;
+  leased.readers++;
+  let cancel: (() => void) | undefined;
+  try {
+    const cancellation = new Promise<never>((_, reject) => {
+      cancel = () => reject(new DOMException("Read canceled", "AbortError"));
+      signal?.addEventListener("abort", cancel, { once: true });
+    });
+    return await (signal ? Promise.race([leased.promise, cancellation]) : leased.promise);
+  } finally {
+    if (cancel) signal?.removeEventListener("abort", cancel);
+    leased.readers--;
+    if (!leased.readers && !leased.settled) { leased.controller.abort(); if (sourcingSummaryReads.get(key) === leased) sourcingSummaryReads.delete(key); }
+  }
+}
+export async function loadSourcingSummary(client:SupabaseClient,input:{selectedWeek:string;groupId?:string|null;scope:Pick<DashboardSummaryScope,"headerSite"|"headerPic"|"priorityOnly">;profileKey:string;refreshKey?:number;signal?:AbortSignal}):Promise<SourcingSummary>{
   const namespace=await cacheNamespace(client,input.profileKey),groupId=input.groupId??null,key=JSON.stringify(["sourcing-summary",namespace,input.selectedWeek,groupId,input.scope,input.refreshKey??0]);
-  return memo(client, key,async()=>{
-    const {data,error}=await client.rpc("app_recruitment_sourcing_summary_v1",{p_selected_week:input.selectedWeek,p_group_id:groupId,p_scope:input.scope});
+  return sourcingSummaryLease(client, key, input.signal, async(signal)=>{
+    const call=client.rpc("app_recruitment_sourcing_summary_v1",{p_selected_week:input.selectedWeek,p_group_id:groupId,p_scope:input.scope});
+    const {data,error}=await (typeof call.abortSignal === "function" ? call.abortSignal(signal) : call);
     if(error)throw new Error(error.message);
     const result=data as SourcingSummary|null;
     if(!result||!Array.isArray(result.weeks)||result.weeks.length>8||!result.channels||!Number.isInteger(result.expectedRows)||!Number.isInteger(result.updatedWeeks)||!Number.isInteger(result.completeness)||result.groupId!==groupId||result.selectedWeek!==input.selectedWeek||groupId!==null&&!result.stageChannels)throw new Error("Sourcing summary response is incomplete");
