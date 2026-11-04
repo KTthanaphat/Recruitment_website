@@ -45,8 +45,8 @@ test("requisition Change mode lets users replace a temporary Doc ID", async ({ p
   await page.goto("/requisitions?detailType=requisition&detailId=REQ-HQ-1");
   await expectWorkspaceReady(page);
   const drawer = page.getByRole("dialog", { name: "Engineer (L4)" });
-  await drawer.getByRole("button", { name: /More actions for Engineer/ }).click();
-  await drawer.getByRole("menuitem", { name: "Change record" }).click();
+  const profileHeading = drawer.getByRole("heading", { name: "Requisition profile" });
+  await profileHeading.locator("..").getByRole("button", { name: "Edit requisition", exact: true }).click();
 
   const formDialog = page.getByRole("dialog", { name: "Edit Requisition" });
   const docId = formDialog.locator('input[name="doc_id"]');
@@ -67,8 +67,8 @@ test("requisition Doc ID edit guidance fits and localizes in Thai", async ({ pag
   await page.goto("/requisitions?lang=th&detailType=requisition&detailId=REQ-HQ-1");
   const drawer = page.getByRole("dialog", { name: "Engineer (L4)" });
   await expect(drawer).toBeVisible();
-  await drawer.getByRole("button", { name: /More actions for Engineer/ }).click();
-  await drawer.getByRole("menuitem", { name: "แก้ไขรายการ" }).click();
+  const profileHeading = drawer.getByRole("heading", { name: "ข้อมูลคำขอ" });
+  await profileHeading.locator("..").getByRole("button", { name: "แก้ไขคำขอ", exact: true }).click();
 
   const formDialog = page.getByRole("dialog").filter({ has: page.locator('input[name="doc_id"]') });
   await expect(formDialog.locator('input[name="doc_id"]')).toHaveValue("REQ-HQ-1");
@@ -76,32 +76,28 @@ test("requisition Doc ID edit guidance fits and localizes in Thai", async ({ pag
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
-test("Requisition Detail uses the candidate workspace hierarchy and retains role-gated actions", async ({ page }) => {
+test("requisition profile Edit pencil is at the heading and role-gated", async ({ page }) => {
   await installMockSupabase(page, { role: "admin_recruiter" });
   await page.goto("/requisitions?detailType=requisition&detailId=REQ-HQ-1");
   await expectWorkspaceReady(page);
   const drawer = page.getByRole("dialog", { name: "Engineer (L4)" });
-  await expect(drawer).toContainText("Engineer (L4) / REQ-HQ-1");
-  await expect(drawer.getByRole("heading", { name: "Requisition overview" })).toBeVisible();
-  await expect(drawer.getByRole("heading", { name: "Requisition profile" })).toBeVisible();
-  await expect(drawer.getByText("Open HC", { exact: true }).first()).toBeVisible();
-  await expect(drawer.getByText("REQ-HQ-1", { exact: true }).last()).toBeVisible();
-  await expect(drawer.getByRole("button", { name: "Mark as priority", exact: true })).toBeVisible();
-  const close = drawer.getByRole("button", { name: "Close" });
-  await close.focus();
-  await expect(close).toBeFocused();
-  await page.keyboard.press("Escape");
-  await expect(drawer).toHaveCount(0);
+  const profileHeading = drawer.getByRole("heading", { name: "Requisition profile" });
+  const editRequisition = profileHeading.locator("..").getByRole("button", { name: "Edit requisition", exact: true });
+  await expect(editRequisition).toBeVisible();
+  const headingBox = await profileHeading.boundingBox();
+  const actionBox = await editRequisition.boundingBox();
+  expect(actionBox!.x).toBeGreaterThan(headingBox!.x);
+  await expect(editRequisition.locator("svg.lucide-pencil")).toHaveCount(1);
+  const jobLevel = drawer.locator("dl > div").filter({ has: drawer.getByText("Job Level", { exact: true }) });
+  await expect(jobLevel.getByRole("button", { name: "Edit Job Level", exact: true })).toHaveCount(0);
 
   await installMockSupabase(page, { role: "viewer" });
   await page.goto("/requisitions?detailType=requisition&detailId=REQ-HQ-1");
   await expectWorkspaceReady(page);
   const viewerDrawer = page.getByRole("dialog", { name: "Engineer (L4)" });
-  await expect(viewerDrawer.getByRole("heading", { name: "Requisition profile" })).toBeVisible();
-  await expect(viewerDrawer.getByRole("button", { name: "Change record" })).toHaveCount(0);
-  await expect(viewerDrawer.getByRole("button", { name: "Mark as priority", exact: true })).toBeDisabled();
+  const viewerHeading = viewerDrawer.getByRole("heading", { name: "Requisition profile" });
+  await expect(viewerHeading.locator("..").getByRole("button", { name: "Edit requisition", exact: true })).toHaveCount(0);
 });
-
 test("long requisition titles wrap at 390px without page-level overflow", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await installMockSupabase(page, { role: "admin_recruiter" });

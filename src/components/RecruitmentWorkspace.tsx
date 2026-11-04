@@ -4156,7 +4156,6 @@ function buildDetailBodyV2(
           primary={{ id: "workspace", label: translate(language, "workspaceOpen"), href: href(positionGroupIds.size === 1 ? `/workspace?type=group&id=${encodeURIComponent([...positionGroupIds][0])}&section=overview` : positionGroupIds.size > 1 ? `/workspace?groupChoices=${encodeURIComponent([...positionGroupIds].sort().join(","))}&section=overview` : "/workspace"), icon: <LampDesk size={18} aria-hidden="true" />, iconOnly: true, flat: true }}
           inlineAction={<RequisitionPriorityButton key={requisition.doc_id} requisition={requisition} language={language} canManage={canManageRequisitionPriority(data.profile, requisition)} onToggle={onTogglePriority} />}
           items={[
-            ...(canWrite ? [{ id: "change-record", label: translate(language, "changeRecord"), onSelect: () => onChangeRequisition(requisition.doc_id) }] : []),
             ...(canDeleteRecords ? [{
               id: "delete-record",
               label: translate(language, "deleteRecord"),
@@ -4185,7 +4184,7 @@ function buildDetailBodyV2(
           </section>
           <InlineDataQualityIssues issues={issues} language={language} />
           <section className="rounded-xl border border-[#D7DEE8] bg-white p-4 sm:p-5">
-          <SectionHeading className="mb-3" icon={<Files size={19} />} title={translate(language, "requisitionProfile")} />
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3"><SectionHeading icon={<Files size={19} />} title={translate(language, "requisitionProfile")} />{canWrite ? <Button type="button" size="icon-sm" variant="ghost" className="min-h-11 min-w-11 text-primary hover:bg-[#F1F6FC] hover:text-primary sm:min-h-9 sm:min-w-9" icon={<Pencil size={17} aria-hidden="true" />} aria-label={translate(language, "editRequisition")} title={translate(language, "editRequisition")} onClick={() => onChangeRequisition(requisition.doc_id)} /> : null}</div>
           <DetailGrid workspace language={language} rows={[
             { label: translate(language, "requisitionId"), value: requisition.doc_id, copyValue: requisition.doc_id, icon: <Hash size={18} /> },
             { label: translate(language, "prApprovedDate"), value: formatDate(requisition.pr_approved_date, language), icon: <CalendarDays size={18} /> },
@@ -4194,9 +4193,6 @@ function buildDetailBodyV2(
               label: translate(language, "jobLevel"),
               value: requisition.level ? (/^(0|[1-9]|1[0-4])$/.test(requisition.level) ? `L${requisition.level}` : requisition.level) : "—",
               icon: <Layers3 size={18} />,
-              action: canWrite && canManageRequisitionPriority(data.profile, requisition)
-                ? <Button type="button" size="icon-sm" variant="ghost" className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9" icon={<Pencil size={16} aria-hidden="true" />} aria-label={translate(language, "editJobLevel")} title={translate(language, "editJobLevel")} onClick={() => onChangeRequisition(requisition.doc_id)} />
-                : null
             },
             { label: translate(language, "site"), value: requisition.site || "—", icon: requisition.site === "HQ" ? <Building2 size={18} /> : <Factory size={18} /> },
             { label: translate(language, "department"), value: requisition.department || "—", icon: <Building2 size={18} /> },
