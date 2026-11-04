@@ -40,3 +40,15 @@ Production write duration, projection overhead and end-to-end browser latency re
 - Baseline failure isolated: the broad identity test `complete requisition profile, related links and sorted history fit desktop and phone drawers` expects related links, receives zero. Reproduced unchanged on main `c500b7d` at `http://127.0.0.1:3115`; excluded only from the final focused run. The full suite is not claimed green.
 - Native Supabase local-stack migration inventory was unavailable because `127.0.0.1:54322` has no running database. The generated migration was instead replayed and verified in disposable PGlite. No connected database fallback was used.
 - Existing unrelated checkout edits were preserved. No commit, push, deployment or connected database mutation was performed. All task-started local servers were stopped after verification.
+
+## Authorized release follow-up — 2026-11-04
+
+Release requested after implementation. The first live main benchmark found approximately 193–196 ms median receipt overhead for a selected site-recruiter record, exceeding the 100 ms target. EXPLAIN ANALYZE isolated a sequential application scan: 1,132 applications examined, 109 authorized before the group filter, 34 matching applications.
+
+Forward migration `20261104073701_requisition_receipt_projection.sql` bounds application reads per linked group with an optimizer barrier, materializes distinct candidate keys, and checks candidate visibility by exact key. It retains invoker execution, RLS, existing counts and existing indexes. The originally applied migration is unchanged.
+
+Main's subsequent selected-record warm SQL sample: site-recruiter status median 12.783 ms / p95 14.635 ms; edit median 14.492 ms / p95 15.521 ms; priority median 16.684 ms / p95 18.290 ms. Thirty samples per operation and variant; all three writer roles tested. Paired median receipt overhead was approximately 9–15 ms across those roles.
+
+The new analyzed projection used the existing `candidate_applications_group` index, read the 34 matching applications, and executed in 8.57 ms versus 202.846 ms for the prior projection. Exact display parity passed under system administrator, administrator recruiter and site recruiter scopes (85 / 85 / 34 distinct candidates in selected managed populations). Existing 25 RLS policies and RPC execution boundaries remained unchanged.
+
+Measurement transactions roll back all requisition/audit changes; sequence values can advance normally. SQL timing excludes authentication transport, network, client scheduling and rendering. Per user preference, live browser timing is excluded from this release measurement. Do not describe these selected-record warm SQL p95 values as browser or whole-workload p95.
