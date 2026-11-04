@@ -19,7 +19,9 @@ import { fetchApplicationDestinations, type ApplicationDestination } from "@/lib
 import type { DashboardData, Language } from "@/types/recruitment";
 
 const ApplicationDetailsContext = createContext<ReactNode>(null);
+const ApplicationDetailsActionContext = createContext<ReactNode>(null);
 export function CandidateApplicationDetailsExtras() { return useContext(ApplicationDetailsContext); }
+export function CandidateApplicationDetailsAction() { return useContext(ApplicationDetailsActionContext); }
 
 export function CandidateProfilePanel({candidateId, applicationId, data, language, client, accessScope, onSelect, onEdit, onAction, children}: {
   candidateId:string; applicationId:string|null; data:DashboardData; language:Language;
@@ -137,10 +139,12 @@ export function CandidateProfilePanel({candidateId, applicationId, data, languag
         <ApplicationDetailsContext.Provider value={<>
           <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
           <p className="text-xs text-slate">{t("Opened","วันที่เริ่มใบสมัคร")}: {formatDateTime(selected!.created_at,language)}{selected?.closed_at?` · ${t("Closed","ปิดแล้ว")}: ${formatDateTime(selected.closed_at,language)} · ${selected.closure_reason??""}`:""}</p>
-          {canTransfer?<Button type="button" variant="secondary" onClick={()=>{setIntent("transfer");setGroup("");setReason("");}}>{t("Reassign application","เปลี่ยนกลุ่มใบสมัคร")}</Button>:null}</div>
+          </div>
                   <details className="border-t border-[#E4E9F2] pt-3"><summary className="min-h-11 cursor-pointer text-sm font-semibold text-navy">{t("Assignment history","ประวัติการเปลี่ยนกลุ่ม")}</summary>{(data.candidate_application_assignments??[]).filter(row=>row.application_id===selected.application_id).sort((a,b)=>a.started_at.localeCompare(b.started_at)).map(row=><p key={row.assignment_id} className="mt-2 break-words text-sm text-slate">{row.from_group_id?`${formatRecruitmentId(row.from_group_id)} → `:""}{formatRecruitmentId(row.group_id)} · {formatDateTime(row.started_at,language)}{row.reason?` · ${row.reason}`:""}{row.attribution_inferred?` · ${t("Historical attribution inferred","อ้างอิงกลุ่มย้อนหลัง")}`:""}</p>)}</details>
         </>}>
+        <ApplicationDetailsActionContext.Provider value={canTransfer?<Button type="button" size="sm" variant="secondary" onClick={()=>{setIntent("transfer");setGroup("");setReason("");}}>{t("Reassign application","เปลี่ยนกลุ่มใบสมัคร")}</Button>:null}>
           {children}
+        </ApplicationDetailsActionContext.Provider>
         </ApplicationDetailsContext.Provider>
         {selectedLogs.map(log=>{const entry=data.candidate_application_assignments?.find(row=>row.assignment_id===log.entry_assignment_id),outcome=data.candidate_application_assignments?.find(row=>row.assignment_id===log.outcome_assignment_id);return entry&&(entry.group_id!==selected.group_id||outcome&&outcome.group_id!==entry.group_id)?<p key={log.log_id} className="text-xs text-slate">{processLabel(log.recruitment_process,language)} · {t("Began in","เริ่มที่")}: {formatRecruitmentId(entry.group_id)}{outcome?` · ${t("Outcome recorded in","บันทึกผลที่")}: ${formatRecruitmentId(outcome.group_id)}`:` · ${t("Pending began before reassignment","เริ่มก่อนเปลี่ยนกลุ่ม")}`}</p>:null;})}
         {intent==="transfer"?applicationForm:null}

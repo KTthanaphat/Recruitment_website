@@ -55,3 +55,5 @@ Keep one owner for each rule. Maps contain links/search keys, not copied policy.
 Validate maintained links and graph structure with `python scripts/check_agent_docs.py`. The current feature inventory is F00–F27 across seven nodes; when intentionally extending the graph, update its expected inventory in the checker with the map. [Verification boundaries](workflows/TEST_ENVIRONMENTS.md) distinguish structural validation from application behavior tests.
 
 Find symbols quickly: `rg -n "DayDateSelector|CandidateDetailHeader" docs/maps docs/design src` from the app checkout. Do not treat sibling checkouts or archived documentation as the active source.
+
+Candidate/requisition form refinement: `src/components/RecruitmentWorkspace.tsx`, `src/components/requisitions/AuthorizedRequisitionLookup.tsx`; layout contracts: [candidate detail](design/candidate-detail.md), [requisition detail](design/requisition-detail.md), [selector controls](design/controls.md). Focused checks: candidate-search-outcomes and requisition-identity browser specs.

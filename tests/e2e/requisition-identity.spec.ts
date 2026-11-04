@@ -150,3 +150,78 @@ test("complete requisition profile, related links and sorted history fit desktop
   await empty.evaluate(element => { element.scrollTop = 0; });
   await empty.screenshot({ path: testInfo.outputPath('requisition-thai-long.png') });
 });
+
+test("requisition profile edit selector searches and includes all accessible records without page controls", async ({ page }) => {
+  const { data, rpcCalls } = await installMockSupabase(page, { role: "admin_recruiter" });
+  const seed = data.requisitions[0];
+  data.requisitions.push(...Array.from({ length: 105 }, (_, index) => ({ ...seed, doc_id: `REQ-LOAD-${String(index).padStart(3, "0")}`, position: `Load Test ${index}` })), { ...seed, doc_id: "REQ-ZZZ-LATER", position: "Later searchable role" });
+  await page.goto("/requisitions?detailType=requisition&detailId=REQ-HQ-1");
+  await expectWorkspaceReady(page);
+  const drawer = page.getByRole("dialog", { name: "Engineer (L4)" });
+  await drawer.getByRole("heading", { name: "Requisition profile" }).locator("..").getByRole("button", { name: "Edit requisition", exact: true }).click();
+  const form = page.getByRole("dialog", { name: "Edit Requisition" });
+  const trigger = form.getByRole("button", { name: "Select requisition", exact: true });
+  await expect(trigger).toContainText("REQ-HQ-1");
+  await expect.poll(() => rpcCalls.filter(call => call.endpoint === "app_recruitment_list_v1" && call.payload.p_entity === "requisitions" && call.payload.p_cursor_id).length, { timeout: 15000 }).toBeGreaterThan(0);
+  await trigger.click();
+  await expect(form.getByRole("combobox", { name: "Search requisitions", exact: true })).toBeVisible();
+  await expect(form.getByRole("button", { name: /Next|Previous/ })).toHaveCount(0);
+  const search = form.getByRole("combobox", { name: "Search requisitions", exact: true });
+  await search.fill("REQ-ZZZ-LATER");
+  await expect(page.getByRole("option", { name: "REQ-ZZZ-LATER", exact: true })).toBeVisible();
+  expect(rpcCalls.some(call => call.endpoint === "app_recruitment_list_v1" && call.payload.p_entity === "requisitions" && call.payload.p_search === "REQ-ZZZ-LATER")).toBe(true);
+});
+
+test("requisition edit pre-fills all editable fields and preserves legacy department/section values", async ({ page }) => {
+  const { data } = await installMockSupabase(page, { role: "admin_recruiter" });
+  const requisition = data.requisitions.find(row => row.doc_id === "REQ-HQ-1")!;
+  Object.assign(requisition, { request_type: "Replacement", replacement_names: "Alex Doe\nJamie Lee", department: "Legacy Department", section: "Legacy Section", head_count: 2 });
+  await page.goto("/requisitions?detailType=requisition&detailId=REQ-HQ-1");
+  await expectWorkspaceReady(page);
+  const drawer = page.getByRole("dialog", { name: "Engineer (L4)" });
+  await drawer.getByRole("heading", { name: "Requisition profile" }).locator("..").getByRole("button", { name: "Edit requisition", exact: true }).click();
+  const form = page.getByRole("dialog", { name: "Edit Requisition" });
+  await expect(form.locator('[name="doc_id"]')).toHaveValue("REQ-HQ-1");
+  await expect(form.locator('[name="pr_approved_date"]')).toHaveValue("2026-06-01");
+  await expect(form.locator('[name="request_type"]')).toHaveValue("Replacement");
+  await expect(form.locator('[name="site"]')).toHaveValue("HQ");
+  await expect(form.locator('[name="department"]')).toHaveValue("Legacy Department");
+  await expect(form.locator('[name="section"]')).toHaveValue("Legacy Section");
+  await expect(form.locator('[name="position"]')).toHaveValue("Engineer");
+  await expect(form.locator('[name="level"]')).toHaveValue("L4");
+  await expect(form.locator('[name="head_count"]')).toHaveValue("2");
+  await expect(form.locator('[name="person_in_charge"]')).toHaveValue("Alice");
+  await expect(form.locator('[name="line_manager"]')).toHaveValue("QA Manager");
+  await expect(form.locator('[name="status"]')).toHaveValue("ongoing");
+  await expect(form.locator('[name="replacement_names"]').nth(0)).toHaveValue("Alex Doe");
+  await expect(form.locator('[name="replacement_names"]').nth(1)).toHaveValue("Jamie Lee");
+  const picker = form.getByRole("button", { name: "Select requisition", exact: true });
+  await picker.click();
+  const search = form.getByRole("combobox", { name: "Search requisitions", exact: true });
+  await search.fill("REQ-HQ-2");
+  await page.getByRole("option", { name: "REQ-HQ-2", exact: true }).click();
+  await expect(form.locator('[name="doc_id"]')).toHaveValue("REQ-HQ-2");
+  await expect(form.locator('[name="pr_approved_date"]')).toHaveValue("2026-06-10");
+  await expect(form.locator('[name="head_count"]')).toHaveValue("1");
+  await expect(form.locator('[name="replacement_names"]')).toHaveCount(0);
+});
+
+test("all non-empty requisition profile values have copy actions for their displayed text", async ({ page }) => {
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await installMockSupabase(page, { role: "admin_recruiter" });
+  await page.goto("/requisitions?detailType=requisition&detailId=REQ-HQ-1");
+  await expectWorkspaceReady(page);
+  const drawer = page.getByRole("dialog", { name: "Engineer (L4)" });
+  const profile = drawer.locator("section").filter({ has: page.getByRole("heading", { name: "Requisition profile" }) });
+  const rows = profile.locator("dl > div");
+  const count = await rows.count();
+  for (let index = 0; index < count; index += 1) {
+    const row = rows.nth(index);
+    const displayed = (await row.locator("dd").innerText()).trim();
+    const copy = row.getByRole("button", { name: /^Copy / });
+    if (!displayed || displayed === "—") { await expect(copy).toHaveCount(0); continue; }
+    await expect(copy).toHaveCount(1);
+    await copy.click();
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(displayed);
+  }
+});
