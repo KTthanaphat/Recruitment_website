@@ -57,3 +57,5 @@ Validate maintained links and graph structure with `python scripts/check_agent_d
 Find symbols quickly: `rg -n "DayDateSelector|CandidateDetailHeader" docs/maps docs/design src` from the app checkout. Do not treat sibling checkouts or archived documentation as the active source.
 
 Candidate/requisition form refinement: `src/components/RecruitmentWorkspace.tsx`, `src/components/requisitions/AuthorizedRequisitionLookup.tsx`; layout contracts: [candidate detail](design/candidate-detail.md), [requisition detail](design/requisition-detail.md), [selector controls](design/controls.md). Focused checks: candidate-search-outcomes and requisition-identity browser specs.
+
+Pipeline card name/group/metadata layout: [F22](maps/system/pipeline.md#f22-candidate-pipeline-boardrecord-register) → [contract](design/pipeline.md#candidate-card-hierarchy) → [owner](../src/components/pipeline/PipelineBoardView.tsx) → [focused checks](../tests/e2e/pipeline-card-layout.spec.ts).

@@ -17,6 +17,8 @@ Dashboard Stage Bottleneck detail entry: [report loader](../../../src/lib/dashbo
 
 ### F22: Candidate Pipeline board/record register
 
+- Card hierarchy: [contract](../../design/pipeline.md#candidate-card-hierarchy) → [PipelineBoardView](../../../src/components/pipeline/PipelineBoardView.tsx), shared card and phone workspace list; [focused checks](../../../tests/e2e/pipeline-card-layout.spec.ts).
+
 - Complete stage-history reads: [history loader](../../../src/lib/recruitment-history-loader.ts) pages by unique log_id with exact counts, so imported records cannot hide older candidates. No candidate re-upload is involved. Regression: [loader checks](../../../tests/unit/recruitment-history.test.cjs) and [candidate drawer](../../../tests/e2e/recruitment-history-loading.spec.ts).
 
 - Owner/search: [src/components/pipeline/PipelineBoardView.tsx](../../../src/components/pipeline/PipelineBoardView.tsx), [src/components/RecruitmentWorkspace.tsx](../../../src/components/RecruitmentWorkspace.tsx), [supabase/schemas/50_rpc_functions.sql](../../../supabase/schemas/50_rpc_functions.sql).

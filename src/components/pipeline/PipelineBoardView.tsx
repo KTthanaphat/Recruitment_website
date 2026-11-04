@@ -803,7 +803,7 @@ function MobileWorkspacePipelineStages({
                   ? translate(language, "startPhoneScreenFor", { name: formatCandidateName(candidate) })
                   : `${processLabel(nextStage!, language)} · ${formatCandidateName(candidate)}`;
                 return <div key={applicationKey(candidate)} className="flex min-h-11 min-w-0 items-center gap-2 rounded-md px-2 hover:bg-[#F8FAFD]">
-                  <button type="button" onClick={() => onOpen(candidate.candidate_id, candidate.application_id)} className="min-w-0 flex-1 text-left focus:outline-none focus:ring-2 focus:ring-primary/30"><strong className="block truncate text-sm text-navy">{formatCandidateName(candidate)}</strong><span className="block truncate text-xs font-medium text-slate">{candidate.site ?? "-"} · {candidate.group_position ?? "-"}</span></button>
+                  <button type="button" onClick={() => onOpen(candidate.candidate_id, candidate.application_id)} className="min-w-0 flex-1 text-left focus:outline-none focus:ring-2 focus:ring-primary/30"><strong className="block truncate text-sm text-navy">{formatCandidateName(candidate)}</strong><span className="mt-1 block whitespace-normal break-words text-xs font-medium leading-normal text-slate [overflow-wrap:anywhere]">{candidate.group_position?.trim() || "—"}</span><span className="mt-1 block truncate text-xs font-medium text-slate">{candidate.site ?? "-"}</span></button>
                   {canAdvance ? <button type="button" aria-label={advanceLabel} title={advanceLabel} onClick={() => candidate.latest_process === "No activity" ? onStartProcess(candidate) : onMove(candidate, nextStage!)} className="inline-flex size-11 shrink-0 items-center justify-center rounded-lg border border-[#C9D5E6] text-primary hover:bg-[#F1F7FF] focus:outline-none focus:ring-2 focus:ring-primary/30"><ArrowRight size={17} aria-hidden="true" /></button> : null}
                 </div>;
               })}
@@ -956,7 +956,8 @@ function PipelineCandidateCard({
           }}
         >
           <strong className="block truncate text-sm leading-tight text-navy">{formatCandidateName(candidate)}</strong>
-          <p className="mt-1 truncate text-xs font-medium text-slate">{formatRecruitmentId(candidate.candidate_id)} · {candidate.site ?? "-"} · {candidate.group_position ?? "-"}{compact ? "" : ` (${candidate.person_in_charge ?? "-"})`}</p>
+          <span className="mt-1 block whitespace-normal break-words text-xs font-medium leading-normal text-slate [overflow-wrap:anywhere]">{candidate.group_position?.trim() || "—"}</span>
+          <p className="mt-1 truncate text-xs font-medium text-slate">{formatRecruitmentId(candidate.candidate_id)} · {candidate.site ?? "-"}{compact ? "" : ` (${candidate.person_in_charge ?? "-"})`}</p>
         </button>
         <div className="flex shrink-0 items-center gap-1">
         {tone === "failed" && onCreateRejectionLetter ? (

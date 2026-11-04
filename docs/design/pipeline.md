@@ -13,3 +13,17 @@ Owners: [board](../../src/components/pipeline/PipelineBoardView.tsx), [bounded h
 Active, failed and passed-offer pagers use the order `< current/total >`: 14px chevrons, 28px desktop buttons, 2px gaps and 44px phone touch targets. Counts remain eventual (`1/…` while unknown); empty pagers are hidden. Keyboard focus and localized names remain visible. History-table pagination is separate.
 
 Each failed stage owns a five-card page within 25-record cursor blocks, its exact count, loading/error/retry state and cached navigation. The section has no shared pager. Offscreen columns activate on intersection or focus; changing a page leaves other stages' positions unchanged. Search, header/group scope and identity reset their pages. Standalone last-seven-days and embedded all-time failure membership remain unchanged. Refresh/reconciliation recovers an emptied page without inventing counts. Committed receipts invalidate source/destination failed stages only.
+
+## Candidate card hierarchy
+
+Owner: [PipelineBoardView](../../src/components/pipeline/PipelineBoardView.tsx). Applies to main Pipeline cards, compact workspace cards and phone workspace stage lists. Tables retain existing columns.
+
+Show candidate name first, the application’s group name on its own line second, then existing metadata. Use the card’s group_position; never infer a group from another application or current selection. Blank names display — without another request.
+
+Keep the name primary. Group names use smaller medium-weight slate text, normal line height, approximately 4px spacing, and unrestricted wrapping including unbroken text. Do not truncate group names or add a label, badge or group ID. Cards grow vertically; top-right actions stay aligned with the identity block.
+
+Shared cards retain candidate ID, site and their existing owner visibility beneath the group name, without repeating it. Phone workspace lists retain site beneath the group name. Keep name and group inside the same detail-opening button. Preserve application navigation, dates, warnings, estimates, stage actions and drag/drop.
+
+Check desktop and 390px phone layouts; long English/Thai/mixed/unbroken names; blank groups; multiple applications; keyboard opening; actions and dragging. [Pipeline checks](../../tests/e2e/pipeline-board.spec.ts) and [workspace checks](../../tests/e2e/workspace.spec.ts) own regression coverage.
+
+Focused card layout checks: [pipeline-card-layout.spec.ts](../../tests/e2e/pipeline-card-layout.spec.ts).
