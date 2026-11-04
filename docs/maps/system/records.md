@@ -77,3 +77,5 @@ Read this node for this feature only. It indexes ownership; product rules remain
 [SYS-HOME](home.md) (`reads`), [SYS-WORKSPACE](workspace.md) (`embeds`), [SYS-PIPELINE](pipeline.md) (`reads`), [SYS-REPORTING](reporting.md) (`reads`).
 
 If the task changes schema, environment or release state, cross to [Setup](../SETUP_MAP.md). For visual-only work remain in this system node and its design contract. Coverage names are search leads inherited from the feature index, not evidence that checks passed or that every named scenario has a dedicated file.
+
+Candidate/requisition form refinement: `src/components/RecruitmentWorkspace.tsx`, `src/components/requisitions/AuthorizedRequisitionLookup.tsx`; layout contracts: [candidate detail](../../design/candidate-detail.md), [requisition detail](../../design/requisition-detail.md), [selector controls](../../design/controls.md). Focused checks: candidate-search-outcomes and requisition-identity browser specs.

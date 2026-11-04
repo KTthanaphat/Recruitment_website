@@ -17,3 +17,5 @@ Related candidates link to their detail drawer; related offers link to filtered 
 Retain requisition calculations, fields, historical funnel and related-record contents. Keep the same focus-managed drawer, responsive wrapping and keyboard disclosure behavior as Candidate Detail. Verify long bilingual positions, filled/cancelled/open states, viewer/writer actions, narrow phones and empty related records.
 
 Job Level displays numeric stored levels as L0–L14. Job Level has no separate pencil action; Edit requisition opens the existing Edit Requisition form and its review/save flow. Viewers do not see the pencil. The Level selector labels numeric choices L0–L14 while submitting numeric strings and preserves existing nonnumeric values until explicitly changed.
+
+Every non-empty Requisition profile value is copyable using its displayed localized value. Edit Requisition keeps search at the top of the opened selector, gathers every accessible filtered server page without page controls, and prefills persisted fields, replacement names and legacy Department/Section values. The editable identifier is labeled Editable Doc ID; Thai Department/Section labels are ฝ่าย / แผนก.

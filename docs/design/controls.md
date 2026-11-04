@@ -36,7 +36,7 @@ Options: `ats-dropdown-menu` is a white panel with a thin shadow, shared 12px co
 
 Acceptance: Enter/Space opens/selects, arrows move between enabled options, Home/End reach valid extremes, Escape closes, focus returns, active option scrolls into view, and assistive technology identifies focus/selection. Handle empty arrays safely. Constrain popup width/position on phones and inside drawers; absolute positioning alone does not prove collision handling.
 
-Add search only when list size warrants it; current `CommandSelector` has no search API. Department waits for Site, Section for Department; retain allowed legacy values. Header commands keep accessible names without stacked visible labels; forms keep visible labels. Preserve the header's exclusion of a global Clear-filter button.
+`CommandSelector` supports controlled search at the top of its open scrolling menu; the closed trigger shows the selected value. Candidate ID/name search stays server-side. `AuthorizedRequisitionLookup` gathers all accessible filtered pages for requisition edit selection without page controls. Department waits for Site, Section for Department; retain allowed legacy values. Header commands keep accessible names without stacked visible labels; forms keep visible labels. Preserve the header's exclusion of a global Clear-filter button.
 
 ## Fields, buttons and overlays
 

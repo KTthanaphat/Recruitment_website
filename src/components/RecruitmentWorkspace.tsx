@@ -25,7 +25,7 @@ import { readScopedInPages } from "@/lib/scoped-detail-read";
 import { clearPipelineSummaryCache } from "@/lib/pipeline-summary-loader";
 import { clearDashboardSummaryCache, loadDashboardFilterOptions, loadHomeBannerSummary, loadWelcomeSummary, type HomeBannerSummary, type WelcomeSummary } from "@/lib/dashboard-summary-client";
 import { DetailGrid, SectionHeading } from "@/components/ui/RecordDetailFields";
-import { CandidateProfilePanel, CandidateApplicationDetailsExtras } from "@/components/candidates/CandidateProfilePanel";
+import { CandidateProfilePanel, CandidateApplicationDetailsAction, CandidateApplicationDetailsExtras } from "@/components/candidates/CandidateProfilePanel";
 import { applicationLogs, belongsToApplication, selectedApplication, applicationKey } from "@/lib/applications";
 import { HomeView } from "@/components/dashboard/HomeView";
 import { WelcomeBackPrompt } from "@/components/dashboard/WelcomeBackPrompt";
@@ -2765,8 +2765,8 @@ function RequisitionFields({
     <div className="grid gap-4 md:grid-cols-2">
       {mode === "change" ? (
         <>
-          <AuthorizedRequisitionLookup client={client} accessScope={accessScope} language={language} filters={{ ...lookupScope, managedOnly: true }} value={selectedId} selectedRow={selected} onSelect={onSelectRow} label={translate(language, "selectRequisitionOption")} name="selected_doc_id" />
-          <Field label={translate(language, "docId")}>
+          <AuthorizedRequisitionLookup client={client} accessScope={accessScope} language={language} filters={{ ...lookupScope, managedOnly: true }} value={selectedId} selectedRow={selected} onSelect={onSelectRow} label={translate(language, "selectRequisitionOption")} name="selected_doc_id" searchInsideMenu loadAllResults />
+          <Field label={translate(language, "editableDocId")}>
           <TextInput name="doc_id" required value={docId} disabled={!selected} onChange={(event) => setDocId(event.target.value)} />
           {selected ? <input type="hidden" name="previous_doc_id" value={selected.doc_id} /> : null}
           <p className="mt-1 text-xs font-normal text-slate-600">{translate(language, "requisitionDocIdEditHint")}</p>
@@ -3032,6 +3032,7 @@ function CandidatePrefillFields({
   const [existingCandidateId, setExistingCandidateId] = useState("");
   const [authorizedExistingCandidateId, setAuthorizedExistingCandidateId] = useState("");
   const [existingCandidateSearch, setExistingCandidateSearch] = useState("");
+  const [selectedExistingCandidate, setSelectedExistingCandidate] = useState<{candidate_id:string;name:string|null;nickname:string|null}|null>(null);
   const [existingCandidateAccess, setExistingCandidateAccess] = useState<"idle"|"loading"|"denied"|"error">("idle");
   const [contactPhone, setContactPhone] = useState(selected?.phone_no ?? "");
   const [contactEmail, setContactEmail] = useState(selected?.email ?? "");
@@ -3081,7 +3082,13 @@ function CandidatePrefillFields({
     return()=>{cancelled=true;};
   },[accessScope,client,existingCandidateId,mode]);
 
-  const existingPicker = mode === "new" ? <Field label={language === "th" ? "ใช้ข้อมูลผู้สมัครเดิม" : "Use existing candidate"}><TextInput aria-label={language==="th"?"ค้นหาผู้สมัครเดิม":"Search existing candidates"} value={existingCandidateSearch} onChange={event=>setExistingCandidateSearch(event.target.value)} placeholder={language==="th"?"ค้นหารหัสหรือชื่อ":"Search ID or name"}/><SelectInput name="existing_candidate_id" value={existingCandidateId} onChange={event => {setExistingCandidateId(event.target.value);setAuthorizedExistingCandidateId("");setExistingCandidateAccess("idle");}}><option value="">{language === "th" ? "สร้างข้อมูลผู้สมัครใหม่" : "Create a new profile"}</option>{existingCandidates.items.map(row => <option key={row.candidate_id} value={row.candidate_id}>{`${formatRecruitmentId(row.candidate_id)} · ${[row.name,row.nickname].filter(Boolean).join(" ")}`}</option>)}</SelectInput>{existingCandidateAccess==="loading"?<LoadingSkeleton variant="lookup" label={<>{translate(language,"loading")}</>} className="text-xs text-slate" />:null}{existingCandidateAccess==="denied"?<p role="alert" className="text-xs text-danger">{language==="th"?"ไม่มีสิทธิ์เพิ่มใบสมัครให้ผู้สมัครรายนี้":"You cannot add an application for this candidate."}</p>:null}{existingCandidateAccess==="error"?<p role="alert" className="text-xs text-danger">{translate(language,"loadFailed")}</p>:null}{existingCandidates.error?<p role="alert" className="text-xs text-danger">{translate(language,"loadFailed")} <RetryIconButton type="button"   onClick={existingCandidates.retry} loading={existingCandidates.loading}>{translate(language,"retry")}</RetryIconButton></p>:null}{existingCandidates.canNext?<Button type="button" variant="secondary" size="sm" disabled={existingCandidates.loading} onClick={existingCandidates.goNext}>{language==="th"?"ถัดไป":"Next candidates"}</Button>:null}</Field> : null;
+  const existingCandidateOptions = existingCandidates.items.some(row => row.candidate_id === existingCandidateId) || !selectedExistingCandidate ? existingCandidates.items : [selectedExistingCandidate, ...existingCandidates.items];
+  const existingPicker = mode === "new" ? <Field label={language === "th" ? "ใช้ข้อมูลผู้สมัครเดิม" : "Use existing candidate"}>
+    <SelectInput name="existing_candidate_id" value={existingCandidateId} search={{ariaLabel:language==="th"?"ค้นหาผู้สมัครเดิม":"Search existing candidates",value:existingCandidateSearch,onChange:setExistingCandidateSearch,placeholder:language==="th"?"ค้นหารหัสหรือชื่อ":"Search ID or name"}} onChange={event => {const nextId=event.target.value;setExistingCandidateId(nextId);setSelectedExistingCandidate(existingCandidateOptions.find(row=>row.candidate_id===nextId)??null);setAuthorizedExistingCandidateId("");setExistingCandidateAccess("idle");}}>
+      <option value="">{language === "th" ? "สร้างข้อมูลผู้สมัครใหม่" : "Create a new profile"}</option>{existingCandidateOptions.map(row => <option key={row.candidate_id} value={row.candidate_id}>{`${formatRecruitmentId(row.candidate_id)} · ${[row.name,row.nickname].filter(Boolean).join(" ")}`}</option>)}
+    </SelectInput>
+    {existingCandidateAccess==="loading"?<p role="status" className="text-xs text-slate">{translate(language,"loading")}</p>:null}{existingCandidateAccess==="denied"?<p role="alert" className="text-xs text-danger">{language==="th"?"ไม่มีสิทธิ์เพิ่มใบสมัครให้ผู้สมัครรายนี้":"You cannot add an application for this candidate."}</p>:null}{existingCandidateAccess==="error"?<p role="alert" className="text-xs text-danger">{translate(language,"loadFailed")}</p>:null}{existingCandidates.loading?<p role="status" className="text-xs text-slate">{translate(language,"loading")}</p>:null}{existingCandidates.error?<p role="alert" className="text-xs text-danger">{translate(language,"loadFailed")} <Button type="button" variant="secondary" size="sm" onClick={existingCandidates.retry}>{translate(language,"retry")}</Button></p>:null}
+  </Field> : null;
   if (authorizedExistingCandidateId) return <div className="grid gap-4">{existingPicker}<Field label={translate(language, "groupId")}><DestinationControls language={language} name="group_id" label={translate(language,"groupId")} emptyLabel={translate(language,"selectGroup")} value={groupLocked ? groupValue : selectedGroupId} onChange={setSelectedGroupId} options={destinationOptions} locked={groupLocked} searchable/>{groupLocked ? <input type="hidden" name="group_id" value={groupValue}/> : null}{groupLocked ? <span className="text-xs font-medium text-slate">{translate(language, "groupLockedToWorkspace")}</span> : null}</Field><p className="text-sm text-slate">{language === "th" ? "เพิ่มใบสมัครใหม่โดยใช้ข้อมูลเดิม ไม่สร้างผู้สมัครซ้ำ" : "Create an application using this profile; no duplicate person is created."}</p></div>;
   return (
     <div className="grid gap-4 md:grid-cols-2">
@@ -3098,11 +3105,12 @@ function CandidatePrefillFields({
         )}
       </Field>
       <div className="grid gap-4 md:col-span-2 md:grid-cols-2"><Field label={translate(language, "name")}><TextInput name="name" required placeholder={translate(language, "candidateNamePlaceholder")} defaultValue={selected?.name ?? ""} /></Field><Field label={translate(language, "nickname")}><TextInput name="nickname" defaultValue={selected?.nickname ?? ""} /></Field></div>
-      <Field label={language === "th" ? "ตำแหน่งที่สนใจ" : "Position interests"}><TextInput name="position_interests" defaultValue={selected?.position_interests ?? ""}/></Field>
-      {mode==="new"||selected&&profileCapabilities(data,selected.candidate_id).can_edit_note?<Field label={language === "th" ? "บันทึก" : "Profile note"}><textarea name="note" defaultValue={data.candidate_notes?.find(row=>row.candidate_id===selected?.candidate_id)?.body??""} className="min-h-24 rounded-md border border-[#C9D5E6] p-2 text-sm text-navy"/><input type="hidden" name="expected_note_id" value={data.candidate_notes?.find(row=>row.candidate_id===selected?.candidate_id)?.note_id??""}/><input type="hidden" name="expected_note_version" value={data.candidate_notes?.find(row=>row.candidate_id===selected?.candidate_id)?.version??""}/></Field>:null}
 
       <Field label={translate(language, "phoneNo")}><TextInput name="phone_no" type="tel" inputMode="numeric" maxLength={10} pattern="0[0-9]{9}" required={mode === "change"} placeholder={translate(language, "candidatePhonePlaceholder")} value={contactPhone} onChange={event => setContactPhone(event.target.value)} /></Field>
       <Field label={translate(language, "email")}><TextInput name="email" type="text" inputMode="email" autoComplete="email" placeholder={translate(language, "candidateEmailPlaceholder")} value={contactEmail} onChange={event => setContactEmail(event.target.value)} /></Field>
+      <Field label={translate(language, "firstContactDate")}><DayDateSelector ariaLabel={translate(language, "firstContactDate")} language={language} name="first_contact_date" nextMonthLabel={translate(language, "nextMonth")} previousMonthLabel={translate(language, "previousMonth")} required defaultValue={firstContactDate} /></Field>
+      <Field label={language === "th" ? "ตำแหน่งที่สนใจ" : "Position interests"}><TextInput name="position_interests" defaultValue={selected?.position_interests ?? ""}/></Field>
+      {mode==="new"||selected&&profileCapabilities(data,selected.candidate_id).can_edit_note?<Field label={language === "th" ? "บันทึก" : "Profile note"} className="md:col-span-2"><textarea name="note" defaultValue={data.candidate_notes?.find(row=>row.candidate_id===selected?.candidate_id)?.body??""} className="min-h-24 w-full rounded-md border border-[#C9D5E6] p-2 text-sm text-navy"/><input type="hidden" name="expected_note_id" value={data.candidate_notes?.find(row=>row.candidate_id===selected?.candidate_id)?.note_id??""}/><input type="hidden" name="expected_note_version" value={data.candidate_notes?.find(row=>row.candidate_id===selected?.candidate_id)?.version??""}/></Field>:null}
       <Field label={language === "th" ? "กลุ่มใบสมัคร (ไม่บังคับ)" : "Application group (optional)"}>
         <DestinationControls language={language} name={groupLocked ? undefined : "group_id"} label={language === "th"?"กลุ่มใบสมัคร":"Application group"} emptyLabel={language === "th" ? "เก็บในฐานผู้สมัคร (ยังไม่มีกลุ่ม)" : "Talent pool (no application yet)"} value={groupLocked ? groupValue : selectedGroupId} onChange={setSelectedGroupId} options={destinationOptions} locked={groupLocked} searchable/>
         {groupLocked ? <input type="hidden" name="group_id" value={groupValue} /> : null}
@@ -3136,7 +3144,6 @@ function CandidatePrefillFields({
           </div>;
         })}</div> : null}
       </div>
-      <Field label={translate(language, "firstContactDate")}><DayDateSelector ariaLabel={translate(language, "firstContactDate")} language={language} name="first_contact_date" nextMonthLabel={translate(language, "nextMonth")} previousMonthLabel={translate(language, "previousMonth")} required defaultValue={firstContactDate} /></Field>
       <Field label={translate(language, "candidateFolderLink")} className="md:col-span-2"><TextInput name="candidate_folder_url" type="url" defaultValue={selected?.candidate_folder_url ?? ""} /></Field>
       <DataLists data={data} />
     </div>
@@ -4144,6 +4151,23 @@ function buildDetailBodyV2(
       || offers.some((offer) => String(offer.offer_id) === issue.entityId)
     );
 
+    const copyProfileDisplay = (value: string) => value.trim() && value !== "—" ? value : undefined;
+    const profilePrDate = formatDate(requisition.pr_approved_date, language);
+    const profilePosition = requisition.position || "—";
+    const profileLevel = requisition.level ? (/^(0|[1-9]|1[0-4])$/.test(requisition.level) ? `L${requisition.level}` : requisition.level) : "—";
+    const profileSite = requisition.site || "—";
+    const profileDepartment = requisition.department || "—";
+    const profileSection = requisition.section ?? "—";
+    const profileStatus = requisitionStatusLabel(language, requisition.status);
+    const profileRequestType = requestTypeLabel(language, requisition.request_type);
+    const profileReplacementNames = requisition.request_type === "Replacement" ? replacementNamesDisplay(requisition.replacement_names) : "—";
+    const profileOwner = requisition.person_in_charge ?? "—";
+    const profileLineManager = requisition.line_manager ?? "—";
+    const profileHeadcount = String(requisition.head_count);
+    const profileAccepted = String(requisition.accepted_count);
+    const profileOpen = String(requisition.open_headcount);
+    const profileCreatedAt = formatDateTime(requisition.created_at, language);
+    const profileUpdatedAt = formatDateTime(requisition.updated_at, language);
     return {
       title: formatRequisitionTitle(requisition),
       headerContent: <RequisitionDetailHeader requisition={requisition} language={language} readiness={readiness} />,
@@ -4184,29 +4208,30 @@ function buildDetailBodyV2(
           </section>
           <InlineDataQualityIssues issues={issues} language={language} />
           <section className="rounded-xl border border-[#D7DEE8] bg-white p-4 sm:p-5">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-3"><SectionHeading icon={<Files size={19} />} title={translate(language, "requisitionProfile")} />{canWrite ? <Button type="button" size="icon-sm" variant="ghost" className="min-h-11 min-w-11 text-primary hover:bg-[#F1F6FC] hover:text-primary sm:min-h-9 sm:min-w-9" icon={<Pencil size={17} aria-hidden="true" />} aria-label={translate(language, "editRequisition")} title={translate(language, "editRequisition")} onClick={() => onChangeRequisition(requisition.doc_id)} /> : null}</div>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3"><SectionHeading icon={<Files size={19} />} title={translate(language, "requisitionProfile")} />{canWrite?<Button type="button" size="icon-sm" variant="ghost" className="min-h-11 min-w-11 text-primary hover:bg-[#F1F6FC] hover:text-primary sm:min-h-9 sm:min-w-9" icon={<Pencil size={17} aria-hidden="true" />} aria-label={translate(language, "editRequisition")} title={translate(language, "editRequisition")} onClick={()=>onChangeRequisition(requisition.doc_id)} />:null}</div>
           <DetailGrid workspace language={language} rows={[
             { label: translate(language, "requisitionId"), value: requisition.doc_id, copyValue: requisition.doc_id, icon: <Hash size={18} /> },
-            { label: translate(language, "prApprovedDate"), value: formatDate(requisition.pr_approved_date, language), icon: <CalendarDays size={18} /> },
-            { label: translate(language, "position"), value: requisition.position, icon: <BriefcaseBusiness size={18} /> },
+            { label: translate(language, "prApprovedDate"), value: profilePrDate, copyValue: copyProfileDisplay(profilePrDate), icon: <CalendarDays size={18} /> },
+            { label: translate(language, "position"), value: profilePosition, copyValue: copyProfileDisplay(profilePosition), icon: <BriefcaseBusiness size={18} /> },
             {
               label: translate(language, "jobLevel"),
-              value: requisition.level ? (/^(0|[1-9]|1[0-4])$/.test(requisition.level) ? `L${requisition.level}` : requisition.level) : "—",
+              value: profileLevel,
+              copyValue: copyProfileDisplay(profileLevel),
               icon: <Layers3 size={18} />,
             },
-            { label: translate(language, "site"), value: requisition.site || "—", icon: requisition.site === "HQ" ? <Building2 size={18} /> : <Factory size={18} /> },
-            { label: translate(language, "department"), value: requisition.department || "—", icon: <Building2 size={18} /> },
-            { label: translate(language, "section"), value: requisition.section ?? "—", icon: <Network size={18} /> },
-            { label: translate(language, "status"), value: requisitionStatusLabel(language, requisition.status), icon: <CheckCircle2 size={18} /> },
-            { label: translate(language, "requestType"), value: requestTypeLabel(language, requisition.request_type), icon: <RefreshCw size={18} /> },
-            { label: translate(language, "replacementNames"), value: requisition.request_type === "Replacement" ? replacementNamesDisplay(requisition.replacement_names) : "—", icon: <UsersRound size={18} /> },
-            { label: translate(language, "owner"), value: requisition.person_in_charge ?? "—", icon: <UserRound size={18} /> },
-            { label: translate(language, "lineManager"), value: requisition.line_manager ?? "—", icon: <ContactRound size={18} /> },
-            { label: translate(language, "headcount"), value: String(requisition.head_count), icon: <UsersRound size={18} /> },
-            { label: translate(language, "accepted"), value: String(requisition.accepted_count), icon: <CheckCircle2 size={18} /> },
-            { label: translate(language, "open"), value: String(requisition.open_headcount), icon: <BriefcaseBusiness size={18} /> },
-            { label: translate(language, "createdAt"), value: formatDateTime(requisition.created_at, language), icon: <CalendarPlus size={18} /> },
-            { label: translate(language, "updatedAt"), value: formatDateTime(requisition.updated_at, language), icon: <CalendarDays size={18} /> }
+            { label: translate(language, "site"), value: profileSite, copyValue: copyProfileDisplay(profileSite), icon: requisition.site === "HQ" ? <Building2 size={18} /> : <Factory size={18} /> },
+            { label: translate(language, "department"), value: profileDepartment, copyValue: copyProfileDisplay(profileDepartment), icon: <Building2 size={18} /> },
+            { label: translate(language, "section"), value: profileSection, copyValue: copyProfileDisplay(profileSection), icon: <Network size={18} /> },
+            { label: translate(language, "status"), value: profileStatus, copyValue: copyProfileDisplay(profileStatus), icon: <CheckCircle2 size={18} /> },
+            { label: translate(language, "requestType"), value: profileRequestType, copyValue: copyProfileDisplay(profileRequestType), icon: <RefreshCw size={18} /> },
+            { label: translate(language, "replacementNames"), value: profileReplacementNames, copyValue: copyProfileDisplay(profileReplacementNames), icon: <UsersRound size={18} /> },
+            { label: translate(language, "owner"), value: profileOwner, copyValue: copyProfileDisplay(profileOwner), icon: <UserRound size={18} /> },
+            { label: translate(language, "lineManager"), value: profileLineManager, copyValue: copyProfileDisplay(profileLineManager), icon: <ContactRound size={18} /> },
+            { label: translate(language, "headcount"), value: profileHeadcount, copyValue: copyProfileDisplay(profileHeadcount), icon: <UsersRound size={18} /> },
+            { label: translate(language, "accepted"), value: profileAccepted, copyValue: copyProfileDisplay(profileAccepted), icon: <CheckCircle2 size={18} /> },
+            { label: translate(language, "open"), value: profileOpen, copyValue: copyProfileDisplay(profileOpen), icon: <BriefcaseBusiness size={18} /> },
+            { label: translate(language, "createdAt"), value: profileCreatedAt, copyValue: copyProfileDisplay(profileCreatedAt), icon: <CalendarPlus size={18} /> },
+            { label: translate(language, "updatedAt"), value: profileUpdatedAt, copyValue: copyProfileDisplay(profileUpdatedAt), icon: <CalendarDays size={18} /> }
           ]} />
           </section>
           <DetailDisclosure title={<SectionHeading icon={<JourneyTrendIcon />} title={translate(language, "workspaceJourney")} />} summary={`${candidates.length} ${translate(language, "candidatesUnit")} / ${offers.length} ${translate(language, "offersDetail")}`}>
@@ -4307,7 +4332,7 @@ function buildDetailBodyV2(
           {interviewMeeting ? <div className="mt-3 grid gap-1 rounded-lg bg-[#F8FAFD] p-3 text-sm text-slate"><p><strong className="text-navy">Bangkok time:</strong> {formatBangkokMeetingDateTime(interviewMeeting.starts_at, language)}</p><p><strong className="text-navy">Organizer:</strong> {interviewMeeting.organizer_mailbox ?? "Shared HR mailbox"}</p><p><strong className="text-navy">Attendees:</strong> {interviewMeeting.interviewer_emails.join(", ")}</p>{interviewMeeting.join_url ? <a className="mt-1 w-fit font-semibold text-primary underline" href={interviewMeeting.join_url} target="_blank" rel="noreferrer">Join Teams meeting</a> : null}{interviewMeeting.failure_summary ? <p role="alert" className="mt-1 font-semibold text-scarlet">{interviewMeeting.failure_summary}</p> : null}</div> : null}
         </section> : null}
         <section className="min-w-0 rounded-xl border border-[#D7DEE8] bg-white p-4 shadow-[0_10px_28px_rgba(11,19,43,0.035)] sm:p-5">
-          <SectionHeading className="mb-3" icon={<ContactRound size={19} />} title={language === "th" ? "รายละเอียดใบสมัคร" : "Application details"} />
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3"><SectionHeading icon={<ContactRound size={19} />} title={language === "th" ? "รายละเอียดใบสมัคร" : "Application details"} /><CandidateApplicationDetailsAction /></div>
         <DetailGrid workspace language={language} rows={[
           { label: "Group ID", value: candidate.group_id ?? candidate.doc_group_id ?? "-", copyValue: candidate.group_id ?? candidate.doc_group_id, icon: <UsersRound size={18} /> },
           { label: "Doc IDs", value: candidate.doc_ids.join(", ") || "-", copyValue: candidate.doc_ids.join(", ") || undefined, icon: <Files size={18} /> },
