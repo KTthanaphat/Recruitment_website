@@ -15,6 +15,7 @@ Use the matching contract and its linked component; do not read the entire libra
 | Vacancy Risk & Aging, Stage Bottlenecks and system Dashboard shell | [Risk and bottleneck subviews](design/dashboard-risk-bottlenecks.md) |
 | Configuration folder tree, contents and editors | [Configuration](design/configuration.md) |
 | Dashboard Recruitment Performance layout, charts and PNG | [Recruitment Performance](design/recruitment-performance.md) |
+| Pipeline card hierarchy | [Pipeline cards](design/pipeline.md#candidate-card-hierarchy) |
 | Candidate identity, journey, profile, activity and offers | [Candidate detail](design/candidate-detail.md) |
 | Date selector, dropdown, fields, buttons and overlays | [Controls](design/controls.md) |
 | Dashboard navigation, square bars and summary fractions | [Portal](design/dashboard-portal.md#navigation-compatibility-and-data-bars) / [Risk summaries](design/dashboard-risk-bottlenecks.md#summary-refinement) |
