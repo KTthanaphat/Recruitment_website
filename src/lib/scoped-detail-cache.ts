@@ -72,3 +72,11 @@ export function invalidateScopedCandidateWorkspaces(client: object, scope: strin
   }catch { /* Other namespaces remain warm. */ }
  }
 }
+
+/** Patch only affected requisition and linked-group detail/preview caches. */
+export function patchScopedRequisitionDetails<T>(client: object, scope: string, docs: ReadonlySet<string>, groups: ReadonlySet<string>, patch: (value:T)=>T) {
+ const cache=clientCaches.get(client);if(!cache)return;
+ for(const [key,entry]of cache){const parts=key.split("\u001f");if(parts[1]!==scope)continue;
+  if([...docs,...groups].some(id=>key.includes(JSON.stringify(id))))entry.value=entry.value.then(value=>patch(value as T));
+ }
+}

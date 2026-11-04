@@ -79,3 +79,7 @@ Read this node for this feature only. It indexes ownership; product rules remain
 If the task changes schema, environment or release state, cross to [Setup](../SETUP_MAP.md). For visual-only work remain in this system node and its design contract. Coverage names are search leads inherited from the feature index, not evidence that checks passed or that every named scenario has a dedicated file.
 
 Candidate/requisition form refinement: `src/components/RecruitmentWorkspace.tsx`, `src/components/requisitions/AuthorizedRequisitionLookup.tsx`; layout contracts: [candidate detail](../../design/candidate-detail.md), [requisition detail](../../design/requisition-detail.md), [selector controls](../../design/controls.md). Focused checks: candidate-search-outcomes and requisition-identity browser specs.
+
+### Committed requisition saves
+
+Requisition status, creation/editing and priority use the additive requisition action RPC, exact-ID receipts and scoped 100 ms refresh notifications. Owners: requisition-action-receipt, RecruitmentWorkspace and recruitment-list. [Behavior and verification](../../work-items/requisition-committed-updates/implementation.md) → [detail contract](../../design/requisition-detail.md#committed-saves-and-reconciliation).

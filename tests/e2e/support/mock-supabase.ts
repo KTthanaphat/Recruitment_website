@@ -143,6 +143,29 @@ export async function installMockSupabase(page: Page, options: MockSupabaseOptio
     const requestedEndpoint = new URL(route.request().url()).pathname.split("/").at(-1) ?? "";
     let endpoint = requestedEndpoint;
     const body = route.request().postDataJSON() as { payload?: Record<string, unknown>; p_entity?: string; p_search?: string; p_filters?: Record<string, unknown>; p_sort?: string; p_direction?: string; p_limit?: number; p_cursor_value?: unknown; p_cursor_id?: string | null; p_before?: boolean; p_after_group_id?: string | null; p_after_candidate_id?: string | null; p_after_application_id?: string | null; p_group_id?: string | null } | undefined;
+    if(requestedEndpoint==="app_requisition_action_v1"){
+      const envelope=asRecord(body?.payload), operation=String(envelope.operation), input=asRecord(envelope.payload);
+      rpcCalls.push({endpoint:requestedEndpoint,payload:{...body}});
+      rpcCalls.push({endpoint:operation,payload:input});
+      const previousId=String(input.previous_doc_id??input.doc_id), previous=data.requisitions.find(row=>row.doc_id===previousId);
+      const source=previous?{site:previous.site,person_in_charge:previous.person_in_charge,is_priority:previous.is_priority}:null;
+      const sourceGroups=data.document_groups.filter(row=>row.doc_id===previousId).map(row=>row.group_id).filter(Boolean);
+      if(operation==="app_set_requisition_priority_v1"&&previous?.updated_at!==input.expected_updated_at){await json(route,{message:"PRIORITY_STALE_WRITE",code:"P0001"},409);return;}
+      const next={...(previous??{}),...(operation==="app_upsert_requisition"?input:{}),doc_id:String(input.doc_id),updated_at:"2026-11-04T06:00:00.000Z"} as DashboardData["requisitions"][number];
+      if(operation==="app_set_requisition_priority_v1")next.is_priority=input.is_priority===true;
+      let log:DashboardData["requisition_logs"][number]|null=null;
+      if(operation==="app_insert_requisition_log"){
+        next.status=input.status as DashboardData["requisitions"][number]["status"];
+        log={log_id:Math.max(0,...data.requisition_logs.map(row=>row.log_id))+1,doc_id:next.doc_id,status:next.status,log_date:String(input.log_date),remark:String(input.remark??""),created_at:next.updated_at};data.requisition_logs.push(log);
+      }
+      if(next.status!=="cancel")next.status=data.offers.filter(row=>row.doc_id===previousId&&row.accepted_date&&row.start_confirmation!=="did_not_start").length>=next.head_count?"filled":"ongoing";
+      if(previous)Object.assign(previous,next);else data.requisitions.push(next);
+      for(const relation of [data.document_groups,data.offers,data.requisition_logs])for(const row of relation)if(row.doc_id===previousId)row.doc_id=next.doc_id;
+      const display=enrichRequisitions(data).find(row=>row.doc_id===next.doc_id);
+      await json(route,{ok:true,id:next.doc_id,is_priority:next.is_priority,updated_at:next.updated_at,action_result:{
+        version:1,request_id:envelope.request_id,operation,previous_doc_id:previousId,doc_id:next.doc_id,requisition:next,display,removed:false,updated_at:next.updated_at,source_scope:source,source_groups:sourceGroups,groups:sourceGroups,status_log:log,changed_fields:Object.keys(input),effects:["records","counts","detail","summary","calendar","reports","audit"]
+      }});return;
+    }
     const wrapped = requestedEndpoint === "app_candidate_action_v1";
     if (wrapped) endpoint = String(asRecord(body).p_operation);
     const payload = wrapped ? asRecord(asRecord(body).p_payload) : body?.payload ?? {};

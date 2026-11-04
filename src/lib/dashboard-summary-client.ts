@@ -1,3 +1,4 @@
+import { requisitionQueryAffected, type RequisitionActionReceipt } from "./requisition-action-receipt";
 import { scheduleRecruitmentRead } from "./recruitment-read-scheduler";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { DashboardLevel } from "@/lib/dashboard-filters";
@@ -31,6 +32,17 @@ async function cacheNamespace(client: SupabaseClient, profileKey: string) {
   return `${project}:${id}:${data.session?.user.id ?? "anonymous"}:${profileKey}`;
 }
 export function clearDashboardSummaryCache() { cache.clear(); sourcingSummaryReads.clear(); }
+/** Expire only this auth scope's affected summaries; Welcome is responsibility-scoped. */
+export function invalidateRequisitionSummaryCache(scope: string, receipts: RequisitionActionReceipt[]) {
+ for(const key of cache.keys()){
+  if(!key.includes(scope)||key.startsWith("welcome:"))continue;
+  let filters: Record<string,unknown>={};
+  try {const parts=JSON.parse(key);filters=parts.find((value:unknown)=>value&&typeof value==="object"&&!Array.isArray(value)&&("headerSite" in value||"headerPic" in value||"priorityOnly" in value))??{};}catch{
+   const match=key.match(/\{.*\}/);if(match)try{filters=JSON.parse(match[0]);}catch{/* legacy cache shape */}
+  }
+  if(receipts.some(receipt=>receipt.effects.some(effect=>["summary","calendar","reports"].includes(effect))&&requisitionQueryAffected({entity:"requisitions",filters},receipt)))cache.delete(key);
+ }
+}
 function memo<T>(client: SupabaseClient, key: string, fetch: () => Promise<T>, outsideQueue = false): Promise<T> {
   const now = Date.now();
   for (const [entryKey, entry] of cache) if (entry.expiresAt <= now) cache.delete(entryKey);
