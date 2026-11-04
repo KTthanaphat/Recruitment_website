@@ -16,8 +16,8 @@ test("new candidate group search is inside the picker and supports keyboard sele
 
 test("new candidate flow keeps group search in the picker when using an existing profile",async({page})=>{
  await installMockSupabase(page);await page.goto("/candidates");await expectWorkspaceReady(page);const form=await openNew(page);
- await form.getByRole("textbox",{name:"Use existing candidate",exact:true}).fill("C-PHONE");
- await form.getByRole("button",{name:"Use existing candidate",exact:true}).click();await page.getByRole("option",{name:"C-PHONE · Pat Phone",exact:true}).click();
+ await form.getByRole("button",{name:"Use existing candidate",exact:true}).click();
+ await form.getByRole("combobox",{name:"Search existing candidates",exact:true}).fill("C-PHONE");await page.getByRole("option",{name:"C-PHONE · Pat Phone",exact:true}).click();
  const groupPicker=form.getByRole("button",{name:"Group ID",exact:true});await groupPicker.click();
  const groupSearch=form.getByRole("combobox",{name:"Search Group ID",exact:true});await groupSearch.fill("GRP-TECH");
  await expect(page.getByRole("option",{name:/GRP-TECH/}).first()).toBeVisible();await groupSearch.press("ArrowDown");await groupSearch.press("Enter");await expect(groupPicker).toContainText("GRP-TECH");
