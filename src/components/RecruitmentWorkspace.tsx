@@ -1,4 +1,6 @@
 "use client";
+import { clearRequisitionActionState, isRequisitionAction, performRequisitionAction, publishRequisitionReceipt, applyRequisitionReceipt, patchRequisitionDetail, patchRequisitionDataSince, markRequisitionDisplayed, type RequisitionActionReceipt } from "@/lib/requisition-action-receipt";
+
 import { AttendanceDecisionActions } from "@/components/ui/AttendanceDecisionActions";
 import { RetryIconButton } from "@/components/ui/RetryIconButton";
 import { NumberSkeleton, LoadingSkeleton, RefreshIndicator } from "@/components/ui/LoadingSkeleton";
@@ -12,18 +14,18 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { Activity, AlertTriangle, Bookmark, BriefcaseBusiness, Building2, CalendarDays, CalendarPlus, CheckCircle2, ContactRound, Copy, Factory, EyeOff, Files, Hash, Info, LampDesk, Layers3, Mail, Network, Pencil, Phone, Plus, RefreshCw, Send, UserRound, UsersRound, X } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { CandidateRegistry } from "@/components/candidates/CandidateRegistry";
-import { clearRecruitmentListCache, invalidateRecruitmentListsForMutation, useRecruitmentList } from "@/lib/recruitment-list";
+import { clearRecruitmentListCache, invalidateRecruitmentListsForMutation, invalidateRequisitionRecruitmentLists, useRecruitmentList } from "@/lib/recruitment-list";
 import { loadCandidateDetail } from "@/lib/candidate-detail-loader";
 import { isCandidateAction, nextCandidateReadEpoch, markCandidateReceiptDisplayed, markCandidateReconciliation, acknowledgeCandidateReconciliation, performCandidateAction, publishCandidateReceipt, applyCandidateReceipt, patchCandidateDataSince, type CandidateActionReceipt } from "@/lib/candidate-action-receipt";
 import { invalidateCandidateRecruitmentLists, invalidateRecruitmentLists, recruitmentListDependenciesForMutation, type RecruitmentListEntity } from "@/lib/recruitment-list";
-import { clearScopedDetailCache, invalidateScopedCandidateWorkspaces, invalidateScopedCandidateDetail, patchScopedCandidateDetail } from "@/lib/scoped-detail-cache";
+import { clearScopedDetailCache, patchScopedRequisitionDetails, invalidateScopedCandidateWorkspaces, invalidateScopedCandidateDetail, patchScopedCandidateDetail } from "@/lib/scoped-detail-cache";
 import { loadAuthorizedRecruiterOptions } from "@/lib/recruiter-options-client";
 import { loadScopedRequisitionDetail } from "@/lib/requisition-detail-loader";
 import { fetchApplicationDestinations, type ApplicationDestination } from "@/lib/application-destinations";
 import { fetchOfferCandidates, type OfferCandidateCursor, type OfferCandidateOption } from "@/lib/offer-candidates";
 import { readScopedInPages } from "@/lib/scoped-detail-read";
 import { clearPipelineSummaryCache } from "@/lib/pipeline-summary-loader";
-import { clearDashboardSummaryCache, loadDashboardFilterOptions, loadHomeBannerSummary, loadWelcomeSummary, type HomeBannerSummary, type WelcomeSummary } from "@/lib/dashboard-summary-client";
+import { clearDashboardSummaryCache, invalidateRequisitionSummaryCache, loadDashboardFilterOptions, loadHomeBannerSummary, loadWelcomeSummary, type HomeBannerSummary, type WelcomeSummary } from "@/lib/dashboard-summary-client";
 import { DetailGrid, SectionHeading } from "@/components/ui/RecordDetailFields";
 import { CandidateProfilePanel, CandidateApplicationDetailsAction, CandidateApplicationDetailsExtras } from "@/components/candidates/CandidateProfilePanel";
 import { applicationLogs, belongsToApplication, selectedApplication, applicationKey } from "@/lib/applications";
@@ -300,6 +302,11 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const workspaceUrlState = useWorkspaceUrlState();
   const [language, setLanguage] = useState<Language>("th");
   const [data, setData] = useState<DashboardData>(emptyDashboardData);
+  const [requisitionHomeRevision, setRequisitionHomeRevision] = useState(0);
+  const [requisitionReportRevision, setRequisitionReportRevision] = useState(0);
+  const [requisitionWorkspaceRevision, setRequisitionWorkspaceRevision] = useState(0);
+  const [requisitionCommittedId, setRequisitionCommittedId] = useState("");
+  useEffect(() => { if (!requisitionCommittedId) return;const frame=requestAnimationFrame(()=>markRequisitionDisplayed(requisitionCommittedId));return()=>cancelAnimationFrame(frame); }, [requisitionCommittedId]);
   const [committedRequestId, setCommittedRequestId] = useState("");
   useEffect(() => { if (committedRequestId) markCandidateReceiptDisplayed(committedRequestId); }, [committedRequestId]);
   const [candidateHomeRevision, setCandidateHomeRevision] = useState(0);
@@ -435,7 +442,10 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
         setData(minimal); setWorkspaceLoadState("ready"); setStatus("Recruitment records loaded.");
         return minimal;
       }
-      const [loaded, dashboardReport] = await Promise.all([loadRecruitmentBootstrap(supabase), Promise.resolve(null)]);
+      const requisitionReadEpoch = nextCandidateReadEpoch();
+      const [bootstrap, dashboardReport] = await Promise.all([loadRecruitmentBootstrap(supabase), Promise.resolve(null)]);
+      const sameIdentity = bootstrap.profile?.id === latestData.current.profile?.id && bootstrap.profile?.role === latestData.current.profile?.role && bootstrap.profile?.site === latestData.current.profile?.site && bootstrap.profile?.updated_at === latestData.current.profile?.updated_at;
+      const loaded = sameIdentity ? patchRequisitionDataSince(supabase,activeAccessRef.current,bootstrap,requisitionReadEpoch) : bootstrap;
       if (!currentRequest()) return null;
       loadedScopeRef.current = loadScope;
       if (refreshReports) { clearDashboardReportCache(); clearDashboardSummaryCache(); }
@@ -578,13 +588,13 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     if (homeReadIdentity.current !== homeReadKey) setHomeBannerSummary(null);
     homeReadIdentity.current = homeReadKey;
     setHomeBannerLoading(true); setHomeBannerError(null);
-    void loadHomeBannerSummary(supabase, scope, detailAccessScope, reportRefreshKey + candidateHomeRevision + homeBannerRetry).then(value => {
+    void loadHomeBannerSummary(supabase, scope, detailAccessScope, reportRefreshKey + candidateHomeRevision + requisitionHomeRevision + homeBannerRetry).then(value => {
       if (active) { setHomeBannerSummary(value); setHomeBannerError(null); }
     }).catch(loadError => {
       if (active) setHomeBannerError(loadError instanceof Error ? loadError.message : "Could not load the home banner summary.");
     }).finally(() => { if (active) setHomeBannerLoading(false); });
     return () => { active = false; };
-  }, [homeReadKey, data.profile, detailAccessScope, filters.owner, filters.priorityOnly, filters.site, homeBannerRetry, initialView, reportRefreshKey, candidateHomeRevision, workspaceLoadState]);
+  }, [homeReadKey, data.profile, detailAccessScope, filters.owner, filters.priorityOnly, filters.site, homeBannerRetry, initialView, reportRefreshKey, candidateHomeRevision, requisitionHomeRevision, workspaceLoadState]);
   useEffect(() => {
     if (!welcomeOpen || initialView !== "home" || welcomeReadyKey !== welcomeInitialKey || !supabase || !data.profile) return;
     let active = true;
@@ -665,17 +675,61 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       if (detail?.type === "candidate" && candidates.has(detail.id)) setCandidateDetailRetry(value => value+1);
     }, 100);
   };
+  const requisitionRefresh = useRef<{ timer: ReturnType<typeof setTimeout> | null; receipts: RequisitionActionReceipt[] }>({ timer: null, receipts: [] });
+  useEffect(() => () => { if (requisitionRefresh.current.timer) clearTimeout(requisitionRefresh.current.timer); requisitionRefresh.current = { timer: null, receipts: [] }; }, [detailAccessScope]);
+  const commitRequisitionResult = (receipt: RequisitionActionReceipt) => {
+    if (!supabase || activeAccessRef.current !== detailAccessScope || !publishRequisitionReceipt(supabase, detailAccessScope, receipt)) return;
+    setData(current => applyRequisitionReceipt(current, receipt));
+    setCompanyDashboardReport(current => current ? applyRequisitionReceipt(current as DashboardData, receipt) as DashboardReportData : current);
+    setRequisitionDetail(previous => previous.result ? { ...previous, key: receipt.previous_doc_id && receipt.previous_doc_id !== receipt.doc_id && detail?.type === "requisition" && detail.id === receipt.previous_doc_id ? JSON.stringify([detailAccessScope,receipt.doc_id,reportRefreshKey]) : previous.key, result: patchRequisitionDetail(supabase!, detailAccessScope, previous.result), error: null } : previous);
+    const docs = new Set([receipt.doc_id, receipt.previous_doc_id].filter((id): id is string => Boolean(id)));
+    const groups = new Set([...receipt.groups,...receipt.source_groups]);
+    patchScopedRequisitionDetails(supabase, detailAccessScope, docs, groups, value => patchRequisitionDetail(supabase!,detailAccessScope,value));
+    if (receipt.previous_doc_id && receipt.previous_doc_id !== receipt.doc_id) {
+      setDetail(current => current?.type === "requisition" && current.id === receipt.previous_doc_id ? { ...current,id:receipt.doc_id } : current);
+      setWorkspaceTarget(current => current.type === "requisition" && current.id === receipt.previous_doc_id ? { ...current,id:receipt.doc_id } : current);
+      const values: Record<string,string> = {};
+      const params=new URLSearchParams(window.location.search);
+      for (const [key,value] of params) if ((["detailId","focusId","docId","doc_id","workspaceId","targetId"].includes(key) || key==="id" && params.get("type")==="requisition") && value === receipt.previous_doc_id) values[key] = receipt.doc_id;
+      if (Object.keys(values).length) updateWorkspaceUrlState(values);
+    }
+    setRequisitionCommittedId(receipt.request_id);
+    const pending = requisitionRefresh.current; pending.receipts.push(receipt);
+    if (pending.timer) return;
+    pending.timer = setTimeout(() => {
+      const receipts = pending.receipts; pending.receipts = []; pending.timer = null;
+      if (!supabase || activeAccessRef.current !== detailAccessScope) return;
+      invalidateRequisitionRecruitmentLists(supabase,detailAccessScope,receipts);
+      const documents = new Set(receipts.flatMap(value => [value.doc_id,value.previous_doc_id].filter((id):id is string=>Boolean(id))));
+      const affectedGroups = new Set(receipts.flatMap(value=>[...value.groups,...value.source_groups]));
+      invalidateRequisitionSummaryCache(detailAccessScope,receipts);
+      clearPipelineSummaryCache(detailAccessScope,affectedGroups);
+      const inHeaderScope = receipts.some(value => [value.source_scope,value.requisition].some(row => row && (!filters.site || row.site===filters.site) && (!filters.owner || row.person_in_charge===filters.owner)));
+      if (inHeaderScope && receipts.some(row=>row.effects.includes("summary")||row.effects.includes("calendar"))) setRequisitionHomeRevision(value=>value+1);
+      if (inHeaderScope && receipts.some(row=>row.effects.includes("reports")&&(row.operation!=="app_set_requisition_priority_v1"||filters.priorityOnly))) setRequisitionReportRevision(value=>value+1);
+      if (workspaceTarget.id && (workspaceTarget.type==="group" ? affectedGroups.has(workspaceTarget.id) : documents.has(workspaceTarget.id))) {
+        invalidateScopedCandidateWorkspaces(supabase,detailAccessScope,affectedGroups,documents);
+        setRequisitionWorkspaceRevision(value=>value+1);
+      }
+      if (detail?.type==="requisition" && documents.has(detail.id)) {
+        invalidateScopedCandidateWorkspaces(supabase,detailAccessScope,new Set(),documents);
+        setRequisitionDetailRetry(value=>value+1);
+      }
+    },100);
+  };
   const requisitionDetailKey = detail?.type === "requisition" ? JSON.stringify([detailAccessScope, detail.id, reportRefreshKey]) : "";
   useEffect(() => {
     if (!requisitionDetailKey || detail?.type !== "requisition" || !supabase || !data.profile) {
       setRequisitionDetail({ key: requisitionDetailKey, loading: false, error: null, result: null });
       return;
     }
+    if (requisitionRefresh.current.timer && requisitionDetail.key===requisitionDetailKey && requisitionDetail.result?.status==="ready" && requisitionRefresh.current.receipts.some(row=>row.doc_id===detail.id&&row.previous_doc_id!==row.doc_id)) return;
     let cancelled = false;
+    const readEpoch = nextCandidateReadEpoch();
     setRequisitionDetail(previous => ({ key: requisitionDetailKey, loading: true, error: null, result: previous.key === requisitionDetailKey ? previous.result : null }));
     void loadScopedRequisitionDetail(supabase, { docId: detail.id, accessScope: { profileId: data.profile.id, key: detailAccessScope } })
-      .then(result => { if (!cancelled) setRequisitionDetail({ key: requisitionDetailKey, loading: false, error: null, result }); })
-      .catch(loadError => { if (!cancelled) setRequisitionDetail({ key: requisitionDetailKey, loading: false, error: loadError instanceof Error ? loadError.message : "Could not load requisition details.", result: null }); });
+      .then(result => { if (!cancelled) setRequisitionDetail(previous => result.status === "unavailable" && result.reason !== "not_found_or_not_authorized" && previous.result?.status === "ready" ? { ...previous,loading:false,error:language==="th"?"อัปเดตข้อมูลที่เกี่ยวข้องไม่สำเร็จ":"Could not refresh related data." } : { key:requisitionDetailKey,loading:false,error:null,result:patchRequisitionDetail(supabase!,detailAccessScope,result,readEpoch) }); })
+      .catch(loadError => { if (!cancelled) setRequisitionDetail(previous => ({ ...previous, loading: false, error: loadError instanceof Error ? loadError.message : "Could not load requisition details." })); });
     return () => { cancelled = true; };
   }, [data.profile, detail, detailAccessScope, requisitionDetailKey, requisitionDetailRetry, supabase]);
   const requisitionDetailResult = requisitionDetail.key === requisitionDetailKey ? requisitionDetail.result : null;
@@ -912,6 +966,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   }, [data.profile, initialView, loading]);
 
   async function signOut() {
+    if(supabase)clearRequisitionActionState(supabase);
     clearDashboardReportCache();
     clearDashboardSummaryCache();
     clearRecruitmentListCache();
@@ -1314,7 +1369,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   }
 
   async function confirmPendingAction() {
-    if (!pendingAction || !supabase || (pendingSaveLock.current && !isCandidateAction(pendingAction.endpoint))) return;
+    if (!pendingAction || !supabase || (pendingSaveLock.current && !isCandidateAction(pendingAction.endpoint) && !isRequisitionAction(pendingAction.endpoint))) return;
     pendingSaveLock.current = true;
 
     const savedAction = pendingAction;
@@ -1337,7 +1392,9 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       } else {
         const { data: rpcResult, error: rpcError } = isCandidateAction(pendingAction.endpoint)
           ? await performCandidateAction(supabase, pendingAction.endpoint, pendingAction.payload).then(data => ({ data, error: null as { message: string } | null }), error => ({ data: null, error: { message: error instanceof Error ? error.message : String(error) } }))
-          : await supabase.rpc(pendingAction.endpoint, { payload: pendingAction.payload });
+          : isRequisitionAction(pendingAction.endpoint)
+            ? await performRequisitionAction(supabase, detailAccessScope, pendingAction.endpoint, pendingAction.payload).then(data => ({ data, error: null as {message:string}|null }), error => ({data:null,error:{message:error instanceof Error ? error.message : String(error)}}))
+            : await supabase.rpc(pendingAction.endpoint, { payload: pendingAction.payload });
         if(rpcError && pendingAction.endpoint==="app_upsert_candidate_profile_v2" && rpcError.message.includes("PROFILE_DUPLICATE_REVIEW_REQUIRED")) {
           const latest=await supabase.rpc("app_candidate_duplicate_matches_v1",{payload:pendingAction.payload});
           if(latest.error) throw new Error(latest.error.message);
@@ -1359,7 +1416,8 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
         setWorkspaceTarget((current) => current.type === "requisition" && current.id === previousDocId ? { ...current, id: nextDocId } : current);
       }
       const receipt = (result as RpcResult & { action_result?: CandidateActionReceipt }).action_result;
-      if (receipt) commitCandidateResult(receipt); else refreshMutationCaches(savedAction.endpoint);
+      if (isRequisitionAction(savedAction.endpoint)) commitRequisitionResult((result as RpcResult & {action_result:RequisitionActionReceipt}).action_result);
+      else if (receipt) commitCandidateResult(receipt); else refreshMutationCaches(savedAction.endpoint);
       const changedCandidateId = String(savedAction.payload.candidate_id ?? "");
       if (!receipt && detail?.type === "candidate" && detail.id === changedCandidateId) {
         setCandidateDetail(previous => ({ key: candidateDetailKey, data: previous.key === candidateDetailKey ? previous.data : null, loading: true, error: null }));
@@ -1547,21 +1605,17 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   }, [refreshMutationCaches]);
   const toggleRequisitionPriority = useCallback(async (requisition: Requisition) => {
     if (!supabase || !canManageRequisitionPriority(data.profile, requisition)) throw new Error("Permission denied");
-    const { data: result, error: rpcError } = await supabase.rpc("app_set_requisition_priority_v1", { payload: {
-      doc_id: requisition.doc_id, is_priority: !requisition.is_priority, expected_updated_at: requisition.updated_at
-    } });
-    if (rpcError || result?.error || result?.ok !== true) throw new Error(rpcError?.message ?? result?.error ?? "Priority could not be saved");
-    const patch = (rows: Requisition[]) => rows.map(row => row.doc_id === requisition.doc_id ? { ...row, is_priority: result.is_priority, updated_at: result.updated_at } : row);
-    setData(current => ({ ...current, requisitions: patch(current.requisitions) }));
-    setCompanyDashboardReport(current => current ? { ...current, requisitions: patch(current.requisitions) } : current);
-    refreshMutationCaches("app_set_requisition_priority_v1");
+    const result = await performRequisitionAction(supabase,detailAccessScope,"app_set_requisition_priority_v1",{
+      doc_id:requisition.doc_id,is_priority:!requisition.is_priority,expected_updated_at:requisition.updated_at
+    });
+    commitRequisitionResult(result.action_result);
     setStatus(translate(language, "prioritySaved"));
-  }, [data.profile, language, refreshMutationCaches]);
+  }, [data.profile, language, detailAccessScope, commitRequisitionResult]);
 
   const hydratedCandidateData = candidateDetail.key === candidateDetailKey ? candidateDetail.data : null;
   const detailSource: DashboardData = detail?.type === "candidate" ? hydratedCandidateData ?? data : detail?.type === "requisition" && loadedRequisition ? {
     ...data,
-    requisitions: [loadedRequisition.requisition],
+    requisitions: [{ ...loadedRequisition.requisition,accepted_count:loadedRequisition.metrics.acceptedOfferCount,open_headcount:loadedRequisition.metrics.openHeadcount,candidate_count:loadedRequisition.metrics.candidateCount,sla_restart_date:loadedRequisition.metrics.slaRestartDate } as EnrichedRequisition],
     document_groups: loadedRequisition.documentGroups,
     position_groups: loadedRequisition.groups,
     offers: loadedRequisition.offers,
@@ -1601,12 +1655,13 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
         : hydratedCandidateData ? <><div aria-busy={candidateDetail.loading}>{candidateDetail.loading ? <RefreshIndicator language={language} /> : null}{candidateDetail.error ? <div role="alert" className="text-sm text-scarlet">{candidateDetail.error} <RetryIconButton type="button" onClick={() => setCandidateDetailRetry(value => value+1)}>{translate(language,"retry")}</RetryIconButton></div> : null}</div><CandidateProfilePanel key={detail.id} candidateId={detail.id} applicationId={selectedJourney?.application_id ?? null} data={hydratedCandidateData} language={language} client={supabase} accessScope={detailAccessScope} onSelect={(id)=>{setSelectedApplicationId(id);const url=new URL(window.location.href);url.searchParams.set("applicationId",id);window.history.pushState({},"",url);}} onEdit={() => openDetailCandidateChange(detail.id)} onAction={prepareRpcAction}>{selectedJourney ? legacyDetailBody.body : null}</CandidateProfilePanel></>
         : <p>{translate(language, "candidateUnavailable")}</p>
   } : detail?.type === "requisition" ? {
+    ...legacyDetailBody,
     title: loadedRequisition ? formatRequisitionTitle(enrichRequisitions(detailSource)[0]) : detail.id,
     body: (requisitionDetail.loading && !loadedRequisition) || requisitionDetail.key !== requisitionDetailKey
       ? <LoadingSkeleton variant="detail" label={<>{translate(language, "loadingRecruitmentRecords")}</>} className="py-6 text-sm text-slate" />
-      : requisitionDetail.error || requisitionDetailResult?.status !== "ready"
+      : requisitionDetailResult?.status !== "ready"
         ? <div role="alert" className="grid gap-3 py-4 text-sm text-slate"><p>{requisitionDetail.error ?? translate(language, "loadFailed")}</p><RetryIconButton type="button"  onClick={() => setRequisitionDetailRetry(value => value + 1)}>{translate(language, "retry")}</RetryIconButton></div>
-        : <div aria-busy={requisitionDetail.loading}>{requisitionDetail.loading ? <RefreshIndicator language={language} /> : null}{legacyDetailBody.body}</div>
+        : <div aria-busy={requisitionDetail.loading}>{requisitionDetail.loading ? <RefreshIndicator language={language} /> : null}{requisitionDetail.error ? <div role="alert" className="text-sm text-scarlet">{requisitionDetail.error}<RetryIconButton type="button" onClick={()=>setRequisitionDetailRetry(value=>value+1)}>{translate(language,"retry")}</RetryIconButton></div> : null}{legacyDetailBody.body}</div>
   } : legacyDetailBody;
 
   if (!hasSupabaseConfig) {
@@ -1696,13 +1751,13 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       ) : null}
 
       {initialView === "home" ? (
-        <HomeView onInitialDataSettled={handleHomeInitialDataSettled} refreshKey={reportRefreshKey + candidateHomeRevision} bannerSummary={visibleHomeBannerSummary} bannerSummaryLoading={homeBannerLoading} bannerSummaryError={homeBannerError} onRetryBannerSummary={() => setHomeBannerRetry(value => value + 1)} listClient={supabase} accessScope={detailAccessScope} summaryScope={{ headerSite: filters.site, headerPic: filters.owner, priorityOnly: filters.priorityOnly }} language={language} profile={data.profile} requisitions={filteredRequisitions} candidates={filteredCandidates} offers={filteredOffers} recruitmentLogs={data.recruitment_logs} sourcingGroups={homeSourcingGroups} sourcingHref={buildContextualHref("/sourcing", { language, site: filters.site, owner: filters.owner, sourcingWeek, priority: filters.priorityOnly ? "only" : "all" })} staleSourcingGroups={staleSourcingGroups} changeLogs={filteredChangeLogs} dataQualityIssues={dataQualityIssues} canViewRecentActivity={canWrite} onConfirmStart={(offer, outcome) => { setProcessDefaults({ offer_id: offer.offer_id, offer_expected_updated_at: offer.updated_at, offer_start_confirmation: outcome ?? offer.start_confirmation }); setActiveModal("start_confirmation"); }} onEditPending={openPendingEdit} onOpenRequisition={(id) => setDetail({ type: "requisition", id })} onOpenCandidate={openCandidateDetail} />
+        <HomeView onInitialDataSettled={handleHomeInitialDataSettled} refreshKey={reportRefreshKey + candidateHomeRevision + requisitionHomeRevision} bannerSummary={visibleHomeBannerSummary} bannerSummaryLoading={homeBannerLoading} bannerSummaryError={homeBannerError} onRetryBannerSummary={() => setHomeBannerRetry(value => value + 1)} listClient={supabase} accessScope={detailAccessScope} summaryScope={{ headerSite: filters.site, headerPic: filters.owner, priorityOnly: filters.priorityOnly }} language={language} profile={data.profile} requisitions={filteredRequisitions} candidates={filteredCandidates} offers={filteredOffers} recruitmentLogs={data.recruitment_logs} sourcingGroups={homeSourcingGroups} sourcingHref={buildContextualHref("/sourcing", { language, site: filters.site, owner: filters.owner, sourcingWeek, priority: filters.priorityOnly ? "only" : "all" })} staleSourcingGroups={staleSourcingGroups} changeLogs={filteredChangeLogs} dataQualityIssues={dataQualityIssues} canViewRecentActivity={canWrite} onConfirmStart={(offer, outcome) => { setProcessDefaults({ offer_id: offer.offer_id, offer_expected_updated_at: offer.updated_at, offer_start_confirmation: outcome ?? offer.start_confirmation }); setActiveModal("start_confirmation"); }} onEditPending={openPendingEdit} onOpenRequisition={(id) => setDetail({ type: "requisition", id })} onOpenCandidate={openCandidateDetail} />
       ) : null}
 
       {initialView === "dashboard" ? (
         <div className="grid min-w-0 gap-6">
           <DashboardPortal language={language} data={dashboardReportData} requisitions={dashboardRequisitions} offers={dashboardOffers} candidateOffers={priorityData.offers} globalSite={filters.site} globalOwner={filters.owner} globalPriorityOnly={filters.priorityOnly}
-            refreshKey={reportRefreshKey + candidateReportRevision}
+            refreshKey={reportRefreshKey + candidateReportRevision + requisitionReportRevision}
             onOpenCandidate={(id, applicationId) => openCandidateDetail(id, applicationId)}
             onOpenRequisition={async row => { if (!supabase) return false; setBusy(true); setError(null); try {
               const authorized = await readReportPages<DashboardData["requisitions"][number]>(supabase, "requisitions", "doc_id", "*", ["doc_id", row.doc_id]);
@@ -1724,7 +1779,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
           listClient={supabase}
           accessScope={detailAccessScope}
           priorityOnly={filters.priorityOnly}
-          refreshKey={reportRefreshKey + candidateWorkspaceRevision}
+          refreshKey={reportRefreshKey + candidateWorkspaceRevision + requisitionWorkspaceRevision}
           onDispatchAction={dispatchWorkspaceAction}
           offerSlot={(
             <WorkspaceOfferSection
@@ -1787,7 +1842,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
               client={supabase}
               accessScope={detailAccessScope}
               priorityOnly={filters.priorityOnly}
-              refreshKey={reportRefreshKey}
+              refreshKey={reportRefreshKey + requisitionWorkspaceRevision}
               docIds={selectedGroupData.requisitions.map((row) => row.doc_id)}
               groupIds={workspaceScope.groupIds}
               language={language}
@@ -4129,7 +4184,9 @@ function buildDetailBodyV2(
   const href = (path: string) => buildContextualHref(path, navigationContext);
 
   if (detail.type === "requisition") {
-    const requisition = enrichRequisitions(data).find((row) => row.doc_id === detail.id);
+    const enriched = enrichRequisitions(data).find((row) => row.doc_id === detail.id);
+    const exact = data.requisitions.find(row=>row.doc_id===detail.id) as Partial<EnrichedRequisition> | undefined;
+    const requisition = enriched && exact?.accepted_count !== undefined ? { ...enriched,accepted_count:exact.accepted_count,open_headcount:exact.open_headcount!,candidate_count:exact.candidate_count!,sla_restart_date:exact.sla_restart_date??null } : enriched;
     if (!requisition) return { title: "Requisition", body: <p className="text-sm font-bold text-slate">Record not found.</p> };
     const groups = data.document_groups.filter((row) => row.doc_id === requisition.doc_id);
     const positionGroupIds = new Set(groups.map((row) => row.group_id).filter(Boolean) as string[]);

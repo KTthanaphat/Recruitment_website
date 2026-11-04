@@ -516,6 +516,7 @@ async function main() {
   if (process.argv.includes('--candidate-latency')) await require('./verify-candidate-latency.cjs')(db, root);
   if (process.argv.includes('--sourcing-records')) await require('./verify-sourcing-records.cjs')(db, root);
   if (process.argv.includes('--recruiter-read-upgrade')) await require('./verify-recruiter-read-upgrade.cjs')(db, root);
+  if (process.argv.includes('--requisition-actions')) await require('./verify-requisition-actions.cjs')(db, root);
   await db.close();
 }
 main().catch(async error=>{console.error(error.message);await db.close();process.exitCode=1;});

@@ -124,6 +124,7 @@ as $$
 declare
   v_doc_id text := nullif(payload ->> 'doc_id', '');
   v_status text := nullif(payload ->> 'status', '');
+  v_log_id bigint;
 begin
   perform app_private.assert_recruitment_writer();
   if not app_private.can_manage_requisition(v_doc_id) then raise exception 'You can update only requisitions where you are the person in charge or assigned to the site.'; end if;
@@ -131,12 +132,12 @@ begin
 
   perform set_config('app.action', 'requisition:status', true);
   insert into public.requisition_logs (doc_id, log_date, status, remark)
-  values (v_doc_id, nullif(payload ->> 'log_date', '')::date, v_status, nullif(payload ->> 'remark', ''));
+  values (v_doc_id, nullif(payload ->> 'log_date', '')::date, v_status, nullif(payload ->> 'remark', '')) returning log_id into v_log_id;
 
   update public.requisitions set status = v_status where doc_id = v_doc_id;
   perform set_config('app.action', 'auto-status', true);
   perform app_private.refresh_requisition_status(v_doc_id);
-  return jsonb_build_object('ok', true);
+  return jsonb_build_object('ok', true, 'id', v_doc_id, 'log_id', v_log_id);
 end;
 $$;
 

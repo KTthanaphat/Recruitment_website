@@ -22,3 +22,14 @@ test('warm candidate patching and invalidation preserve unrelated detail caches'
  patchScopedCandidateDetail(db,'scope','CAN-1',value=>({...value,value:2}));assert.deepEqual(await loadCachedScopedDetail(db,identity,key,load),{value:2});
  invalidateScopedCandidateDetail(db,'scope',new Set(['CAN-1']));await loadCachedScopedDetail(db,identity,key,load);await loadCachedScopedDetail(db,identity,other,load);assert.equal(reads,3);
 });
+
+test('requisition patches affect only exact documents and linked groups in the same auth scope',async()=>{
+ const {patchScopedRequisitionDetails}=require('../../src/lib/scoped-detail-cache.ts');
+ const db=client(),keys=['requisition-detail:scope\u001f'+JSON.stringify(['R1',null]),'requisition-detail:scope\u001f'+JSON.stringify(['R2',null]),'group-workspace:scope\u001f'+JSON.stringify(['G1'])];
+ const load=async()=>({value:1});
+ for(const key of keys)await loadCachedScopedDetail(db,identity,key,load);
+ patchScopedRequisitionDetails(db,'scope',new Set(['R1']),new Set(['G1']),value=>({...value,value:2}));
+ assert.equal((await loadCachedScopedDetail(db,identity,keys[0],load)).value,2);
+ assert.equal((await loadCachedScopedDetail(db,identity,keys[1],load)).value,1);
+ assert.equal((await loadCachedScopedDetail(db,identity,keys[2],load)).value,2);
+});

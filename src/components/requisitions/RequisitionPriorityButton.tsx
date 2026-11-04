@@ -19,7 +19,7 @@ export function RequisitionPriorityButton({ requisition, language, canManage, on
       icon={<Bookmark size={18} fill={requisition.is_priority ? "currentColor" : "none"} aria-hidden="true" />}
       aria-label={label} title={canManage ? label : translate(language, "priorityReadOnly")}
       aria-pressed={Boolean(requisition.is_priority)} aria-busy={pending} disabled={pending || !canManage}
-      onClick={async () => { if (pending || !canManage) return; setPending(true); setError(null); try { await onToggle(requisition); } catch { setError(translate(language, "prioritySaveFailed")); } finally { setPending(false); } }} />
+      onClick={async () => { if (pending || !canManage) return; setPending(true); setError(null); try { await onToggle(requisition); } catch (error) { setError(error instanceof Error && /uncertain|could not be verified/i.test(error.message) ? error.message : translate(language, "prioritySaveFailed")); } finally { setPending(false); } }} />
     {error ? <p role="alert" className="absolute right-0 top-full z-50 mt-1 w-56 rounded-lg border border-scarlet/30 bg-white p-3 text-sm text-scarlet shadow-md">{error}</p> : null}
   </div>;
 }

@@ -1,3 +1,4 @@
+import { patchRequisitionRows, requisitionReceiptRevision, subscribeRequisitionReceipts, requisitionQueryAffected, type RequisitionActionReceipt } from "./requisition-action-receipt";
 import { candidateReceiptRevision, nextCandidateReadEpoch, subscribeCandidateReceipts, patchCandidateRows, type CandidateActionReceipt } from "./candidate-action-receipt";
 import { scheduleRecruitmentRead, promoteRecruitmentRead, clearRecruitmentReadQueue } from "./recruitment-read-scheduler";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -108,6 +109,16 @@ export function invalidateCandidateRecruitmentLists(client: object, scope: strin
  }
 }
 
+/** Requisition saves notify each affected loaded query once and expire inactive criteria. */
+export function invalidateRequisitionRecruitmentLists(client: object, scope: string, receipts: RequisitionActionReceipt[]) {
+ const affects = (request: RecruitmentListRequest) => receipts.some(receipt => requisitionQueryAffected(request,receipt));
+ for (const cache of [pageCache,countCache]) for(const key of cache.keys()) {
+  const parts=JSON.parse(key); if(parts[0]!==clientId(client as RpcClient)||parts[1]!==scope)continue;
+  if(affects({accessScope:scope,entity:parts[2],search:parts[3],filters:parts[4]}))cache.delete(key);
+ }
+ for(const entry of queryRevisions.values())if(entry.client===client&&entry.request.accessScope===scope&&affects(entry.request)){entry.revision++;entry.listeners.forEach(listener=>listener());}
+}
+
 /** Reads one filtered, sorted keyset page. Invalid RPC payloads fail closed instead of falling back to local arrays. */
 export async function fetchRecruitmentList<T>(client: RpcClient, request: RecruitmentListRequest): Promise<RecruitmentListPage<T>> {
   pruneCache(pageCache, MAX_PAGE_CACHE_ENTRIES);
@@ -148,7 +159,7 @@ export async function fetchRecruitmentList<T>(client: RpcClient, request: Recrui
     void created.then(() => { const current = pageCache.get(key); if (current?.promise === created) current.expiresAt = Date.now() + 30_000; }, () => { if (pageCache.get(key)?.promise === created) pageCache.delete(key); });
   }
   if (!request.background && !cached.settled) promoteRecruitmentRead(client, cached.controller.signal, request.priority ?? 0);
-  try { const page = await lease(cached, request.signal) as RecruitmentListPage<T>; return { ...page, ...(page.readTiming && fromCache ? { readTiming: { queueMs: 0, requestMs: 0, receivedAt: performance.now(), cacheHit: true } } : {}), items: patchCandidateRows(client, request.accessScope, page.items, request, page.readStarted) }; }
+  try { const page = await lease(cached, request.signal) as RecruitmentListPage<T>; return { ...page, ...(page.readTiming && fromCache ? { readTiming: { queueMs: 0, requestMs: 0, receivedAt: performance.now(), cacheHit: true } } : {}), items: patchRequisitionRows(client, request.accessScope, patchCandidateRows(client, request.accessScope, page.items, request, page.readStarted), request, page.readStarted) }; }
   catch (error) { if ((!request.signal?.aborted || cached.controller.signal.aborted) && pageCache.get(key) === cached) pageCache.delete(key); throw error; }
 }
 
@@ -267,6 +278,7 @@ export function useRecruitmentList<T>({ client, accessScope, entity, filters = {
   const [errorKey, setErrorKey] = useState("");
   const navigationPending = useRef(false);
   useSyncExternalStore(listener => subscribeCandidateReceipts(client, accessScope, listener), () => candidateReceiptRevision(client, accessScope), () => 0);
+  useSyncExternalStore(listener => subscribeRequisitionReceipts(client, accessScope, listener), () => requisitionReceiptRevision(client, accessScope), () => 0);
   const listRevision = useSyncExternalStore(listener => subscribeRecruitmentLists(entity, listener), () => recruitmentListRevision(entity), () => 0);
   const scopedRevision = useSyncExternalStore(fn => subscribeRecruitmentQuery(client, { accessScope, entity, search: debouncedSearch, filters }, fn), () => recruitmentQueryRevision(client, { accessScope, entity, search: debouncedSearch, filters }), () => 0);
   const scopedCountRevision = useSyncExternalStore(fn => subscribeRecruitmentQuery(client, { accessScope, entity, search: debouncedSearch, filters }, fn, "count"), () => recruitmentQueryRevision(client, { accessScope, entity, search: debouncedSearch, filters }, "count"), () => 0);
@@ -323,5 +335,5 @@ export function useRecruitmentList<T>({ client, accessScope, entity, filters = {
   const totalCount = currentCount?.value ?? null;
   const countLoading = currentCount?.loading ?? Boolean(enabled && client && accessScope);
   const countError = currentCount?.error ?? false;
-  return { readTiming: current?.readTiming, settled: loadedKey === requestKey || activeError, initialLoading: Boolean(enabled && client && accessScope && !current && !activeError), refreshing: Boolean(loading && current), search: activeSearch, setSearch: searchInput?.setValue ?? setSearch, items: client && current ? patchCandidateRows(client, accessScope, current.items, { entity, filters, search: debouncedSearch }, current.readStarted) : [], totalCount, countLabel: totalCount === null ? countError ? "—" : countLoading ? "…" : "—" : String(totalCount), countLoading, countError, page: displayPage, pageSize, setPageSize: changePageSize, loading, error: activeError, canPrevious: !loading && page > 1, canNext: !loading && Boolean(current?.has_more && current.next_cursor), goPrevious, goNext, goFirst, retry: () => setRetry(value => value + 1), retryCount: () => setCountRetry(value => value + 1) };
+  return { readTiming: current?.readTiming, settled: loadedKey === requestKey || activeError, initialLoading: Boolean(enabled && client && accessScope && !current && !activeError), refreshing: Boolean(loading && current), search: activeSearch, setSearch: searchInput?.setValue ?? setSearch, items: client && current ? patchRequisitionRows(client, accessScope, patchCandidateRows(client, accessScope, current.items, { entity, filters, search: debouncedSearch }, current.readStarted), { entity, filters }, current.readStarted) : [], totalCount, countLabel: totalCount === null ? countError ? "—" : countLoading ? "…" : "—" : String(totalCount), countLoading, countError, page: displayPage, pageSize, setPageSize: changePageSize, loading, error: activeError, canPrevious: !loading && page > 1, canNext: !loading && Boolean(current?.has_more && current.next_cursor), goPrevious, goNext, goFirst, retry: () => setRetry(value => value + 1), retryCount: () => setCountRetry(value => value + 1) };
 }

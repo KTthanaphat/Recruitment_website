@@ -2,9 +2,11 @@
 
 import { RetryIconButton } from "@/components/ui/RetryIconButton";
 import { LoadingSkeleton, RefreshIndicator } from "@/components/ui/LoadingSkeleton";
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { nextCandidateReadEpoch } from "@/lib/candidate-action-receipt";
+import { patchRequisitionRows, requisitionReceiptRevision, subscribeRequisitionReceipts } from "@/lib/requisition-action-receipt";
 import { loadScopedRequisitionPreview } from "@/lib/requisition-detail-loader";
 import type { ScopedAccessIdentity } from "@/lib/scoped-detail-read";
 import { formatRequisitionOptionLabel, formatRequisitionTitle } from "@/lib/format";
@@ -12,25 +14,27 @@ import { requisitionStatusLabel, translate } from "@/lib/i18n/dictionary";
 import type { EnrichedRequisition, Language } from "@/types/recruitment";
 
 export function LinkedRequisitionPreview({ groupName, language, requisitions, docIds, client, accessScope, onOpenRequisition }: { groupName: string; language: Language; requisitions: EnrichedRequisition[]; docIds?: string[]; client?: SupabaseClient | null; accessScope?: ScopedAccessIdentity; onOpenRequisition: (docId: string) => void }) {
+  useSyncExternalStore(listener=>subscribeRequisitionReceipts(client??null,accessScope?.key??"",listener),()=>requisitionReceiptRevision(client??null,accessScope?.key??""),()=>0);
   const [open, setOpen] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [retry, setRetry] = useState(0);
-  const [remote, setRemote] = useState<{ key: string; rows: EnrichedRequisition[] | null; error: boolean }>({ key: "", rows: null, error: false });
+  const [remote, setRemote] = useState<{ key: string; rows: EnrichedRequisition[] | null; error: boolean; epoch?:number }>({ key: "", rows: null, error: false });
   const remoteEnabled = Boolean(client && accessScope && docIds);
   const requestKey = JSON.stringify([accessScope, docIds]);
   useEffect(() => {
     if (!open || !client || !accessScope || !docIds) return;
-    let cancelled = false;
+    let cancelled = false;const epoch=nextCandidateReadEpoch();
     setPreviewLoading(true);
     setRemote(previous => ({ key: requestKey, rows: previous.key === requestKey ? previous.rows : null, error: false }));
     void loadScopedRequisitionPreview(client, { docIds, accessScope }).then(rows => {
-      if (!cancelled) setRemote({ key: requestKey, rows, error: false });
+      if (!cancelled) setRemote({ key: requestKey, rows, error: false,epoch });
     }).catch(() => { if (!cancelled) setRemote({ key: requestKey, rows: null, error: true }); }).finally(() => { if (!cancelled) setPreviewLoading(false); });
     return () => { cancelled = true; };
     // The serialized key tracks projected IDs and authorization without unstable array dependencies.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, client, requestKey, retry]);
-  const previewRows = remoteEnabled ? remote.key === requestKey ? remote.rows : null : requisitions;
+  const sourceRows = remoteEnabled ? remote.key === requestKey ? remote.rows : null : requisitions;
+  const previewRows = client && accessScope && sourceRows ? patchRequisitionRows(client,accessScope.key,sourceRows,{entity:"requisitions"},remote.epoch) : sourceRows;
   const previewError = remoteEnabled && remote.key === requestKey && remote.error;
   const count = docIds ? new Set(docIds).size : requisitions.length;
   const [position, setPosition] = useState({ top: 0, left: 0, width: 0 });

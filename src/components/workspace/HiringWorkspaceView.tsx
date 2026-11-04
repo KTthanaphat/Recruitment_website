@@ -1,4 +1,8 @@
 "use client";
+import { committedRequisitionId, patchRequisitionDetail, requisitionReceiptRevision, subscribeRequisitionReceipts } from "@/lib/requisition-action-receipt";
+import { nextCandidateReadEpoch } from "@/lib/candidate-action-receipt";
+import { useSyncExternalStore } from "react";
+
 
 import { RetryIconButton } from "@/components/ui/RetryIconButton";
 import { SkeletonBlock, TableSkeletonRows, NumberSkeleton, LoadingSkeleton, RefreshIndicator } from "@/components/ui/LoadingSkeleton";
@@ -148,7 +152,8 @@ export function HiringWorkspaceView({
   const [qualityState, setQualityState] = useState<{ key: string; loading: boolean; error: boolean; page: HomeQualityPage | null }>({ key: "", loading: false, error: false, page: null });
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
-  const selectedTarget = urlState.target;
+  useSyncExternalStore(listener=>subscribeRequisitionReceipts(listClient,accessScope,listener),()=>requisitionReceiptRevision(listClient,accessScope),()=>0);
+  const selectedTarget = urlState.target.type === "requisition" ? { ...urlState.target,id:committedRequisitionId(listClient,accessScope,urlState.target.id ?? "") } : urlState.target;
   const detailRequestKey = JSON.stringify([selectedTarget.type, selectedTarget.id, weekStart, siteFilter, ownerFilter, priorityOnly, accessScope]);
   useEffect(() => {
     if (!selectedTarget.type || !selectedTarget.id || !listClient || !profile?.id || !accessScope) {
@@ -156,18 +161,25 @@ export function HiringWorkspaceView({
       return;
     }
     let cancelled = false;
-    setTargetDetail(previous => ({ key: detailRequestKey, loading: true, error: false, result: previous.key === detailRequestKey ? previous.result : null }));
+    setTargetDetail(previous => {
+      const patched=patchRequisitionDetail(listClient,accessScope,previous.result);
+      const oldCriteria=JSON.parse(previous.key||"[]"),newCriteria=JSON.parse(detailRequestKey);
+      const sameScope=oldCriteria.length===newCriteria.length&&oldCriteria.every((value:unknown,index:number)=>index===1||value===newCriteria[index]);
+      const renamed=sameScope&&patched?.status==="ready"&&"requisition" in patched&&patched.requisition.doc_id===selectedTarget.id;
+      return { key:detailRequestKey,loading:true,error:false,result:previous.key===detailRequestKey||renamed?patched:null };
+    });
+    const readEpoch = nextCandidateReadEpoch();
     const identity = { profileId: profile.id, key: accessScope };
     const request = selectedTarget.type === "requisition"
       ? loadScopedRequisitionDetail(listClient, { docId: selectedTarget.id, accessScope: identity })
       : loadScopedGroupWorkspace(listClient, { groupId: selectedTarget.id, selectedWeek: weekStart, scope: { headerSite: siteFilter, headerPic: ownerFilter, priorityOnly }, accessScope: identity });
     void request.then(result => {
-      if (!cancelled && result.status === "ready" && result.scopeKey === accessScope) setTargetDetail({ key: detailRequestKey, loading: false, error: false, result });
+      if (!cancelled && result.status === "ready" && result.scopeKey === accessScope) setTargetDetail({ key: detailRequestKey, loading: false, error: false, result: patchRequisitionDetail(listClient,accessScope,result,readEpoch) });
       else if (!cancelled) setTargetDetail(previous => ({ key: detailRequestKey, loading: false, error: true, result: previous.key === detailRequestKey ? previous.result : null }));
     }).catch(() => { if (!cancelled) setTargetDetail(previous => ({ key: detailRequestKey, loading: false, error: true, result: previous.key === detailRequestKey ? previous.result : null })); });
     return () => { cancelled = true; };
   }, [refreshKey, detailRetry, accessScope, detailRequestKey, listClient, ownerFilter, priorityOnly, profile?.id, selectedTarget.id, selectedTarget.type, siteFilter, weekStart]);
-  const matchingDetail = targetDetail.key === detailRequestKey ? targetDetail.result : null;
+  const matchingDetail = targetDetail.key === detailRequestKey && listClient ? patchRequisitionDetail(listClient,accessScope,targetDetail.result) : null;
   const qualityScope = { headerSite: siteFilter, headerPic: ownerFilter, priorityOnly };
   const qualityToday = workspaceTodayBangkok();
   const qualityRequestKey = JSON.stringify([selectedTarget.type, selectedTarget.id, accessScope, qualityScope, qualityToday]);

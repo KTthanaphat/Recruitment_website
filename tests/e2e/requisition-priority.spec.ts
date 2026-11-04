@@ -30,7 +30,8 @@ test("priority bookmark persists, filters records and survives navigation", asyn
     .toEqual({ doc_id: "REQ-HQ-1", is_priority: true, expected_updated_at: originalTimestamp });
   await expect(drawer.getByRole("button", { name: "Change record", exact: true })).toHaveCount(0);
   await drawer.getByRole("button", { name: /More actions/ }).click();
-  await expect(drawer.getByRole("menuitem", { name: "Change record", exact: true })).toBeVisible();
+  await expect(drawer.getByRole("menuitem").first()).toBeVisible();
+  await expect(drawer.getByRole("menuitem", { name: "Change record", exact: true })).toHaveCount(0);
   await page.keyboard.press("Escape");
   await drawer.getByRole("button", { name: "Close", exact: true }).click();
 
@@ -56,7 +57,7 @@ test("priority bookmark persists, filters records and survives navigation", asyn
   await page.screenshot({ path: testInfo.outputPath("priority-desktop.png"), fullPage: true });
   await page.getByRole("link", { name: "Dashboard", exact: true }).first().click();
   await expect(page).toHaveURL(/priority=only/);
-  await expect(page.getByRole("heading", { name: "Vacancy Waterfall", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Recruitment Performance", exact: true })).toBeVisible();
   await expect(page.locator("[data-performance-report]").first().locator("[data-site-header]")).toHaveText(["HQ", "Total"]);
 
   await page.goto("/requisitions?priority=only&detailType=requisition&detailId=REQ-HQ-1");
@@ -72,7 +73,7 @@ test("priority bookmark persists, filters records and survives navigation", asyn
 
 test("failed priority save retains the original bookmark and shows a useful error", async ({ page }) => {
   await installMockSupabase(page);
-  await page.route("**/rest/v1/rpc/app_set_requisition_priority_v1", route => route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ message: "PRIORITY_STALE_WRITE" }) }));
+  await page.route("**/rest/v1/rpc/app_requisition_action_v1", route => route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ message: "PRIORITY_STALE_WRITE", code: "P0001" }) }));
   await page.goto("/requisitions?detailType=requisition&detailId=REQ-HQ-1");
   const drawer = page.getByRole("dialog", { name: "Engineer (L4)" });
   await drawer.getByRole("button", { name: "Mark as priority", exact: true }).click();

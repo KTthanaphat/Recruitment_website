@@ -1,3 +1,5 @@
+import { patchRequisitionDetail, acknowledgeRequisitionReconciliation, requisitionNeedsReconciliation } from "./requisition-action-receipt";
+import { nextCandidateReadEpoch } from "./candidate-action-receipt";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { emptyDashboardData, enrichRequisitions } from "@/lib/data";
 import type { CandidateApplication, DocumentGroup, Offer, PositionGroup, Requisition, RequisitionLog } from "@/types/recruitment";
@@ -45,7 +47,9 @@ export async function loadScopedRequisitionDetail(
 ): Promise<ScopedRequisitionDetailResult> {
   if (!input.docId.trim()) return { status: "unavailable", reason: "not_found_or_not_authorized" };
   const key = `requisition-detail:${input.accessScope.key}\u001f${JSON.stringify([input.docId, input.activityCursor ?? null])}`;
-  try { return await loadCachedScopedDetail(client, input.accessScope, key, () => loadScopedRequisitionDetailUncached(client, input)); }
+  const epoch = nextCandidateReadEpoch();
+  try { const result = patchRequisitionDetail(client, input.accessScope.key, await (requisitionNeedsReconciliation(client,input.accessScope.key,input.docId) ? loadScopedRequisitionDetailUncached(client,input) : loadCachedScopedDetail(client, input.accessScope, key, () => loadScopedRequisitionDetailUncached(client, input))), epoch);
+    if(result.status==="ready")acknowledgeRequisitionReconciliation(client,input.accessScope.key,input.docId);return result; }
   catch (error) { return { status: "unavailable", reason: scopedUnavailableReason(error) }; }
 }
 

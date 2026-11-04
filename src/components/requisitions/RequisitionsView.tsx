@@ -99,7 +99,7 @@ export function RequisitionsView({
   }, [list.page, list.pageSize, list.search, table.filters, table.sortDirection, table.sortKey]);
 
   return (
-    <Panel>{list.refreshing ? <RefreshIndicator language={language} /> : null}
+    <Panel>{list.refreshing || list.countLoading && list.totalCount !== null ? <RefreshIndicator language={language} /> : null}
       {list.error ? <div role="alert" className="mb-3 flex items-center gap-3 text-sm text-scarlet"><span>Could not load requisitions.</span><RetryIconButton title={`${language === "th" ? "ลองโหลดข้อมูลอีกครั้ง" : "Retry loading"}: Requisitions`} type="button"  onClick={list.retry} loading={list.loading}>{language === "th" ? "ลองอีกครั้ง" : "Retry"}</RetryIconButton></div> : null}
       {!client && rows.length === 0 ? (
         <>{canWrite ? <div className="mb-4 flex flex-wrap items-center justify-end gap-2"><Button type="button" size="sm" icon={<Plus size={17} />} onClick={onNew}>{translate(language, "newRequisition")}</Button><Button type="button" size="sm" variant="secondary" icon={<RotateCw size={16} />} onClick={onStatus}>{translate(language, "status")}</Button></div> : null}<EmptyState message={translate(language, "noData")} /></>
