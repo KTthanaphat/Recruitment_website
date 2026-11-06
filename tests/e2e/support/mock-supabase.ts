@@ -247,9 +247,9 @@ export async function installMockSupabase(page: Page, options: MockSupabaseOptio
     }
     if(endpoint==="app_dashboard_bottleneck_summary_v1") {
       rpcCalls.push({endpoint,payload:{...body}});
-      const start=String(body?.p_start),end=String(body?.p_end),today=reportToday,priorRange={start:String(body?.p_prior_start),end:String(body?.p_prior_end)},channel=String(body?.p_channel??"all"),report=buildStageBottleneckReport(data,reportRequisitions(),{start,end},today,priorRange,channel),statusCounts=Object.fromEntries(["overdue","today","upcoming","unscheduled","unavailable"].map(status=>[status,report.waiting.filter(row=>row.status===status).length]));
-      await json(route,{asOf:report.asOf,start:report.start,future:report.future,channel,stages:report.stages,primary:report.primary,metrics:report.metrics,priorMetrics:report.prior?.metrics??null,priorRange:report.priorRange,
-        trends:report.trends,excluded:report.excluded,conflicts:report.conflicts,statusCounts,picOptions:[...new Set(report.waiting.map(row=>row.candidate.person_in_charge).filter(Boolean))],channelOptions:[...new Set(data.candidates.map(row=>row.channel?.trim()||"Others"))]});return;
+      const start=String(body?.p_start),end=String(body?.p_end),today=reportToday,priorRange=body?.p_prior_start&&body?.p_prior_end?{start:String(body.p_prior_start),end:String(body.p_prior_end)}:null,channel=String(body?.p_channel??"all"),report=buildStageBottleneckReport(data,reportRequisitions(),{start,end},today,priorRange??{start,end},channel),statusCounts=Object.fromEntries(["overdue","today","upcoming","unscheduled","unavailable"].map(status=>[status,report.waiting.filter(row=>row.status===status).length]));
+      await json(route,{asOf:report.asOf,start:report.start,future:report.future,channel,stages:report.stages,primary:report.primary,metrics:report.metrics,priorMetrics:priorRange?report.prior?.metrics??null:null,priorRange,
+        trends:priorRange?report.trends:[],excluded:report.excluded,conflicts:report.conflicts,statusCounts,picOptions:[...new Set(report.waiting.map(row=>row.candidate.person_in_charge).filter(Boolean))],channelOptions:[...new Set(data.candidates.map(row=>row.channel?.trim()||"Others"))]});return;
     }
     if(endpoint==="app_dashboard_bottleneck_queue_v1") {
       rpcCalls.push({endpoint,payload:{...body}});
