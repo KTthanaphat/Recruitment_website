@@ -109,7 +109,8 @@ test("desktop report, chart filters, pagination/history, application drilldown a
   await expect(report.locator("tbody tr")).toHaveCount(25);
   fs.mkdirSync("outputs/rejection-dashboard", { recursive: true }); await page.screenshot({ path: "outputs/rejection-dashboard/desktop-en.png", fullPage: true });
   await report.getByRole("button", { name: "Next", exact: true }).click(); await expect(page).toHaveURL(/rejectionPage=1/);
-  await page.reload(); await expect(report).toBeVisible(); await expect(report.getByText("Page 2 / 3", { exact: true })).toBeVisible();
+  await expect(report.getByText("Page 2 / 3", { exact: true })).toBeVisible();
+  await page.reload(); await expect(report.getByText("Page 1 / 3", { exact: true })).toBeVisible();
   await report.getByRole("button", { name: "Bars", exact: true }).click();
   await report.getByRole("region", { name: "Why processes ended", exact: true }).getByRole("button", { name: /^Saved reason/ }).first().click();
   await expect(report.locator('[data-rejection-metric="total"]')).not.toHaveText("61"); await expect(report.getByRole("button", { name: "Remove filter: Main reason" })).toBeVisible();
@@ -138,13 +139,32 @@ test("Thai report at 1024px, keyboard navigation and existing phone restriction"
   await page.keyboard.press("End"); await expect(tab).toHaveAttribute("aria-selected", "true");
   await page.setViewportSize({ width: 390, height: 844 }); await page.reload(); await expect(page.getByText(/กรุณาใช้หน้าต่างที่มีความกว้างอย่างน้อย 1024/)).toBeVisible();
 });
+test("Rejection rows arrive while the chart request is held", async ({ page }) => {
+  await seed(page);
+  let releaseSummary!: () => void;
+  const held = new Promise<void>(resolve => { releaseSummary = resolve; });
+  await page.route("**/rest/v1/rpc/app_dashboard_rejection_summary_v1", async route => {
+    await held;
+    await route.fallback();
+  });
+  try {
+    await page.goto(href);
+    await expect(page.locator("[data-rejection-event]:visible")).toHaveCount(25);
+    await expect(page.locator('[data-rejection-metric="total"]')).toHaveCount(0);
+  } finally {
+    releaseSummary();
+  }
+  await expect(page.locator('[data-rejection-metric="total"]')).toHaveText("61");
+});
 test("complete-load errors retry without partial results and search has a recoverable empty state", async ({ page }) => {
   await seed(page); let fail = true;
   await page.route("**/rest/v1/rpc/app_dashboard_rejection_summary_v1", async route => { if (fail) await route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ message: "Synthetic summary failure" }) }); else await route.fallback(); });
   await page.route("**/rest/v1/recruitment_logs?**", async route => { if (route.request().headers().prefer?.includes("count=exact")) await route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ message: "Synthetic export source failure" }) }); else await route.fallback(); });
-  await page.goto(href); await expect(page.getByRole("alert").filter({ hasText: "Could not load the rejection summary" })).toBeVisible(); await expect(page.locator("[data-rejection-report]:visible")).toHaveCount(0);
+  await page.goto(href); await expect(page.getByRole("alert").filter({ hasText: "Could not load the rejection summary" })).toBeVisible(); await expect(page.locator("[data-rejection-event]:visible")).toHaveCount(25);
   fail = false; await page.getByRole("button", { name: "Retry", exact: true }).click(); const report = page.locator("[data-rejection-report]:visible"); await expect(report.locator('[data-rejection-metric="total"]')).toHaveText("61");
   await page.getByRole("button", { name: "Export Rejections", exact: true }).click(); await page.getByRole("dialog").getByRole("button", { name: "Export Rejections XLSX", exact: true }).click(); await expect(page.getByRole("dialog").getByRole("alert").filter({ hasText: "Could not export this report" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await report.getByRole("searchbox", { name: "Search name or record ID" }).fill("NO-SUCH-APPLICANT"); await expect(report.locator('p[role="status"]').filter({ hasText: "No events match" })).toBeVisible();
   await report.getByRole("button", { name: "Clear report filters", exact: true }).click(); await expect(report.locator('[data-rejection-metric="total"]')).toHaveText("61");
 });

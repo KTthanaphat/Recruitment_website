@@ -516,6 +516,64 @@ async function main() {
   if (process.argv.includes('--candidate-latency')) await require('./verify-candidate-latency.cjs')(db, root);
   if (process.argv.includes('--sourcing-records')) await require('./verify-sourcing-records.cjs')(db, root);
   if (process.argv.includes('--recruiter-read-upgrade')) await require('./verify-recruiter-read-upgrade.cjs')(db, root);
+  if (process.argv.includes('--dashboard-report-loading')) {
+    const migration = name => fs.readFileSync(path.join(root, 'supabase/migrations', name), 'utf8');
+    await db.exec(migration('20261102123500_ytd_report_materialization.sql'));
+    await db.exec(migration('20261104015609_reconcile_recruiter_read_authorization.sql'));
+    const roles = ['system_admin', 'admin_recruiter', 'site_recruiter', 'viewer', 'site_recruiter'];
+    const ids = roles.map((_, index) => 'a2000000-0000-4000-8000-00000000000' + (index + 1));
+    for (const [index, role] of roles.entries()) {
+      await db.query('insert into auth.users(id,email) values($1,$2)', [ids[index], 'dashboard-fixture-' + index + '@example.test']);
+      await db.query('update public.profiles set role=$1,site=$2 where id=$3', [role, index === 4 ? 'OTHER' : 'TEST', ids[index]]);
+    }
+    await db.exec("update public.requisitions set pr_approved_date='2026-10-01' where doc_id='TEST-R1'");
+    const calls = {
+      rejectionSummary: "app_dashboard_rejection_summary_v1('2026-10-01','2026-10-31','{}','{}')",
+      rejectionPage: "app_dashboard_rejection_page_v1('2026-10-01','2026-10-31','{}','{}')",
+      bottlenecks: "app_dashboard_bottleneck_summary_v1('2026-10-01','2026-10-31','2026-09-01','2026-09-30','{}','all',array['2026-10-07','2026-10-14','2026-10-31']::date[])",
+      activeRequisitions: "app_dashboard_active_requisitions_page_v1('2026-10-01','2026-10-31','custom','status','{}')",
+      pipeline: "app_dashboard_pipeline_summary_v1('2026-10-01','2026-10-31','custom','{}','all')",
+    };
+    async function sample() {
+      const results = [];
+      for (const [index, id] of ids.entries()) {
+        await db.query("select set_config('request.jwt.claim.sub',$1,false)", [id]);
+        await db.exec('set role authenticated');
+        const reports = {};
+        for (const [name, call] of Object.entries(calls)) {
+          const sql = 'select public.' + call + ' report';
+          const coldStart = performance.now();
+          const report = (await db.query(sql)).rows[0].report;
+          const firstMs = performance.now() - coldStart;
+          const durations = [];
+          if (index === 0 || index === 2) for (let i = 0; i < 30; i++) {
+            const start = performance.now();
+            await db.query(sql);
+            durations.push(performance.now() - start);
+          }
+          durations.sort((a, b) => a - b);
+          reports[name] = { report, firstMs, samples: durations.length, medianMs: durations[14], p95Ms: durations[28] };
+        }
+        results.push(reports);
+        await db.exec('reset role');
+      }
+      return results;
+    }
+    const before = await sample();
+    await db.exec(migration('20261106032530_dashboard_report_loading.sql'));
+    const after = await sample();
+    for (const [index, role] of roles.entries()) {
+      for (const name of Object.keys(calls)) assert.deepEqual(after[index][name].report, before[index][name].report, role + ' ' + name + ' full-schema RLS parity');
+    }
+    await db.exec('set role anon');
+    for (const call of Object.values(calls)) await assert.rejects(db.query('select public.' + call), /permission denied/);
+    await db.exec('reset role');
+    for (const index of [0, 2]) {
+      const timings = result => Object.fromEntries(Object.entries(result[index]).map(([name, { report, ...timing }]) => [name, timing]));
+      console.log(JSON.stringify({ fixture: 'disposable full-schema RLS; small synthetic dataset', role: roles[index], before: timings(before), after: timings(after) }));
+    }
+    console.log('Dashboard migration outputs match before and after under five authenticated access scopes; anonymous execution denied.');
+  }
   if (process.argv.includes('--requisition-actions')) await require('./verify-requisition-actions.cjs')(db, root);
   await db.close();
 }

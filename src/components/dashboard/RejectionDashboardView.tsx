@@ -29,30 +29,34 @@ export function RejectionDashboardView({ context }: { context: DashboardReportCo
   const searchSettled=appliedSearch===p.rejectionSearch;
   const filters=useMemo<RejectionFilterInput>(()=>({actor:p.rejectionActor,stage:p.rejectionStage,main:p.rejectionMain,detail:p.rejectionDetail,search:appliedSearch}),[p.rejectionActor,p.rejectionStage,p.rejectionMain,p.rejectionDetail,appliedSearch]);
   const pageScope=useMemo(()=>({headerSite:context.headerScope.site,headerPic:context.headerScope.owner,priorityOnly:context.headerScope.priorityOnly,sites:p.sites,departments:p.departments,levels:p.levels}),[context.headerScope.site,context.headerScope.owner,context.headerScope.priorityOnly,p.sites,p.departments,p.levels]);
-  const page=Math.max(0,Math.min(p.rejectionPage,1000));
-  const [cursorStack,setCursorStack]=useState<Array<RejectionPage["nextCursor"]>>([]);
+  const requestedPage = Math.max(0, Math.min(p.rejectionPage, 1000));
+  const [cursors, setCursors] = useState<{ key: string; stack: Array<RejectionPage["nextCursor"]> } | null>(null);
   const [pageState,setPageState]=useState<{key:string;status:"loading"|"ready"|"error";value?:RejectionPage}|null>(null);
   const pageFilterKey=JSON.stringify([range.start,range.end,pageScope,filters,p.rejectionSort,data.profile?.id,data.profile?.role,data.profile?.site,data.profile?.updated_at]);
+  const pageProfileKey = [data.profile?.id, data.profile?.role, data.profile?.site, data.profile?.updated_at].join(":");
   const [pageRetry,setPageRetry]=useState(0);
-  const pageKey=JSON.stringify([pageFilterKey,page]);
-  const pageCursor=page?cursorStack[page-1]??undefined:undefined;
-  useEffect(()=>{setCursorStack([]);},[pageFilterKey]);
-  useEffect(()=>{
-    if(!supabase||context.rejectionSummaryStatus!=="ready"||!report||!searchSettled)return;
-    const client=supabase;
-    let cancelled=false;setPageState(previous => ({key:pageKey,status:"loading",value:previous?.key===pageKey?previous.value:undefined}));
-    const load=async()=>{
-      let cursor:RejectionPage["nextCursor"]=null;const cursors:Array<RejectionPage["nextCursor"]>=[];
-      for(let index=0;index<=page;index++){
-        if(index>0){const known=cursors[index-1]??cursorStack[index-1];if(known){cursor=known;}else{const previous=await loadRejectionPage(client,{start:range.start,end:range.end,scope:pageScope,filters,sort:p.rejectionSort,cursor,profileKey:`${data.profile?.id??""}:${data.profile?.updated_at??""}`});if(!previous.hasMore||!previous.nextCursor)throw new Error("Rejection pagination did not advance");cursor=previous.nextCursor;cursors[index-1]=cursor;}}
-        const result=await loadRejectionPage(client,{start:range.start,end:range.end,scope:pageScope,filters,sort:p.rejectionSort,cursor,profileKey:`${data.profile?.id??""}:${data.profile?.updated_at??""}`});
-        if(index===page){if(!cancelled){setCursorStack(current=>{const merged=[...current];for(let i=0;i<cursors.length;i++)if(cursors[i])merged[i]=cursors[i];if(result.hasMore&&result.nextCursor)merged[page]=result.nextCursor;return merged;});setPageState({key:pageKey,status:"ready",value:result});}return;}
-        if(!result.hasMore||!result.nextCursor)throw new Error("Saved rejection page no longer exists");cursor=result.nextCursor;cursors[index]=cursor;
-      }
-    };
-    load().catch(()=>{if(!cancelled)setPageState({key:pageKey,status:"error"});});
-    return()=>{cancelled=true;};
-  },[pageRetry,supabase,context.rejectionSummaryStatus,report,searchSettled,pageKey,page,pageFilterKey,pageScope,filters,p.rejectionSort,range.start,range.end,data.profile?.id,data.profile?.updated_at]);
+  const pageCursor = requestedPage && cursors?.key === pageFilterKey ? cursors.stack[requestedPage - 1] : null;
+  const page = pageCursor ? requestedPage : 0;
+  const pageKey = JSON.stringify([pageFilterKey, page]);
+  useEffect(() => { if (page !== requestedPage) change({ rejectionPage: page }); }, [change, page, requestedPage]);
+  useEffect(() => {
+    if (!supabase || !range.valid || !searchSettled) return;
+    const controller = new AbortController();
+    setPageState(previous => ({ key: pageKey, status: "loading", value: previous?.key === pageKey ? previous.value : undefined }));
+    loadRejectionPage(supabase, { start: range.start, end: range.end, scope: pageScope, filters, sort: p.rejectionSort,
+      cursor: pageCursor, profileKey: pageProfileKey, refreshKey: (context.refreshRevision ?? 0) + pageRetry, signal: controller.signal })
+      .then(value => {
+        if (controller.signal.aborted) return;
+        setPageState({ key: pageKey, status: "ready", value });
+        setCursors(current => {
+          const stack = current?.key === pageFilterKey ? [...current.stack] : [];
+          stack[page] = value.nextCursor;
+          return { key: pageFilterKey, stack };
+        });
+      })
+      .catch(() => { if (!controller.signal.aborted) setPageState({ key: pageKey, status: "error" }); });
+    return () => controller.abort();
+  }, [context.refreshRevision, filters, p.rejectionSort, page, pageCursor, pageFilterKey, pageKey, pageProfileKey, pageRetry, pageScope, range.end, range.start, range.valid, searchSettled]);
   const pageData=pageState?.key===pageKey?pageState.value:null;
   const rows=pageData?.events??[];
   const lastPage=Math.max(0,Math.ceil((pageData?.total??0)/25)-1);
@@ -81,23 +85,23 @@ export function RejectionDashboardView({ context }: { context: DashboardReportCo
     </button>)}</div>;
   }
   function render(exportMode: boolean, exportEvents: RejectionPage["events"] = rows) {
-    if(!report)return <div/>;
-    const mainItems = exportMode || showAll ? report.mainReasons : report.mainReasons.slice(0, 10);
-    const maxStage = Math.max(1, ...report.stages.map(row => row.count)), maxTrend = Math.max(1, ...report.trends.map(row => row.count));
+    const mainItems = report ? (exportMode || showAll ? report.mainReasons : report.mainReasons.slice(0, 10)) : [];
+    const maxStage = Math.max(1, ...(report?.stages.map(row => row.count) ?? [])), maxTrend = Math.max(1, ...(report?.trends.map(row => row.count) ?? []));
     return <div className={`${styles.content} dashboard-compact-controls ${exportMode ? styles.export : ""}`} data-rejection-report>
       <p className={styles.definition}>{t("definition")}</p>
+      {!exportMode ? <section className={styles.panel} aria-label={t("active")}><div className={styles.filters}>
+        <label className={styles.field}><span>{t("actor")}</span><CommandSelector typography="normal" density="compact" ariaLabel={t("actor")} emptyLabel={t("all")} value={p.rejectionActor} options={[{ value: "", label: t("all") }, ...REJECTION_ACTORS.map(value => ({ value, label: t(value) }))]} onValueChange={value => patch({ rejectionActor: value, rejectionMain: "", rejectionDetail: "" })} /></label>
+        <label className={styles.field}><span>{t("stage")}</span><CommandSelector typography="normal" density="compact" ariaLabel={t("stage")} emptyLabel={t("all")} value={p.rejectionStage} options={[{ value: "", label: t("all") }, ...(report?.stageOptions ?? []).map(stage => ({ value: stage, label: stageLabel(stage) }))]} onValueChange={value => patch({ rejectionStage: value })} /></label>
+        <label className={styles.field}><span>{t("main")}</span><CommandSelector typography="normal" density="compact" ariaLabel={t("main")} emptyLabel={t("all")} value={p.rejectionMain} options={[{ value: "", label: t("all") }, ...(report?.mainOptions ?? []).map(row => ({ value: row.key, label: row.label[language] }))]} onValueChange={value => patch({ rejectionMain: value, rejectionDetail: "" })} /></label>
+        <label className={styles.field}><span>{t("detail")}</span><CommandSelector typography="normal" density="compact" ariaLabel={t("detail")} emptyLabel={t("all")} value={p.rejectionDetail} disabled={!p.rejectionMain} options={[{ value: "", label: t("all") }, ...(report?.detailOptions ?? []).map(row => ({ value: row.key, label: row.label[language] }))]} onValueChange={value => patch({ rejectionDetail: value })} /></label>
+        <label className={`${styles.field} ${styles.search}`}><span>{t("search")}</span><input type="search" placeholder={t("search")} value={p.rejectionSearch} onChange={event => patch({ rejectionSearch: event.target.value })} /></label>
+        <Button type="button" size="toolbar" variant="secondary" className={styles.clear} onClick={() => patch({ rejectionActor: "", rejectionStage: "", rejectionMain: "", rejectionDetail: "", rejectionSearch: "" })}>{t("clear")}</Button>
+      </div>{localFilters.some(row => row.value) ? <div className={styles.chips}>{localFilters.filter(row => row.value).map(row => <button type="button" key={row.key} aria-label={`${t("remove")}: ${row.label}`} onClick={() => patch({ [row.key]: "", ...(row.key === "rejectionMain" || row.key === "rejectionActor" ? { rejectionDetail: "", ...(row.key === "rejectionActor" ? { rejectionMain: "" } : {}) } : {}) })}>{row.label}: {row.value}<X size={12} /></button>)}</div> : null}</section> : <p className={styles.note}>{localScope}</p>}
+      {report && searchSettled ? <>
       <div className={styles.summary}>{(["total", ...REJECTION_ACTORS] as const).map(key => <section className={styles.metric} key={key}>
         <span>{t(key)}</span><b data-rejection-metric={key}>{key === "total" ? report.total : report.actors[key]}</b>
         <small>{key === "total" ? `${report.people} ${t("people")} · ${report.applications} ${t("applications")}` : `${percent(report.actors[key])} · ${t("share")}`}</small>
       </section>)}</div>
-      {!exportMode ? <section className={styles.panel} aria-label={t("active")}><div className={styles.filters}>
-        <label className={styles.field}><span>{t("actor")}</span><CommandSelector typography="normal" density="compact" ariaLabel={t("actor")} emptyLabel={t("all")} value={p.rejectionActor} options={[{ value: "", label: t("all") }, ...REJECTION_ACTORS.map(value => ({ value, label: t(value) }))]} onValueChange={value => patch({ rejectionActor: value, rejectionMain: "", rejectionDetail: "" })} /></label>
-        <label className={styles.field}><span>{t("stage")}</span><CommandSelector typography="normal" density="compact" ariaLabel={t("stage")} emptyLabel={t("all")} value={p.rejectionStage} options={[{ value: "", label: t("all") }, ...report.stageOptions.map(stage => ({ value: stage, label: stageLabel(stage) }))]} onValueChange={value => patch({ rejectionStage: value })} /></label>
-        <label className={styles.field}><span>{t("main")}</span><CommandSelector typography="normal" density="compact" ariaLabel={t("main")} emptyLabel={t("all")} value={p.rejectionMain} options={[{ value: "", label: t("all") }, ...report.mainOptions.map(row => ({ value: row.key, label: row.label[language] }))]} onValueChange={value => patch({ rejectionMain: value, rejectionDetail: "" })} /></label>
-        <label className={styles.field}><span>{t("detail")}</span><CommandSelector typography="normal" density="compact" ariaLabel={t("detail")} emptyLabel={t("all")} value={p.rejectionDetail} disabled={!p.rejectionMain} options={[{ value: "", label: t("all") }, ...report.detailOptions.map(row => ({ value: row.key, label: row.label[language] }))]} onValueChange={value => patch({ rejectionDetail: value })} /></label>
-        <label className={`${styles.field} ${styles.search}`}><span>{t("search")}</span><input type="search" placeholder={t("search")} value={p.rejectionSearch} onChange={event => patch({ rejectionSearch: event.target.value })} /></label>
-        <Button type="button" size="toolbar" variant="secondary" className={styles.clear} onClick={() => patch({ rejectionActor: "", rejectionStage: "", rejectionMain: "", rejectionDetail: "", rejectionSearch: "" })}>{t("clear")}</Button>
-      </div>{localFilters.some(row => row.value) ? <div className={styles.chips}>{localFilters.filter(row => row.value).map(row => <button type="button" key={row.key} aria-label={`${t("remove")}: ${row.label}`} onClick={() => patch({ [row.key]: "", ...(row.key === "rejectionMain" || row.key === "rejectionActor" ? { rejectionDetail: "", ...(row.key === "rejectionActor" ? { rejectionMain: "" } : {}) } : {}) })}>{row.label}: {row.value}<X size={12} /></button>)}</div> : null}</section> : <p className={styles.note}>{localScope}</p>}
       {report.diagnostics.undated || report.diagnostics.unresolvedContext ? <aside className={styles.quality} aria-label={t("quality")}><strong>{t("quality")}</strong><p>{t("undated")}: {report.diagnostics.undated}</p><p>{t("unresolved")}: {report.diagnostics.unresolvedContext}</p></aside> : null}
       {!report.total ? <p role="status" className={`${styles.panel} ${styles.empty}`}>{t(report.periodTotal ? "noMatches" : "empty")}</p> : null}
       <section className={styles.explorer} aria-label={t("reasonView")}>
@@ -121,7 +125,8 @@ export function RejectionDashboardView({ context }: { context: DashboardReportCo
           <b>{row.count}</b><div className={styles.column} style={{ height: `${row.count / maxTrend * 138}px` }}>{REJECTION_ACTORS.map(actor => <i key={actor} className={styles[actor]} style={{ height: `${row.count ? row[actor] / row.count * 100 : 0}%` }} />)}</div><span>{row.start.slice(5).split("-").reverse().join("/")}</span>
         </div>)}</div></div></section>
       </div>
-      <section className={styles.panel} aria-label={t("records")}><header className={styles.head}><h3>{t("records")} ({report.total})</h3>{!exportMode ? <CommandSelector typography="normal" density="compact" ariaLabel={t("sort")} emptyLabel={t("date-desc")} value={p.rejectionSort} options={(["date-desc", "date-asc", "candidate-asc", "stage-asc"] as RejectionSort[]).map(value => ({ value, label: t(value) }))} onValueChange={value => patch({ rejectionSort: value as RejectionSort })} /> : null}</header>
+      </> : context.rejectionSummaryStatus === "error" ? <section className={styles.panel}><p role="alert">{language==="th"?"โหลดสรุปการปฏิเสธไม่สำเร็จ":"Could not load the rejection summary."}</p><RetryIconButton type="button" className="mt-3" onClick={context.onRetryRejectionSummary}>{language==="th"?"ลองอีกครั้ง":"Retry"}</RetryIconButton></section> : <LoadingSkeleton variant="metrics" metricLabels={["total",...REJECTION_ACTORS].map(key=>t(key as RejectionCopyKey))} gridClassName={styles.summary} language={language}/>}
+      <section className={styles.panel} aria-label={t("records")}><header className={styles.head}><h3>{t("records")} ({exportMode ? report?.total ?? "—" : pageData?.total ?? "—"})</h3>{!exportMode ? <CommandSelector typography="normal" density="compact" ariaLabel={t("sort")} emptyLabel={t("date-desc")} value={p.rejectionSort} options={(["date-desc", "date-asc", "candidate-asc", "stage-asc"] as RejectionSort[]).map(value => ({ value, label: t(value) }))} onValueChange={value => patch({ rejectionSort: value as RejectionSort })} /> : null}</header>
         {!exportMode&&pageState?.key===pageKey&&pageState.status==="error" ? <div role="alert" className={styles.empty}>{language==="th"?"โหลดรายการไม่สำเร็จ":"Could not load rejection rows."} <RetryIconButton title={`${language === "th" ? "ลองโหลดข้อมูลอีกครั้ง" : "Retry loading"}: Rejection Dashboard`} type="button"   onClick={()=>setPageRetry(value=>value+1)}>{language==="th"?"ลองอีกครั้ง":"Retry"}</RetryIconButton></div> : !exportMode&&(pageState?.key!==pageKey||pageState.status!=="ready"||!pageData) ? <TableLoadingPlaceholder headers={(["outcome","person","application","position","stage","actor","main","detail","context"] as RejectionCopyKey[]).map(key=>t(key))} columns={[{kind:"date"},{},{},{},{},{},{},{},{}]} language={language} className={styles.scroll} tableClassName={styles.table}/> : <div className={styles.scroll}><table className={styles.table}><thead><tr>{(["outcome", "person", "application", "position", "stage", "actor", "main", "detail", "context"] as RejectionCopyKey[]).map(key => <th key={key} scope="col">{t(key)}</th>)}</tr></thead><tbody>{(exportMode?exportEvents:rows).map(row => <tr key={row.id} data-rejection-event={row.id}>
           <td>{formatDate(row.date, language)}</td><td>{context.onOpenCandidate ? <button type="button" className={styles.person} onClick={() => context.onOpenCandidate?.(row.candidateId, row.applicationId??undefined)}>{row.name}</button> : <strong>{row.name}</strong>}<small aria-label={formatRecruitmentId(row.candidateId)}>{formatRecruitmentId(row.candidateId)}</small></td><td>{row.applicationId ?? "—"}</td><td>{row.position??"—"}</td><td>{stageLabel(row.stage)}<small>{t("round")} {row.round}</small></td><td>{t(row.actor)}</td><td>{row.main[language]}</td><td>{row.detail[language]}</td><td>{row.requisitions.map(req => <div key={req.doc_id}>{req.doc_id}<small>{req.site} · {req.department} · {req.person_in_charge || "—"}</small></div>)}</td>
         </tr>)}</tbody></table></div>}
@@ -148,7 +153,5 @@ export function RejectionDashboardView({ context }: { context: DashboardReportCo
     if(all.length!==report.total||new Set(all.map(row=>row.id)).size!==all.length)throw new Error("Rejection export returned an incomplete event set");
     return render(true,all);
   }
-  if(context.rejectionSummaryStatus==="error")return <section className={styles.panel}><p role="alert">{language==="th"?"โหลดสรุปการปฏิเสธไม่สำเร็จ":"Could not load the rejection summary."}</p><RetryIconButton type="button"  className="mt-3" onClick={context.onRetryRejectionSummary}>{language==="th"?"ลองอีกครั้ง":"Retry"}</RetryIconButton></section>;
-  if(context.rejectionSummaryStatus!=="ready"||!report||!searchSettled)return <section className={styles.panel}><h2 className="mb-3 text-lg font-semibold text-navy">{t("title")}</h2><LoadingSkeleton variant="metrics" metricLabels={["total",...REJECTION_ACTORS].map(key=>t(key as RejectionCopyKey))} gridClassName={styles.summary} language={language}/><div className="grid gap-4 lg:grid-cols-2">{(["main","detail"] as const).map(key=><section key={key} className={styles.panel}><h3>{t(key)}</h3><LoadingSkeleton variant="chart" language={language}/></section>)}</div></section>;
   return <RiskReportFrame title={t("title")} language={language} summary={context.summary} filename={`rejection-analysis-${range.start}-to-${range.end}`} render={render} workbook={exportRejectionWorkbook} preparePng={prepareRejectionPng} />;
 }

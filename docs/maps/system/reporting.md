@@ -32,6 +32,8 @@ Summary RPCs and typed 30-second cache: [dashboard-summary-client.ts](../../../s
 
 ### Risk and bottleneck subviews
 
+- The Bottlenecks action queue loads independently of charts and resolves Auto against the full authorized waiting population before applying queue filters. The summary reuses scoped inputs for current, prior, and trend windows. The Active Requisitions page enriches only the selected keys when sort and membership can be decided from requisition fields.
+
 - UI/render: [VacancyRiskView](../../../src/components/dashboard/VacancyRiskView.tsx), [StageBottleneckView](../../../src/components/dashboard/StageBottleneckView.tsx), [RiskReportFrame](../../../src/components/dashboard/RiskReportFrame.tsx), [localized copy](../../../src/components/dashboard/risk-copy.ts), [scoped styles](../../../src/components/dashboard/risk-reports.module.css).
 - Models: [vacancy-risk-report](../../../src/lib/vacancy-risk-report.ts) `buildVacancyRiskReport`, `vacancyRiskAt`, `riskTotals`, `riskGroups`, `riskRowMatches`; [stage-bottleneck-report](../../../src/lib/stage-bottleneck-report.ts) `buildStageBottleneckReport`, `normalizeStageInstances`, `stageSnapshot`, `percentile`; [calendar/history](../../../src/lib/dashboard-history.ts) `bangkokDay`, `historicalVacancy`, `observationDates`.
 - Reads/hydration: [dashboard-report-loader](../../../src/lib/dashboard-report-loader.ts) `readReportPages`, `loadExtendedDashboardReport`, `hydrateReportCandidate`, `clearDashboardReportCache`; [RecruitmentWorkspace](../../../src/components/RecruitmentWorkspace.tsx) detail callbacks; [DashboardPortal](../../../src/components/dashboard/DashboardPortal.tsx) atomic publication, retry and limited drawer.
@@ -94,6 +96,8 @@ If the task changes schema, environment or release state, cross to [Setup](../SE
 Candidate hydration/exports retain RLS; masked summaries remain separate from full report profiles and never supply private contacts or notes. Creator status grants no additional journey/report scope. [Capability owner](pipeline.md#creator-privacy-and-profileapplication-layout), [SQL verification](../../../tests/db/candidate-profile-contract.sql).
 
 ## Rejection analytics
+
+- Rejection rows and charts load and retry independently. The first page has interactive priority and uses the same debounced report scope as the charts. Returning without a known cursor opens page one. Rejection SQL restricts failure history before authorization and reuses requisition context by resolved group.
 
 - UI/localization: [RejectionDashboardView](../../../src/components/dashboard/RejectionDashboardView.tsx), [copy](../../../src/components/dashboard/rejection-copy.ts), [styles](../../../src/components/dashboard/rejections.module.css); search RejectionDashboardView, data-rejection-metric.
 - Calculation: [rejection-report](../../../src/lib/rejection-report.ts), buildRejectionReport / sortRejectionEvents; uses normalized stage attempts and outcome assignment history. Complete reads: dashboard-report-loader stageColumns. Navigation/state: DashboardPortal / dashboard-filters, pipelineSubview=rejections, rejectionActor/rejectionMain/rejectionPage.
