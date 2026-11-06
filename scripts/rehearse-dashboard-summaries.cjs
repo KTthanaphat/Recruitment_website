@@ -33,7 +33,9 @@ assert.doesNotMatch(ownerOptionsMigration, /from\s+public\.requisitions/i, 'owne
 const rejectionStart = schema.indexOf('create or replace function public.app_dashboard_rejection_summary_v1(');
 const rejectionEnd = schema.indexOf('-- Home queue is a compact ranked projection', rejectionStart);
 assert.ok(rejectionStart >= 0 && rejectionEnd > rejectionStart, 'Rejection summary/page functions exist in declarative schema');
-const rejectionMigrationBody = rejectionAliasMigration.replaceAll('\r\n','\n').replace(/^begin;\s*/, '').replace(/\s*commit;\s*$/, '').trimEnd();
+const reportMigration = fs.readFileSync(path.join(root, "supabase/migrations/20261106032530_dashboard_report_loading.sql"), "utf8").replaceAll("\r\n","\n");
+const rejectionMigrationBody = reportMigration.slice(reportMigration.indexOf('create or replace function public.app_dashboard_rejection_summary_v1('), reportMigration.indexOf('create or replace function app_private.dashboard_pipeline_summary_data_v1(')).trimEnd();
+assert.ok(reportMigration.includes(schema.slice(schema.indexOf("create or replace function app_private.dashboard_rejection_events_v1("), rejectionEnd).trimEnd()), "scoped rejection SQL matches its migration");
 const rejectionSchemaBody = schema.slice(rejectionStart, rejectionEnd).trimEnd();
 if (rejectionMigrationBody !== rejectionSchemaBody) {
   let mismatch = 0; while (mismatch < Math.min(rejectionMigrationBody.length, rejectionSchemaBody.length) && rejectionMigrationBody[mismatch] === rejectionSchemaBody[mismatch]) mismatch++;
@@ -279,6 +281,12 @@ async function main() {
   const statusStageCounts=oldStage.pipelineStatusCountsForDocGroups(tsPipelineData,currentDocGroups,'2026-07-31');
   const activityStageCounts=oldStage.stageActivityCountsForDocGroups(tsPipelineData,currentDocGroups,'2026-07-01','2026-07-31');
   const accumStageCounts=oldStage.stageAccumCountsForDocGroups(tsPipelineData,currentDocGroups,'2026-07-01','2026-07-31');
+  const parityPageSql = "select public.app_dashboard_active_requisitions_page_v1('2026-07-01','2026-07-31','custom','status','{}',null,null,25,'',$1::jsonb,$2,'asc') data";
+  const parityOptions = [['{}','report'],['{"Phone Screen":"1"}','Phone Screen'],['{}','applicants']];
+  const baselinePages = [];
+  for (const options of parityOptions) baselinePages.push((await query(parityPageSql, options)).data);
+  await db.exec(reportMigration.slice(reportMigration.indexOf("create or replace function app_private.dashboard_rejection_events_v1("), reportMigration.indexOf("-- Caller-authorized stage bottleneck summaries")));
+  for (const [index, options] of parityOptions.entries()) assert.deepEqual((await query(parityPageSql, options)).data, baselinePages[index], "bounded pages and metric-dependent pages preserve old results");
   const parityActiveReqPage=(await query(`select public.app_dashboard_active_requisitions_page_v1('2026-07-01','2026-07-31','custom','status','{}'::jsonb,null,null,25) as data`)).data;
   assert.deepEqual(parityActiveReqPage.rows.find(row=>row.doc_id==='REQ-CURRENT').stage_counts,statusStageCounts,'active requisition SQL status counts match the actual pipelineStatusCountsForDocGroups builder');
   for(const [mode,expected] of [['activity',activityStageCounts],['accum',accumStageCounts]]){

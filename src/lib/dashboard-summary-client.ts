@@ -31,16 +31,16 @@ async function cacheNamespace(client: SupabaseClient, profileKey: string) {
   const project = (client as unknown as { supabaseUrl?: string }).supabaseUrl ?? "supabase";
   return `${project}:${id}:${data.session?.user.id ?? "anonymous"}:${profileKey}`;
 }
-export function clearDashboardSummaryCache() { cache.clear(); sourcingSummaryReads.clear(); }
+export function clearDashboardSummaryCache() { cache.clear(); dashboardReadLeases.clear(); }
 /** Expire only this auth scope's affected summaries; Welcome is responsibility-scoped. */
 export function invalidateRequisitionSummaryCache(scope: string, receipts: RequisitionActionReceipt[]) {
- for(const key of cache.keys()){
+ for(const key of new Set([...cache.keys(), ...dashboardReadLeases.keys()])){
   if(!key.includes(scope)||key.startsWith("welcome:"))continue;
   let filters: Record<string,unknown>={};
   try {const parts=JSON.parse(key);filters=parts.find((value:unknown)=>value&&typeof value==="object"&&!Array.isArray(value)&&("headerSite" in value||"headerPic" in value||"priorityOnly" in value))??{};}catch{
    const match=key.match(/\{.*\}/);if(match)try{filters=JSON.parse(match[0]);}catch{/* legacy cache shape */}
   }
-  if(receipts.some(receipt=>receipt.effects.some(effect=>["summary","calendar","reports"].includes(effect))&&requisitionQueryAffected({entity:"requisitions",filters},receipt)))cache.delete(key);
+  if(receipts.some(receipt=>receipt.effects.some(effect=>["summary","calendar","reports"].includes(effect))&&requisitionQueryAffected({entity:"requisitions",filters},receipt))) { cache.delete(key); dashboardReadLeases.delete(key); }
  }
 }
 function memo<T>(client: SupabaseClient, key: string, fetch: () => Promise<T>, outsideQueue = false): Promise<T> {
@@ -182,20 +182,20 @@ export async function loadHomeQualityPage(client: SupabaseClient,input:{scope:Pi
     return result;
   });
 }
-type SourcingSummaryRead = { promise: Promise<SourcingSummary>; controller: AbortController; readers: number; settled: boolean; expiresAt: number };
-const sourcingSummaryReads = new Map<string, SourcingSummaryRead>();
-async function sourcingSummaryLease(client: SupabaseClient, key: string, signal: AbortSignal | undefined, fetch: (signal: AbortSignal) => Promise<SourcingSummary>) {
+type DashboardReadLease = { promise: Promise<unknown>; controller: AbortController; readers: number; settled: boolean; expiresAt: number };
+const dashboardReadLeases = new Map<string, DashboardReadLease>();
+async function leaseDashboardRead<T>(client: SupabaseClient, key: string, signal: AbortSignal | undefined, fetch: (signal: AbortSignal) => Promise<T>, priority = 1): Promise<T> {
   if (signal?.aborted) throw new DOMException("Read canceled", "AbortError");
-  for (const [oldKey, entry] of sourcingSummaryReads) if (entry.expiresAt <= Date.now()) sourcingSummaryReads.delete(oldKey);
-  let entry = sourcingSummaryReads.get(key);
+  for (const [oldKey, entry] of dashboardReadLeases) if (entry.expiresAt <= Date.now()) dashboardReadLeases.delete(oldKey);
+  let entry = dashboardReadLeases.get(key);
   if (!entry) {
     const controller = new AbortController();
-    const promise = scheduleRecruitmentRead(client, () => fetch(controller.signal), 1, { signal: controller.signal });
+    const promise = scheduleRecruitmentRead(client, () => fetch(controller.signal), priority, { signal: controller.signal });
     entry = { promise, controller, readers: 0, settled: false, expiresAt: Infinity };
     const created = entry;
-    sourcingSummaryReads.set(key, created);
-    void promise.then(() => { created.settled = true; created.expiresAt = Date.now() + 30_000; }, () => { created.settled = true; if (sourcingSummaryReads.get(key) === created) sourcingSummaryReads.delete(key); });
-    while (sourcingSummaryReads.size > 100) sourcingSummaryReads.delete(sourcingSummaryReads.keys().next().value!);
+    dashboardReadLeases.set(key, created);
+    void promise.then(() => { created.settled = true; created.expiresAt = Date.now() + 30_000; }, () => { created.settled = true; if (dashboardReadLeases.get(key) === created) dashboardReadLeases.delete(key); });
+    while (dashboardReadLeases.size > 100) dashboardReadLeases.delete(dashboardReadLeases.keys().next().value!);
   }
   const leased = entry;
   leased.readers++;
@@ -205,16 +205,16 @@ async function sourcingSummaryLease(client: SupabaseClient, key: string, signal:
       cancel = () => reject(new DOMException("Read canceled", "AbortError"));
       signal?.addEventListener("abort", cancel, { once: true });
     });
-    return await (signal ? Promise.race([leased.promise, cancellation]) : leased.promise);
+    return await (signal ? Promise.race([leased.promise, cancellation]) : leased.promise) as T;
   } finally {
     if (cancel) signal?.removeEventListener("abort", cancel);
     leased.readers--;
-    if (!leased.readers && !leased.settled) { leased.controller.abort(); if (sourcingSummaryReads.get(key) === leased) sourcingSummaryReads.delete(key); }
+    if (!leased.readers && !leased.settled) { leased.controller.abort(); if (dashboardReadLeases.get(key) === leased) dashboardReadLeases.delete(key); }
   }
 }
 export async function loadSourcingSummary(client:SupabaseClient,input:{selectedWeek:string;groupId?:string|null;scope:Pick<DashboardSummaryScope,"headerSite"|"headerPic"|"priorityOnly">;profileKey:string;refreshKey?:number;signal?:AbortSignal}):Promise<SourcingSummary>{
   const namespace=await cacheNamespace(client,input.profileKey),groupId=input.groupId??null,key=JSON.stringify(["sourcing-summary",namespace,input.selectedWeek,groupId,input.scope,input.refreshKey??0]);
-  return sourcingSummaryLease(client, key, input.signal, async(signal)=>{
+  return leaseDashboardRead(client, key, input.signal, async(signal)=>{
     const call=client.rpc("app_recruitment_sourcing_summary_v1",{p_selected_week:input.selectedWeek,p_group_id:groupId,p_scope:input.scope});
     const {data,error}=await (typeof call.abortSignal === "function" ? call.abortSignal(signal) : call);
     if(error)throw new Error(error.message);
@@ -360,31 +360,33 @@ export type BottleneckQueueRow = {
   requisitions: Array<{ doc_id: string; position: string; site: string; department: string; person_in_charge: string | null }>;
   wait: number; status: BottleneckQueueStatus; conflict: boolean;
 };
-export type BottleneckPage = { rows: BottleneckQueueRow[]; hasMore: boolean; hasMoreBefore: boolean; nextCursor: { value: string; id: string } | null; previousCursor: { value: string; id: string } | null };
+export type BottleneckPage = { rows: BottleneckQueueRow[]; resolvedStatus?: BottleneckQueueStatus | "all"; hasMore: boolean; hasMoreBefore: boolean; nextCursor: { value: string; id: string } | null; previousCursor: { value: string; id: string } | null };
 export async function loadBottleneckPage(client: SupabaseClient, input: {
   asOf: string; scope: DashboardSummaryScope; channel: string; stage: string; status: string; pic: string; search: string;
-  cursor?: { value: string; id: string } | null; before?: boolean; profileKey: string; refreshKey?: number;
+  cursor?: { value: string; id: string } | null; before?: boolean; profileKey: string; refreshKey?: number; signal?: AbortSignal;
 }): Promise<BottleneckPage> {
   const namespace = await cacheNamespace(client, input.profileKey);
   const key = JSON.stringify(["bottleneck-page", namespace, input.asOf, input.scope, input.channel, input.stage, input.status, input.pic, input.search, input.cursor ?? null, input.before ?? false, input.refreshKey ?? 0]);
-  return memo(client, key, async () => {
-    const { data, error } = await client.rpc("app_dashboard_bottleneck_queue_v1", {
+  return leaseDashboardRead(client, key, input.signal, async signal => {
+    const call = client.rpc("app_dashboard_bottleneck_queue_v1", {
       p_as_of: input.asOf, p_scope: input.scope, p_channel: input.channel, p_stage: input.stage || null,
       p_status: input.status === "all" ? null : input.status, p_pic: input.pic || null, p_search: input.search || "",
       p_after_value: input.before ? null : input.cursor?.value ?? null, p_after_id: input.before ? null : input.cursor?.id ?? null,
       p_before_value: input.before ? input.cursor?.value ?? null : null, p_before_id: input.before ? input.cursor?.id ?? null : null, p_limit: 20
     });
+    const { data, error } = await (typeof call.abortSignal === "function" ? call.abortSignal(signal) : call);
     if (error) throw new Error(error.message);
     const result = data as BottleneckPage | null;
     if (!result || !Array.isArray(result.rows) || result.rows.length > 20 || typeof result.hasMore !== "boolean" || typeof result.hasMoreBefore !== "boolean" || result.hasMore && !result.nextCursor || result.hasMoreBefore && !result.previousCursor) throw new Error("Bottleneck queue response is incomplete");
     return result;
-  });
+  }, 0);
 }
-export async function loadBottleneckSummary(client: SupabaseClient,input:{start:string;end:string;priorStart:string;priorEnd:string;scope:DashboardSummaryScope;channel:string;trendDates:string[];profileKey:string;refreshKey?:number}):Promise<BottleneckSummary>{
+export async function loadBottleneckSummary(client: SupabaseClient,input:{start:string;end:string;priorStart:string;priorEnd:string;scope:DashboardSummaryScope;channel:string;trendDates:string[];profileKey:string;refreshKey?:number;signal?:AbortSignal}):Promise<BottleneckSummary>{
   const namespace=await cacheNamespace(client,input.profileKey);
   const key=JSON.stringify(["bottlenecks",namespace,input.start,input.end,input.priorStart,input.priorEnd,input.scope,input.channel,input.trendDates,input.refreshKey??0]);
-  return memo(client, key,async()=>{
-    const {data,error}=await client.rpc("app_dashboard_bottleneck_summary_v1",{p_start:input.start,p_end:input.end,p_prior_start:input.priorStart,p_prior_end:input.priorEnd,p_scope:input.scope,p_channel:input.channel,p_trend_dates:input.trendDates});
+  return leaseDashboardRead(client, key, input.signal, async signal => {
+    const call = client.rpc("app_dashboard_bottleneck_summary_v1",{p_start:input.start,p_end:input.end,p_prior_start:input.priorStart,p_prior_end:input.priorEnd,p_scope:input.scope,p_channel:input.channel,p_trend_dates:input.trendDates});
+    const {data,error} = await (typeof call.abortSignal === "function" ? call.abortSignal(signal) : call);
     if(error)throw new Error(error.message);
     const result=data as BottleneckSummary|null;
     if(!result||!Array.isArray(result.stages)||!Array.isArray(result.trends)||!result.metrics||!Array.isArray(result.picOptions)||!Array.isArray(result.channelOptions)||Object.hasOwn(result,"waiting")||Object.hasOwn(result,"instances")||Object.hasOwn(result,"completions"))throw new Error("Bottleneck summary response is incomplete");
@@ -437,23 +439,25 @@ export type RejectionPageEvent = {
 };
 export type RejectionPage = { events: RejectionPageEvent[]; total: number; hasMore: boolean; nextCursor: { value: string; logId: number } | null };
 
-export async function loadRejectionSummary(client: SupabaseClient,input:{start:string;end:string;scope:DashboardSummaryScope;filters:RejectionFilterInput;profileKey:string;refreshKey?:number}):Promise<RejectionSummary>{
+export async function loadRejectionSummary(client: SupabaseClient,input:{start:string;end:string;scope:DashboardSummaryScope;filters:RejectionFilterInput;profileKey:string;refreshKey?:number;signal?:AbortSignal}):Promise<RejectionSummary>{
   const namespace=await cacheNamespace(client,input.profileKey),key=JSON.stringify(["rejections",namespace,input.start,input.end,input.scope,input.filters,input.refreshKey??0]);
-  return memo(client, key,async()=>{
-    const {data,error}=await client.rpc("app_dashboard_rejection_summary_v1",{p_start:input.start,p_end:input.end,p_scope:input.scope,p_filters:input.filters});
+  return leaseDashboardRead(client, key, input.signal, async signal => {
+    const call = client.rpc("app_dashboard_rejection_summary_v1",{p_start:input.start,p_end:input.end,p_scope:input.scope,p_filters:input.filters});
+    const {data,error} = await (typeof call.abortSignal === "function" ? call.abortSignal(signal) : call);
     if(error)throw new Error(error.message);
     const result=data as RejectionSummary|null;
     if(!result||!result.actors||!result.diagnostics||!Array.isArray(result.stages)||!Array.isArray(result.stageOptions)||!Array.isArray(result.trends)||!Array.isArray(result.mainReasons)||!Array.isArray(result.detailedReasons)||!Array.isArray(result.mainOptions)||!Array.isArray(result.detailOptions)||!result.comparison||Object.hasOwn(result,"events")||Object.hasOwn(result,"periodEvents"))throw new Error("Rejection summary response is incomplete");
     return result;
   });
 }
-export async function loadRejectionPage(client:SupabaseClient,input:{start:string;end:string;scope:DashboardSummaryScope;filters:RejectionFilterInput;sort:"date-desc"|"date-asc"|"candidate-asc"|"stage-asc";cursor?:RejectionPage["nextCursor"];profileKey:string;refreshKey?:number}):Promise<RejectionPage>{
+export async function loadRejectionPage(client:SupabaseClient,input:{start:string;end:string;scope:DashboardSummaryScope;filters:RejectionFilterInput;sort:"date-desc"|"date-asc"|"candidate-asc"|"stage-asc";cursor?:RejectionPage["nextCursor"];profileKey:string;refreshKey?:number;signal?:AbortSignal}):Promise<RejectionPage>{
   const namespace=await cacheNamespace(client,input.profileKey),key=JSON.stringify(["rejection-page",namespace,input.start,input.end,input.scope,input.filters,input.sort,input.cursor,input.refreshKey??0]);
-  return memo(client, key,async()=>{
-    const {data,error}=await client.rpc("app_dashboard_rejection_page_v1",{p_start:input.start,p_end:input.end,p_scope:input.scope,p_filters:input.filters,p_sort:input.sort,p_after_value:input.cursor?.value??null,p_after_log_id:input.cursor?.logId??null,p_limit:25});
+  return leaseDashboardRead(client, key, input.signal, async signal => {
+    const call = client.rpc("app_dashboard_rejection_page_v1",{p_start:input.start,p_end:input.end,p_scope:input.scope,p_filters:input.filters,p_sort:input.sort,p_after_value:input.cursor?.value??null,p_after_log_id:input.cursor?.logId??null,p_limit:25});
+    const {data,error} = await (typeof call.abortSignal === "function" ? call.abortSignal(signal) : call);
     if(error)throw new Error(error.message);
     const result=data as RejectionPage|null;
     if(!result||!Array.isArray(result.events)||result.events.length>25||typeof result.total!=="number"||typeof result.hasMore!=="boolean"||result.hasMore&&!result.nextCursor)throw new Error("Rejection page response is incomplete");
     return result;
-  });
+  }, 0);
 }

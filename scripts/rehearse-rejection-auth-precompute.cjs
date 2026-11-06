@@ -18,7 +18,9 @@ function block(source){
   assert(start>=0&&grantAt>start&&end>grantAt,'event helper and ACL block exist');
   return source.slice(start,end).replaceAll('\r\n','\n').trimEnd();
 }
-const oldBlock=block(base),newBlock=block(current),migrationBlock=block(migration);
+const oldBlock=block(base),newBlock=block(current),migrationBlock=block(fs.readFileSync(path.join(root,'supabase/migrations/20261106032530_dashboard_report_loading.sql'),'utf8'));
+const compatibilityStart=current.indexOf(fnName,current.indexOf(fnName)+fnName.length);
+const compatibilityBlock=block(current.slice(compatibilityStart));
 assert.equal(newBlock,migrationBlock,'Rejection helper migration matches schema61, including its ACL');
 assert.match(newBlock,/language sql stable security invoker/i,'helper remains invoker');
 assert.doesNotMatch(newBlock,/security\s+definer/i,'no privileged helper added');
@@ -97,7 +99,7 @@ async function main(){
     beforeSummary.push((await db.query(summarySql,[JSON.stringify(scope),JSON.stringify(filters)])).rows[0].data);
     beforePages.push((await db.query(pageSql,[JSON.stringify(scope),JSON.stringify(filters)])).rows[0].data);
   }
-  await db.exec(newBlock);
+  await db.exec(newBlock); await db.exec(compatibilityBlock);
   for(const [label,sql,params,baseline] of [
     ['global',`select * from app_private.dashboard_rejection_events_v1('2026-10-01','2026-10-31',$1::jsonb) order by log_id`,[JSON.stringify({})],originalGlobal],
     ['site',`select * from app_private.dashboard_rejection_events_v1('2026-10-01','2026-10-31','{"headerSite":"KT1"}'::jsonb) order by log_id`,[],originalSite],

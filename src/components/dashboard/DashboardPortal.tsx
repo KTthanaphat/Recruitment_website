@@ -165,10 +165,10 @@ export function DashboardPortal({ language, data, requisitions, offers, candidat
   useEffect(()=>{
     if(!ready||!needsBottleneckSummary||!pipelineRange.valid)return;
     if(!supabase){setBottleneckSummaryState({key:bottleneckSummaryKey,status:"error"});return;}
-    let cancelled=false;setBottleneckSummaryState(previous => ({ key: bottleneckSummaryKey, status: "loading", value: previous?.key === bottleneckSummaryKey ? previous.value : undefined }));
-    loadBottleneckSummary(supabase,{start:pipelineRange.start,end:pipelineRange.end,priorStart:bottleneckPriorRange.start,priorEnd:bottleneckPriorRange.end,scope:pipelineScope,channel:preferences.funnelChannel,trendDates:bottleneckTrendDates,profileKey,refreshKey:refreshKey+bottleneckRetry})
-      .then(value=>{if(!cancelled)setBottleneckSummaryState({key:bottleneckSummaryKey,status:"ready",value});}).catch(()=>{if(!cancelled)setBottleneckSummaryState({key:bottleneckSummaryKey,status:"error"});});
-    return()=>{cancelled=true;};
+    const controller = new AbortController();setBottleneckSummaryState(previous => ({ key: bottleneckSummaryKey, status: "loading", value: previous?.key === bottleneckSummaryKey ? previous.value : undefined }));
+    loadBottleneckSummary(supabase,{start:pipelineRange.start,end:pipelineRange.end,priorStart:bottleneckPriorRange.start,priorEnd:bottleneckPriorRange.end,scope:pipelineScope,channel:preferences.funnelChannel,trendDates:bottleneckTrendDates,profileKey,refreshKey:refreshKey+bottleneckRetry,signal:controller.signal})
+      .then(value=>{if(!controller.signal.aborted)setBottleneckSummaryState({key:bottleneckSummaryKey,status:"ready",value});}).catch(()=>{if(!controller.signal.aborted)setBottleneckSummaryState({key:bottleneckSummaryKey,status:"error"});});
+    return () => controller.abort();
   },[ready,needsBottleneckSummary,pipelineRange.valid,pipelineRange.start,pipelineRange.end,bottleneckPriorRange.start,bottleneckPriorRange.end,pipelineScope,preferences.funnelChannel,bottleneckTrendDates,profileKey,refreshKey,bottleneckRetry,bottleneckSummaryKey]);
   const rejectionFilters={actor:preferences.rejectionActor,stage:preferences.rejectionStage,main:preferences.rejectionMain,detail:preferences.rejectionDetail,search:rejectionSearch};
   const needsRejectionSummary=preferences.tab==="pipeline"&&preferences.pipelineSubview==="rejections";
@@ -176,10 +176,10 @@ export function DashboardPortal({ language, data, requisitions, offers, candidat
   useEffect(()=>{
     if(!ready||!needsRejectionSummary||!pipelineRange.valid)return;
     if(!supabase){setRejectionSummaryState({key:rejectionSummaryKey,status:"error"});return;}
-    let cancelled=false;setRejectionSummaryState(previous => ({ key: rejectionSummaryKey, status: "loading", value: previous?.key === rejectionSummaryKey ? previous.value : undefined }));
-    loadRejectionSummary(supabase,{start:pipelineRange.start,end:pipelineRange.end,scope:pipelineScope,filters:rejectionFilters,profileKey,refreshKey:refreshKey+rejectionRetry})
-      .then(value=>{if(!cancelled)setRejectionSummaryState({key:rejectionSummaryKey,status:"ready",value});}).catch(()=>{if(!cancelled)setRejectionSummaryState({key:rejectionSummaryKey,status:"error"});});
-    return()=>{cancelled=true;};
+    const controller = new AbortController();setRejectionSummaryState(previous => ({ key: rejectionSummaryKey, status: "loading", value: previous?.key === rejectionSummaryKey ? previous.value : undefined }));
+    loadRejectionSummary(supabase,{start:pipelineRange.start,end:pipelineRange.end,scope:pipelineScope,filters:rejectionFilters,profileKey,refreshKey:refreshKey+rejectionRetry,signal:controller.signal})
+      .then(value=>{if(!controller.signal.aborted)setRejectionSummaryState({key:rejectionSummaryKey,status:"ready",value});}).catch(()=>{if(!controller.signal.aborted)setRejectionSummaryState({key:rejectionSummaryKey,status:"error"});});
+    return () => controller.abort();
   },[ready,needsRejectionSummary,pipelineRange.valid,pipelineRange.start,pipelineRange.end,pipelineScope,rejectionFilters.actor,rejectionFilters.stage,rejectionFilters.main,rejectionFilters.detail,rejectionFilters.search,profileKey,refreshKey,rejectionRetry,rejectionSummaryKey]);
   function reportContext(report: DashboardReportDefinition): DashboardReportContext {
     const effective = dashboardEffectivePreferences(preferences, report.filters);

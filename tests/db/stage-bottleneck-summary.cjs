@@ -51,7 +51,9 @@ async function main() {
   const sql = fs.readFileSync(path.resolve(__dirname, "../../supabase/migrations/20261102123200_bottleneck_authorization_key_memoization.sql"), "utf8");
   const declarativeSql = fs.readFileSync(path.resolve(__dirname, "../../supabase/schemas/62_bottleneck_report.sql"), "utf8").replaceAll("\r\n", "\n");
   const migrationSql = sql.replaceAll("\r\n", "\n");
-  assert.ok(migrationSql.startsWith(declarativeSql), "new Bottleneck migration matches declarative schema");
+  const reportMigration = fs.readFileSync(path.join(repoRoot, "supabase/migrations/20261106032530_dashboard_report_loading.sql"), "utf8");
+  assert.ok(reportMigration.includes(declarativeSql.trimEnd()), "Bottleneck migration matches declarative schema");
+  assert.equal((declarativeSql.match(/app_dashboard_bottleneck_summary_v1\(/g) ?? []).length, 1, "summary no longer recursively calls itself");
   assert.match(migrationSql, /authorized_candidates as materialized/i);
   assert.match(migrationSql, /authorized_applications as materialized/i);
   assert.match(migrationSql, /l\.application_id is null or a\.application_id is not null/i, "legacy NULL-application logs retain their allowed path");
@@ -125,6 +127,13 @@ async function main() {
       ('30000000-0000-0000-0000-000000000036','10000000-0000-0000-0000-000000000035','GRP-0006','2026-10-31',null);
     update recruitment_logs set outcome_assignment_id='30000000-0000-0000-0000-000000000035' where log_id=38;
   `);
+  const windowsQuery = "select public.app_dashboard_bottleneck_summary_v1('2026-10-01','2026-11-01','2026-09-01','2026-09-30','{}','all',array['2026-10-13','2026-10-22','2026-11-01']::date[]) value";
+  const legacyWindows = (await db.query(windowsQuery)).rows[0].value;
+  await db.exec(declarativeSql);
+  assert.deepEqual((await db.query(windowsQuery)).rows[0].value, legacyWindows, "current, prior and sliced trend metrics match the recursive implementation");
+  const auto = (await db.query("select public.app_dashboard_bottleneck_queue_v1('2026-11-01','{}','all',null,'auto',null,'CAN-0034') page")).rows[0].page;
+  assert.equal(auto.resolvedStatus, "overdue", "Auto examines the unfiltered queue");
+  assert.ok(auto.rows.every(row => row.status === "overdue"));
   const firstPage = await db.query(`select public.app_dashboard_bottleneck_queue_v1('2026-11-01','{}'::jsonb,'all',null,null,null,'',null,null,null,null,20) page`);
   const pageOne = firstPage.rows[0].page;
   assert.equal(pageOne.rows.length, 20);
