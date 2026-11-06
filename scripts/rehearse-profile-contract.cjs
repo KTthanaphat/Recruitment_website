@@ -516,6 +516,7 @@ async function main() {
   if (process.argv.includes('--candidate-latency')) await require('./verify-candidate-latency.cjs')(db, root);
   if (process.argv.includes('--sourcing-records')) await require('./verify-sourcing-records.cjs')(db, root);
   if (process.argv.includes('--recruiter-read-upgrade')) await require('./verify-recruiter-read-upgrade.cjs')(db, root);
+  if (process.argv.includes('--bottlenecks-scale')) await require('./measure-bottlenecks-sql.cjs')(db, root);
   if (process.argv.includes('--dashboard-report-loading')) {
     const migration = name => fs.readFileSync(path.join(root, 'supabase/migrations', name), 'utf8');
     await db.exec(migration('20261102123500_ytd_report_materialization.sql'));

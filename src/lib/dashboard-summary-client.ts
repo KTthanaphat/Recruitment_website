@@ -381,7 +381,7 @@ export async function loadBottleneckPage(client: SupabaseClient, input: {
     return result;
   }, 0);
 }
-export async function loadBottleneckSummary(client: SupabaseClient,input:{start:string;end:string;priorStart:string;priorEnd:string;scope:DashboardSummaryScope;channel:string;trendDates:string[];profileKey:string;refreshKey?:number;signal?:AbortSignal}):Promise<BottleneckSummary>{
+export async function loadBottleneckSummary(client: SupabaseClient,input:{start:string;end:string;priorStart:string|null;priorEnd:string|null;scope:DashboardSummaryScope;channel:string;trendDates:string[];profileKey:string;refreshKey?:number;signal?:AbortSignal}):Promise<BottleneckSummary>{
   const namespace=await cacheNamespace(client,input.profileKey);
   const key=JSON.stringify(["bottlenecks",namespace,input.start,input.end,input.priorStart,input.priorEnd,input.scope,input.channel,input.trendDates,input.refreshKey??0]);
   return leaseDashboardRead(client, key, input.signal, async signal => {

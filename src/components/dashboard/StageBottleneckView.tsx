@@ -85,6 +85,8 @@ export function StageBottleneckView({ context }: { context: DashboardReportConte
   }
   async function preparePng() {
     if (!supabase) throw new Error("Dashboard connection is unavailable");
+    const exportSummary = await context.loadBottleneckExportSummary?.() ?? summary;
+    if (!exportSummary) throw new Error("Bottleneck summary is unavailable");
     const collected: BottleneckPage["rows"] = [], seenRows = new Set<string>(), seenCursors = new Set<string>();
     let next: BottleneckPage["nextCursor"] = null;
     for (let pageNumber = 0; pageNumber < 10_000; pageNumber++) {
@@ -95,9 +97,9 @@ export function StageBottleneckView({ context }: { context: DashboardReportConte
         seenRows.add(row.instance.id); collected.push(row);
       }
       if (!result.hasMore) {
-        if (p.queueStage === "" && status === "all" && !p.queuePic && !debouncedSearch && summary?.channel === p.funnelChannel
-          && summary.metrics.waiting !== collected.length) throw new Error("Bottleneck queue export does not match the frozen summary; retry");
-        return render(true, collected);
+        if (p.queueStage === "" && status === "all" && !p.queuePic && !debouncedSearch && exportSummary.channel === p.funnelChannel
+          && exportSummary.metrics.waiting !== collected.length) throw new Error("Bottleneck queue export does not match the frozen summary; retry");
+        return render(true, collected, exportSummary);
       }
       const following = result.nextCursor;
       assertFullContinuationPage(result.hasMore, result.rows.length, 20, "Bottleneck queue");
@@ -108,7 +110,7 @@ export function StageBottleneckView({ context }: { context: DashboardReportConte
     }
     throw new Error("Bottleneck queue export exceeded its page limit; retry");
   }
-  function render(exportMode: boolean, exportedRows?: BottleneckPage["rows"]) { const displayRows = exportMode ? exportedRows ?? [] : rows; return <div className={styles.content}>
+  function render(exportMode: boolean, exportedRows?: BottleneckPage["rows"], reportSummary = summary) { const summary = reportSummary; const displayRows = exportMode ? exportedRows ?? [] : rows; return <div className={styles.content}>
     {!summaryReady ? <div role={context.bottleneckSummaryStatus === "error" ? "alert" : "status"} className={styles.notice}>{context.bottleneckSummaryStatus === "error" ? <>{t("unavailable")} <RetryIconButton title={`${language === "th" ? "ลองโหลดข้อมูลอีกครั้ง" : "Retry loading"}: Stage Bottleneck`} type="button"   onClick={context.onRetryBottleneckSummary}>{t("retry")}</RetryIconButton></> : <LoadingSkeleton variant="chart" language={language} label={t("loading")} />}</div> : null}
     {summary ? <>
     <div className={styles.stageToolbar}>{!exportMode ? <label className={styles.inlineField}><span>{t("channel")}</span><CommandSelector typography="normal" ariaLabel={t("channel")} emptyLabel={t("all")} value={p.funnelChannel} options={[{ value: "all", label: t("all") }, ...summary.channelOptions.map(value => ({ value, label: value }))]} onValueChange={value => change({ funnelChannel: value, queueStage: "", queueStatus: "auto", queuePic: "", queueSearch: "" })} /></label> : <p>{t("channel")}: {p.funnelChannel}</p>}<small>{t("asOf")} {summary.asOf}</small></div>
