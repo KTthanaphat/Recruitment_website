@@ -11,7 +11,7 @@ test("new candidate group search is inside the picker and supports keyboard sele
  await installMockSupabase(page);await page.goto("/candidates");await expectWorkspaceReady(page);const form=await openNew(page);
  const groupPicker=form.getByRole("button",{name:"Application group (optional)",exact:true});await groupPicker.click();
  const groupSearch=form.getByRole("combobox",{name:"Search Application group",exact:true});await groupSearch.fill("GRP-TECH");
- await expect(page.getByRole("option",{name:/GRP-TECH/}).first()).toBeVisible();await groupSearch.press("ArrowDown");await groupSearch.press("Enter");await expect(groupPicker).toContainText("GRP-TECH");
+ await expect(page.getByRole("option",{name:"Technician (GRP-TECH)",exact:true})).toBeVisible();await groupSearch.press("ArrowDown");await groupSearch.press("Enter");await expect(groupPicker).toContainText("Technician (GRP-TECH)");
 });
 
 test("new candidate flow keeps group search in the picker when using an existing profile",async({page})=>{
@@ -20,7 +20,7 @@ test("new candidate flow keeps group search in the picker when using an existing
  await form.getByRole("combobox",{name:"Search existing candidates",exact:true}).fill("C-PHONE");await page.getByRole("option",{name:"C-PHONE · Pat Phone",exact:true}).click();
  const groupPicker=form.getByRole("button",{name:"Group ID",exact:true});await groupPicker.click();
  const groupSearch=form.getByRole("combobox",{name:"Search Group ID",exact:true});await groupSearch.fill("GRP-TECH");
- await expect(page.getByRole("option",{name:/GRP-TECH/}).first()).toBeVisible();await groupSearch.press("ArrowDown");await groupSearch.press("Enter");await expect(groupPicker).toContainText("GRP-TECH");
+ await expect(page.getByRole("option",{name:"Technician (GRP-TECH)",exact:true})).toBeVisible();await groupSearch.press("ArrowDown");await groupSearch.press("Enter");await expect(groupPicker).toContainText("Technician (GRP-TECH)");
 });
 
 test("new profile has adjacent identity fields, no ownership fields, and contact review precedes save",async({page})=>{
@@ -174,4 +174,21 @@ for(const language of ["en","th"] as const) for(const width of [360,390,768,1440
    const box=await section.boundingBox();expect(box!.x+box!.width).toBeLessThanOrEqual(bounds!.x+bounds!.width+1);
  }
  if(width===360||width===1440) { await page.screenshot({path:test.info().outputPath(`profile-${language}-${width}.png`),fullPage:false});await page.getByRole("tablist").scrollIntoViewIfNeeded();await page.screenshot({path:test.info().outputPath(`application-${language}-${width}.png`),fullPage:false}); }
+});
+
+test("system admins delete a candidate from the drawer through the existing confirmation",async({page})=>{
+ const mock=await installMockSupabase(page,{role:"system_admin"});const before=mock.data.candidates.length;
+ await page.goto("/candidates?detailType=candidate&detailId=C-HR");await expectWorkspaceReady(page);
+ const remove=page.getByRole("button",{name:"Delete candidate",exact:true}),close=page.getByRole("button",{name:"Close",exact:true});
+ await expect(remove).toBeVisible();await expect(remove).toHaveAttribute("title","Delete candidate");
+ const removeBox=await remove.boundingBox(),closeBox=await close.boundingBox();expect(removeBox!.y).toBeCloseTo(closeBox!.y,0);expect(removeBox!.x).toBeLessThan(closeBox!.x);expect(removeBox!.width).toBe(closeBox!.width);expect(removeBox!.height).toBe(closeBox!.height);
+ await remove.click();const confirmation=page.getByRole("dialog",{name:"Confirm destructive action"});await expect(confirmation).toContainText("C-HR");
+ await confirmation.getByRole("button",{name:/^Cancel/}).click();await expect(confirmation).toBeHidden();expect(mock.rpcCalls.some(row=>row.endpoint==="app_delete_recruitment_record")).toBe(false);expect(mock.data.candidates).toHaveLength(before);
+ await remove.click();await page.getByRole("dialog",{name:"Confirm destructive action"}).getByRole("button",{name:"Delete / Unmatch",exact:true}).click();
+ expect(mock.rpcCalls.find(row=>row.endpoint==="app_delete_recruitment_record")?.payload).toMatchObject({entity:"candidate",id:"C-HR"});expect(mock.data.candidates).toHaveLength(before-1);
+});
+
+test("non-system-admins do not see the candidate delete icon",async({page})=>{
+ await installMockSupabase(page,{role:"admin_recruiter"});await page.goto("/candidates?detailType=candidate&detailId=C-HR");await expectWorkspaceReady(page);
+ await expect(page.getByRole("button",{name:"Delete candidate",exact:true})).toHaveCount(0);
 });

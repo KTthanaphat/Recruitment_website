@@ -43,6 +43,10 @@ Inspect long bilingual names, absent contacts, Pending/failed/completed cases, v
 
 Selected application content keeps the existing drawer hierarchy and stage controls. Summaries show current group, stage, lifecycle and transfer history. Earlier entry/outcome assignments remain labeled; a carried Pending states that it began before reassignment. Transfer review includes source, destination, stage, pending work, required reason and version. Use existing CV folder links; no upload redesign. The single profile note shows its saved text, last editor and edit time directly under Position interests, without an inline editor. Creator/admin edit through the existing profile form; application PICs read only; other readers see a locked placeholder. Phone registry rows use labeled fields and wrap long contacts/interests.
 
+## Candidate deletion and application group labels
+
+Show the trash icon beside the drawer Close control only to system admins. Match their button dimensions, icon size, and vertical alignment, retaining the expanded touch targets. It opens the existing irreversible delete confirmation and uses app_delete_recruitment_record for the whole candidate profile and linked data. In candidate record forms, show each group as Position name (GRP-ID) in options and selected or locked values; submit the unchanged group ID.
+
 ## Shared profile and application tabs
 
 The complete person profile appears once above all applications. Use label/value hierarchy, copy feedback, wrapping, and optional CV link. Person-level responsibility is labeled Created by; application details show all linked requisition PICs. Hide site/recruiter inputs in New and Edit; place Name/Nickname next to each other on desktop. Site-recruiter creation derives its site; administrator creation permits no home site.

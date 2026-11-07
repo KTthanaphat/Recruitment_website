@@ -10,7 +10,7 @@ test("workspace Pipeline submits the locked group ID when creating a candidate",
   const dialog = page.getByRole("dialog", { name: "Create Candidate" });
   const lockedGroup = dialog.getByRole("button", { name: "Application group (optional)", exact: true });
   await expect(lockedGroup).toBeDisabled();
-  await expect(lockedGroup).toContainText("GRP-TECH");
+  await expect(lockedGroup).toContainText("Technician (GRP-TECH)");
   await expect(dialog.locator('input[type="hidden"][name="group_id"]')).toHaveCount(1);
   await expect(dialog.getByRole("textbox", { name: "Search Application group" })).toHaveCount(0);
   expect(mock.rpcCalls.filter(call => call.endpoint === "app_application_destinations_page_v1")).toHaveLength(0);
@@ -32,13 +32,13 @@ test("workspace group lock also holds when creating an application for an existi
 
   await page.getByRole("button", { name: "New Candidate", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Create Candidate" });
-  await dialog.getByRole("textbox", { name: "Use existing candidate", exact: true }).fill("C-PHONE");
   await dialog.getByRole("button", { name: "Use existing candidate", exact: true }).click();
+  await dialog.getByRole("combobox", { name: "Search existing candidates", exact: true }).fill("C-PHONE");
   await expect(dialog.getByRole("option", { name: /C-PHONE · Pat Phone/ })).toBeVisible();
   await page.getByRole("option", { name: /C-PHONE · Pat Phone/ }).click();
   const lockedGroup = dialog.getByRole("button", { name: "Group ID", exact: true });
   await expect(lockedGroup).toBeDisabled();
-  await expect(lockedGroup).toContainText("GRP-TECH");
+  await expect(lockedGroup).toContainText("Technician (GRP-TECH)");
   await expect(dialog.locator('input[type="hidden"][name="group_id"]')).toHaveCount(1);
   expect(mock.rpcCalls.filter(call => call.endpoint === "app_application_destinations_page_v1")).toHaveLength(0);
   await dialog.getByRole("button", { name: "Review changes" }).click();
