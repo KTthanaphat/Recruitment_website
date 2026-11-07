@@ -485,11 +485,26 @@ begin
     delete from public.document_groups where doc_group_id = v_id;
 
   elsif v_entity = 'candidate' then
-    select array_agg(distinct doc_id) into v_affected_doc_ids
+    -- Profiles can have no legacy group anchor and several current/historical journeys.
+    select coalesce(array_agg(distinct doc_id) filter (where doc_id is not null), '{}'::text[])
+      into v_affected_doc_ids
     from (
       select dg.doc_id
+      from public.candidate_applications a
+      join public.document_groups dg on dg.group_id = a.group_id
+      where a.candidate_id = v_id
+      union
+      select dg.doc_id
+      from public.candidate_applications a
+      join public.candidate_application_assignments s on s.application_id = a.application_id
+      join public.document_groups dg on dg.group_id = s.group_id
+      where a.candidate_id = v_id
+      union
+      select cr.doc_id from public.candidate_requisitions cr where cr.candidate_id = v_id
+      union
+      select dg.doc_id
       from public.candidates c
-      join public.document_groups dg on dg.group_id = c.group_id
+      join public.document_groups dg on dg.doc_group_id = c.doc_group_id or dg.group_id = c.group_id
       where c.candidate_id = v_id
       union
       select o.doc_id from public.offers o where o.candidate_id = v_id
@@ -531,7 +546,7 @@ begin
     raise exception 'Record not found.';
   end if;
 
-  foreach v_affected_doc_id in array v_affected_doc_ids loop
+  foreach v_affected_doc_id in array coalesce(v_affected_doc_ids, '{}'::text[]) loop
     if v_affected_doc_id is not null then
       perform app_private.refresh_requisition_status(v_affected_doc_id);
     end if;

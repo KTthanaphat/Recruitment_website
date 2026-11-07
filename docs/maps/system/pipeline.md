@@ -63,7 +63,7 @@ If the task changes schema, environment or release state, cross to [Setup](../SE
 
 ## Candidate deletion and application group labels
 
-Owner: [RecruitmentWorkspace](../../../src/components/RecruitmentWorkspace.tsx) (detailBody, CandidatePrefillFields, DestinationControls). Contract: [delete action and group labels](../../design/candidate-detail.md#candidate-deletion-and-application-group-labels). Checks: [candidate profile](../../../tests/e2e/candidate-profile-redesign.spec.ts), [locked workspace group](../../../tests/e2e/workspace.spec.ts).
+Owner: [RecruitmentWorkspace](../../../src/components/RecruitmentWorkspace.tsx) (detailBody, CandidatePrefillFields, DestinationControls). Contract: [delete action and group labels](../../design/candidate-detail.md#candidate-deletion-and-application-group-labels). Checks: [candidate profile](../../../tests/e2e/candidate-profile-redesign.spec.ts), [locked workspace group](../../../tests/e2e/workspace.spec.ts), [rollback-only delete SQL](../../../tests/db/candidate-delete.sql). Backend: [candidate-delete contract](../../../supabase/schemas/README.md#candidate-deletion).
 
 ## Creator privacy and profile/application layout
 

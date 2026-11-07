@@ -185,10 +185,33 @@ test("system admins delete a candidate from the drawer through the existing conf
  await remove.click();const confirmation=page.getByRole("dialog",{name:"Confirm destructive action"});await expect(confirmation).toContainText("C-HR");
  await confirmation.getByRole("button",{name:/^Cancel/}).click();await expect(confirmation).toBeHidden();expect(mock.rpcCalls.some(row=>row.endpoint==="app_delete_recruitment_record")).toBe(false);expect(mock.data.candidates).toHaveLength(before);
  await remove.click();await page.getByRole("dialog",{name:"Confirm destructive action"}).getByRole("button",{name:"Delete / Unmatch",exact:true}).click();
- expect(mock.rpcCalls.find(row=>row.endpoint==="app_delete_recruitment_record")?.payload).toMatchObject({entity:"candidate",id:"C-HR"});expect(mock.data.candidates).toHaveLength(before-1);
+ await expect.poll(()=>mock.rpcCalls.filter(row=>row.endpoint==="app_delete_recruitment_record").length).toBe(1);expect(mock.rpcCalls.find(row=>row.endpoint==="app_delete_recruitment_record")?.payload).toMatchObject({entity:"candidate",id:"C-HR"});expect(mock.data.candidates).toHaveLength(before-1);
+ await expect(page.getByRole("dialog",{name:"C-HR / Hana HR",exact:true})).toBeHidden();await expect(page.locator("tbody tr").filter({hasText:"C-HR"})).toHaveCount(0);
 });
 
-test("non-system-admins do not see the candidate delete icon",async({page})=>{
- await installMockSupabase(page,{role:"admin_recruiter"});await page.goto("/candidates?detailType=candidate&detailId=C-HR");await expectWorkspaceReady(page);
+for(const role of ["admin_recruiter","site_recruiter","viewer"] as const) test(role+" cannot see the candidate delete icon",async({page})=>{
+ await installMockSupabase(page,{role});await page.goto("/candidates?detailType=candidate&detailId=C-HR");await expectWorkspaceReady(page);
  await expect(page.getByRole("button",{name:"Delete candidate",exact:true})).toHaveCount(0);
+});
+
+test("failed candidate deletion keeps the profile and prevents repeated submission", async ({ page }) => {
+ const mock = await installMockSupabase(page, { role: "system_admin" });
+ const before = mock.data.candidates.length;
+ let attempts = 0;
+ await page.route("**/rest/v1/rpc/app_delete_recruitment_record", async route => {
+   attempts++;
+   await new Promise(resolve => setTimeout(resolve, 500));
+   await route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ code: "P0001", message: "Verification: deletion was denied" }) });
+ });
+ await page.goto("/candidates?detailType=candidate&detailId=C-HR"); await expectWorkspaceReady(page);
+ await page.getByRole("button", { name: "Delete candidate", exact: true }).click();
+ const confirmation = page.getByRole("dialog", { name: "Confirm destructive action" });
+ const submit = confirmation.getByRole("button", { name: "Delete / Unmatch", exact: true });
+ await submit.click(); await expect(submit).toBeDisabled();
+ const failure = page.getByRole("dialog", { name: "Update not saved", exact: true });
+ await expect(failure).toContainText("Verification: deletion was denied");
+ expect(attempts).toBe(1); expect(mock.data.candidates).toHaveLength(before);
+ await failure.getByRole("button", { name: "Review and edit", exact: true }).click();
+ await expect(page.getByRole("heading", { name: "Candidate profile", exact: true })).toBeVisible();
+ await expect(page.getByRole("button", { name: "Delete candidate", exact: true })).toBeVisible();
 });
