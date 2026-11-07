@@ -61,6 +61,10 @@ If the task changes schema, environment or release state, cross to [Setup](../SE
 - Search: `CandidateProfile`, `candidate_applications`, `application_id`, `APPLICATION_SELECTION_REQUIRED`, `app_transfer_candidate_application_v1`, `entry_assignment_id`, `outcome_assignment_id`.
 - Checks: [SQL](../../../tests/db/candidate-applications.sql), [browser](../../../tests/e2e/candidate-applications.spec.ts). Impacts: [Reporting](reporting.md), [Integrations](integrations.md), [Workspace](workspace.md).
 
+## Candidate deletion and application group labels
+
+Owner: [RecruitmentWorkspace](../../../src/components/RecruitmentWorkspace.tsx) (detailBody, CandidatePrefillFields, DestinationControls). Contract: [delete action and group labels](../../design/candidate-detail.md#candidate-deletion-and-application-group-labels). Checks: [candidate profile](../../../tests/e2e/candidate-profile-redesign.spec.ts), [locked workspace group](../../../tests/e2e/workspace.spec.ts).
+
 ## Creator privacy and profile/application layout
 
 Owners: [profile panel](../../../src/components/candidates/CandidateProfilePanel.tsx), [registry](../../../src/components/candidates/CandidateRegistry.tsx), [capabilities](../../../src/lib/applications.ts), [profile SQL](../../../supabase/schemas/58_candidate_profile_contract.sql). Contract: [behavior](../../WEBSITE_STRUCTURE.md#independent-candidate-profiles), [tabs/forms](../../design/candidate-detail.md#shared-profile-and-application-tabs). Search: `created_by`, `can_edit_note`, `app_masked_candidate_pool_v1`, `duplicate_review`, `app_upsert_candidate_note_v2`. Checks: [browser](../../../tests/e2e/candidate-profile-redesign.spec.ts), [SQL](../../../tests/db/candidate-profile-contract.sql), [evidence](../../work-items/candidate-profile-redesign/implementation.md).
