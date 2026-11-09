@@ -4,6 +4,9 @@ Updated: 2026-10-04. Start with the row closest to the task; read one feature no
 
 | Task | Entry |
 | --- | --- |
+| Header notifications, new-hire confirmation reminders or probation day 45/90/119 | [SYS-PLATFORM F28](maps/system/platform.md#f28-shared-notification-center-and-recruiter-reminders) → [SYS-RECORDS F11](maps/system/records.md#f11-new-hire-start-confirmation-offer-reassignment-and-status-refresh) → [canonical behavior](WEBSITE_STRUCTURE.md#recruitment-workflows) → [focused E2E](../tests/e2e/notification-center.spec.ts) |
+| Records adaptive 48px rows, triangle sorting, all-matching capture/export, Requisition identity or complete Stage history | [Records owners](maps/system/records.md#records-density-and-fixed-size-pages) → [shared contract](design/controls.md#records-tables-and-fixed-pagination) / [detail owners](maps/system/pipeline.md#flat-detail-and-records-table-refinement) → [checks](../tests/e2e/records-refinement.spec.ts) |
+| Records staged filter sidebar, list styling and candidate history workbook | [Contract](WEBSITE_STRUCTURE.md#candidate-registry-column-filters-and-selection) → [Records owners](maps/system/records.md) → [export](../src/lib/candidate-full-export.ts) / [sidebar checks](../tests/e2e/records-filter-actions.spec.ts) / [list design](../tests/e2e/records-filter-list-design.spec.ts) / [export checks](../tests/e2e/records-divider-filters.spec.ts) |
 | Structural skeletons, five-card boards, compact offers or sourcing repair | [Design adjustment record](work-items/design-adjustments/implementation.md#november-3-refinement) → follow only the affected canonical contract |
 | Create/add a feature; choose direct or agent work | [Feature delivery process](workflows/FEATURE_DELIVERY_LOOP.md) |
 | Change behavior, component or record flow | [System map](maps/SYSTEM_MAP.md) |
@@ -53,7 +56,7 @@ flowchart TD
 
 Keep one owner for each rule. Maps contain links/search keys, not copied policy. Update a feature's node when ownership changes and update its impact back-links when dependencies change. Shared nodes with many consumers deserve caller inspection; they do not require all documentation to be loaded.
 
-Validate maintained links and graph structure with `python scripts/check_agent_docs.py`. The current feature inventory is F00–F27 across seven nodes; when intentionally extending the graph, update its expected inventory in the checker with the map. [Verification boundaries](workflows/TEST_ENVIRONMENTS.md) distinguish structural validation from application behavior tests.
+Validate maintained links and graph structure with `python scripts/check_agent_docs.py`. The current feature inventory is F00–F28 across seven nodes; when intentionally extending the graph, update its expected inventory in the checker with the map. [Verification boundaries](workflows/TEST_ENVIRONMENTS.md) distinguish structural validation from application behavior tests.
 
 Find symbols quickly: `rg -n "DayDateSelector|CandidateDetailHeader" docs/maps docs/design src` from the app checkout. Do not treat sibling checkouts or archived documentation as the active source.
 

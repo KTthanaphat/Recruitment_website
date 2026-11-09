@@ -15,10 +15,11 @@ test("candidate registry searches and scopes through the bounded database list",
  await page.getByRole("searchbox",{name:/Search name, ID/}).fill("Hana");
  await expect(page.getByRole("button",{name:/Hana HR/})).toBeVisible();
  await expect.poll(()=>mock.rpcCalls.filter(row=>row.endpoint==="app_recruitment_list_v1").at(-1)?.payload.p_search).toBe("Hana");
+ await page.getByRole("button",{name:"Advanced Filters",exact:true}).click();
  await page.getByRole("button",{name:"Talent pool",exact:true}).click();
  await expect.poll(()=>{const last=mock.rpcCalls.filter(row=>row.endpoint==="app_recruitment_list_v1").at(-1);return last?.payload.p_search==="Hana"&&(last.payload.p_filters as {scope?:string}).scope==="pool";}).toBe(true);
  const request=mock.rpcCalls.filter(row=>row.endpoint==="app_recruitment_list_v1").at(-1)!;
- expect(request.payload).toMatchObject({p_entity:"candidate_registry",p_search:"Hana",p_sort:"updated_at",p_direction:"desc",p_limit:50});
+ expect(request.payload).toMatchObject({p_entity:"candidate_registry",p_search:"Hana",p_sort:"updated_at",p_direction:"desc",p_limit:7});
 });
 
 test("header owner choices come from the authorized database option RPC",async({page})=>{
@@ -32,27 +33,24 @@ test("header owner choices come from the authorized database option RPC",async({
 });
 
 test("sourcing list count failure keeps the page and offers a separate retry",async({page})=>{
- const mock=await installMockSupabase(page,{countFailureOnceEntity:"sourcing"});
+ const mock=await installMockSupabase(page,{countFailureOnceEntity:"sourcing_records"});
  await page.goto("/sourcing");await expectWorkspaceReady(page);
- await expect.poll(()=>mock.rpcCalls.some(call=>call.endpoint==="app_recruitment_list_v1"&&call.payload.p_entity==="sourcing")).toBe(true);
- await expect.poll(()=>mock.rpcCalls.some(call=>call.endpoint==="app_recruitment_list_count_v1"&&call.payload.p_entity==="sourcing")).toBe(true);
- await expect(page.getByRole("button",{name:"Retry",exact:true})).toBeVisible();
- await expect(page.getByText(/Page 1 · — groups/)).toBeVisible();
- await page.getByRole("button",{name:"Retry",exact:true}).click();
- await expect.poll(()=>mock.rpcCalls.filter(call=>call.endpoint==="app_recruitment_list_count_v1"&&call.payload.p_entity==="sourcing").length).toBeGreaterThan(1);
- await expect(page.getByText(/Page 1 · \d+ groups/)).toBeVisible();
+ await expect.poll(()=>mock.rpcCalls.some(call=>call.endpoint==="app_recruitment_list_v1"&&call.payload.p_entity==="sourcing_records")).toBe(true);
+ await expect.poll(()=>mock.rpcCalls.some(call=>call.endpoint==="app_recruitment_list_count_v1"&&call.payload.p_entity==="sourcing_records")).toBe(true);
+ await expect(page.getByRole("button",{name:"Retry record count",exact:true})).toBeVisible();
+ await expect(page.locator("[data-record-pagination]")).toContainText("1/—");
+ await page.getByRole("button",{name:"Retry record count",exact:true}).click();
+ await expect.poll(()=>mock.rpcCalls.filter(call=>call.endpoint==="app_recruitment_list_count_v1"&&call.payload.p_entity==="sourcing_records").length).toBeGreaterThan(1);
+ await expect(page.locator("[data-record-pagination]")).toContainText(/1\/\d+/);
 });
 
 test("empty continuation after concurrent deletion can recover to the first page",async({page})=>{
  const mock=await installMockSupabase(page,{emptyContinuationOnceEntity:"candidate_registry"}),template=mock.data.candidates[0];
  for(let i=0;i<60;i++)mock.data.candidates.push({...template,candidate_id:`CAN-EMPTY-${String(i).padStart(3,"0")}`,name:`Empty Continuation ${String(i).padStart(3,"0")}`,nickname:null,created_at:"2026-10-31T00:00:00.000Z",updated_at:"2026-10-31T00:00:00.000Z"});
  await page.goto("/candidates");await expectWorkspaceReady(page);
- await expect(page.getByRole("button",{name:"Next"})).toBeEnabled();
- await page.getByRole("button",{name:"Next"}).click();
- await expect(page.getByText(/Page 2/)).toBeVisible();
- await expect(page.getByRole("button",{name:"Previous"})).toBeEnabled();
- await page.getByRole("button",{name:"Previous"}).click();
- await expect(page.getByText(/Page 1/)).toBeVisible();
+ await expect(page.getByRole("button",{name:"Next page"})).toBeEnabled();
+ await page.getByRole("button",{name:"Next page"}).click();
+ await expect(page.locator("[data-record-pagination]")).toContainText(/1\/\d+/);
  await expect(page.getByRole("button",{name:/Empty Continuation 000/})).toBeVisible();
 });
 
@@ -69,28 +67,29 @@ test("candidate registry renders page rows before its separate exact count resol
  await expect.poll(()=>mock.rpcCalls.some(row=>row.endpoint==="app_recruitment_list_v1"&&row.payload.p_entity==="candidate_registry")).toBe(true);
  await expect.poll(()=>countRequested).toBe(true);
  await expect(page.getByRole("button",{name:/Delayed 000.*CAN-DELAY-000/})).toBeVisible();
- await expect(page.getByRole("button",{name:"Next"})).toBeEnabled();
- await expect(page.getByText("… people",{exact:true})).toBeVisible();
+ await expect(page.getByRole("button",{name:"Next page"})).toBeEnabled();
+ await expect(page.locator("[data-record-pagination]")).toContainText("1/…");
  releaseCount();
- await expect(page.getByText(/^\d+ people$/)).toBeVisible();
+ await expect(page.locator("[data-record-pagination]")).toContainText(/1\/\d+/);
 });
 
 test("candidate registry keyset paging is stable, resets on filters and supports quick navigation",async({page})=>{
  const mock=await installMockSupabase(page),template=mock.data.candidates[0];
  for(let i=0;i<260;i++)mock.data.candidates.push({...template,candidate_id:`CAN-PAGE-${String(i).padStart(3,"0")}`,name:`Page ${String(i).padStart(3,"0")}`,nickname:null,created_at:"2026-10-31T00:00:00.000Z",updated_at:"2026-10-31T00:00:00.000Z"});
  await page.goto("/candidates");await expectWorkspaceReady(page);
- await page.getByLabel("Rows per page").selectOption("100");
- await expect(page.getByText("Page 1",{exact:true})).toBeVisible();
- await expect(page.getByText(`${mock.data.candidates.length} people`,{exact:true})).toBeVisible();
- const next=page.getByRole("button",{name:"Next"}),previous=page.getByRole("button",{name:"Previous"});
- await next.evaluate(button=>{button.dispatchEvent(new MouseEvent("click",{bubbles:true}));button.dispatchEvent(new MouseEvent("click",{bubbles:true}));});await expect(page.getByText("Page 2",{exact:true})).toBeVisible();
- await next.click();await expect(page.getByText("Page 3",{exact:true})).toBeVisible();
- await previous.click();await expect(page.getByText("Page 2",{exact:true})).toBeVisible();
- await next.click();await expect(page.getByText("Page 3",{exact:true})).toBeVisible();
+ await expect(page.getByLabel("Rows per page")).toHaveCount(0);
+ await expect(page.locator("[data-record-pagination]")).toContainText(/1\/\d+/);
+ await expect(page.locator("[data-record-pagination]")).toContainText("1/"+Math.ceil(mock.data.candidates.length/7));
+ const next=page.getByRole("button",{name:"Next page"}),previous=page.getByRole("button",{name:"Previous page"});
+ await next.evaluate(button=>{button.dispatchEvent(new MouseEvent("click",{bubbles:true}));button.dispatchEvent(new MouseEvent("click",{bubbles:true}));});await expect(page.locator("[data-record-pagination]")).toContainText(/2\/\d+/);
+ await next.click();await expect(page.locator("[data-record-pagination]")).toContainText(/3\/\d+/);
+ await previous.click();await expect(page.locator("[data-record-pagination]")).toContainText(/2\/\d+/);
+ await next.click();await expect(page.locator("[data-record-pagination]")).toContainText(/3\/\d+/);
  await page.getByRole("searchbox",{name:/Search name, ID/}).fill("Page 001");
- await expect(page.getByText("Page 1",{exact:true})).toBeVisible();
+ await expect(page.locator("[data-record-pagination]")).toContainText(/1\/\d+/);
+ await page.getByRole("button",{name:"Advanced Filters",exact:true}).click();
  await page.getByRole("button",{name:"Talent pool",exact:true}).click();
- await expect(page.getByText("Page 1",{exact:true})).toBeVisible();
+ await expect(page.locator("[data-record-pagination]")).toContainText(/1\/\d+/);
 });
 
 test("registry search keeps padded ID collisions distinct and opens raw IDs; masked rows stay private",async({page})=>{
@@ -126,7 +125,8 @@ test("save an independent pool profile without creating activity", async ({page}
   await form.getByRole("button",{name:"Review changes"}).click();await confirm(page);
   expect(mock.rpcCalls.findLast(row=>row.endpoint==="app_upsert_candidate_profile_v2")).toMatchObject({endpoint:"app_upsert_candidate_profile_v2",payload:{group_id:null}});
   expect(mock.data.recruitment_logs.length).toBe(before);
-  await page.getByRole("button",{name:"Talent pool",exact:true}).click();
+  await page.getByRole("button",{name:"Advanced Filters",exact:true}).click();
+ await page.getByRole("button",{name:"Talent pool",exact:true}).click();
   await expect(page.getByRole("button",{name:/Future engineer/})).toBeVisible();
 });
 
@@ -137,6 +137,7 @@ test("unmatched profile details retain creator-authorized notes without loading 
  mock.data.candidates.push({...seed,candidate_id:candidateId,name:"Unmatched Note Profile",nickname:"Note Profile",group_id:null,doc_group_id:null});
  mock.data.candidate_notes.push({note_id:"note-unmatched",candidate_id:candidateId,body:"Creator-only pool note",created_by:mock.data.profile?.id??null,updated_by:mock.data.profile?.id??null,version:1,created_at:"2026-07-20T00:00:00.000Z",updated_at:"2026-07-20T00:00:00.000Z"});
  await page.goto("/candidates");await expectWorkspaceReady(page);
+ await page.getByRole("button",{name:"Advanced Filters",exact:true}).click();
  await page.getByRole("button",{name:"Talent pool",exact:true}).click();
  await page.getByRole("searchbox").fill(candidateId);
  const row=page.getByRole("row").filter({hasText:candidateId});await expect(row).toBeVisible();

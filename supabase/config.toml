@@ -22,5 +22,6 @@ schema_paths = [
   "./schemas/62_bottleneck_report.sql",
   "./schemas/63_operational_lookups.sql",
   "./schemas/64_home_welcome_summaries.sql",
+  "./schemas/66_recruitment_notifications.sql",
   "./schemas/90_grants.sql"
 ]

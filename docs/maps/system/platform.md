@@ -6,6 +6,12 @@ Read this node for this feature only. It indexes ownership; product rules remain
 
 ## Owners and search keys
 
+### F28: Shared notification center and recruiter reminders
+
+- Owner/search: [RecruitmentNotifications.tsx](../../../src/components/layout/RecruitmentNotifications.tsx) (`titleFor`, `timingFor`, close/unread controls), [AppShell.tsx](../../../src/components/layout/AppShell.tsx), and [dictionary.ts](../../../src/lib/i18n/dictionary.ts).
+- Related behavior/data: [Recruitment workflows](../../WEBSITE_STRUCTURE.md#recruitment-workflows), [notification schema](../../../supabase/schemas/66_recruitment_notifications.sql) (search: `notification_assigned_recruiter_v1`, `generate_recruitment_notifications_v1`); offer eligibility and start-confirmation ownership are in [SYS-RECORDS F11](records.md#f11-new-hire-start-confirmation-offer-reassignment-and-status-refresh).
+- Entry/check: shared authenticated header → [notification center E2E](../../../tests/e2e/notification-center.spec.ts); database scheduling and RLS → [SETUP-DATABASE](../SETUP_MAP.md#setup-database).
+
 ### F01: Workspace picker actions, localized form guidance, and day-date selector
 
 - Owner/search: [src/components/workspace/HiringWorkspaceView.tsx](../../../src/components/workspace/HiringWorkspaceView.tsx), [src/components/RecruitmentWorkspace.tsx](../../../src/components/RecruitmentWorkspace.tsx), [src/components/ui/Field.tsx](../../../src/components/ui/Field.tsx).
@@ -101,3 +107,15 @@ Owners: `LoadingSkeleton`, `RefreshIndicator`, and `RetryIconButton` in `src/com
 Structural placeholders: [contract](../../design/controls.md#data-loading-and-retry-controls); search TableSkeletonRows, NumberSkeleton, OperationalSummaryStrip; [checks](../../../tests/e2e/loading-feedback.spec.ts).
 
 Shared attendance icon owner: [AttendanceDecisionActions](../../../src/components/ui/AttendanceDecisionActions.tsx), AttendanceOutcome; [contract](../../design/controls.md#attendance-decisions-and-structural-loading-refinements). Structural read owners: TableLoadingPlaceholder, SkeletonBlock, PerformanceReportSkeleton. [Checks](../../../tests/e2e/design-refinement.spec.ts).
+
+
+### Shared Records controls
+
+- Owner/search: [RecordsControls](../../../src/components/ui/RecordsControls.tsx) `RecordPagination`, `RecordCell`, `RecordCreateButton`, `RecordFilterPanel`, `useRecordCategoryOptions`; `TableToolbar records` / `TableFilterField` in [TableControls](../../../src/components/ui/TableControls.tsx).
+- Contract/checks: [fixed pagination](../../design/controls.md#records-tables-and-fixed-pagination) → [browser acceptance](../../../tests/e2e/records-refinement.spec.ts).
+
+- Header/mobile filter presentation: RecordFilterPanel inline, useRecordsCardLayout, SortableFilterHeader viewportBoundedFilters; priority owner RecordPriorityIndicator. Follow the shared contract above.
+
+- Selection/continuous-row owners: useRecordSelection, RecordSelectionCheckbox and BulkActionToolbar selectionNote/exportBusy; [contract](../../design/controls.md#records-selection-and-linked-indicators) → [checks](../../../tests/e2e/records-divider-filters.spec.ts).
+
+- 48px shared label/filter geometry: RecordHeaderFilterRow / RecordSelectionProgress; [contract](../../design/controls.md#records-headings-and-captured-selection) → [checks](../../../tests/e2e/records-capture-history.spec.ts).

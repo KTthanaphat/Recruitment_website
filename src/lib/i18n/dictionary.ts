@@ -1173,6 +1173,44 @@ export const dictionaries = { en, th };
 Object.assign(en, { requisitionDocIdEditHint: "Use a temporary ID while approval is pending. When you replace it, linked records and history follow the new ID." });
 Object.assign(th, { requisitionDocIdEditHint: "ใช้รหัสชั่วคราวระหว่างรออนุมัติ เมื่อเปลี่ยนรหัส รายการที่เชื่อมโยงและประวัติจะใช้รหัสใหม่" });
 
+Object.assign(en,{recordsOfferStatus:"Offer Status",recordsOfferImpact:"Impact"});
+Object.assign(th,{recordsOfferStatus:"สถานะข้อเสนอ",recordsOfferImpact:"ผลต่ออัตรากำลัง"});
+
+Object.assign(en, {
+  notificationCenter: "Notifications",
+  notificationDaysOverdue: "{days} days overdue",
+  notificationReminderDate: "Reminder date",
+  unreadNotificationCount: "{count} unread notifications",
+  notificationUnreadSummary: "{count} unread",
+  notificationNewHireConfirmation: "New Hire Confirmation",
+  notificationProbationMilestone: "Probation day {days}",
+  notificationFirstWorkingDate: "First working date",
+  notificationMilestoneToday: "Milestone today",
+  notificationDaysBeforeMilestone: "{days} days before milestone",
+  notificationResolved: "Resolved",
+  notificationMarkRead: "Mark as read",
+  notificationLoadMore: "Load older notifications",
+  notificationLoadFailed: "Could not load notifications. Please retry by reopening this panel.",
+  notificationEmpty: "No notifications yet."
+});
+Object.assign(th, {
+  notificationCenter: "การแจ้งเตือน",
+  notificationDaysOverdue: "เกินกำหนด {days} วัน",
+  notificationReminderDate: "วันที่แจ้งเตือน",
+  unreadNotificationCount: "การแจ้งเตือนที่ยังไม่อ่าน {count} รายการ",
+  notificationUnreadSummary: "ยังไม่อ่าน {count} รายการ",
+  notificationNewHireConfirmation: "ยืนยันการเริ่มงานของพนักงานใหม่",
+  notificationProbationMilestone: "ครบกำหนดทดลองงานวันที่ {days}",
+  notificationFirstWorkingDate: "วันเริ่มงานวันแรก",
+  notificationMilestoneToday: "ครบกำหนดวันนี้",
+  notificationDaysBeforeMilestone: "ก่อนครบกำหนด {days} วัน",
+  notificationResolved: "ดำเนินการแล้ว",
+  notificationMarkRead: "ทำเครื่องหมายว่าอ่านแล้ว",
+  notificationLoadMore: "โหลดการแจ้งเตือนก่อนหน้า",
+  notificationLoadFailed: "โหลดการแจ้งเตือนไม่สำเร็จ โปรดลองเปิดแผงนี้อีกครั้ง",
+  notificationEmpty: "ยังไม่มีการแจ้งเตือน"
+});
+
 export function translate(language: Language, key: string, params?: TranslateParams) {
   const template = dictionaries[language][key] ?? dictionaries.en[key] ?? key;
   if (!params) return template;

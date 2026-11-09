@@ -58,7 +58,7 @@ import { CommandSelector } from "@/components/ui/CommandSelector";
 import { OperationalSummaryStrip, RecordActionGroup } from "@/components/ui/Operations";
 import { Panel } from "@/components/ui/Panel";
 import { PipelineFunnel, type PipelineFunnelRow } from "@/components/ui/PipelineFunnel";
-import { StageRail } from "@/components/ui/StageRail";
+import { StageRail, PipelineStageMarker } from "@/components/ui/StageRail";
 import { StatusBanner } from "@/components/ui/StatusBanner";
 import { Tag } from "@/components/ui/Tag";
 import { DisabledReasonHint, InlineDataQualityIssues } from "@/components/ui/Workflow";
@@ -326,7 +326,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const [candidateReviewBusy,setCandidateReviewBusy]=useState(false);
   const [candidateReviewError,setCandidateReviewError]=useState<string|null>(null);
   const [selectedApplicationId, setSelectedApplicationId] = useState<string | null>(null);
-  const [candidateDetail, setCandidateDetail] = useState<{ key: string; data: DashboardData | null; loading: boolean; error: string | null }>({ key: "", data: null, loading: false, error: null });
+  const [candidateDetail, setCandidateDetail] = useState<{ key: string; shellKey?: string; loadedKey?: string; data: DashboardData | null; loading: boolean; error: string | null }>({ key: "", data: null, loading: false, error: null });
   const [candidateDetailRetry, setCandidateDetailRetry] = useState(0);
   const [candidateActionContext, setCandidateActionContext] = useState<{ key: string; scopeKey: string; candidate: EnrichedCandidate; data: DashboardData } | null>(null);
   const [requisitionDetail, setRequisitionDetail] = useState<{ key: string; loading: boolean; error: string | null; result: Awaited<ReturnType<typeof loadScopedRequisitionDetail>> | null }>({ key: "", loading: false, error: null, result: null });
@@ -612,6 +612,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const candidateDetailKey = detail?.type === "candidate" ? JSON.stringify([detailAccessScope, detail.id, selectedApplicationId ?? ""]) : "";
   const candidateActionGeneration = useRef(0);
   useEffect(() => { candidateActionGeneration.current += 1; }, [detailAccessScope]);
+  const candidateShellKey = detail?.type === "candidate" ? JSON.stringify([detailAccessScope,detail.id]) : "";
   useEffect(() => {
     const activeProfileId = workspaceDataRef.current.profile?.id;
     if (!candidateDetailKey || !supabase || workspaceLoadState !== "ready" || !activeProfileId) {
@@ -620,19 +621,19 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     }
     let cancelled = false;
     const candidateId = detail?.type === "candidate" ? detail.id : "";
-    setCandidateDetail(previous => ({ key: candidateDetailKey, data: previous.key === candidateDetailKey ? previous.data : null, loading: true, error: null }));
+    setCandidateDetail(previous => ({ ...previous, key: candidateDetailKey, shellKey:candidateShellKey, data: previous.shellKey === candidateShellKey ? previous.data : null, loading: true, error: null }));
     const detailController = new AbortController();
     const reconciliationStarted = performance.now();
     const readStarted = nextCandidateReadEpoch();
     void loadCandidateDetail(supabase, { profileId: activeProfileId, key: detailAccessScope }, candidateId, selectedApplicationId, workspaceDataRef.current, detailController.signal)
-      .then(result => { if (!cancelled && supabase) { markCandidateReconciliation(reconciliationStarted); acknowledgeCandidateReconciliation(supabase, candidateId); setCandidateDetail({ key: candidateDetailKey, data: patchCandidateDataSince(supabase, detailAccessScope, result, readStarted), loading: false, error: null }); } })
-      .catch(loadError => { if (!cancelled) setCandidateDetail(previous => ({ key: candidateDetailKey, data: previous.key === candidateDetailKey ? previous.data : null, loading: false, error: loadError instanceof Error ? loadError.message : "Could not load candidate details." })); });
+      .then(result => { if (!cancelled && supabase) { markCandidateReconciliation(reconciliationStarted); acknowledgeCandidateReconciliation(supabase, candidateId); setCandidateDetail({ key: candidateDetailKey, shellKey:candidateShellKey, loadedKey:candidateDetailKey, data: patchCandidateDataSince(supabase, detailAccessScope, result, readStarted), loading: false, error: null }); } })
+      .catch(async loadError => { const message=loadError instanceof Error?loadError.message:"Could not load candidate details."; let authorizedShell:DashboardData|null|undefined; if(message.includes("application is no longer available")) { invalidateRecruitmentLists("candidate_applications"); invalidateScopedCandidateDetail(supabase!,detailAccessScope,new Set([candidateId])); try { authorizedShell=await loadCandidateDetail(supabase!,{profileId:activeProfileId,key:detailAccessScope},candidateId,null,workspaceDataRef.current,detailController.signal); } catch { authorizedShell=null; } } const accessLost=/candidate is unavailable|permission denied|access.*denied|not authorized/i.test(message); if(!cancelled)setCandidateDetail(previous=>({...previous,key:candidateDetailKey,shellKey:candidateShellKey,loadedKey:accessLost||authorizedShell!==undefined?"":previous.loadedKey,data:accessLost?null:authorizedShell!==undefined?authorizedShell:previous.shellKey===candidateShellKey?previous.data:null,loading:false,error:message})); });
     return () => { cancelled = true; detailController.abort(); };
   // Do not depend on candidateDetail: setting loading state here must not clean up
   // the request that produced it. The request is scoped by the key/retry/auth inputs.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [candidateDetailKey, candidateDetailRetry, detail, detailAccessScope, selectedApplicationId, supabase, workspaceLoadState]);
-  const candidateDetailContext = candidateDetail.key === candidateDetailKey ? candidateDetail.data : null;
+  const candidateDetailContext = candidateDetail.loadedKey === candidateDetailKey && candidateDetail.shellKey===candidateShellKey ? candidateDetail.data : null;
   const refreshMutationCaches = useCallback((endpoint: string) => {
     invalidateRecruitmentListsForMutation(endpoint);
     clearPipelineSummaryCache();
@@ -1420,7 +1421,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       else if (receipt) commitCandidateResult(receipt); else refreshMutationCaches(savedAction.endpoint);
       const changedCandidateId = String(savedAction.payload.candidate_id ?? "");
       if (!receipt && detail?.type === "candidate" && detail.id === changedCandidateId) {
-        setCandidateDetail(previous => ({ key: candidateDetailKey, data: previous.key === candidateDetailKey ? previous.data : null, loading: true, error: null }));
+        setCandidateDetail(previous => ({ ...previous, key: candidateDetailKey, shellKey:candidateShellKey, data: previous.shellKey === candidateShellKey ? previous.data : null, loading: true, error: null }));
         setCandidateDetailRetry(value => value + 1);
       }
       const handoff = offerPassHandoffFromResult(result, candidateDetailContext ?? data);
@@ -1584,7 +1585,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   }, [ensureCandidateActionContext]);
   const saveTeamsInterview = useCallback(async (payload: Record<string, unknown>) => {
     if (!supabase) throw new Error("Sign in before scheduling a Teams interview."); setBusy(true);
-    try { const { data: session } = await supabase.auth.getSession(); const response = await fetch("/api/interview-meetings", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${session.session?.access_token ?? ""}` }, body: JSON.stringify(payload) }); const result = await response.json() as { ok?: boolean; error?: string }; if (!response.ok || !result.ok) throw new Error(result.error ?? "Could not update Teams interview."); setStatus(payload.operation === "cancel" ? "Teams interview cancelled." : "Teams interview scheduled and invitations sent."); setCurrentStageActionCandidateId(null); refreshMutationCaches("app_interview_meetings"); if (detail?.type === "candidate" && detail.id === payload.candidate_id) { setCandidateDetail(previous => ({ key: candidateDetailKey, data: previous.key === candidateDetailKey ? previous.data : null, loading: true, error: null })); setCandidateDetailRetry(value => value + 1); } } finally { setBusy(false); }
+    try { const { data: session } = await supabase.auth.getSession(); const response = await fetch("/api/interview-meetings", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${session.session?.access_token ?? ""}` }, body: JSON.stringify(payload) }); const result = await response.json() as { ok?: boolean; error?: string }; if (!response.ok || !result.ok) throw new Error(result.error ?? "Could not update Teams interview."); setStatus(payload.operation === "cancel" ? "Teams interview cancelled." : "Teams interview scheduled and invitations sent."); setCurrentStageActionCandidateId(null); refreshMutationCaches("app_interview_meetings"); if (detail?.type === "candidate" && detail.id === payload.candidate_id) { setCandidateDetail(previous => ({ ...previous, key: candidateDetailKey, shellKey:candidateShellKey, data: previous.shellKey === candidateShellKey ? previous.data : null, loading: true, error: null })); setCandidateDetailRetry(value => value + 1); } } finally { setBusy(false); }
   }, [detail, candidateDetailKey, refreshMutationCaches]);
   const saveCurrentStageEstimate = async (payload: Record<string, unknown>) => {
     if (!supabase) throw new Error("Sign in before updating the pending stage."); setBusy(true);
@@ -1612,7 +1613,8 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     setStatus(translate(language, "prioritySaved"));
   }, [data.profile, language, detailAccessScope, commitRequisitionResult]);
 
-  const hydratedCandidateData = candidateDetail.key === candidateDetailKey ? candidateDetail.data : null;
+  const hydratedCandidateData = candidateDetail.shellKey === candidateShellKey ? candidateDetail.data : null;
+  const applicationReady = candidateDetail.loadedKey === candidateDetailKey && Boolean(hydratedCandidateData);
   const detailSource: DashboardData = detail?.type === "candidate" ? hydratedCandidateData ?? data : detail?.type === "requisition" && loadedRequisition ? {
     ...data,
     requisitions: [{ ...loadedRequisition.requisition,accepted_count:loadedRequisition.metrics.acceptedOfferCount,open_headcount:loadedRequisition.metrics.openHeadcount,candidate_count:loadedRequisition.metrics.candidateCount,sla_restart_date:loadedRequisition.metrics.slaRestartDate } as EnrichedRequisition],
@@ -1649,11 +1651,11 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const detailBody: DetailBodyResult = detail?.type === "candidate" ? {
     title: `${formatRecruitmentId(detail.id)} / ${hydratedCandidateData?.candidates.find(row => row.candidate_id === detail.id)?.name ?? "Candidate"}`,
     headerActions: canDeleteRecords ? <Button type="button" variant="ghost" size="icon-sm" className="relative text-danger after:absolute after:-inset-1 hover:bg-danger/10 hover:text-danger" icon={<Trash2 size={16} aria-hidden="true" />} aria-label={translate(language, "deleteCandidate")} title={translate(language, "deleteCandidate")} onClick={() => prepareDestructiveRpcAction("app_delete_recruitment_record", { entity: "candidate", id: detail.id }, translate(language, "deleteRecordSummary", { entity: translate(language, "candidate"), id: formatRecruitmentId(detail.id) }))} /> : null,
-    body: (candidateDetail.loading && !hydratedCandidateData) || candidateDetail.key !== candidateDetailKey
+    body: !hydratedCandidateData && (candidateDetail.loading || candidateDetail.key !== candidateDetailKey)
       ? <LoadingSkeleton variant="detail" label={<>{translate(language, "loadingRecruitmentRecords")}</>} className="py-6 text-sm text-slate" />
-      : candidateDetail.error
+      : candidateDetail.error && !hydratedCandidateData
         ? <div role="alert" className="grid gap-3 py-4 text-sm text-slate"><p>{candidateDetail.error}</p><RetryIconButton title={`${language === "th" ? "ลองโหลดข้อมูลอีกครั้ง" : "Retry loading"}: Recruitment Workspace`} type="button"  onClick={() => setCandidateDetailRetry(value => value + 1)}>{translate(language, "retry")}</RetryIconButton></div>
-        : hydratedCandidateData ? <><div aria-busy={candidateDetail.loading}>{candidateDetail.loading ? <RefreshIndicator language={language} /> : null}{candidateDetail.error ? <div role="alert" className="text-sm text-scarlet">{candidateDetail.error} <RetryIconButton type="button" onClick={() => setCandidateDetailRetry(value => value+1)}>{translate(language,"retry")}</RetryIconButton></div> : null}</div><CandidateProfilePanel key={detail.id} candidateId={detail.id} applicationId={selectedJourney?.application_id ?? null} data={hydratedCandidateData} language={language} client={supabase} accessScope={detailAccessScope} onSelect={(id)=>{setSelectedApplicationId(id);const url=new URL(window.location.href);url.searchParams.set("applicationId",id);window.history.pushState({},"",url);}} onEdit={() => openDetailCandidateChange(detail.id)} onAction={prepareRpcAction}>{selectedJourney ? legacyDetailBody.body : null}</CandidateProfilePanel></>
+        : hydratedCandidateData ? <><div aria-busy={candidateDetail.loading}>{candidateDetail.loading && applicationReady ? <RefreshIndicator language={language} /> : null}{candidateDetail.error && applicationReady ? <div role="alert" className="text-sm text-scarlet">{candidateDetail.error} <RetryIconButton type="button" onClick={() => setCandidateDetailRetry(value => value+1)}>{translate(language,"retry")}</RetryIconButton></div> : null}</div><CandidateProfilePanel key={detail.id} candidateId={detail.id} applicationId={selectedJourney?.application_id ?? null} applicationLoading={!applicationReady&&!candidateDetail.error} applicationError={!applicationReady?candidateDetail.error:null} onApplicationRetry={()=>setCandidateDetailRetry(value=>value+1)} data={hydratedCandidateData} language={language} client={supabase} accessScope={detailAccessScope} onSelect={(id)=>{setSelectedApplicationId(id);const url=new URL(window.location.href);url.searchParams.set("applicationId",id);window.history.pushState({},"",url);}} onEdit={() => openDetailCandidateChange(detail.id)} onAction={prepareRpcAction}>{selectedJourney && applicationReady ? legacyDetailBody.body : null}</CandidateProfilePanel></>
         : <p>{translate(language, "candidateUnavailable")}</p>
   } : detail?.type === "requisition" ? {
     ...legacyDetailBody,
@@ -1723,18 +1725,22 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       activeView={initialView}
       variant={initialView === "dashboard" ? "dashboard" : undefined}
       headerScopeSummary={!desktopRequired && initialView === "dashboard" ? `${translate(language, "site")}: ${filters.site || translate(language, "allSites")} · ${translate(language, "personInCharge")}: ${filters.owner || translate(language, "allOwners")}${filters.priorityOnly ? ` · ${translate(language, "priorityRequisitions")}` : ""}` : undefined}
+      notificationClient={supabase}
+      onOpenNotificationCandidate={openCandidateDetail}
       headerControls={desktopRequired ? undefined : (
         <>
           <CommandSelector ariaLabel={translate(language, "site")} density="compact" emptyLabel={translate(language, "allSites")} options={[{ value: "", label: translate(language, "allSites") }, ...siteOptions.map((value) => ({ value, label: value }))]} value={filters.site} onValueChange={(value) => setFilters((old) => ({ ...old, site: value }))} className="w-full min-w-[8.5rem] sm:w-36" />
           <CommandSelector ariaLabel={translate(language, "personInCharge")} density="compact" emptyLabel={translate(language, "allOwners")} options={[{ value: "", label: translate(language, "allOwners") }, ...ownerOptions.map((value) => ({ value, label: value }))]} value={filters.owner} onValueChange={(value) => setFilters((old) => ({ ...old, owner: value }))} className="w-full min-w-[11rem] sm:w-48" />
           {ownerOptionsError ? <RetryIconButton type="button"   title={ownerOptionsError} onClick={() => setOwnerOptionsRetry(value => value + 1)}>Retry owners</RetryIconButton> : null}
+        </>
+      )}
+      headerBookmark={!desktopRequired ? (
           <Button type="button" size={initialView === "dashboard" ? "icon-toolbar" : "icon-sm"} variant="secondary" className={initialView === "dashboard" ? filters.priorityOnly ? "!bg-[#E8F0FF] !text-[#0A3CDC] !ring-[#9FBFFF]" : "!text-[#0A3CDC]" : filters.priorityOnly ? "min-h-11 min-w-11 !bg-[#E8F0FF] !text-[#0A3CDC] !ring-[#9FBFFF] sm:min-h-9 sm:min-w-9" : "min-h-11 min-w-11 !text-[#0A3CDC] sm:min-h-9 sm:min-w-9"}
             icon={<Bookmark size={initialView === "dashboard" ? 16 : 18} fill={filters.priorityOnly ? "currentColor" : "none"} aria-hidden="true" />}
             aria-label={translate(language, "priorityRequisitionFilter")} aria-pressed={filters.priorityOnly}
             title={translate(language, filters.priorityOnly ? "priorityRequisitions" : "allRequisitions")}
             onClick={() => setFilters(current => ({ ...current, priorityOnly: !current.priorityOnly }))} />
-        </>
-      )}
+      ) : null}
       language={language}
       navigationContext={navigationContext}
       profile={data.profile}
@@ -1936,10 +1942,10 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
         reviewError={activeModal==="candidate"?candidateReviewError:null}
       />
 
-      <Modal open={Boolean(duplicateReview)} title={language==="th"?"พบข้อมูลติดต่อซ้ำ":"Matching candidate contacts"} onClose={()=>setDuplicateReview(null)}>
-        <div className="grid gap-4 p-5"><p className="text-sm text-slate">{language==="th"?"ตรวจสอบรหัสผู้สมัครที่ตรงกันก่อนบันทึกเป็นคนละราย":"Review these matching candidate IDs before saving a separate person."}</p>
-          {duplicateReview?.matches.map(match=><div key={match.candidate_id} className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-[#D7DEE8] p-3"><p className="text-sm font-semibold text-navy">{formatRecruitmentId(match.candidate_id)}<span className="block text-xs font-normal text-slate">{[match.phone?(language==="th"?"โทรศัพท์":"Phone"):null,match.email?(language==="th"?"อีเมล":"Email"):null].filter(Boolean).join(" + ")}</span></p><a className="inline-flex min-h-11 items-center text-sm font-semibold text-primary underline" href={`/candidates?detailType=candidate&detailId=${encodeURIComponent(match.candidate_id)}`} target="_blank" rel="noreferrer">{language==="th"?"เปิดข้อมูลเดิม":"Open existing profile"}</a></div>)}
-          <div className="flex flex-wrap gap-2"><Button type="button" variant="secondary" onClick={()=>setDuplicateReview(null)}>{language==="th"?"กลับไปแก้ไข":"Back to form"}</Button><Button type="button" onClick={()=>{if(!duplicateReview)return;const {payload,matches,summary}=duplicateReview;setDuplicateReview(null);setPendingAction({title:"Confirm Save",summary,endpoint:"app_upsert_candidate_profile_v2",payload:{...payload,duplicate_review:{phone:String(payload.phone_no??"").trim(),email:String(payload.email??"").trim().toLowerCase(),matches}},modal:"candidate",route:"rpc"});}}>{language==="th"?"ดำเนินการเป็นคนละราย":"Continue as a separate candidate"}</Button></div>
+      <Modal open={Boolean(duplicateReview)} compactWarning titleIcon={<AlertTriangle size={20} className="text-[#A77520]" aria-hidden="true"/>} closeLabel={translate(language,"close")} subtitle={language==="th"?"ตรวจสอบรหัสผู้สมัครที่ตรงกันก่อนบันทึกเป็นคนละราย":"Review these matching candidate IDs before saving a separate person."} title={language==="th"?"พบข้อมูลติดต่อซ้ำ":"Matching candidate contacts"} onClose={()=>setDuplicateReview(null)}>
+        <div className="contact-match-layout"><div className="contact-match-list">
+          {duplicateReview?.matches.map(match=><div key={match.candidate_id} className="contact-match-row"><p className="text-sm font-semibold text-navy">{formatRecruitmentId(match.candidate_id)}<span className="block text-xs font-normal text-slate">{[match.phone?(language==="th"?"โทรศัพท์":"Phone"):null,match.email?(language==="th"?"อีเมล":"Email"):null].filter(Boolean).join(" + ")}</span></p><a className="inline-flex min-h-11 items-center text-sm font-semibold text-primary underline" href={`/candidates?detailType=candidate&detailId=${encodeURIComponent(match.candidate_id)}`} target="_blank" rel="noreferrer">{language==="th"?"เปิดข้อมูลเดิม":"Open existing profile"}</a></div>)}
+          </div><div className="contact-match-footer"><Button type="button" className="contact-match-create" onClick={()=>{if(!duplicateReview)return;const {payload,matches,summary}=duplicateReview;setDuplicateReview(null);setPendingAction({title:"Confirm Save",summary,endpoint:"app_upsert_candidate_profile_v2",payload:{...payload,duplicate_review:{phone:String(payload.phone_no??"").trim(),email:String(payload.email??"").trim().toLowerCase(),matches}},modal:"candidate",route:"rpc"});}}>{language==="th"?"สร้างผู้สมัครแยก":"Create Separate Cand."}</Button></div>
         </div>
       </Modal>
 
@@ -4254,15 +4260,14 @@ function buildDetailBodyV2(
       ),
       body: (
         <div className="grid min-w-0 gap-4" data-requisition-detail>
-          <section className="rounded-xl border border-[#D7DEE8] bg-white p-4 sm:p-5">
+          <section className="requisition-overview">
           <SectionHeading className="mb-3" icon={<BriefcaseBusiness size={19} />} title={translate(language, "requisitionOverview")} />
-          <OperationalSummaryStrip density="compact" valueTone="navy" items={[
+          <dl className="requisition-overview-metrics">{[
             { label: translate(language, "openHeadcountShort"), value: requisition.open_headcount, tone: requisition.open_headcount > 0 ? "warning" : "success", helper: translate(language, "remainingDemand") },
             { label: translate(language, "accepted"), value: `${requisition.accepted_count}/${requisition.head_count}`, tone: "muted", helper: translate(language, "headcount") },
             { label: translate(language, "actualAge"), value: getRequisitionAgeDays(requisition.pr_approved_date) === null ? "—" : `${getRequisitionAgeDays(requisition.pr_approved_date)} ${language === "th" ? "วัน" : "days"}`, tone: "muted", helper: translate(language, "prApprovedDate") },
             { label: translate(language, "currentSla"), value: sla?.label ?? "—", tone: sla?.isOverdue ? "danger" : "muted", helper: translate(language, "slaLabel") }
-          ]} />
-          <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[#E9F2FF]" role="img" aria-label={`${translate(language, "accepted")}: ${requisition.accepted_count}/${requisition.head_count}; ${Math.round(fillPercent)}%`}><div className="h-full bg-primary" style={{ width: `${fillPercent}%` }} /></div>
+          ].map(item=><div key={item.label} title={item.helper}><dt>{item.label}</dt><dd>{item.value}</dd></div>)}</dl>          <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[#E9F2FF]" role="img" aria-label={`${translate(language, "accepted")}: ${requisition.accepted_count}/${requisition.head_count}; ${Math.round(fillPercent)}%`}><div className="h-full bg-primary" style={{ width: `${fillPercent}%` }} /></div>
           <p className="mt-2 text-xs leading-relaxed text-slate">{sourcingLinkReadinessLabel(language, readiness.linked)} · {readinessReason}</p>
           </section>
           <InlineDataQualityIssues issues={issues} language={language} />
@@ -4322,10 +4327,20 @@ function buildDetailBodyV2(
     const stageOrder = ACTIVE_PIPELINE_STAGES.indexOf(a.stage) - ACTIVE_PIPELINE_STAGES.indexOf(b.stage);
     return stageOrder || a.round - b.round || a.logId - b.logId;
   });
-  const completedStageRecords = stageRecords.filter((record) => Boolean(record.outcome));
-  const recentCompletedStageRecords = completedStageRecords.slice(-3).reverse();
-  const olderCompletedStageRecords = completedStageRecords.slice(0, -3).reverse();
+  const completedStageRecords = stageRecords.filter((record) => Boolean(record.outcome)).sort((a,b)=>(b.outcome?.date??"").localeCompare(a.outcome?.date??"")||b.logId-a.logId);
   const canEditCurrentPending = candidatePipelineCapability(candidate, logs, data.profile).canWrite;
+  const renderStageHistoryRecord = (record:ReturnType<typeof pipelineStageRecords>[number])=><div key={record.stageInstanceId} className="stage-history-entry activity-entry" data-status={record.outcome?.result??"pending"}>
+<span role="img" title={[processLabel(record.stage,language),translate(language,"round")+" "+record.round,!record.outcome?(language==="th"?"รอดำเนินการ":"Pending"):resultText(record.outcome.result==="pass"?1:0,language)].join(" · ")} aria-label={[processLabel(record.stage,language),translate(language,"round")+" "+record.round,!record.outcome?(language==="th"?"รอดำเนินการ":"Pending"):resultText(record.outcome.result==="pass"?1:0,language)].join(" · ")}><PipelineStageMarker stage={record.stage} state={!record.outcome?"pending":record.outcome.result==="pass"?"passed":"failed"}/></span><div className="relative min-w-0 pb-4 pr-10">
+<div className="flex flex-wrap items-center justify-between gap-2"><strong className="break-words text-sm text-navy">{processLabel(record.stage,language)} / {translate(language,"round")} {record.round}</strong>{!record.outcome&&canEditCurrentPending?<Button type="button" size="icon-sm" variant="ghost" className="absolute right-0 top-0" icon={<Pencil size={16} aria-hidden="true"/>} aria-label={translate(language,"edit")} title={translate(language,"edit")} onClick={()=>onEditPending(candidate,record.stage as ProcessStage)}/>:null}</div>
+
+<p className="mt-0.5 break-words text-xs text-slate">{translate(language,"pendingDetails")}: {formatDate(record.pending.openedDate,language)} / {record.pending.interviewer??translate(language,"noInterviewer")}</p>
+{record.pending.estimatedActionDate?<p className="mt-1 text-xs text-primary">{translate(language,"estimatedDateValue",{date:formatDate(record.pending.estimatedActionDate,language)})}</p>:null}
+{record.pending.remark?<p className="mt-1 whitespace-pre-wrap break-words text-xs text-slate">{record.pending.remark}</p>:null}
+{record.outcome?<p className="mt-1 break-words text-xs text-slate">{translate(language,"outcome")}: {formatDate(record.outcome.date,language)} / {record.outcome.interviewer??translate(language,"noInterviewer")}</p>:null}
+{record.outcome?.result==="fail"?<p className="mt-1 break-words text-xs font-semibold text-navy">{failureReasonText(logs.find(log=>log.log_id===record.logId||log.stage_instance_id===record.stageInstanceId),language)}</p>:null}
+{record.outcome?.remark?<p className="mt-1 whitespace-pre-wrap break-words text-xs text-slate">{translate(language,"remark")}: {record.outcome.remark}</p>:null}
+{record.pending.editedAt||record.origin==="migration"?<p className="mt-1 text-[11px] text-slate">{[record.pending.editedAt?translate(language,"edited"):null,record.origin==="migration"?translate(language,"migrated"):null].filter(Boolean).join(" · ")}</p>:null}
+{record.migrationNote?<p className="mt-1 break-words text-[11px] text-slate">{record.migrationNote}</p>:null}</div></div>;
   const canEditOffers = canWrite && Boolean(candidate.group_id && canManageApplicationGroup(data,candidate.group_id));
   const offers = data.offers.filter((row) => belongsToApplication(row, candidate));
   const references = data.candidate_references.filter((row) => row.candidate_id === candidate.candidate_id);
@@ -4378,7 +4393,7 @@ function buildDetailBodyV2(
             if (offer) onConfirmOfferStart(offer);
           }}
         />
-        <section className="min-w-0 rounded-xl border border-[#D7DEE8] bg-white p-4 shadow-[0_10px_28px_rgba(11,19,43,0.035)] sm:p-5">
+        <section className="candidate-detail-section">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <SectionHeading icon={<JourneyTrendIcon />} title="Candidate Pipeline Journey" />
             {!updateDisabledReason.blocked ? <Button type="button" size="sm" variant="primary" icon={<BriefcaseBusiness size={17} />} disabled={!canWrite} onClick={() => onUpdateCandidate(candidate.candidate_id)}>Update</Button> : null}
@@ -4386,11 +4401,11 @@ function buildDetailBodyV2(
           {updateDisabledReason.blocked ? <div className="mt-3"><DisabledReasonHint language={language} reason={updateDisabledReason} /></div> : null}
           <div className="mt-4"><CandidateJourney language={language} logs={logs} /></div>
         </section>
-        {pendingInterview ? <section className="min-w-0 rounded-xl border border-[#D7DEE8] bg-white p-4 shadow-[0_10px_28px_rgba(11,19,43,0.035)] sm:p-5">
+        {pendingInterview ? <section className="candidate-detail-section">
           <div className="flex flex-wrap items-start justify-between gap-3"><div><SectionHeading icon={<CalendarPlus size={19} />} title="Teams interview" /><p className="mt-1 text-sm text-slate">{processLabel(pendingInterview.recruitment_process, language)} · {interviewMeeting ? interviewMeeting.status === "scheduled" ? "Scheduled" : interviewMeeting.status === "failed" ? "Scheduling failed — use Current Stage Edit to retry." : "Updating meeting…" : "No meeting scheduled"}</p></div></div>
           {interviewMeeting ? <div className="mt-3 grid gap-1 rounded-lg bg-[#F8FAFD] p-3 text-sm text-slate"><p><strong className="text-navy">Bangkok time:</strong> {formatBangkokMeetingDateTime(interviewMeeting.starts_at, language)}</p><p><strong className="text-navy">Organizer:</strong> {interviewMeeting.organizer_mailbox ?? "Shared HR mailbox"}</p><p><strong className="text-navy">Attendees:</strong> {interviewMeeting.interviewer_emails.join(", ")}</p>{interviewMeeting.join_url ? <a className="mt-1 w-fit font-semibold text-primary underline" href={interviewMeeting.join_url} target="_blank" rel="noreferrer">Join Teams meeting</a> : null}{interviewMeeting.failure_summary ? <p role="alert" className="mt-1 font-semibold text-scarlet">{interviewMeeting.failure_summary}</p> : null}</div> : null}
         </section> : null}
-        <section className="min-w-0 rounded-xl border border-[#D7DEE8] bg-white p-4 shadow-[0_10px_28px_rgba(11,19,43,0.035)] sm:p-5">
+        <section className="candidate-detail-section">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3"><SectionHeading icon={<ContactRound size={19} />} title={language === "th" ? "รายละเอียดใบสมัคร" : "Application details"} /><CandidateApplicationDetailsAction /></div>
         <DetailGrid workspace language={language} rows={[
           { label: "Group ID", value: candidate.group_id ?? candidate.doc_group_id ?? "-", copyValue: candidate.group_id ?? candidate.doc_group_id, icon: <UsersRound size={18} /> },
@@ -4417,7 +4432,7 @@ function buildDetailBodyV2(
               const check = referenceChecks.get(reference.reference_id);
               const channel = reference.channel_type === "other" ? reference.other_channel_label ?? "Other" : reference.channel_type.toUpperCase();
               return (
-                <div key={reference.reference_id} className="rounded-md border border-[#D7DEE8] bg-white p-3">
+                <div key={reference.reference_id} className="candidate-detail-row">
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="font-semibold text-navy">{reference.reference_name} <span className="font-medium text-slate">/ {reference.relationship}</span></p>
@@ -4440,70 +4455,18 @@ function buildDetailBodyV2(
         </DetailDisclosure>
         <DetailDisclosure title={<SectionHeading icon={<Activity size={18} />} title="Activity" />} summary="Stage records and offers" defaultOpen>
           <div className="grid gap-4">
-            <div>
-              <h4 className="mb-1.5 text-sm font-semibold text-navy">{translate(language, "currentStage")}</h4>
-              <div className="grid gap-1.5">
-                {stageRecords.filter((record) => !record.outcome).map((record) => (
-                  <div key={record.stageInstanceId} className="min-w-0 rounded-md border border-[#F3D3A2] border-l-4 border-l-[#FFB20F] bg-[#FFFCF6] px-2.5 py-2 shadow-none">
-                    <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-                      <strong className="min-w-0 break-words text-sm text-navy">{processLabel(record.stage, language)} / {translate(language, "round")} {record.round}</strong>
-                      {canEditCurrentPending ? <Button type="button" size="icon-sm" variant="ghost" className="text-primary hover:bg-[#FFF4D8] hover:text-primary" icon={<Pencil size={16} aria-hidden="true" />} aria-label={translate(language, "edit")} title={translate(language, "edit")} onClick={() => onEditPending(candidate, record.stage as ProcessStage)} /> : null}
-                    </div>
-                    <p className="mt-0.5 break-words text-xs font-medium text-slate">{translate(language, "pendingDetails")}: {formatDate(record.pending.openedDate, language)} / {record.pending.interviewer ?? translate(language, "noInterviewer")}</p>
-                    {record.pending.estimatedActionDate ? <p className="mt-0.5 break-words text-xs font-semibold text-primary">{translate(language, "estimatedDateValue", { date: formatDate(record.pending.estimatedActionDate, language) })}</p> : null}
-                    {record.pending.remark ? <p className="mt-0.5 break-words text-xs text-slate">{record.pending.remark}</p> : null}
-                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                      {record.pending.editedAt ? <Tag tone="muted">{translate(language, "edited")}</Tag> : null}
-                      {record.origin === "migration" ? <Tag tone="muted">{translate(language, "migrated")}</Tag> : null}
-                    </div>
-                    {record.migrationNote ? <p className="mt-1 break-words text-[11px] font-medium text-slate">{record.migrationNote}</p> : null}
-                  </div>
-                ))}
-                {stageRecords.every((record) => record.outcome) ? <p className="text-sm font-medium text-slate">{translate(language, "noData")}</p> : null}
-              </div>
-              <h4 className="mb-2 mt-4 font-semibold text-navy">{translate(language, "completedStageHistory")}</h4>
-              <div className="relative ml-2 grid gap-2 border-l border-[#D7DEE8] pl-5">
-                {recentCompletedStageRecords.map((record) => (
-                  <div key={record.stageInstanceId} className="relative min-w-0 rounded-md border border-[#D7DEE8] border-l-4 border-l-primary bg-white p-3">
-                    <span className="absolute -left-[1.9rem] top-3 grid size-4 place-items-center rounded-full bg-primary text-[10px] font-bold text-white ring-4 ring-white" aria-label={record.outcome?.result === "pass" ? translate(language, "passStage") : translate(language, "failStage")}>{record.outcome?.result === "pass" ? "✓" : "×"}</span>
-                    <div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-sm text-navy">{processLabel(record.stage, language)} / {translate(language, "round")} {record.round}</strong>{record.outcome?.result === "pass" ? <span className="inline-flex min-h-5 items-center rounded-md bg-[#E9F9EF] px-2 text-[11px] font-semibold text-[#167A3D]">{resultText(1, language)}</span> : <Tag tone="danger">{resultText(0, language)}</Tag>}</div>
-                    <p className="mt-1 text-xs font-medium text-slate">{translate(language, "pendingDetails")}: {formatDate(record.pending.openedDate, language)} / {record.pending.interviewer ?? translate(language, "noInterviewer")}</p>
-                    {record.pending.estimatedActionDate ? <p className="mt-1 text-xs font-semibold text-primary">{translate(language, "estimatedDateValue", { date: formatDate(record.pending.estimatedActionDate, language) })}</p> : null}
-                    <p className="mt-1 text-xs font-medium text-slate">{translate(language, "outcome")}: {formatDate(record.outcome?.date, language)} / {record.outcome?.interviewer ?? translate(language, "noInterviewer")}</p>
-                    {record.outcome?.result === "fail" ? <p className="mt-1 break-words text-xs font-semibold text-navy">{failureReasonText(logs.find((log) => log.stage_instance_id === record.stageInstanceId), language)}</p> : null}
-                    {record.outcome?.remark ? <p className="mt-1 break-words text-xs text-slate">{translate(language, "remark")}: {record.outcome.remark}</p> : null}
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                      {record.origin === "migration" ? <Tag tone="muted">{translate(language, "migrated")}</Tag> : null}
-                    </div>
-                    {record.migrationNote ? <p className="mt-2 break-words text-xs font-medium text-slate">{record.migrationNote}</p> : null}
-                  </div>
-                ))}
-                {olderCompletedStageRecords.length > 0 ? <details className="rounded-md border border-[#D7DEE8] bg-[#F8FAFD]">
-                  <summary className="cursor-pointer px-3 py-2 text-sm font-semibold text-primary">Show remaining history ({olderCompletedStageRecords.length})</summary>
-                  <div className="grid gap-2 border-t border-[#D7DEE8] p-3">
-                    {olderCompletedStageRecords.map((record) => <div key={record.stageInstanceId} className="min-w-0 rounded-md border border-[#D7DEE8] bg-white p-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-sm text-navy">{processLabel(record.stage, language)} / {translate(language, "round")} {record.round}</strong>{record.outcome?.result === "pass" ? <span className="inline-flex min-h-5 items-center rounded-md bg-[#E9F9EF] px-2 text-[11px] font-semibold text-[#167A3D]">{resultText(1, language)}</span> : <Tag tone="danger">{resultText(0, language)}</Tag>}</div>
-                      {record.outcome?.result === "fail" ? <p className="mt-1 break-words text-xs font-semibold text-navy">{failureReasonText(logs.find((log) => log.stage_instance_id === record.stageInstanceId), language)}</p> : null}
-                      <p className="mt-1 text-xs font-medium text-slate">{translate(language, "pendingDetails")}: {formatDate(record.pending.openedDate, language)} / {record.pending.interviewer ?? translate(language, "noInterviewer")}</p>
-                      <p className="mt-1 text-xs font-medium text-slate">{translate(language, "outcome")}: {formatDate(record.outcome?.date, language)} / {record.outcome?.interviewer ?? translate(language, "noInterviewer")}</p>
-                      {record.outcome?.remark ? <p className="mt-1 break-words text-xs text-slate">{translate(language, "remark")}: {record.outcome.remark}</p> : null}
-                      {record.origin === "migration" ? <div className="mt-2"><Tag tone="muted">{translate(language, "migrated")}</Tag></div> : null}
-                    </div>)}
-                  </div>
-                </details> : null}
-              </div>
-            </div>
+<div className="activity-history"><h4 className="mb-4 text-sm font-semibold text-navy">{language==="th"?"ประวัติขั้นตอน":"Stage history"}</h4><div className="stage-history-rail activity-timeline">{[...stageRecords.filter(record=>!record.outcome),...completedStageRecords].map(renderStageHistoryRecord)} {!stageRecords.length?<p className="text-sm text-slate">{translate(language,"noData")}</p>:null}</div></div>
             <div>
               <h4 className="mb-2 font-semibold text-navy">{translate(language, "offers")}</h4>
               <div className="grid gap-2">
                 {offers.length === 0 ? <p className="text-sm font-medium text-slate">{translate(language, "noData")}</p> : offers.map((offer) => (
-                  <div key={offer.offer_id} className="grid gap-3 rounded-md border border-[#D7DEE8] bg-white p-3">
-                    <section className="rounded-md border border-[#E4E9F2] bg-[#F8FAFD] p-3">
+                  <div key={offer.offer_id} className="candidate-detail-row grid gap-3">
+                    <section className="candidate-detail-row">
                     <div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-navy">{offer.doc_id}</strong><div className="flex flex-wrap gap-2">{canEditOffers ? <Button type="button" size="icon-sm" variant="ghost" className="ats-compact-utility" aria-label={language === "th" ? "แก้ไขข้อเสนอ" : "Edit offer"} title={language === "th" ? "แก้ไขข้อเสนอ" : "Edit offer"} onClick={() => onEditOffer(offer)}><Pencil size={17}/></Button> : null}</div></div>
                     <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm font-medium text-slate"><span>{translate(language, "acceptedLower")}: {formatDate(offer.accepted_date, language)}</span><span>{translate(language, "startLower")}: {formatDate(offer.first_working_date, language)}</span></div>
                     {offer.remark ? <p className="mt-1 break-words text-sm text-slate">{offer.remark}</p> : null}
                     </section>
-                    <section className="rounded-md border border-[#E4E9F2] bg-white p-3">
+                    <section className="candidate-detail-row">
                     <div className="flex items-start justify-between gap-2"><h5 className="pt-2 text-sm font-semibold text-navy">{language === "th" ? "ยืนยันการเริ่มงาน" : "Working Confirm"}</h5>{canEditOffers && offer.accepted_date && offer.first_working_date && offer.first_working_date <= today() && (!offer.start_confirmation || ["system_admin", "admin_recruiter"].includes(data.profile?.role ?? "")) ? <AttendanceDecisionActions language={language} onDecision={outcome => onConfirmOfferStart(offer, outcome)}/> : null}</div>
                     <p className="mt-1 text-sm font-medium text-slate">{language === "th" ? "การมาทำงานวันแรก:" : "First working date attendance:"} {offer.start_confirmation ? `${offer.start_confirmation === "started" ? (language === "th" ? "เริ่มงานแล้ว" : "Started work") : (language === "th" ? "ไม่ได้เริ่มงาน" : "Did not start")}${offer.start_confirmed_at ? ` / ${formatDate(offer.start_confirmed_at, language)}` : ""}${offer.start_confirmation_reason ? ` — ${offer.start_confirmation_reason}` : ""}` : offer.first_working_date && offer.first_working_date > today() ? (language === "th" ? "ยืนยันได้ในวันเริ่มงาน" : "Available on the first working date") : (language === "th" ? "ยังไม่ได้ยืนยัน" : "Not confirmed")}</p>
                     </section>

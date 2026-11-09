@@ -87,9 +87,9 @@ test("candidate detail retains every row in a history larger than the API row ca
   await expect(row).toBeVisible();
   await row.getByRole("button", { name: /History Beyond Page Cap/ }).click();
   await expect(page.getByRole("region", { name: "Candidate profile" })).toBeVisible();
-  await expect(page.getByText("Show remaining history (998)")).toBeVisible();
-  await page.getByText("Show remaining history (998)").click();
-  await expect(page.getByText("Retained old failure sentinel")).toBeVisible();
+  await expect(page.getByText(/Show remaining history/)).toHaveCount(0);
+  await expect(page.locator(".stage-history-entry")).toHaveCount(1001);
+  await expect(page.getByText("Retained old failure sentinel",{exact:true})).toBeVisible();
   expect(mock.rpcCalls.filter(call=>call.endpoint==="app_recruitment_list_v1"&&call.payload.p_entity==="pipeline_history"&&(call.payload.p_filters as Record<string,unknown>)?.applicationId===applicationId).length).toBeGreaterThan(10);
   const boundedLookups=mock.restReads.filter(read=>Object.keys(read.inFilterSizes).length>0);
   expect(boundedLookups.length).toBeGreaterThan(0);
@@ -149,6 +149,7 @@ test("a candidate absent from bootstrap can edit and save its selected applicati
   const transferConfirm = page.getByRole("dialog", { name: "Confirm Save" });
   await expect(transferConfirm).toBeVisible();
   await transferConfirm.getByRole("button", { name: "Save changes" }).click();
+  await expect.poll(()=>mock.rpcCalls.some(call=>call.endpoint==="app_transfer_candidate_application_v1")).toBe(true);
   const transfer = mock.rpcCalls.find(call => call.endpoint === "app_transfer_candidate_application_v1");
   expect(transfer?.payload.candidate_id).toBe(candidateId);
   expect(transfer?.payload.application_id).toBe(applicationId);

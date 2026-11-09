@@ -21,7 +21,9 @@ import {
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/Button";
+import { RecruitmentNotifications } from "@/components/layout/RecruitmentNotifications";
 import { MobileBottomSheet } from "@/components/ui/MobileBottomSheet";
 import { roleLabel, translate, viewLabel } from "@/lib/i18n/dictionary";
 import { siteAccentStyle } from "@/lib/site-theme";
@@ -75,6 +77,9 @@ function PipelineStagesIcon() {
 export function AppShell({
   children,
   headerControls,
+  headerBookmark,
+  notificationClient,
+  onOpenNotificationCandidate,
   language,
   navigationContext,
   onLanguageChange,
@@ -88,6 +93,9 @@ export function AppShell({
 }: {
   children: ReactNode;
   headerControls?: ReactNode;
+  headerBookmark?: ReactNode;
+  notificationClient?: SupabaseClient | null;
+  onOpenNotificationCandidate?: (candidateId: string, applicationId?: string) => void;
   language: Language;
   navigationContext?: WorkspaceNavigationContext;
   onLanguageChange: () => void;
@@ -269,6 +277,8 @@ export function AppShell({
           </h2>
           <div className={`flex min-w-0 flex-wrap items-center gap-2 lg:max-w-[min(76vw,72rem)] lg:justify-end ${variant === "dashboard" ? "dashboard-compact-controls" : ""}`} data-app-header-actions>
             {headerControls ? <div className="contents" data-app-header-filters>{headerControls}</div> : null}
+            {onOpenNotificationCandidate ? <RecruitmentNotifications client={notificationClient ?? null} language={language} profile={profile} onOpenCandidate={onOpenNotificationCandidate} /> : null}
+            {headerBookmark ? <div className="contents" data-app-header-bookmark>{headerBookmark}</div> : null}
             <Button type="button" size={variant === "dashboard" ? "toolbar" : "sm"} variant="secondary" className={variant === "dashboard" ? "min-w-8" : "min-w-9 px-3"} onClick={onLanguageChange}>
               {translate(language, "language")}
             </Button>

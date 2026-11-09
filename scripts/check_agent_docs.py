@@ -18,7 +18,7 @@ from urllib.parse import urldefrag, urlparse
 
 
 ROOT = Path(__file__).resolve().parents[1]
-FEATURE_RE = re.compile(r"^###\s+(F(?:0[0-9]|1[0-9]|2[0-7])):\s+", re.MULTILINE)
+FEATURE_RE = re.compile(r"^###\s+(F(?:0[0-9]|1[0-9]|2[0-8])):\s+", re.MULTILINE)
 LINK_RE = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 EDGE_RE = re.compile(
     r"^\|\s*`(?P<kind>[A-Za-z][A-Za-z -]*)`\s*\|\s*\[(?P<label>[^]]+)\]\((?P<target>[^)]+)\)\s*\|",
@@ -178,7 +178,7 @@ def check_graph(root: Path) -> list[Issue]:
         text = _without_fences(path.read_text(encoding="utf-8"))
         for match in FEATURE_RE.finditer(text):
             feature_locations.setdefault(match.group(1), []).append(path)
-    for number in range(28):
+    for number in range(29):
         feature = f"F{number:02d}"
         locations = feature_locations.get(feature, [])
         if len(locations) != 1:

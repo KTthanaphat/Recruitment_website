@@ -27,3 +27,5 @@ Shared cards retain candidate ID, site and their existing owner visibility benea
 Check desktop and 390px phone layouts; long English/Thai/mixed/unbroken names; blank groups; multiple applications; keyboard opening; actions and dragging. [Pipeline checks](../../tests/e2e/pipeline-board.spec.ts) and [workspace checks](../../tests/e2e/workspace.spec.ts) own regression coverage.
 
 Focused card layout checks: [pipeline-card-layout.spec.ts](../../tests/e2e/pipeline-card-layout.spec.ts).
+
+Standalone Pipeline table mode follows the [shared ten-item Records contract](controls.md#records-tables-and-fixed-pagination). Board and embedded pagination remain as defined above.

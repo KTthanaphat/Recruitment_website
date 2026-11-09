@@ -29,6 +29,7 @@ Use for auth/configuration or branch-to-service mismatch.
 Use for a schema/RPC change or migration rollout, not merely a UI that displays data.
 
 - Source of truth: [declarative schemas](../../supabase/schemas/README.md); edit `supabase/schemas/`, generate/review the migration, and keep dependent types/callers aligned.
+- Scheduled notification generation uses the `recruitment-notifications-daily` Supabase Cron job (02:00 UTC / 09:00 Bangkok) and a private `app_private` function; the notification table remains recipient-scoped by RLS.
 - Bootstrap and access setup: [Supabase setup](../DEPLOYMENT.md#supabase-setup). `supabase/restructured/` is not the future source of truth designated by the schema README; do not follow the archived handover's conflicting update instruction.
 - Current role/data semantics: [Security](../WEBSITE_STRUCTURE.md#security), [Data Model](../WEBSITE_STRUCTURE.md#data-model).
 - Edges: `affects` → relevant [system node](SYSTEM_MAP.md); `configured by` → SETUP-ENVIRONMENT; `verified by` → SETUP-VERIFY; `released by` → SETUP-RELEASE.

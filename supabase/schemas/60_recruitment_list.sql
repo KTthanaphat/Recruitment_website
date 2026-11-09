@@ -1,3 +1,33 @@
+-- Decode existing checkbox JSON without changing scalar-filter compatibility.
+create or replace function app_private.recruitment_category_values_v1(p_filter text,p_kind text default '')
+returns text[] language plpgsql immutable security invoker set search_path='' as $category_values$
+declare v_json jsonb; v_values text[]; v_value text; v_result text[]:='{}'::text[];
+begin
+ if left(btrim(coalesce(p_filter,'')),1)='[' then
+  begin v_json:=p_filter::jsonb;
+  exception when invalid_text_representation then raise exception 'RECRUITMENT_LIST_FILTER_INVALID';
+  end;
+  if jsonb_typeof(v_json)<>'array' or exists(select 1 from jsonb_array_elements(v_json) x where jsonb_typeof(x)<>'string') then raise exception 'RECRUITMENT_LIST_FILTER_INVALID'; end if;
+  select coalesce(array_agg(x #>> '{}'),'{}'::text[]) into v_values from jsonb_array_elements(v_json) x;
+ else v_values:=array[coalesce(p_filter,'')]; end if;
+ foreach v_value in array v_values loop
+  if p_kind='sourcing_status' then
+   v_value:=case lower(btrim(v_value)) when 'recorded' then 'saved' when 'บันทึกแล้ว' then 'saved' when 'needs recording' then 'needs_recording' when 'ต้องบันทึก' then 'needs_recording' else v_value end;
+  elsif p_kind='sourcing_applicants' then
+   v_value:=case lower(btrim(v_value)) when 'has applicants' then 'has' when 'มีผู้สมัคร' then 'has' when 'ศูนย์' then 'zero' when 'ไม่ทราบ' then 'unknown' else lower(v_value) end;
+  elsif p_kind='offer_status' then
+   v_value:=case v_value when 'เริ่มงานแล้ว' then 'Started' when 'รอดำเนินการ' then 'Pending' when 'ขาดวันเริ่มงาน' then 'Missing start date' when 'ใกล้วันเริ่มงาน' then 'First day upcoming' when 'รับข้อเสนอแล้ว' then 'Accepted' else v_value end;
+  elsif p_kind='offer_impact' then
+   v_value:=coalesce(substring(v_value from '^[0-9]+/[0-9]+'),v_value);
+  end if;
+  v_result:=array_append(v_result,v_value);
+ end loop;
+ return case when cardinality(v_result)=0 then array['']::text[] else v_result end;
+end;
+$category_values$;
+revoke all on function app_private.recruitment_category_values_v1(text,text) from public,anon;
+grant execute on function app_private.recruitment_category_values_v1(text,text) to authenticated,service_role;
+
 -- Database-wide, cursor-paged recruitment list projections.
 -- Remove legacy shorter-arity RPCs before defining the current signatures; otherwise PostgREST sees overloads and old limit gates remain callable.
 drop function if exists public.app_recruitment_list_v1(text,text,jsonb,text,text,integer,jsonb,text,boolean);
@@ -25,7 +55,7 @@ declare
   v_result jsonb;
 begin
   if auth.uid() is null or not app_private.is_recruitment_reader() then raise exception 'RECRUITMENT_READ_NOT_AUTHORIZED'; end if;
-  if p_limit is null or p_count_only is null or p_before is null or (p_count_only and p_limit<>0) or (not p_count_only and p_limit not in (25,50,100)) then raise exception 'RECRUITMENT_LIST_LIMIT_INVALID'; end if;
+  if p_limit is null or p_count_only is null or p_before is null or (p_count_only and p_limit<>0) or (not p_count_only and (p_limit < 1 or p_limit > 100)) then raise exception 'RECRUITMENT_LIST_LIMIT_INVALID'; end if;
   if v_sort not in ('latest_log_date','candidate_id','name','application_id','home_oldest_touch','home_newest_touch','home_progression','board_last_update') then raise exception 'RECRUITMENT_LIST_SORT_INVALID'; end if;
   if v_direction not in ('asc','desc') then raise exception 'RECRUITMENT_LIST_DIRECTION_INVALID'; end if;
   if v_board not in ('all','aging','no_activity','offer_pending','over_sla','failed','passed_offer') then raise exception 'RECRUITMENT_LIST_FILTER_INVALID'; end if;
@@ -167,7 +197,7 @@ declare
   v_result jsonb;
 begin
   if auth.uid() is null or not app_private.is_recruitment_reader() then raise exception 'RECRUITMENT_READ_NOT_AUTHORIZED'; end if;
-  if p_limit is null or p_count_only is null or p_before is null or (p_count_only and p_limit<>0) or (not p_count_only and p_limit not in (25,50,100)) then raise exception 'RECRUITMENT_LIST_LIMIT_INVALID'; end if;
+  if p_limit is null or p_count_only is null or p_before is null or (p_count_only and p_limit<>0) or (not p_count_only and (p_limit < 1 or p_limit > 100)) then raise exception 'RECRUITMENT_LIST_LIMIT_INVALID'; end if;
   if v_sort not in ('candidate','requisition','site','owner','stage','pending','outcome','date','log_date','log_id') then raise exception 'RECRUITMENT_LIST_SORT_INVALID'; end if;
   if v_direction not in ('asc','desc') then raise exception 'RECRUITMENT_LIST_DIRECTION_INVALID'; end if;
   if jsonb_typeof(coalesce(p_filters,'{}'::jsonb))<>'object' or exists(select 1 from jsonb_object_keys(coalesce(p_filters,'{}'::jsonb)) k where k not in ('showAudit','candidate','candidateId','applicationId','requisition','site','owner','stage','pending','outcome','date','headerSite','headerPic','priorityOnly')) then raise exception 'RECRUITMENT_LIST_FILTER_INVALID'; end if;
@@ -294,13 +324,17 @@ declare
   v_result jsonb;
 begin
   if auth.uid() is null or not app_private.is_recruitment_reader() then raise exception 'RECRUITMENT_READ_NOT_AUTHORIZED'; end if;
-  if p_limit is null or p_count_only is null or p_before is null or (p_count_only and p_limit<>0) or (not p_count_only and p_limit not in (25,50,100)) then raise exception 'RECRUITMENT_LIST_LIMIT_INVALID'; end if;
-  if v_sort not in ('doc_id','position','status','open_headcount','readiness','sla','age','owner','department','request_type','section','head_count','accepted_count','candidate_count','req_date','updated_at','home_oldest','home_demand','home_position') then raise exception 'RECRUITMENT_LIST_SORT_INVALID'; end if;
+  if p_limit is null or p_count_only is null or p_before is null or (p_count_only and p_limit<>0) or (not p_count_only and (p_limit < 1 or p_limit > 100)) then raise exception 'RECRUITMENT_LIST_LIMIT_INVALID'; end if;
+  if v_sort not in ('docIds','doc_id','position','status','open_headcount','readiness','sla','age','owner','department','request_type','section','head_count','accepted_count','candidate_count','req_date','updated_at','home_oldest','home_demand','home_position') then raise exception 'RECRUITMENT_LIST_SORT_INVALID'; end if;
   if v_direction not in ('asc','desc') then raise exception 'RECRUITMENT_LIST_DIRECTION_INVALID'; end if;
-  if v_home_tab not in ('','open_headcount') or jsonb_typeof(coalesce(p_filters,'{}'::jsonb))<>'object' or exists(select 1 from jsonb_object_keys(coalesce(p_filters,'{}'::jsonb)) k where k not in ('doc_id','position','status','open_headcount','readiness','sla','age','owner','department','request_type','section','head_count','accepted_count','candidate_count','req_date','updated_at','site','level','headerSite','headerPic','priorityOnly','homeTab','managedOnly','unmatchedOnly','linkToGroupId')) then raise exception 'RECRUITMENT_LIST_FILTER_INVALID'; end if;
+  if v_home_tab not in ('','open_headcount') or jsonb_typeof(coalesce(p_filters,'{}'::jsonb))<>'object' or exists(select 1 from jsonb_object_keys(coalesce(p_filters,'{}'::jsonb)) k where k not in ('docIds','doc_id','position','status','open_headcount','readiness','sla','age','owner','department','request_type','section','head_count','accepted_count','candidate_count','req_date','updated_at','site','level','headerSite','headerPic','priorityOnly','homeTab','managedOnly','unmatchedOnly','linkToGroupId')) then raise exception 'RECRUITMENT_LIST_FILTER_INVALID'; end if;
   if (p_filters ? 'managedOnly' and jsonb_typeof(p_filters->'managedOnly')<>'boolean')
     or (p_filters ? 'unmatchedOnly' and jsonb_typeof(p_filters->'unmatchedOnly')<>'boolean')
     or (p_filters ? 'linkToGroupId' and jsonb_typeof(p_filters->'linkToGroupId') not in ('string','null')) then raise exception 'RECRUITMENT_LIST_FILTER_INVALID'; end if;
+  if p_filters ? 'docIds' then
+    if jsonb_typeof(p_filters->'docIds')<>'array' then raise exception 'RECRUITMENT_LIST_FILTER_INVALID'; end if;
+    if jsonb_array_length(p_filters->'docIds')>100 or exists(select 1 from jsonb_array_elements(p_filters->'docIds') id where jsonb_typeof(id)<>'string' or btrim(id#>>'{}')='') then raise exception 'RECRUITMENT_LIST_FILTER_INVALID'; end if;
+  end if;
   if p_cursor_value is not null and (jsonb_typeof(p_cursor_value)<>'string' or nullif(p_cursor_id,'') is null) then raise exception 'RECRUITMENT_LIST_CURSOR_INVALID'; end if;
   if (p_cursor_value is null) <> (p_cursor_id is null) or (p_before and p_cursor_value is null) then raise exception 'RECRUITMENT_LIST_CURSOR_INVALID'; end if;
   v_fast_base_criteria := v_search='' and v_home_tab=''
@@ -312,6 +346,7 @@ begin
     select count(*)::integer into v_exact_count
     from public.requisitions r
     where app_private.can_read_requisition(r.doc_id)
+      and (not (p_filters ? 'docIds') or r.doc_id in (select jsonb_array_elements_text(p_filters->'docIds')))
       and (not v_managed_only or app_private.can_manage_requisition(r.doc_id))
       and (not v_unmatched_only or not exists(select 1 from public.document_groups unmatched where unmatched.doc_id=r.doc_id))
       and (v_link_to_group_id is null or (
@@ -325,10 +360,10 @@ begin
       and (not coalesce((p_filters->>'priorityOnly')::boolean,false) or r.is_priority)
       and (coalesce(p_filters->>'doc_id','')='' or r.doc_id ilike ('%'||(p_filters->>'doc_id')||'%'))
       and (coalesce(p_filters->>'position','')='' or (case when btrim(coalesce(r.level,'')) ~* '^L?(0|[1-9]|1[0-4])$' then coalesce(nullif(btrim(r.position),''),'-')||' (L'||regexp_replace(btrim(r.level),'^L','', 'i')||')' else coalesce(nullif(btrim(r.position),''),'-') end) ilike ('%'||(p_filters->>'position')||'%'))
-      and (coalesce(p_filters->>'status','')='' or case lower(btrim(p_filters->>'status')) when 'ongoing' then r.status='ongoing' when 'กำลังดำเนินการ' then r.status='ongoing' when 'filled' then r.status='filled' when 'ครบแล้ว' then r.status='filled' when 'cancel' then r.status='cancel' when 'cancelled' then r.status='cancel' when 'ยกเลิก' then r.status='cancel' else concat_ws(' ',r.status,r.site,r.department) ilike ('%'||(p_filters->>'status')||'%') end)
+      and (exists(select 1 from unnest(app_private.recruitment_category_values_v1(p_filters->>'status','')) as category_value(value) where (coalesce(category_value.value,'')='' or case lower(btrim(category_value.value)) when 'ongoing' then r.status='ongoing' when 'กำลังดำเนินการ' then r.status='ongoing' when 'filled' then r.status='filled' when 'ครบแล้ว' then r.status='filled' when 'cancel' then r.status='cancel' when 'cancelled' then r.status='cancel' when 'ยกเลิก' then r.status='cancel' else concat_ws(' ',r.status,r.site,r.department) ilike ('%'||(category_value.value)||'%') end)))
       and (coalesce(p_filters->>'owner','')='' or coalesce(r.person_in_charge,'') ilike ('%'||(p_filters->>'owner')||'%'))
       and (coalesce(p_filters->>'department','')='' or r.department ilike ('%'||(p_filters->>'department')||'%'))
-      and (coalesce(p_filters->>'request_type','')='' or case lower(btrim(p_filters->>'request_type')) when 'new' then r.request_type='New' when 'อัตราใหม่' then r.request_type='New' when 'replacement' then r.request_type='Replacement' when 'ทดแทน' then r.request_type='Replacement' else r.request_type ilike ('%'||(p_filters->>'request_type')||'%') end)
+      and (exists(select 1 from unnest(app_private.recruitment_category_values_v1(p_filters->>'request_type','')) as category_value(value) where (coalesce(category_value.value,'')='' or case lower(btrim(category_value.value)) when 'new' then r.request_type='New' when 'อัตราใหม่' then r.request_type='New' when 'replacement' then r.request_type='Replacement' when 'ทดแทน' then r.request_type='Replacement' else r.request_type ilike ('%'||(category_value.value)||'%') end)))
       and (coalesce(p_filters->>'section','')='' or coalesce(r.section,'') ilike ('%'||(p_filters->>'section')||'%'))
       and (coalesce(p_filters->>'head_count','')='' or r.head_count::text ilike ('%'||(p_filters->>'head_count')||'%'))
       and (coalesce(p_filters->>'req_date','')='' or concat_ws(' ',r.pr_approved_date::text,to_char(r.pr_approved_date,'DD/MM/YYYY')) ilike ('%'||(p_filters->>'req_date')||'%'))
@@ -345,6 +380,7 @@ begin
         to_char(r.updated_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as sort_value
       from public.requisitions r
       where app_private.can_read_requisition(r.doc_id)
+      and (not (p_filters ? 'docIds') or r.doc_id in (select jsonb_array_elements_text(p_filters->'docIds')))
         and (not v_managed_only or app_private.can_manage_requisition(r.doc_id))
         and (not v_unmatched_only or not exists(select 1 from public.document_groups unmatched where unmatched.doc_id=r.doc_id))
         and (v_link_to_group_id is null or (
@@ -358,10 +394,10 @@ begin
         and (not coalesce((p_filters->>'priorityOnly')::boolean,false) or r.is_priority)
         and (coalesce(p_filters->>'doc_id','')='' or r.doc_id ilike ('%'||(p_filters->>'doc_id')||'%'))
         and (coalesce(p_filters->>'position','')='' or (case when btrim(coalesce(r.level,'')) ~* '^L?(0|[1-9]|1[0-4])$' then coalesce(nullif(btrim(r.position),''),'-')||' (L'||regexp_replace(btrim(r.level),'^L','', 'i')||')' else coalesce(nullif(btrim(r.position),''),'-') end) ilike ('%'||(p_filters->>'position')||'%'))
-        and (coalesce(p_filters->>'status','')='' or case lower(btrim(p_filters->>'status')) when 'ongoing' then r.status='ongoing' when 'กำลังดำเนินการ' then r.status='ongoing' when 'filled' then r.status='filled' when 'ครบแล้ว' then r.status='filled' when 'cancel' then r.status='cancel' when 'cancelled' then r.status='cancel' when 'ยกเลิก' then r.status='cancel' else concat_ws(' ',r.status,r.site,r.department) ilike ('%'||(p_filters->>'status')||'%') end)
+        and (exists(select 1 from unnest(app_private.recruitment_category_values_v1(p_filters->>'status','')) as category_value(value) where (coalesce(category_value.value,'')='' or case lower(btrim(category_value.value)) when 'ongoing' then r.status='ongoing' when 'กำลังดำเนินการ' then r.status='ongoing' when 'filled' then r.status='filled' when 'ครบแล้ว' then r.status='filled' when 'cancel' then r.status='cancel' when 'cancelled' then r.status='cancel' when 'ยกเลิก' then r.status='cancel' else concat_ws(' ',r.status,r.site,r.department) ilike ('%'||(category_value.value)||'%') end)))
         and (coalesce(p_filters->>'owner','')='' or coalesce(r.person_in_charge,'') ilike ('%'||(p_filters->>'owner')||'%'))
         and (coalesce(p_filters->>'department','')='' or r.department ilike ('%'||(p_filters->>'department')||'%'))
-        and (coalesce(p_filters->>'request_type','')='' or case lower(btrim(p_filters->>'request_type')) when 'new' then r.request_type='New' when 'อัตราใหม่' then r.request_type='New' when 'replacement' then r.request_type='Replacement' when 'ทดแทน' then r.request_type='Replacement' else r.request_type ilike ('%'||(p_filters->>'request_type')||'%') end)
+        and (exists(select 1 from unnest(app_private.recruitment_category_values_v1(p_filters->>'request_type','')) as category_value(value) where (coalesce(category_value.value,'')='' or case lower(btrim(category_value.value)) when 'new' then r.request_type='New' when 'อัตราใหม่' then r.request_type='New' when 'replacement' then r.request_type='Replacement' when 'ทดแทน' then r.request_type='Replacement' else r.request_type ilike ('%'||(category_value.value)||'%') end)))
         and (coalesce(p_filters->>'section','')='' or coalesce(r.section,'') ilike ('%'||(p_filters->>'section')||'%'))
         and (coalesce(p_filters->>'head_count','')='' or r.head_count::text ilike ('%'||(p_filters->>'head_count')||'%'))
         and (coalesce(p_filters->>'req_date','')='' or concat_ws(' ',r.pr_approved_date::text,to_char(r.pr_approved_date,'DD/MM/YYYY')) ilike ('%'||(p_filters->>'req_date')||'%'))
@@ -468,6 +504,7 @@ begin
     left join lateral (select case when r.level is null or r.level !~ '^(L)?(0|[1-9]|1[0-4])$' then null
       when replace(r.level,'L','')::integer<=6 then 30 when replace(r.level,'L','')::integer<=9 then 45 else 60 end::integer sla_days) sla on true
     where app_private.can_read_requisition(r.doc_id)
+      and (not (p_filters ? 'docIds') or r.doc_id in (select jsonb_array_elements_text(p_filters->'docIds')))
       and (not v_managed_only or app_private.can_manage_requisition(r.doc_id))
       and (not v_unmatched_only or not exists(select 1 from public.document_groups unmatched where unmatched.doc_id=r.doc_id))
       and (v_link_to_group_id is null or (
@@ -485,14 +522,14 @@ begin
       and (v_home_tab='' or (v_home_tab='open_headcount' and r.status not in ('filled','cancel') and greatest(r.head_count-coalesce(ofrs.accepted_count,0),0)>0))
       and (coalesce(p_filters->>'doc_id','')='' or r.doc_id ilike ('%'||(p_filters->>'doc_id')||'%'))
       and (coalesce(p_filters->>'position','')='' or (case when btrim(coalesce(r.level,'')) ~* '^L?(0|[1-9]|1[0-4])$' then coalesce(nullif(btrim(r.position),''),'-')||' (L'||regexp_replace(btrim(r.level),'^L','', 'i')||')' else coalesce(nullif(btrim(r.position),''),'-') end) ilike ('%'||(p_filters->>'position')||'%'))
-      and (coalesce(p_filters->>'status','')='' or case lower(btrim(p_filters->>'status')) when 'ongoing' then r.status='ongoing' when 'กำลังดำเนินการ' then r.status='ongoing' when 'filled' then r.status='filled' when 'ครบแล้ว' then r.status='filled' when 'cancel' then r.status='cancel' when 'cancelled' then r.status='cancel' when 'ยกเลิก' then r.status='cancel' else concat_ws(' ',r.status,r.site,r.department) ilike ('%'||(p_filters->>'status')||'%') end)
+      and (exists(select 1 from unnest(app_private.recruitment_category_values_v1(p_filters->>'status','')) as category_value(value) where (coalesce(category_value.value,'')='' or case lower(btrim(category_value.value)) when 'ongoing' then r.status='ongoing' when 'กำลังดำเนินการ' then r.status='ongoing' when 'filled' then r.status='filled' when 'ครบแล้ว' then r.status='filled' when 'cancel' then r.status='cancel' when 'cancelled' then r.status='cancel' when 'ยกเลิก' then r.status='cancel' else concat_ws(' ',r.status,r.site,r.department) ilike ('%'||(category_value.value)||'%') end)))
       and (coalesce(p_filters->>'open_headcount','')='' or greatest(r.head_count-coalesce(ofrs.accepted_count,0),0)::text ilike ('%'||(p_filters->>'open_headcount')||'%'))
       and (coalesce(p_filters->>'readiness','')='' or case lower(btrim(p_filters->>'readiness')) when 'linked' then links.sourcing_group_ids is not null and cardinality(links.sourcing_group_ids)>0 when 'เชื่อมแล้ว' then links.sourcing_group_ids is not null and cardinality(links.sourcing_group_ids)>0 when 'missing' then links.sourcing_group_ids is null or cardinality(links.sourcing_group_ids)=0 when 'not linked' then links.sourcing_group_ids is null or cardinality(links.sourcing_group_ids)=0 when 'ยังไม่เชื่อม' then links.sourcing_group_ids is null or cardinality(links.sourcing_group_ids)=0 else coalesce(array_to_string(links.sourcing_group_ids,' '),'') ilike ('%'||(p_filters->>'readiness')||'%') end)
       and (coalesce(p_filters->>'sla','')='' or (case when age.age_days is null or sla.sla_days is null then '-' else age.age_days||'d / '||sla.sla_days||'d' end) ilike ('%'||(p_filters->>'sla')||'%'))
       and (coalesce(p_filters->>'age','')='' or concat_ws(' ',coalesce(age.age_days::text||'d','-'),age.age_days) ilike ('%'||(p_filters->>'age')||'%'))
       and (coalesce(p_filters->>'owner','')='' or coalesce(r.person_in_charge,'') ilike ('%'||(p_filters->>'owner')||'%'))
       and (coalesce(p_filters->>'department','')='' or r.department ilike ('%'||(p_filters->>'department')||'%'))
-      and (coalesce(p_filters->>'request_type','')='' or case lower(btrim(p_filters->>'request_type')) when 'new' then r.request_type='New' when 'อัตราใหม่' then r.request_type='New' when 'replacement' then r.request_type='Replacement' when 'ทดแทน' then r.request_type='Replacement' else r.request_type ilike ('%'||(p_filters->>'request_type')||'%') end)
+      and (exists(select 1 from unnest(app_private.recruitment_category_values_v1(p_filters->>'request_type','')) as category_value(value) where (coalesce(category_value.value,'')='' or case lower(btrim(category_value.value)) when 'new' then r.request_type='New' when 'อัตราใหม่' then r.request_type='New' when 'replacement' then r.request_type='Replacement' when 'ทดแทน' then r.request_type='Replacement' else r.request_type ilike ('%'||(category_value.value)||'%') end)))
       and (coalesce(p_filters->>'section','')='' or coalesce(r.section,'') ilike ('%'||(p_filters->>'section')||'%'))
       and (coalesce(p_filters->>'head_count','')='' or r.head_count::text ilike ('%'||(p_filters->>'head_count')||'%'))
       and (coalesce(p_filters->>'accepted_count','')='' or coalesce(ofrs.accepted_count,0)::text ilike ('%'||(p_filters->>'accepted_count')||'%'))
@@ -571,7 +608,7 @@ create or replace function public.app_recruitment_groups_page_v1(
 declare v_sort text:=coalesce(nullif(p_sort,''),'attention'); v_dir text:=case when coalesce(nullif(p_sort,''),'attention') in ('attention','name','oldest') then 'asc' else lower(coalesce(p_direction,'desc')) end; v_scope text:=coalesce(p_filters->>'scope','ongoing'); v_cursor text:=p_cursor_value #>> '{}'; v_result jsonb; v_search text:=lower(case when btrim(coalesce(p_search,'')) ~* '^(CAN|GRP)-[0-9]+$' then upper(split_part(btrim(p_search),'-',1))||'-'||lpad(split_part(btrim(p_search),'-',2),greatest(5,length(split_part(btrim(p_search),'-',2))),'0') else btrim(coalesce(p_search,'')) end); v_week_start date:=coalesce(nullif(p_filters->>'weekStart','')::date,(timezone('Asia/Bangkok',now())::date-((extract(dow from timezone('Asia/Bangkok',now()))::integer+1)%7)::integer));
 begin
   if auth.uid() is null or not app_private.is_recruitment_reader() then raise exception 'RECRUITMENT_READ_NOT_AUTHORIZED'; end if;
-  if p_limit is null or p_count_only is null or p_before is null or (p_count_only and p_limit<>0) or (not p_count_only and p_limit not in (25,50,100)) then raise exception 'RECRUITMENT_LIST_LIMIT_INVALID'; end if;
+  if p_limit is null or p_count_only is null or p_before is null or (p_count_only and p_limit<>0) or (not p_count_only and (p_limit < 1 or p_limit > 100)) then raise exception 'RECRUITMENT_LIST_LIMIT_INVALID'; end if;
   if v_scope not in ('ongoing','all') or v_sort not in ('attention','name','oldest') or v_dir not in ('asc','desc') then raise exception 'RECRUITMENT_LIST_FILTER_INVALID'; end if;
   if jsonb_typeof(coalesce(p_filters,'{}'::jsonb))<>'object' or exists(select 1 from jsonb_object_keys(coalesce(p_filters,'{}'::jsonb)) k where k not in ('scope','group_id','exactGroupId','position','site','owner','doc_id','readiness','headerSite','headerPic','priorityOnly','weekStart')) then raise exception 'RECRUITMENT_LIST_FILTER_INVALID'; end if;
   if (p_cursor_value is null)<>(p_cursor_id is null) or (p_cursor_value is not null and jsonb_typeof(p_cursor_value)<>'string') or (p_before and p_cursor_value is null) then raise exception 'RECRUITMENT_LIST_CURSOR_INVALID'; end if;
@@ -657,7 +694,7 @@ create or replace function public.app_recruitment_sourcing_page_v1(
 declare v_sort text:=coalesce(nullif(p_sort,''),'week'); v_dir text:=lower(coalesce(p_direction,'desc')); v_surface text:=coalesce(p_filters->>'surface','history'); v_week_start date:=nullif(p_filters->>'weekStart','')::date; v_cursor text:=p_cursor_value #>> '{}'; v_result jsonb; v_search text:=lower(case when btrim(coalesce(p_search,'')) ~* '^(CAN|GRP)-[0-9]+$' then upper(split_part(btrim(p_search),'-',1))||'-'||lpad(split_part(btrim(p_search),'-',2),greatest(5,length(split_part(btrim(p_search),'-',2))),'0') else btrim(coalesce(p_search,'')) end);
 begin
   if auth.uid() is null or not app_private.is_recruitment_reader() then raise exception 'RECRUITMENT_READ_NOT_AUTHORIZED'; end if;
-  if p_limit is null or p_count_only is null or p_before is null or (p_count_only and p_limit<>0) or (not p_count_only and p_limit not in (25,50,100)) then raise exception 'RECRUITMENT_LIST_LIMIT_INVALID'; end if;
+  if p_limit is null or p_count_only is null or p_before is null or (p_count_only and p_limit<>0) or (not p_count_only and (p_limit < 1 or p_limit > 100)) then raise exception 'RECRUITMENT_LIST_LIMIT_INVALID'; end if;
   if v_surface not in ('board','history') or v_sort not in ('group','position','week','status','applicants','saved') or v_dir not in ('asc','desc') then raise exception 'RECRUITMENT_LIST_SORT_INVALID'; end if;
   if jsonb_typeof(coalesce(p_filters,'{}'::jsonb))<>'object' or exists(select 1 from jsonb_object_keys(coalesce(p_filters,'{}'::jsonb)) k where k not in ('surface','weekStart','from','to','group','position','week','status','applicants','saved','groupId','headerSite','headerPic','priorityOnly')) then raise exception 'RECRUITMENT_LIST_FILTER_INVALID'; end if;
   if (p_cursor_value is null)<>(p_cursor_id is null) or (p_cursor_value is not null and jsonb_typeof(p_cursor_value)<>'string') or (p_before and p_cursor_value is null) then raise exception 'RECRUITMENT_LIST_CURSOR_INVALID'; end if;
@@ -745,7 +782,7 @@ create or replace function public.app_recruitment_sourcing_records_page_v1(
 declare v_sort text:=coalesce(nullif(p_sort,''),'week'); v_dir text:=lower(coalesce(p_direction,'desc')); v_surface text:=coalesce(p_filters->>'surface','history'); v_week_start date:=nullif(p_filters->>'weekStart','')::date; v_cursor text:=p_cursor_value #>> '{}'; v_result jsonb; v_search text:=lower(case when btrim(coalesce(p_search,'')) ~* '^(CAN|GRP)-[0-9]+$' then upper(split_part(btrim(p_search),'-',1))||'-'||lpad(split_part(btrim(p_search),'-',2),greatest(5,length(split_part(btrim(p_search),'-',2))),'0') else btrim(coalesce(p_search,'')) end);
 begin
   if auth.uid() is null or not app_private.is_recruitment_reader() then raise exception 'RECRUITMENT_READ_NOT_AUTHORIZED'; end if;
-  if p_limit is null or p_count_only is null or p_before is null or (p_count_only and p_limit<>0) or (not p_count_only and p_limit not in (25,50,100)) then raise exception 'RECRUITMENT_LIST_LIMIT_INVALID'; end if;
+  if p_limit is null or p_count_only is null or p_before is null or (p_count_only and p_limit<>0) or (not p_count_only and (p_limit < 1 or p_limit > 100)) then raise exception 'RECRUITMENT_LIST_LIMIT_INVALID'; end if;
   if v_surface not in ('board','history') or v_sort not in ('group','position','week','status','applicants','saved') or v_dir not in ('asc','desc') then raise exception 'RECRUITMENT_LIST_SORT_INVALID'; end if;
   if jsonb_typeof(coalesce(p_filters,'{}'::jsonb))<>'object' or exists(select 1 from jsonb_object_keys(coalesce(p_filters,'{}'::jsonb)) k where k not in ('surface','weekStart','from','to','group','position','week','status','applicants','saved','groupId','headerSite','headerPic','priorityOnly')) then raise exception 'RECRUITMENT_LIST_FILTER_INVALID'; end if;
   if (p_cursor_value is null)<>(p_cursor_id is null) or (p_cursor_value is not null and jsonb_typeof(p_cursor_value)<>'string') or (p_before and p_cursor_value is null) then raise exception 'RECRUITMENT_LIST_CURSOR_INVALID'; end if;
@@ -823,8 +860,8 @@ g.channel_fb,g.channel_jobthai,g.channel_jobtopgun,g.channel_jobdb,g.channel_job
         (s.group_id ~* '^GRP-[0-9]+$' and ('GRP-'||lpad(split_part(s.group_id,'-',2),greatest(5,length(split_part(s.group_id,'-',2))),'0')) ilike '%'||(case when btrim(p_filters->>'group') ~* '^GRP-[0-9]+$' then 'GRP-'||lpad(split_part(btrim(p_filters->>'group'),'-',2),greatest(5,length(split_part(btrim(p_filters->>'group'),'-',2))),'0') else p_filters->>'group' end)||'%'))
       and (coalesce(p_filters->>'position','')='' or s.group_position ilike '%'||(p_filters->>'position')||'%')
       and (coalesce(p_filters->>'week','')='' or s.week_start::text ilike '%'||(p_filters->>'week')||'%')
-      and (coalesce(p_filters->>'status','') in ('','all') or s.status=p_filters->>'status')
-      and (coalesce(p_filters->>'applicants','') in ('','all') or (p_filters->>'applicants'='has' and s.applicants>0) or (p_filters->>'applicants'='zero' and s.applicants=0) or (p_filters->>'applicants'='unknown' and s.applicants is null))
+      and (exists(select 1 from unnest(app_private.recruitment_category_values_v1(p_filters->>'status','sourcing_status')) as category_value(value) where (coalesce(category_value.value,'') in ('','all') or s.status=category_value.value)))
+      and (exists(select 1 from unnest(app_private.recruitment_category_values_v1(p_filters->>'applicants','sourcing_applicants')) as category_value(value) where (coalesce(category_value.value,'') in ('','all') or (category_value.value='has' and s.applicants>0) or (category_value.value='zero' and s.applicants=0) or (category_value.value='unknown' and s.applicants is null))))
       and (coalesce(p_filters->>'saved','')='' or s.saved_at ilike '%'||(p_filters->>'saved')||'%')
       and (v_search='' or concat_ws(' ',s.group_id,
         case when s.group_id ~* '^GRP-[0-9]+$' then 'GRP-'||lpad(split_part(s.group_id,'-',2),greatest(5,length(split_part(s.group_id,'-',2))),'0') else s.group_id end,
@@ -845,7 +882,7 @@ create or replace function public.app_recruitment_offers_page_v1(
 declare v_sort text:=coalesce(nullif(p_sort,''),'accepted'); v_dir text:=lower(coalesce(p_direction,'desc')); v_cursor text:=p_cursor_value #>> '{}'; v_result jsonb; v_search text:=lower(case when btrim(coalesce(p_search,'')) ~* '^(CAN|GRP)-[0-9]+$' then upper(split_part(btrim(p_search),'-',1))||'-'||lpad(split_part(btrim(p_search),'-',2),greatest(5,length(split_part(btrim(p_search),'-',2))),'0') else btrim(coalesce(p_search,'')) end); v_home_tab text:=coalesce(p_filters->>'homeTab',''); v_today date:=coalesce(nullif(p_filters->>'today','')::date,timezone('Asia/Bangkok',now())::date);
 begin
   if auth.uid() is null or not app_private.is_recruitment_reader() then raise exception 'RECRUITMENT_READ_NOT_AUTHORIZED'; end if;
-  if p_limit is null or p_count_only is null or p_before is null or (p_count_only and p_limit<>0) or (not p_count_only and p_limit not in (25,50,100)) then raise exception 'RECRUITMENT_LIST_LIMIT_INVALID'; end if;
+  if p_limit is null or p_count_only is null or p_before is null or (p_count_only and p_limit<>0) or (not p_count_only and (p_limit < 1 or p_limit > 100)) then raise exception 'RECRUITMENT_LIST_LIMIT_INVALID'; end if;
   if v_sort not in ('candidate','doc_id','position','status','impact','accepted','first_working','age','home_first_working') then raise exception 'RECRUITMENT_LIST_SORT_INVALID'; end if;
   if v_dir not in ('asc','desc') then raise exception 'RECRUITMENT_LIST_DIRECTION_INVALID'; end if;
   if v_home_tab not in ('','start_confirmation') or jsonb_typeof(coalesce(p_filters,'{}'::jsonb))<>'object' or exists(select 1 from jsonb_object_keys(coalesce(p_filters,'{}'::jsonb)) k where k not in ('candidate','doc_id','position','status','impact','accepted','first_working','age','headerSite','headerPic','priorityOnly','homeTab','today')) then raise exception 'RECRUITMENT_LIST_FILTER_INVALID'; end if;
@@ -868,11 +905,11 @@ begin
         c.name,c.nickname) ilike '%'||(case when btrim(p_filters->>'candidate') ~* '^CAN-[0-9]+$' then 'CAN-'||lpad(split_part(btrim(p_filters->>'candidate'),'-',2),greatest(5,length(split_part(btrim(p_filters->>'candidate'),'-',2))),'0') else p_filters->>'candidate' end)||'%')
       and (coalesce(p_filters->>'doc_id','')='' or o.doc_id ilike '%'||(p_filters->>'doc_id')||'%')
       and (coalesce(p_filters->>'position','')='' or concat_ws(' ',r.position,r.level) ilike '%'||(p_filters->>'position')||'%')
-      and (coalesce(p_filters->>'status','')='' or (case when o.accepted_date is null then 'Pending' when o.start_confirmation='did_not_start' then 'Did not start' when o.start_confirmation='started' then 'Started' when o.first_working_date is null then 'Missing start date' else 'Accepted' end) ilike '%'||(p_filters->>'status')||'%')
+      and (exists(select 1 from unnest(app_private.recruitment_category_values_v1(p_filters->>'status','offer_status')) as category_value(value) where (coalesce(category_value.value,'')='' or (case when left(btrim(coalesce(p_filters->>'status','')),1)='[' then (case when o.start_confirmation='did_not_start' then 'Did not start' when o.start_confirmation='started' then 'Started' when o.accepted_date is null then 'Pending' when o.first_working_date is null then 'Missing start date' when o.first_working_date>v_today and o.first_working_date<=v_today+14 then 'First day upcoming' when o.first_working_date<=v_today then 'Started' else 'Accepted' end) else (case when o.accepted_date is null then 'Pending' when o.start_confirmation='did_not_start' then 'Did not start' when o.start_confirmation='started' then 'Started' when o.first_working_date is null then 'Missing start date' else 'Accepted' end) end) ilike '%'||(category_value.value)||'%')))
       and (v_search='' or concat_ws(' ',c.candidate_id,
         case when c.candidate_id ~* '^CAN-[0-9]+$' then 'CAN-'||lpad(split_part(c.candidate_id,'-',2),greatest(5,length(split_part(c.candidate_id,'-',2))),'0') else c.candidate_id end,
         c.name,c.nickname,o.doc_id,r.position,r.level,r.site,r.person_in_charge) ilike '%'||v_search||'%')
-  ), filtered as (select * from source_rows s where (coalesce(p_filters->>'impact','')='' or (s.accepted_count::text||'/'||s.head_count::text) ilike '%'||(p_filters->>'impact')||'%') and (coalesce(p_filters->>'accepted','')='' or coalesce(s.accepted_date::text,'') ilike '%'||(p_filters->>'accepted')||'%') and (coalesce(p_filters->>'first_working','')='' or coalesce(s.first_working_date::text,'') ilike '%'||(p_filters->>'first_working')||'%') and (coalesce(p_filters->>'age','')='' or s.age_days::text ilike '%'||(p_filters->>'age')||'%')),
+  ), filtered as (select * from source_rows s where (exists(select 1 from unnest(app_private.recruitment_category_values_v1(p_filters->>'impact','offer_impact')) as category_value(value) where (coalesce(category_value.value,'')='' or (s.accepted_count::text||'/'||s.head_count::text) ilike '%'||(category_value.value)||'%'))) and (coalesce(p_filters->>'accepted','')='' or coalesce(s.accepted_date::text,'') ilike '%'||(p_filters->>'accepted')||'%') and (coalesce(p_filters->>'first_working','')='' or coalesce(s.first_working_date::text,'') ilike '%'||(p_filters->>'first_working')||'%') and (coalesce(p_filters->>'age','')='' or s.age_days::text ilike '%'||(p_filters->>'age')||'%')),
   cursor_rows as (select * from filtered f where p_cursor_value is null or
     (not p_before and ((v_dir='asc' and f.sort_value>v_cursor) or (v_dir='desc' and f.sort_value<v_cursor) or (f.sort_value=v_cursor and f.offer_id>p_cursor_id::bigint)))
     or (p_before and ((v_dir='asc' and f.sort_value<v_cursor) or (v_dir='desc' and f.sort_value>v_cursor) or (f.sort_value=v_cursor and f.offer_id<p_cursor_id::bigint)))),
@@ -888,7 +925,7 @@ create or replace function public.app_recruitment_audit_page_v1(
 declare v_dir text:=lower(coalesce(p_direction,'desc')); v_result jsonb; v_search text:=lower(case when btrim(coalesce(p_search,'')) ~* '^(CAN|GRP)-[0-9]+$' then upper(split_part(btrim(p_search),'-',1))||'-'||lpad(split_part(btrim(p_search),'-',2),greatest(5,length(split_part(btrim(p_search),'-',2))),'0') else btrim(coalesce(p_search,'')) end);
 begin
   if auth.uid() is null or not app_private.is_recruitment_reader() then raise exception 'RECRUITMENT_READ_NOT_AUTHORIZED'; end if;
-  if p_limit is null or p_count_only is null or p_before is null or (p_count_only and p_limit<>0) or (not p_count_only and p_limit not in (25,50,100)) then raise exception 'RECRUITMENT_LIST_LIMIT_INVALID'; end if;
+  if p_limit is null or p_count_only is null or p_before is null or (p_count_only and p_limit<>0) or (not p_count_only and (p_limit < 1 or p_limit > 100)) then raise exception 'RECRUITMENT_LIST_LIMIT_INVALID'; end if;
   if coalesce(nullif(p_sort,''),'changed_at') not in ('changed_at','log_id') or v_dir not in ('asc','desc') then raise exception 'RECRUITMENT_LIST_SORT_INVALID'; end if;
   if jsonb_typeof(coalesce(p_filters,'{}'::jsonb))<>'object' or exists(select 1 from jsonb_object_keys(coalesce(p_filters,'{}'::jsonb)) k where k not in ('entity','action','changedBy','entityId','start','end')) then raise exception 'RECRUITMENT_LIST_FILTER_INVALID'; end if;
   if p_cursor_value is not null and (jsonb_typeof(p_cursor_value)<>'string' or p_cursor_id !~ '^[0-9]+$') then raise exception 'RECRUITMENT_LIST_CURSOR_INVALID'; end if;
@@ -935,11 +972,13 @@ declare
   v_direction text := lower(coalesce(p_direction,'desc'));
   v_cursor_value text;
   v_result jsonb;
+  v_filter_key text;
+  v_filter_date date;
 begin
   if auth.uid() is null or not app_private.is_recruitment_reader() then
     raise exception 'RECRUITMENT_READ_NOT_AUTHORIZED';
   end if;
-  if p_limit is null or p_count_only is null or p_before is null or (p_count_only and p_limit<>0) or (not p_count_only and p_limit not in (25,50,100)) then
+  if p_limit is null or p_count_only is null or p_before is null or (p_count_only and p_limit<>0) or (not p_count_only and (p_limit < 1 or p_limit > 100)) then
     raise exception 'RECRUITMENT_LIST_LIMIT_INVALID';
   end if;
   if p_entity='pipeline_history' then
@@ -984,9 +1023,36 @@ begin
   if jsonb_typeof(coalesce(p_filters,'{}'::jsonb)) <> 'object' then
     raise exception 'RECRUITMENT_LIST_FILTER_INVALID';
   end if;
-  if exists (select 1 from jsonb_object_keys(coalesce(p_filters,'{}'::jsonb)) key_name where key_name not in ('scope','site','owner','candidateId')) then
+  if exists (select 1 from jsonb_object_keys(coalesce(p_filters,'{}'::jsonb)) key_name where key_name not in ('scope','site','owner','candidateId','candidateText','contactText','candidateSite','creatorText','sourceText','interestsText','activeMin','activeMax','updatedFrom','updatedTo','candidateIds')) then
     raise exception 'RECRUITMENT_LIST_FILTER_INVALID';
   end if;
+
+  -- Authorized candidate column filters and bounded selected-ID export.
+  foreach v_filter_key in array array['candidateText','contactText','candidateSite','creatorText','sourceText','interestsText','updatedFrom','updatedTo'] loop
+    if p_filters ? v_filter_key and jsonb_typeof(p_filters->v_filter_key) <> 'string' then raise exception 'RECRUITMENT_LIST_FILTER_INVALID'; end if;
+  end loop;
+  foreach v_filter_key in array array['activeMin','activeMax'] loop
+    if p_filters ? v_filter_key and jsonb_typeof(p_filters->v_filter_key) not in ('string','number') then raise exception 'RECRUITMENT_LIST_FILTER_INVALID'; end if;
+    if coalesce(p_filters->>v_filter_key,'')<>'' then
+      if (p_filters->>v_filter_key)!~'^[0-9]+$' or length(p_filters->>v_filter_key)>10 then raise exception 'RECRUITMENT_LIST_FILTER_INVALID'; end if;
+      if (p_filters->>v_filter_key)::numeric>2147483647 then raise exception 'RECRUITMENT_LIST_FILTER_INVALID'; end if;
+    end if;
+  end loop;
+  if coalesce(p_filters->>'activeMin','')<>'' and coalesce(p_filters->>'activeMax','')<>'' and (p_filters->>'activeMin')::integer>(p_filters->>'activeMax')::integer then raise exception 'RECRUITMENT_LIST_FILTER_INVALID'; end if;
+  foreach v_filter_key in array array['updatedFrom','updatedTo'] loop
+    if coalesce(p_filters->>v_filter_key,'')<>'' then
+      begin
+        if (p_filters->>v_filter_key)!~'^[0-9]{4}-[0-9]{2}-[0-9]{2}$' then raise exception 'RECRUITMENT_LIST_FILTER_INVALID'; end if;
+        v_filter_date:=(p_filters->>v_filter_key)::date;
+      exception when others then raise exception 'RECRUITMENT_LIST_FILTER_INVALID'; end;
+    end if;
+  end loop;
+  if coalesce(p_filters->>'updatedFrom','')<>'' and coalesce(p_filters->>'updatedTo','')<>'' and (p_filters->>'updatedFrom')::date>(p_filters->>'updatedTo')::date then raise exception 'RECRUITMENT_LIST_FILTER_INVALID'; end if;
+  if p_filters ? 'candidateIds' then
+    if jsonb_typeof(p_filters->'candidateIds')<>'array' then raise exception 'RECRUITMENT_LIST_FILTER_INVALID'; end if;
+    if jsonb_array_length(p_filters->'candidateIds')>100 or exists(select 1 from jsonb_array_elements(p_filters->'candidateIds') id where jsonb_typeof(id)<>'string' or btrim(id#>>'{}')='') then raise exception 'RECRUITMENT_LIST_FILTER_INVALID'; end if;
+  end if;
+
   if (p_cursor_value is null) <> (p_cursor_id is null) then
     raise exception 'RECRUITMENT_LIST_CURSOR_INVALID';
   end if;
@@ -1092,6 +1158,17 @@ begin
       and (v_site = '' or b.masked or b.home_site = v_site)
       and (v_owner = '' or b.creator_label = v_owner)
       and (coalesce(p_filters->>'candidateId','')='' or b.candidate_id=p_filters->>'candidateId')
+      and (not (p_filters ? 'candidateIds') or b.candidate_id in (select jsonb_array_elements_text(p_filters->'candidateIds')))
+      and (coalesce(p_filters->>'candidateText','')='' or (strpos(lower(concat_ws(' ',b.candidate_id,case when b.candidate_id ~* '^(CAN|GRP)-[0-9]+$' then upper(split_part(b.candidate_id,'-',1))||'-'||lpad(split_part(b.candidate_id,'-',2),greatest(5,length(split_part(b.candidate_id,'-',2))),'0') else b.candidate_id end,case when not b.masked then b.name end,case when not b.masked then b.nickname end)),lower(btrim(p_filters->>'candidateText')))>0))
+      and (coalesce(p_filters->>'contactText','')='' or (not b.masked and strpos(lower(concat_ws(' ',b.phone_no,b.email)),lower(btrim(p_filters->>'contactText')))>0))
+      and (coalesce(p_filters->>'candidateSite','')='' or (not b.masked and strpos(lower(coalesce(b.home_site,'')),lower(btrim(p_filters->>'candidateSite')))>0))
+      and (coalesce(p_filters->>'creatorText','')='' or (strpos(lower(coalesce(b.creator_label,'')),lower(btrim(p_filters->>'creatorText')))>0))
+      and (coalesce(p_filters->>'sourceText','')='' or (not b.masked and strpos(lower(coalesce(b.channel,'')),lower(btrim(p_filters->>'sourceText')))>0))
+      and (coalesce(p_filters->>'interestsText','')='' or (strpos(lower(coalesce(b.position_interests,'')),lower(btrim(p_filters->>'interestsText')))>0))
+      and (coalesce(p_filters->>'activeMin','')='' or (not b.masked and b.active_application_count >= (p_filters->>'activeMin')::integer))
+      and (coalesce(p_filters->>'activeMax','')='' or (not b.masked and b.active_application_count <= (p_filters->>'activeMax')::integer))
+      and (coalesce(p_filters->>'updatedFrom','')='' or (coalesce(b.updated_at,b.created_at) at time zone 'UTC')::date >= (p_filters->>'updatedFrom')::date)
+      and (coalesce(p_filters->>'updatedTo','')='' or (coalesce(b.updated_at,b.created_at) at time zone 'UTC')::date <= (p_filters->>'updatedTo')::date)
       and (v_scope = 'all' or (v_scope = 'pool' and coalesce(b.is_unmatched,false)) or (v_scope = 'active' and coalesce(b.active_application_count,0) > 0) or (v_scope = 'history' and coalesce(b.has_closed,false)))
       and (
         v_search = ''
@@ -1149,7 +1226,7 @@ begin
       exists(select 1 from candidate_projection f cross join page_edges e where e.first_id is not null and ((v_direction='asc' and (f.sort_value<e.first_sort or (f.sort_value=e.first_sort and f.candidate_id<e.first_id))) or (v_direction='desc' and (f.sort_value>e.first_sort or (f.sort_value=e.first_sort and f.candidate_id<e.first_id))))) as has_more_before
   )
   select jsonb_build_object(
-    'items', coalesce((select jsonb_agg(item order by case when v_direction='asc' then sort_value end asc, case when v_direction='desc' then sort_value end desc, candidate_id asc) from page_rows),'[]'::jsonb),
+    'items', coalesce((select jsonb_agg((item || jsonb_build_object('has_priority_requisition',case when coalesce((item->>'masked')::boolean,false) then false else exists(select 1 from public.candidate_applications priority_app join public.document_groups priority_link on priority_link.group_id=priority_app.group_id join public.requisitions priority_req on priority_req.doc_id=priority_link.doc_id where priority_app.candidate_id=page_rows.candidate_id and priority_app.state='active' and priority_req.is_priority is true and app_private.can_read_application(priority_app.application_id) and app_private.can_read_requisition(priority_req.doc_id)) end)) order by case when v_direction='asc' then sort_value end asc, case when v_direction='desc' then sort_value end desc, candidate_id asc) from page_rows),'[]'::jsonb),
     'total_count', case when p_limit=0 then (select total_count from matched_count) else null end,
     'has_more', availability.has_more,
     'has_more_before', availability.has_more_before,

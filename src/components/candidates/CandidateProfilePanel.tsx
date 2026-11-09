@@ -1,7 +1,7 @@
 "use client";
 
 import { RetryIconButton } from "@/components/ui/RetryIconButton";
-import { LoadingSkeleton } from "@/components/ui/LoadingSkeleton";
+import { LoadingSkeleton, SkeletonBlock } from "@/components/ui/LoadingSkeleton";
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode, type KeyboardEvent } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Building2, CalendarDays, ContactRound, Hash, LockKeyhole, Mail, Pencil, Phone, Plus, UserRound, UsersRound } from "lucide-react";
@@ -23,8 +23,9 @@ const ApplicationDetailsActionContext = createContext<ReactNode>(null);
 export function CandidateApplicationDetailsExtras() { return useContext(ApplicationDetailsContext); }
 export function CandidateApplicationDetailsAction() { return useContext(ApplicationDetailsActionContext); }
 
-export function CandidateProfilePanel({candidateId, applicationId, data, language, client, accessScope, onSelect, onEdit, onAction, children}: {
+export function CandidateProfilePanel({candidateId, applicationId, data, language, client, accessScope, onSelect, onEdit, onAction, applicationLoading=false, applicationError=null, onApplicationRetry, children}: {
   candidateId:string; applicationId:string|null; data:DashboardData; language:Language;
+  applicationLoading?:boolean; applicationError?:string|null; onApplicationRetry?:()=>void;
   client:SupabaseClient|null; accessScope:string;
   onSelect:(id:string)=>void; onEdit:()=>void; onAction:(rpc:string,payload:Record<string,unknown>,summary:string)=>void; children?:ReactNode;
 }) {
@@ -116,7 +117,7 @@ export function CandidateProfilePanel({candidateId, applicationId, data, languag
       </form>) : null;
   return <div className="grid min-w-0 gap-5">
     {profileWarnings.length?<div aria-label={t("Profile warnings","คำเตือนข้อมูลผู้สมัคร")}><InlineDataQualityIssues issues={profileWarnings} language={language}/></div>:null}
-    <section className="rounded-xl border border-[#D7DEE8] bg-white p-4 sm:p-5" aria-label={t("Candidate profile","ข้อมูลผู้สมัคร")}>
+    <section className="candidate-profile-card" aria-label={t("Candidate profile","ข้อมูลผู้สมัคร")}>
       <div className="mb-3 flex items-center justify-between gap-3"><SectionHeading icon={<ContactRound size={19}/>} title={t("Candidate profile","ข้อมูลผู้สมัคร")}/>{capabilities.can_edit?<Button type="button" variant="ghost" size="icon-sm" className="min-h-11 min-w-11 text-primary" icon={<Pencil size={18} aria-hidden="true"/>} aria-label={t("Edit profile","แก้ไขข้อมูลผู้สมัคร")} title={t("Edit profile","แก้ไขข้อมูลผู้สมัคร")} onClick={onEdit}/>:null}</div>
       <DetailGrid workspace language={language} rows={fields}/>
       {candidate.candidate_folder_url?<a href={candidate.candidate_folder_url} target="_blank" rel="noreferrer" className="mt-3 inline-flex min-h-11 items-center break-all text-sm font-medium text-primary underline">{t("Open CV / candidate folder","เปิดประวัติ / แฟ้มผู้สมัคร")}</a>:null}
@@ -136,6 +137,7 @@ export function CandidateProfilePanel({candidateId, applicationId, data, languag
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3"><h3 className="text-lg font-semibold text-navy">{t("Applications","ใบสมัคร")}</h3>{capabilities.can_add_application?<Button type="button" variant="secondary" size="icon-sm" className="min-h-11 min-w-11" aria-label={t("Add application","เพิ่มใบสมัคร")} title={t("Add application","เพิ่มใบสมัคร")} icon={<Plus size={20} aria-hidden="true"/>} onClick={()=>{setIntent("add");setGroup("");setReason("");}}/>:null}</div>
       {applications.length?<div role="tablist" aria-label={t("Candidate applications","ใบสมัครของผู้สมัคร")} className="flex max-w-full gap-1 overflow-x-auto relative z-10 -mb-px items-end pb-0">{applications.map((application,index)=><button key={application.application_id} ref={element=>{tabs.current[index]=element;}} type="button" role="tab" id={`application-tab-${application.application_id}`} aria-controls={`application-panel-${application.application_id}`} aria-selected={selected?.application_id===application.application_id} tabIndex={selected?selected.application_id===application.application_id?0:-1:index===0?0:-1} onKeyDown={event=>moveTab(event,index)} onClick={()=>onSelect(application.application_id)} className={`min-h-11 min-w-40 shrink-0 rounded-t-lg border px-3 py-3 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${selected?.application_id===application.application_id?"border-primary border-b-white bg-white text-navy":"border-[#E4E9F2] bg-[#F8FAFD] text-slate"}`}><span className="block max-w-60 whitespace-normal break-words font-semibold">{groupName(application.group_id)}</span><span className="mt-1 block text-xs">{formatRecruitmentId(application.group_id)} · {application.state==="active"?t("Active","ดำเนินการ"):t("Closed","ปิดแล้ว")}</span></button>)}</div>:<p className="py-3 text-sm text-slate">{t("No applications are available. This profile may be unmatched, or its journeys may be outside your access.","ไม่มีใบสมัครที่เปิดดูได้ อาจยังไม่จับคู่หรือใบสมัครอยู่นอกสิทธิ์ของคุณ")}</p>}
       {selected?<div role="tabpanel" id={`application-panel-${selected.application_id}`} aria-labelledby={`application-tab-${selected.application_id}`} className="grid min-w-0 gap-4 rounded-b-xl rounded-tr-xl border border-primary bg-white p-3 sm:p-4">
+        {applicationLoading?<CandidateApplicationSkeleton language={language}/>:applicationError?<div role="alert" className="grid gap-3 py-4 text-sm text-slate"><p>{applicationError}</p><RetryIconButton type="button" onClick={onApplicationRetry}>{t("Retry","ลองอีกครั้ง")}</RetryIconButton></div>:<>
         <ApplicationDetailsContext.Provider value={<>
           <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
           <p className="text-xs text-slate">{t("Opened","วันที่เริ่มใบสมัคร")}: {formatDateTime(selected!.created_at,language)}{selected?.closed_at?` · ${t("Closed","ปิดแล้ว")}: ${formatDateTime(selected.closed_at,language)} · ${selected.closure_reason??""}`:""}</p>
@@ -148,10 +150,21 @@ export function CandidateProfilePanel({candidateId, applicationId, data, languag
         </ApplicationDetailsContext.Provider>
         {selectedLogs.map(log=>{const entry=data.candidate_application_assignments?.find(row=>row.assignment_id===log.entry_assignment_id),outcome=data.candidate_application_assignments?.find(row=>row.assignment_id===log.outcome_assignment_id);return entry&&(entry.group_id!==selected.group_id||outcome&&outcome.group_id!==entry.group_id)?<p key={log.log_id} className="text-xs text-slate">{processLabel(log.recruitment_process,language)} · {t("Began in","เริ่มที่")}: {formatRecruitmentId(entry.group_id)}{outcome?` · ${t("Outcome recorded in","บันทึกผลที่")}: ${formatRecruitmentId(outcome.group_id)}`:` · ${t("Pending began before reassignment","เริ่มก่อนเปลี่ยนกลุ่ม")}`}</p>:null;})}
         {intent==="transfer"?applicationForm:null}
+        </>}
 
       </div>:applications.length?<p className="py-4 text-sm text-slate">{t("Select an application tab to view its journey and actions.","เลือกแท็บใบสมัครเพื่อดูเส้นทางและการดำเนินการ")}</p>:null}
 
       {intent==="add"?applicationForm:null}
     </section>
   </div>;
+}
+
+function CandidateApplicationSkeleton({language}:{language:Language}) {
+ const t=(en:string,th:string)=>language==="th"?th:en;
+ return <div data-application-skeleton role="status" aria-busy="true" aria-label={t("Loading application","กำลังโหลดใบสมัคร")} className="grid gap-5">
+ <section><h4 className="mb-3 text-sm font-semibold text-navy">{t("Journey","เส้นทางการสรรหา")}</h4><div className="flex min-w-0 justify-between gap-2 overflow-x-auto">{Array.from({length:7},(_,i)=><div key={i} className="grid justify-items-center gap-2"><SkeletonBlock className="size-10 !rounded-full"/><SkeletonBlock className="h-3 w-10"/></div>)}</div></section>
+ <section><h4 className="mb-3 text-sm font-semibold text-navy">{t("Application details","รายละเอียดใบสมัคร")}</h4><div className="grid gap-4 sm:grid-cols-2">{Array.from({length:4},(_,i)=><div key={i} className="grid gap-2"><SkeletonBlock className="h-3 w-20"/><SkeletonBlock className="h-5 w-3/4"/></div>)}</div></section>
+ <section><h4 className="mb-3 text-sm font-semibold text-navy">{t("Contact references","บุคคลอ้างอิง")}</h4><SkeletonBlock className="h-4 w-2/3"/></section>
+ <section><h4 className="mb-3 text-sm font-semibold text-navy">{t("Activity","กิจกรรม")}</h4><div className="grid gap-4">{[0,1].map(i=><div key={i} className="flex items-start gap-4"><SkeletonBlock className="size-10 shrink-0 !rounded-full"/><div className="grid flex-1 gap-2"><SkeletonBlock className="h-4 w-1/2"/><SkeletonBlock className="h-3 w-3/4"/></div></div>)}</div></section>
+ </div>;
 }

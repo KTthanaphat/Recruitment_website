@@ -659,3 +659,208 @@ button.ats-attendance-button:disabled { background: #E4E9F2; color: #7D8DA8; }
 /* Pipeline pagers stay visually compact and retain phone touch targets. */
 .ats-pipeline-page-button { width: 28px; height: 28px; }
 @media (max-width: 767px) { .ats-pipeline-page-button { width: 44px; height: 44px; } }
+
+/* Records density is opt-in: Home, Workspace and Pipeline board keep their defaults. */
+.records-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:8px}
+.records-toolbar>label{flex:1 1 180px}
+.records-toolbar>div{min-width:0}
+.records-pagination{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px;border-top:1px solid #E4E9F2;padding-top:6px;font-size:12px;color:var(--slate,#52637a)}
+.records-page-range{min-width:0}
+.records-scope-control{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.records-surface{min-width:0}
+.records-cell-content{min-width:0;overflow-wrap:anywhere}
+.candidate-detail-section,.candidate-detail-workspace>details{border:0;border-radius:0;background:transparent;box-shadow:none;padding:0}
+.candidate-detail-workspace>section+section,.candidate-detail-workspace>details{border-top:1px solid #E4E9F2;padding-top:18px}
+.candidate-detail-workspace>details>summary{padding:0 0 12px;min-height:36px}
+.candidate-detail-workspace>details>div{padding:0;border:0}
+.candidate-detail-row{border:0;border-radius:0;background:transparent;box-shadow:none;padding:12px 0}
+.candidate-detail-row+.candidate-detail-row{border-top:1px solid #E4E9F2}
+.activity-timeline{position:relative;margin-left:5px;padding-left:20px;border-left:1px solid #D7DEE8;display:grid;gap:16px}
+.activity-entry{position:relative;min-width:0;padding:0 0 8px}
+.activity-entry:before{content:"";position:absolute;left:-25px;top:5px;width:9px;height:9px;border-radius:50%;background:#536b86;box-shadow:0 0 0 3px white}
+.activity-entry[data-status="pending"]:before{background:#c48923}
+.activity-entry[data-status="pass"]:before{background:#167a3d}
+.activity-entry[data-status="fail"]:before{background:#b53636}
+.activity-older{border:0;border-radius:0;background:transparent}
+.activity-older>summary{padding:4px 0 12px}
+.activity-older>div{border:0;padding:0;display:grid;gap:16px}
+.requisition-overview{padding:0 0 4px}
+.requisition-overview-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 0}
+.requisition-overview-metrics>div{padding:0 12px;border-left:1px solid #D7DEE8}
+.requisition-overview-metrics dt{font-size:12px;color:#52637a}
+.requisition-overview-metrics dd{margin-top:4px;font-size:20px;font-weight:600;color:#0b132b}
+.contact-match-layout{display:flex;max-height:min(70dvh,600px);flex-direction:column}
+.contact-match-intro{display:flex;align-items:flex-start;gap:10px;padding:16px 20px 12px}
+.contact-match-list{min-height:0;overflow:auto;padding:0 20px}
+.contact-match-row{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid #E4E9F2}
+.contact-match-row p{min-width:0;overflow-wrap:anywhere}
+.contact-match-footer{display:flex;flex-wrap:wrap;gap:8px;padding:12px 20px 16px;border-top:1px solid #E4E9F2}
+@media(min-width:768px){
+ .records-surface{padding:12px}
+ .records-toolbar{flex-wrap:nowrap}
+ .records-toolbar input{min-height:36px;height:36px;border-radius:8px}
+ .records-toolbar button,.records-create-button{min-height:36px}
+ .records-surface .table-scroll{max-height:none;overflow-y:visible}
+ .records-surface table{table-layout:fixed}
+ .records-surface thead{background:#f1f6fc}
+ .records-surface th{padding:6px 10px;height:36px;font-size:11px;letter-spacing:0;text-transform:none}
+ .records-surface tbody tr{height:40px;border-bottom:1px solid #E4E9F2}
+ .records-surface tbody tr:hover,.records-surface tbody tr:focus-within{background:#f8fafd}
+ .records-surface td{padding:1px 10px;height:40px;font-size:12px;line-height:17px}
+ .records-cell-content{max-height:36px;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2}
+ .records-cell-content button{min-height:30px}
+ .records-cell-content p,.records-cell-content span{line-height:17px}
+ .records-cell-content .mt-1{margin-top:0}
+ .records-cell-content button span{font-size:11px}
+ .records-pagination{min-height:36px}
+ .records-pagination button{min-height:30px;height:30px}
+ .records-audit-row{padding-top:2px;padding-bottom:2px;min-height:40px}
+ .records-audit-row>div:first-child{height:34px;align-items:center;overflow:hidden}
+ .records-audit-row>div:first-child>div{font-size:11px;line-height:16px;max-height:34px;overflow:hidden}
+ .records-audit-row button{min-height:30px}
+ .records-audit-row a{padding:0 2px;font-size:10px}
+ .sourcing-unmatched{padding:6px 12px}
+ .requisition-overview-metrics{grid-template-columns:repeat(4,minmax(0,1fr))}
+}
+@media(max-width:767px){
+ .records-toolbar input,.records-toolbar button,.records-pagination button,.records-create-button{min-height:44px}
+ .records-toolbar>div{flex-wrap:wrap}
+ .records-pagination{flex-wrap:wrap}
+}
+
+@media(min-width:768px){.records-requisitions table{min-width:2200px}.records-offers table{min-width:1500px}.records-pipeline table{min-width:1500px}.records-surface th:first-child:has(input){width:44px}.records-surface th:last-child{width:88px}}
+
+@media(max-width:767px){.records-toolbar button,.records-pagination button,.records-create-button{min-width:44px}.records-sourcing>section:first-child button{min-height:44px}}
+
+.activity-history{position:relative}.activity-history:has(.activity-entry):before{content:"";position:absolute;top:30px;bottom:0;left:5px;border-left:1px solid #D7DEE8}.activity-history .activity-timeline{border-left:0}.activity-history h4{position:relative;background:white}.activity-history .activity-timeline{margin-left:6px}
+
+.contact-match-intro{padding:0 0 12px}.contact-match-list{padding:0}.contact-match-footer{padding:12px 0 0}
+
+.records-audit-header{background:#f1f6fc;height:36px;align-items:center}
+
+.records-surface td:focus-within{outline:2px solid #0A3CDC;outline-offset:-2px}
+
+@media(max-width:767px){.contact-match-footer button{min-height:44px}}
+
+/* Compact contact review is opt-in; other Modal surfaces retain their geometry. */
+.contact-match-overlay{place-items:center;padding:12px}
+.contact-match-modal{display:flex;flex-direction:column;max-width:560px;max-height:calc(100dvh - 24px);overflow:hidden;border-radius:8px;box-shadow:0 8px 24px rgba(11,19,43,.12)}
+.contact-match-header{flex-shrink:0;padding:20px 20px 12px;border:0;background:white}
+.contact-match-body{display:flex;flex:1;min-height:0;padding:0 20px 20px}
+.contact-match-modal .contact-match-layout{width:100%;max-height:none;min-height:0;flex:1}
+.contact-match-modal .contact-match-list{min-height:0;flex:1;overflow-y:auto;overscroll-behavior:contain}
+.contact-match-modal .contact-match-footer{flex-shrink:0;justify-content:flex-end;border:0;padding-top:12px}
+.contact-match-create{background:#C74D5B;color:white;box-shadow:none}
+.contact-match-create:hover{background:#B6414E}
+.contact-match-create:active{background:#AB3947}
+.candidate-profile-card{min-width:0;border:1px solid #D7DEE8;border-radius:12px;background:white;padding:16px}
+@media(min-width:768px){.candidate-profile-card{padding:20px}.records-pagination button{height:28px;min-height:28px;width:28px;min-width:28px}}
+@media(max-width:767px){.contact-match-header{padding:16px 16px 12px}.contact-match-body{padding:0 16px 16px}.contact-match-header>button{height:44px;width:44px;min-height:44px;min-width:44px}}
+
+/* Filter fields stay outside wide table viewports. */
+.records-filter-panel{display:grid;grid-template-columns:minmax(0,1fr);align-items:end;gap:12px;margin-bottom:12px;padding:12px;border:1px solid #E4E9F2;border-radius:8px;background:#F8FAFD;min-width:0}
+.records-filter-panel[hidden]{display:none}
+.records-filter-field{display:grid;min-width:0;gap:4px}
+.records-filter-extras{grid-column:1/-1;min-width:0}
+.records-filter-panel .records-scope-control{margin-bottom:0}
+.records-filter-panel>label{min-width:0}
+.records-filter-panel input:not([type="checkbox"]),.records-filter-panel summary{min-height:44px}
+.records-filter-panel details{min-width:0}
+.records-filter-panel summary{width:100%;font-size:14px}
+@media(min-width:768px){.records-filter-panel{grid-template-columns:repeat(2,minmax(0,1fr))}.records-filter-panel input:not([type="checkbox"]),.records-filter-panel summary{min-height:36px}}
+@media(min-width:1280px){.records-filter-panel{grid-template-columns:repeat(4,minmax(0,1fr))}}
+
+.records-filter-panel .ats-dropdown-trigger{min-height:44px}
+@media(min-width:768px){.records-filter-panel .ats-dropdown-trigger{min-height:36px;height:36px}}
+
+/* Distinct record surfaces: gaps preserve table alignment and never crop rows. */
+.records-surface .table-scroll{background:#F5F7FB}
+.records-surface table{border-collapse:separate;border-spacing:0 8px}
+.records-surface tbody tr{border:0;background:white}
+.records-surface tbody td{border-top:1px solid #E4E9F2;border-bottom:1px solid #E4E9F2;background:inherit}
+.records-surface tbody td:first-child{border-left:1px solid #E4E9F2;border-radius:8px 0 0 8px}
+.records-surface tbody td:last-child{border-right:1px solid #E4E9F2;border-radius:0 8px 8px 0}
+.records-surface th{vertical-align:top}
+.records-surface .records-priority-column{width:64px;text-align:center}
+.records-candidates table{min-width:1100px}
+.records-candidates th:nth-child(2){width:240px}
+.records-candidates th:last-child{width:150px}
+.records-head-filter{margin-top:6px;min-width:0}
+.records-inline-filters{display:grid;gap:12px;margin:8px 0 16px;padding:0;border:0;background:transparent}
+.records-inline-filters[hidden]{display:none}
+.records-inline-filters summary,.records-inline-filters input:not([type=checkbox]){min-height:44px}
+.records-scope-control{gap:4px}
+.records-scope-control button{min-height:32px}
+.records-audit-body{display:grid;gap:8px;background:#F5F7FB}
+.records-audit-row{border:1px solid #E4E9F2;border-radius:8px;background:white}
+.records-audit-header{height:auto;min-height:36px;align-items:start}
+@media(min-width:768px){.records-surface td{height:40px;padding:1px 10px}.records-inline-filters{display:none}}
+@media(max-width:767px){.records-surface .grid.md\:hidden{gap:16px}.records-inline-filters .records-filter-field{min-width:0}.records-scope-control button{min-height:44px}}
+
+.stage-history-rail.activity-timeline{padding:0;margin:0;border:0}.stage-history-entry.activity-entry{position:relative;display:grid;grid-template-columns:40px minmax(0,1fr);gap:16px;margin:0;padding:0;border:0;background:transparent;border-radius:0}.stage-history-entry.activity-entry::before{display:none}.stage-history-entry::after{content:"";position:absolute;left:19px;top:40px;bottom:0;width:2px;background:#DCEBFF}.stage-history-entry:last-child::after{display:none}.stage-history-rail>.stage-history-entry:has(+details)::after{display:block}.stage-history-older[open]::before{content:"";position:absolute;left:19px;top:0;bottom:0;width:2px;background:#DCEBFF}.stage-history-older{position:relative}
+
+.activity-history:has(.stage-history-rail)::before{display:none}.stage-history-rail.activity-timeline{gap:0}
+
+/* Continuous Records rows; phone card geometry remains independent. */
+.records-surface .table-scroll{background:white}
+.records-surface table{border-collapse:collapse;border-spacing:0}
+.records-surface tbody td,.records-surface tbody td:first-child,.records-surface tbody td:last-child{border:0;border-bottom:1px solid #E4E9F2;border-radius:0;background:inherit}
+.records-surface tbody tr:last-child td{border-bottom:0}
+.records-audit-body{display:block;background:white}
+.records-audit-row{border:0;border-bottom:1px solid #E4E9F2;border-radius:0;background:white}
+.records-audit-row:last-child{border-bottom:0}
+.records-surface .records-selection-cell{box-sizing:border-box;width:40px;min-width:40px;max-width:40px;height:40px;padding:12px!important;vertical-align:top}
+.record-selection-checkbox{display:block;width:16px;height:16px;min-height:16px!important;margin:0;accent-color:#0A3CDC}
+.records-linked-indicator{display:inline-block;width:10px;height:10px;border-radius:50%;vertical-align:middle}
+.records-selection-flash{animation:records-select-flash 1000ms ease-out forwards}
+@keyframes records-select-flash{from{background-color:#EDF4FF}to{background-color:white}}
+.records-candidates table{min-width:1560px}
+.records-candidates th:nth-child(2){width:64px}
+.records-candidates th:nth-child(3){width:240px}
+.records-candidates th:last-child{width:180px}
+.records-scope-strip{margin-bottom:10px}
+.records-filter-range{display:grid;gap:4px}
+@media(prefers-reduced-motion:reduce){.records-selection-flash{animation:none;background-color:#EDF4FF!important}}
+@media(max-width:767px){.record-selection-target{display:grid;place-items:center;min-width:44px;min-height:44px}.records-scope-strip button{min-height:44px}}
+
+.records-surface tbody td,.records-surface tbody td:first-child,.records-surface tbody td:last-child{border-bottom:0;background-image:linear-gradient(#E4E9F2,#E4E9F2);background-size:100% 1px;background-position:left bottom;background-repeat:no-repeat}.records-surface tbody tr:last-child td{background-image:none}
+
+/* Roomier Records density and independent heading/filter rows. */
+@media(min-width:768px){
+ .records-surface tbody tr,.records-surface tbody td{height:48px}
+ .records-surface tbody td{padding:6px 10px}
+ .records-surface thead tr:not(.records-filter-row){height:48px}
+ .records-surface thead tr:not(.records-filter-row)>th{height:48px;vertical-align:middle;font-family:inherit;font-size:12px;font-weight:600;line-height:18px;color:#475569}
+ .records-surface thead tr:not(.records-filter-row)>th button{font-family:inherit;font-size:12px;font-weight:600;line-height:18px}
+ .records-surface .records-selection-cell{width:48px!important;min-width:48px;max-width:48px;height:48px;padding:16px!important;vertical-align:middle}
+ .records-surface .records-filter-row th{height:auto;vertical-align:top;padding:8px 10px;font-weight:400;text-align:left}
+ .records-surface .records-filter-row th:first-child{padding:0!important}
+ .records-audit-row{min-height:48px;padding-top:2px;padding-bottom:2px}
+ .records-audit-row>div:first-child{height:42px}
+ .records-audit-row>div:first-child>div{max-height:40px}
+ .records-audit-body [data-loading-skeleton=table]>div>div{min-height:48px}
+ .records-audit-header{height:auto;min-height:48px}
+ .records-audit-heading-row{height:48px;align-items:center;font-family:inherit;font-size:12px;font-weight:600;line-height:18px;color:#475569}
+ .records-audit-filter-row{padding-top:8px;padding-bottom:8px;align-items:start}
+ .records-requisitions table{min-width:2080px}
+ .records-requisitions th:nth-child(3){width:300px}
+}
+.records-requisition-identity{max-width:100%;font-weight:400}
+.records-requisition-identity .records-position-primary{display:block;font-size:13px;font-weight:600;line-height:18px;color:#0B132B}
+.records-requisition-identity .records-position-id{display:block;font-size:11px;font-weight:400;line-height:14px;color:#475569}
+@media(min-width:768px){.records-requisition-identity .records-position-primary,.records-requisition-identity .records-position-id{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
+.records-linked-tag[data-linked=true]>span{background:#E8F0FF;color:#0A3CDC}
+.records-linked-tag[data-linked=false]>span{background:#FFF0F1;color:#C52B40}
+
+.records-candidates .records-filter-panel .records-filter-range { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+
+/* Records advanced-filter sidebar */
+.records-filter-sidebar[hidden],.records-filter-backdrop[hidden]{display:none!important}
+.records-filter-sidebar{float:left;width:280px;max-width:35%;margin:8px 16px 12px 0;padding:16px;display:grid;align-content:start;gap:12px;background:#f8fafd;border:1px solid #d7e4f3;border-radius:8px;max-height:calc(100vh - 180px);overflow-y:auto}
+.records-filter-sidebar-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:14px;font-weight:600;color:#172b4d}
+.records-filter-close{display:grid;place-items:center;width:36px;height:36px;border-radius:6px;color:#475569}.records-filter-close:focus-visible,.records-filter-clear:focus-visible{outline:2px solid #0a3cdc;outline-offset:2px}.records-filter-clear{justify-self:start;color:#0a3cdc;font-size:12px;font-weight:600;min-height:36px}.records-filter-sidebar .records-filter-field{display:grid;gap:4px;min-width:0}.records-filter-sidebar .records-filter-range{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.records-filter-sidebar input{min-width:0}.records-filter-backdrop{display:none}.records-surface::after{content:"";display:block;clear:both}.records-surface .table-scroll,.records-surface [data-testid="audit-table-viewport"]{overflow-x:auto;min-width:0}.records-surface .records-pagination{overflow:hidden}
+@media(max-width:767px){.records-filter-backdrop:not([hidden]){display:block;position:fixed;inset:0;z-index:100;background:#0f172a80}.records-filter-sidebar:not([hidden]){float:none;position:fixed;z-index:101;left:0;top:0;bottom:0;width:min(340px,90vw);max-width:none;max-height:none;margin:0;border-radius:0;overflow-y:auto;box-shadow:0 10px 30px #0f172a33}.records-filter-sidebar input:not([type=checkbox]),.records-filter-sidebar summary,.records-filter-close{min-height:44px}}
+
+@media(min-width:768px){.records-surface:has(> .records-filter-sidebar:not([hidden])) .table-scroll{width:auto}}
+
+.records-filter-sidebar:not([hidden]){display:flex;flex-direction:column;gap:0;overflow:hidden}.records-filter-sidebar-heading{flex:none}.records-filter-sidebar-content{display:grid;align-content:start;gap:12px;min-height:0;overflow-y:auto;padding:12px 0}.records-filter-sidebar-footer{display:flex;flex:none;justify-content:flex-end;gap:8px;padding-top:12px;border-top:1px solid #d7e4f3}.records-filter-sidebar-footer button{min-height:40px}@media(max-width:767px){.records-filter-sidebar-footer button{min-height:44px}}

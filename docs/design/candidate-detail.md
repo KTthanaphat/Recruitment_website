@@ -8,7 +8,7 @@ Identity leads with candidate name / ID at 20px semibold navy, quiet circular pe
 
 Body begins with candidate-level warnings, then the expanded shared Candidate profile containing Position interests and the saved Profile note, followed by browser-style application tabs. Each selected tab contains Journey, Application details, Contact references, and Activity. Application/offer issues and Teams context stay inside the selected journey; profile warnings appear once above the shared profile, even before tab selection. Preserve conditional rendering rather than creating empty panels. Journey owns eligible Update and a clear blocked reason.
 
-Use 18px semibold section headings with small accent icons, white lightly bordered rounded sections and 16–20px padding. Separate sections with whitespace; do not nest a card around each field.
+Use 18px semibold section headings with small accent icons. Candidate profile has its own neutral card; application sections remain flat with 16–20px spacing and thin neutral dividers. Separate sections with whitespace; do not nest a card around each field.
 
 ## Profile grid
 
@@ -20,10 +20,10 @@ Preserve copy feedback/live announcement and localized names for icon controls. 
 
 `StageRail` owns journey presentation, rounds and derived Resume Screening. Do not collapse stages, invent progress or flatten Pending/Outcome records through styling.
 
-Activity prioritizes current Pending: compact amber-accented row, stage/round title, dates/interviewer below, meaningful estimate emphasis, capability-gated edit. Recent completions follow; older history is disclosed. Keep Outcome-detail correction distinct from advancing a candidate.
+Activity prioritizes current Pending: compact amber-accented row, stage/round title, dates/interviewer below, meaningful estimate emphasis, capability-gated edit. All eligible completions follow automatically; no older-history disclosure is required. Keep Outcome-detail correction distinct from advancing a candidate.
 Failed completions show the saved actor, main reason, detailed reason, and optional remark below the Outcome date/interviewer. Older unclassified failures show a quiet unclassified label. The Fail modal uses the same hierarchy and preserves the stage/date/interviewer context; its three selectors are required and reset dependent selections on parent changes.
 
-Soft tags use pale backgrounds with dark text: green success, amber pending, red failure. Preserve this local treatment instead of indiscriminately applying bright generic tags.
+History state is conveyed by the Journey marker and its accessible description/tooltip, without a standalone status line. Other surfaces retain existing semantic tags.
 
 ## Offers, interviews and disclosures
 
@@ -57,7 +57,7 @@ When the Edit form retargets another candidate, refresh every persisted profile 
 
 Tabs use tablist/tab/tabpanel semantics, roving focus, arrows/Home/End, selected state, and a phone-local scroll strip. Include every authorized active and closed journey, active first then newest first, with group label/ID and lifecycle only. Omit creation dates and journey IDs from tabs and the summary below them; operational dates/closure context remain in Application details. The selected blue tab connects to one blue-bordered panel containing all selected content, controls, and assignment history. No tab delete/close action. Multiple registry journeys require selection; exact contextual links, refresh, back/forward, and access-loss handling preserve the correct application. Switching tabs never changes profile-note permission or mixes stage/reference/offer records.
 
-Duplicate popup appears on Review changes, before ordinary save confirmation. It lists permitted matching IDs and contact categories, opens existing profiles separately to preserve the draft, and supports Back/Continue as separate person. Recheck on server writes; edited contacts or changed matches require a new review. No checkbox or inline duplicate banner.
+Duplicate popup appears on Review changes, before ordinary save confirmation. It lists permitted matching IDs and contact categories, opens existing profiles separately to preserve the draft, and supports Close/Escape and Create Separate Cand. before ordinary save confirmation. Recheck on server writes; edited contacts or changed matches require a new review. No checkbox or inline duplicate banner.
 
 Masked unmatched summaries show only ID/interests/creator/saved date and a clear private-profile state. No profile-edit, CV, note, reference, or first-application action is exposed to noncreators. Server capability and RLS contracts are owned by [candidate behavior](../WEBSITE_STRUCTURE.md#independent-candidate-profiles); checks and evidence: [implementation](../work-items/candidate-profile-redesign/implementation.md).
 
@@ -75,3 +75,18 @@ Remove the redundant Offer record title. Keep requisition ID and a labeled penci
 
 The “Use existing candidate” control shows the selected candidate in its closed trigger. Search by ID/name appears at the top of the opened selector menu, above matching candidates; do not render a separate search field while the selector is closed or a user-facing next-page action. Keep server-side search and existing access/loading/error states so records beyond the initial page remain discoverable. In the new-candidate form, place First Contact Date, Position interests, and Profile note after Email and before Application group. Pair the date with a compact Position interests field on desktop; Profile note spans the form width. Stack these fields on phones and preserve validation and save behavior.
 `Reassign application` is a compact secondary action at the upper-right of Application details. Preserve its existing authorization, reason, review, loading and error behavior.
+
+## Flat sections and contact-review warning
+
+Candidate profile alone uses a white card, 1px #D7DEE8 border, 12px corners, 16px phone/20px desktop padding and no extra shadow. Its dedicated class avoids flat-wrapper overrides. Selected-application sections remain unboxed: retain 18px headings, field icons/copy/edit controls, 16–20px spacing and thin neutral separators. The selected application's blue connected tab/panel outline stays intact. Keep profile above tabs, existing Journey → application details → references → Activity order, privacy, deep links and Delete/Close geometry. Preserve warning/form/modal surfaces. Offer and Working Confirm summaries use labeled rows with restrained separators and their existing separate actions.
+
+One localized Stage history rail shows pending work followed by every eligible completion for the selected application, outcome-date descending with log-ID tie-breaking. Render the complete authorized history immediately, without a three-entry cap, disclosure, nested scroll region or virtualization. PipelineStageMarker reuses Journey icons and state colors with 40px circles and centered connectors. Remove the standalone Pending/Pass/Fail line. The marker provides a localized accessible description and tooltip with stage, round and state. First detail sits 2px below the stage-and-round title; later metadata uses 2–4px proximity. Keep 16px between entries. Edited/Migrated remain quiet metadata; the pending edit utility must not increase the title-to-detail gap. Preserve dates, interviewers, estimates, both remarks, failure classifications, migration notes and authorized controls for every entry. No invented future events. Horizontal Journey, offers and Working Confirm remain separate.
+
+The matching-contact modal uses `Modal compactWarning` with optional `subtitle` and decorative `titleIcon`; other Modal callers retain their defaults. Use a 560px maximum, 12px outer phone margins, viewport-bounded height, white surface and light `0 8px 24px rgba(11,19,43,.12)` shadow. The amber icon and navy heading lead; the slate review sentence sits beneath as an aria-describedby subtitle, without a title divider. Matching rows show only authorized IDs/contact categories and separate-tab profile links. Scroll the list internally while keeping the header/footer reachable.
+
+There is no Back to form action. Close/Escape return to the intact draft. The single right-aligned **Create Separate Cand.** action (Thai: **สร้างผู้สมัครแยก**) uses #C74D5B with white text, scoped independently of delete/destructive controls. It opens ordinary Confirm Save without writing. Preserve server duplicate revalidation, failure handling, nested-overlay focus and keyboard behavior. [Warning checks](../../tests/e2e/seven-row-warning.spec.ts), [profile flow checks](../../tests/e2e/candidate-profile-redesign.spec.ts).
+
+
+## Retained profile during application loading
+
+RecruitmentWorkspace separates shell identity (scope + candidate ID), requested application key and loaded application key. Keep profile/note/identity and tabs mounted across application switches; select the tab and retain its blue outline immediately. Replace only its content with a structural skeleton until ready. No old application logs/offers/references/actions under a new tab. CandidateProfilePanel accepts applicationLoading, applicationError and onApplicationRetry. First opening uses the full skeleton; same-application refresh retains content. Cached reads add no artificial delay. Failure retains profile/tabs with in-panel Retry. Access loss clears inaccessible data and refreshes readable headers; candidate/scope changes discard the shell immediately. Preserve cancellation/generation guards, Promise return contract, scoped cache, scroll and tab focus. [Checks](../../tests/e2e/records-priority-history.spec.ts).

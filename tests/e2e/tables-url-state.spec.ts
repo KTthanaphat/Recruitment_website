@@ -7,7 +7,8 @@ test("requisition table search and advanced filters persist in URL", async ({ pa
   await expectWorkspaceReady(page);
 
   const search = page.getByPlaceholder("Search records");
-  await expect(page.getByLabel("Rows per page")).toHaveValue("50");
+  await expect(page.getByLabel("Rows per page")).toHaveCount(0);
+  await expect(page).toHaveURL(/reqSize=7/);
   await search.fill("no matching requisition");
   await expect(page.getByText("No records match the current filters.", { exact: true })).toBeVisible();
   await expect(search).toBeVisible();
@@ -33,7 +34,7 @@ test("record tables use a shared scroll viewport with frozen desktop headers", a
     await page.goto(route);
     await expectWorkspaceReady(page);
     const viewport = page.locator(".table-scroll");
-    await expect(viewport).toHaveCSS("overflow-y", "auto");
+    await expect(viewport).toHaveCSS("max-height", "none");
     await expect(viewport.locator("thead")).toHaveCSS("position", "sticky");
   }
 });

@@ -183,3 +183,6 @@ function stageStateLabel(language: Language, state: StageRailState) {
   if (state === "pending") return translate(language, "current");
   return translate(language, "notReached");
 }
+
+/** Reuses Journey state colors and stage icons for actual history events. */
+export function PipelineStageMarker({stage,state}:{stage:PipelineDisplayStage;state:StageRailState}) { return <span aria-hidden="true" className={"relative z-[1] grid size-10 shrink-0 place-items-center rounded-full ring-2 ring-white "+stageDotClass(state,state==="pending",true)}><StageIcon stage={stage} state={state} current={state==="pending"} workspace/>{state==="passed"?<span className="absolute -bottom-1 -right-1 grid size-4 place-items-center rounded-full bg-[#16A34A] text-white ring-2 ring-white"><Check size={10} strokeWidth={3}/></span>:null}</span>; }

@@ -31,6 +31,8 @@ flowchart LR
   Pipeline -->|uses| Platform
   Reporting -->|uses| Platform
   Integrations -->|uses| Platform
+  Platform -->|hosts| Notifications[Notification center]
+  Notifications -->|reads| Records
 ```
 
 For a visual change, use the node's design contract. For a behavior change, use its canonical behavior section. For a shared primitive, inspect reverse consumers in that node. Cross to Setup only for environment, schema or release work.

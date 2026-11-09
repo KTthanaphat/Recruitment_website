@@ -225,7 +225,9 @@ export function BulkActionToolbar({
   onClear,
   onExport,
   onOpenReview,
-  selectedCount
+  selectedCount,
+  selectionNote,
+  exportBusy=false
 }: {
   disabledReason?: DisabledReason;
   entityLabel: string;
@@ -234,16 +236,18 @@ export function BulkActionToolbar({
   onExport: () => void;
   onOpenReview?: () => void;
   selectedCount: number;
+  selectionNote?: string;
+  exportBusy?: boolean;
 }) {
   if (selectedCount === 0) return null;
   return (
     <div className="sticky bottom-3 z-20 mt-3 grid gap-2 rounded-lg border border-[#D7DEE8] bg-white p-3 shadow-[0_12px_30px_rgba(11,19,43,0.07)] md:grid-cols-[1fr_auto] md:items-center">
       <div>
         <p className="text-sm font-semibold text-navy">{translate(language, "selectedCount", { count: formatNumber(selectedCount, language), entity: entityLabel })}</p>
-        {disabledReason?.blocked ? <p className="mt-1 text-xs font-medium text-orange">{disabledReason.detail}</p> : <p className="mt-1 text-xs font-medium text-slate">{translate(language, "bulkReviewNote")}</p>}
+        {disabledReason?.blocked ? <p className="mt-1 text-xs font-medium text-orange">{disabledReason.detail}</p> : <p className="mt-1 text-xs font-medium text-slate">{selectionNote??translate(language, "bulkReviewNote")}</p>}
       </div>
       <div className="flex flex-wrap gap-2">
-        <Button type="button" size="sm" variant="secondary" onClick={onExport}>{translate(language, "exportSelected")}</Button>
+        <Button type="button" size="sm" variant="secondary" disabled={exportBusy} onClick={onExport}>{translate(language, "exportSelected")}</Button>
         {onOpenReview ? <Button type="button" size="sm" variant="secondary" disabled={disabledReason?.blocked} onClick={onOpenReview}>{translate(language, "reviewAction")}</Button> : null}
         <Button type="button" size="sm" variant="ghost" onClick={onClear}>{translate(language, "clear")}</Button>
       </div>
