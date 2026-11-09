@@ -24,6 +24,7 @@ Read this node for this feature only. It indexes ownership; product rules remain
 
 - Owner/search: [HomeView.tsx](../../../src/components/dashboard/HomeView.tsx), [RecruitmentWorkspace.tsx](../../../src/components/RecruitmentWorkspace.tsx), [supabase/schemas/30_triggers_audit.sql](../../../supabase/schemas/30_triggers_audit.sql).
 - Related symbols: `Offer.start_confirmation`, `refresh_requisition_status_after_offer_change`, `app_confirm_offer_start_v1`.
+- Notification impact: assigned-recruiter eligibility and 45/90/119-day reminder dates are projected by the [shared notification center](platform.md#f28-shared-notification-center-and-recruiter-reminders); canonical behavior is in [Recruitment workflows](../../WEBSITE_STRUCTURE.md#recruitment-workflows).
 - Entry: `/home`, `/offers`.
 - Existing check/search: Home, lifecycle, permission, SLA, and offer/database trigger tests.
 
@@ -83,3 +84,19 @@ Candidate/requisition form refinement: `src/components/RecruitmentWorkspace.tsx`
 ### Committed requisition saves
 
 Requisition status, creation/editing and priority use the additive requisition action RPC, exact-ID receipts and scoped 100 ms refresh notifications. Owners: requisition-action-receipt, RecruitmentWorkspace and recruitment-list. [Behavior and verification](../../work-items/requisition-committed-updates/implementation.md) → [detail contract](../../design/requisition-detail.md#committed-saves-and-reconciliation).
+
+
+### Records density and fixed-size pages
+
+- Owners/search: `RecordPagination` (adaptive viewport measurement), `RecordFilterPanel`, `useRecordCategoryOptions`, `RecordCreateButton`, `RECORD_PAGE_SIZE` in [RecordsControls](../../../src/components/ui/RecordsControls.tsx), `TableToolbar records`, `TableFilterField`, `RecordSortTriangles`, `useRecruitmentList`, `SourcingWorkBoard`, `HistoryTableControls`, `AuditView`.
+- Contract/checks: [Records controls](../../design/controls.md#records-tables-and-fixed-pagination), [flat overview](../../design/requisition-detail.md#flat-overview-strip), [browser acceptance](../../../tests/e2e/records-refinement.spec.ts), [adaptive resize](../../../tests/e2e/records-adaptive-pagination.spec.ts).
+- SQL ownership: [list schema](../../../supabase/schemas/60_recruitment_list.sql), [candidate adapter schema](../../../supabase/schemas/61_candidate_actions.sql), [page sizes](../../../tests/db/record-page-size-compatibility.sql), [category compatibility](../../../tests/db/record-category-filter-compatibility.sql); search recruitment_category_values_v1.
+- Delivery evidence: [local verification](../../work-items/records-capture-history-refinement/implementation.md).
+
+- Priority/Updated owners: CandidateRegistry, RecordPriorityIndicator, requisitionQueryAffected, has_priority_requisition; [semantics](../../WEBSITE_STRUCTURE.md#candidate-registry-priority-and-visible-date), [SQL](../../../tests/db/candidate-registry-priority.sql), [browser](../../../tests/e2e/records-priority-history.spec.ts).
+
+- Divider/filter/selection owners: CandidateRegistry, candidateColumnFilterError/fetchSelectedCandidateRecords in [registry helper](../../../src/lib/candidate-registry-records.ts), useRecordSelection/RecordSelectionCheckbox, RequisitionsView; [behavior](../../WEBSITE_STRUCTURE.md#candidate-registry-column-filters-and-selection) → [UI checks](../../../tests/e2e/records-divider-filters.spec.ts) / [SQL checks](../../../tests/db/candidate-registry-column-filters.sql).
+
+- Captured selection/fresh export: fetchMatchingRecordIds and fetchSelectedRequisitions in [records-selection](../../../src/lib/records-selection.ts), useRecordSelection, criteriaPending/fresh counts; [contract](../../WEBSITE_STRUCTURE.md#records-captured-selection) → [browser](../../../tests/e2e/records-capture-history.spec.ts) / [SQL](../../../tests/db/requisition-selected-ids.sql).
+
+- Candidate history workbook and staged Records filter sidebar: [contract](../../WEBSITE_STRUCTURE.md#candidate-registry-column-filters-and-selection) → [export](../../../src/lib/candidate-full-export.ts) / [checks](../../../tests/e2e/records-divider-filters.spec.ts).

@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test";
-import { expectWorkspaceReady, installMockSupabase } from "./support/mock-supabase";
+import { expectWorkspaceReady, installMockSupabase as installBase } from "./support/mock-supabase";
 
+// Keep the known loading/refresh sentinel on the first ten-row page.
+const installMockSupabase: typeof installBase = async (...args) => { const mock=await installBase(...args); const row=mock.data.candidates.find(row=>row.candidate_id==="C-PHONE"); if(row)row.updated_at="2026-07-25T00:00:00.000Z"; return mock; };
 test.setTimeout(60_000);
 function gate() { let release!: () => void; const pending = new Promise<void>(resolve => { release = resolve; }); return { pending, release }; }
 
@@ -60,7 +62,7 @@ test("count retries do not replace loaded candidate rows", async ({ page }) => {
   await installMockSupabase(page, { role: "admin_recruiter", countFailureOnceEntity: "candidate_registry" });
   await page.goto("/candidates?lang=en"); await expectWorkspaceReady(page);
   const candidate = page.getByRole("button", { name: /Pat Phone/ }).first(); await expect(candidate).toBeVisible();
-  const retry = page.getByRole("button", { name: "Retry count", exact: true }); await expect(retry).toBeVisible();
+  const retry = page.getByRole("button", { name: "Retry record count", exact: true }); await expect(retry).toBeVisible();
   await retry.click(); await expect(candidate).toBeVisible(); await expect(retry).toHaveCount(0);
   await expect(page.locator("[data-loading-skeleton]")).toHaveCount(0);
 });
@@ -86,17 +88,17 @@ test("pipeline shows five placeholder cards per stage while candidates load", as
   await page.goto("/workspace?lang=en&type=group&id=GRP-ENG&section=pipeline"); await expectWorkspaceReady(page);
   const skeleton = page.locator("[data-loading-skeleton=cards]").filter({ visible: true }).first();
   await expect(skeleton).toBeVisible(); await expect(skeleton.locator(".ats-skeleton-row")).toHaveCount(5);
-  hold.release(); await expect(page.getByRole("button", { name: /^Pat Phone C-PHONE/ })).toBeVisible();
+  hold.release(); await expect(page.getByRole("button", { name: /^Pat Phone.*C-PHONE/ })).toBeVisible();
 });
 
 test("candidate identity change uses detail skeleton rather than previous profile", async ({ page }) => {
   await installMockSupabase(page, { role: "admin_recruiter" }); let hold: ReturnType<typeof gate> | null = null;
   await page.route("**/rest/v1/candidate_reference_checks?**", async route => { if (hold) await hold.pending; await route.fallback(); });
   await page.goto("/workspace?lang=en&type=group&id=GRP-ENG&section=pipeline"); await expectWorkspaceReady(page);
-  await page.getByRole("button", { name: /^Pat Phone C-PHONE/ }).click();
+  await page.getByRole("button", { name: /^Pat Phone.*C-PHONE/ }).click();
   await expect(page.getByRole("dialog").getByRole("heading", { name: "Application details", exact: true })).toBeVisible();
   await page.getByRole("dialog").getByRole("button", { name: "Close", exact: true }).click();
-  hold = gate(); await page.getByRole("button", { name: /^Penny Phone Pass C-PHONE-PASS/ }).click();
+  hold = gate(); await page.getByRole("button", { name: /^Penny Phone Pass.*C-PHONE-PASS/ }).click();
   const detail = page.getByRole("dialog"); await expect(detail.locator("[data-loading-skeleton=detail]")).toBeVisible();
   await expect(detail).not.toContainText("Pat Phone"); hold.release();
   await expect(detail).toContainText("Penny Phone Pass"); await expect(detail.getByRole("heading", { name: "Application details", exact: true })).toBeVisible();

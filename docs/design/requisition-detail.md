@@ -23,3 +23,17 @@ Every non-empty Requisition profile value is copyable using its displayed locali
 ## Committed saves and reconciliation
 
 Creation, edits/Doc ID changes, status and priority apply the server-authorized final receipt before reconciliation. Preserve the custom detail header, submitted draft on validation failure and saved body during background refresh errors. Status follows server headcount/offer calculation; never speculate on final status. Exact receipt metrics update immediately; matching list totals stay visible with updating feedback. Linked previews and Workspace instances use the same scoped receipt overlay. See [implementation and verification](../work-items/requisition-committed-updates/implementation.md).
+
+## Flat overview strip
+
+The overview alone removes outer and metric cards. Use a flat four-column desktop/two-column phone metric strip with small slate labels, strong navy values and thin neutral dividers: Open HC, accepted/approved HC, PR-based Actual Age and restart-aware Current SLA. Keep calculation context in metric titles, a slim headcount progress bar and concise sourcing-readiness explanation. Preserve missing-date dashes, all calculations/status semantics and remaining detail sections/actions. [Checks](../../tests/e2e/records-refinement.spec.ts).
+
+
+Standalone Records Linked presentation follows the [shared indicator contract](controls.md#records-selection-and-linked-indicators); this rename does not alter Requisition Detail readiness calculations.
+
+
+## Records identity and column order
+
+Standalone Requisitions merges Position and Doc ID into one left-aligned identity opening the existing detail. Position is 13px semibold navy above 11px regular slate Doc ID. Both are one visible desktop line with full-value access; phones may wrap. Preserve Position/Doc ID filters and URL sort keys, including secondary Sort Doc ID within the advanced filter area.
+
+Order: Selection, Priority, Position/Doc ID, Status, Linked, SLA, Actual Age, Owner, Department, Request Type, Section, Open HC, Headcount, Accepted, Candidates, Requisition Date, Updated, Actions. Linked follows shared soft-tag styling without changing readiness calculations. [Shared controls](controls.md#records-headings-and-captured-selection), [checks](../../tests/e2e/records-capture-history.spec.ts).

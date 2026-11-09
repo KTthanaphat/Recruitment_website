@@ -96,3 +96,14 @@ test('unknown writes require a fresh exact detail read rather than the warm cach
  current={...row,status:'cancel',updated_at:'2026-11-04T03:00:00Z'};
  const fresh=await load(client,input);assert.equal(reads,2);assert.equal(fresh.requisition.status,'cancel');assert.equal(r.requisitionNeedsReconciliation(client,'scope','R1'),false);
 });
+
+test('priority receipts invalidate unfiltered and other-header candidate projections without guessing flags',async()=>{
+ lists.clearRecruitmentListCache();const c={calls:0,rpc:async()=>{c.calls++;return {data:{items:[{candidate_id:'C1',has_priority_requisition:c.calls>1}],total_count:1,has_more:false,has_more_before:false,next_cursor:null,previous_cursor:null},error:null};}};
+ const request={accessScope:'priority-test',entity:'candidate_registry',filters:{headerSite:'KT3'},limit:7};
+ const change=receipt({operation:'app_set_requisition_priority_v1',changed_fields:['is_priority']});
+ assert(r.requisitionQueryAffected(request,change));
+ const before=await lists.fetchRecruitmentList(c,request);assert.equal(before.items[0].has_priority_requisition,false);
+ lists.invalidateRequisitionRecruitmentLists(c,'priority-test',[change]);
+ const after=await lists.fetchRecruitmentList(c,request);assert.equal(after.items[0].has_priority_requisition,true);assert.equal(c.calls,2);
+ assert(r.requisitionQueryAffected({entity:'candidate_registry'},change));
+});

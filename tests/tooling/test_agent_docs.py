@@ -118,6 +118,8 @@ class AgentDocsTests(unittest.TestCase):
                 for _ in range(4):
                     number = next(ids)
                     features.append(f"### F{number:02d}: Feature\n")
+                if name == "platform":
+                    features.append("### F28: Notification center\n")
                 extra = ""
                 if name == "home":
                     extra = "\n## Dependency edges\n| Edge | Target | Follow when |\n| --- | --- | --- |\n| `uses` | [SYS-WORKSPACE](workspace.md) | test |\n"

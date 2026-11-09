@@ -80,3 +80,15 @@ Candidate offer attendance icons: [shared controls](../../../src/components/ui/A
 - Bounded stage loading and committed candidate saves: [board hook](../../../src/lib/pipeline-board-list.ts), [receipts](../../../src/lib/candidate-action-receipt.ts), [invoker RPCs](../../../supabase/schemas/61_candidate_actions.sql), [contract](../../design/pipeline.md).
 
 Candidate/requisition form refinement: `src/components/RecruitmentWorkspace.tsx`, `src/components/requisitions/AuthorizedRequisitionLookup.tsx`; layout contracts: [candidate detail](../../design/candidate-detail.md), [requisition detail](../../design/requisition-detail.md), [selector controls](../../design/controls.md). Focused checks: candidate-search-outcomes and requisition-identity browser specs.
+
+
+### Flat detail and Records table refinement
+
+- Owners/search: `candidateShellKey`, `applicationReady`, `CandidateProfilePanel`, `PipelineStageMarker`, `buildDetailBodyV2`, `duplicateReview`, `Modal compactWarning`, `PipelineTableView`, `RecordFilterPanel`, `RecordPagination`.
+- Contracts/checks: [detail and warning](../../design/candidate-detail.md#flat-sections-and-contact-review-warning), [Records controls](../../design/controls.md#records-tables-and-fixed-pagination), [Records acceptance](../../../tests/e2e/records-refinement.spec.ts), [warning checks](../../../tests/e2e/seven-row-warning.spec.ts). Board paging remains owned by its existing contract.
+
+- Retained shell/history: [loading](../../design/candidate-detail.md#retained-profile-during-application-loading) → [switch/race checks](../../../tests/e2e/records-priority-history.spec.ts); shared marker owner [StageRail](../../../src/components/ui/StageRail.tsx).
+
+- Compact history title/details and marker descriptions: renderStageHistoryRecord; [contract](../../design/candidate-detail.md#flat-sections-and-contact-review-warning) → [focused checks](../../../tests/e2e/records-divider-filters.spec.ts).
+
+- Complete selected-application timeline: completedStageRecords/renderStageHistoryRecord; [contract](../../design/candidate-detail.md#flat-sections-and-contact-review-warning) → [large-history check](../../../tests/e2e/candidate-search-outcomes.spec.ts). No recent-three or older disclosure cap.

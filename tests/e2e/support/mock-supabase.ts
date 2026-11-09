@@ -31,6 +31,7 @@ type MockSupabaseOptions = {
   welcomeSummaryFailureOnce?: boolean;
   homeBannerSummaryDelayMs?: number;
   homeBannerSummaryFailureOnce?: boolean;
+  notifications?: Array<Record<string, unknown>>;
 };
 
 export type MockRpcCall = {
@@ -41,6 +42,7 @@ export type MockRpcCall = {
 
 export type MockSupabaseContext = {
   data: DashboardData;
+  notifications: Array<Record<string, unknown>>;
   rpcCalls: MockRpcCall[];
   restReads: Array<{ table: string; scopedCandidate: string; candidateIds: string[]; inFilterSizes: Record<string, number> }>;
   excludeBootstrapCandidate: (candidateId: string) => void;
@@ -85,6 +87,7 @@ export async function installMockSupabase(page: Page, options: MockSupabaseOptio
   const role = options.role ?? "admin_recruiter";
   const language = options.language === undefined ? "en" : options.language;
   const data = createRecruitmentDataset(role);
+  const notificationRows = options.notifications ?? [];
   data.candidate_applications = data.candidates.map((candidate, index) => ({ application_id: `00000000-0000-4000-8000-${String(index+1).padStart(12,"0")}`, candidate_id: candidate.candidate_id, group_id: candidate.group_id ?? data.document_groups.find(link=>link.doc_group_id===candidate.doc_group_id)?.group_id ?? "GRP-ENG", state: data.offers.some(offer=>offer.candidate_id===candidate.candidate_id&&offer.accepted_date&&offer.start_confirmation!=="did_not_start")||data.recruitment_logs.some(log=>log.candidate_id===candidate.candidate_id&&log.result===0)?"closed":"active", closure_reason: null, closed_at: null, created_by: data.profile?.id??null, version: 1, created_at:candidate.created_at,updated_at:candidate.updated_at }));
   data.candidate_application_assignments = data.candidate_applications.map((application,index)=>({assignment_id:`10000000-0000-4000-8000-${String(index+1).padStart(12,"0")}`,application_id:application.application_id,group_id:application.group_id,from_group_id:null,started_at:application.created_at,ended_at:null,actor_id:data.profile?.id??null,reason:null,attribution_inferred:true}));
   data.candidate_notes=[];
@@ -142,7 +145,13 @@ export async function installMockSupabase(page: Page, options: MockSupabaseOptio
   await page.route("**/rest/v1/rpc/**", async (route) => {
     const requestedEndpoint = new URL(route.request().url()).pathname.split("/").at(-1) ?? "";
     let endpoint = requestedEndpoint;
-    const body = route.request().postDataJSON() as { payload?: Record<string, unknown>; p_entity?: string; p_search?: string; p_filters?: Record<string, unknown>; p_sort?: string; p_direction?: string; p_limit?: number; p_cursor_value?: unknown; p_cursor_id?: string | null; p_before?: boolean; p_after_group_id?: string | null; p_after_candidate_id?: string | null; p_after_application_id?: string | null; p_group_id?: string | null } | undefined;
+    const body = route.request().postDataJSON() as { payload?: Record<string, unknown>; p_notification_id?: string; p_entity?: string; p_search?: string; p_filters?: Record<string, unknown>; p_sort?: string; p_direction?: string; p_limit?: number; p_cursor_value?: unknown; p_cursor_id?: string | null; p_before?: boolean; p_after_group_id?: string | null; p_after_candidate_id?: string | null; p_after_application_id?: string | null; p_group_id?: string | null } | undefined;
+    if (requestedEndpoint === "app_mark_recruitment_notification_read_v1") {
+      const item = notificationRows.find(row => row.notification_id === body?.p_notification_id);
+      if (item) item.read_at = fixtureNow.toISOString();
+      await json(route, null);
+      return;
+    }
     if(requestedEndpoint==="app_requisition_action_v1"){
       const envelope=asRecord(body?.payload), operation=String(envelope.operation), input=asRecord(envelope.payload);
       rpcCalls.push({endpoint:requestedEndpoint,payload:{...body}});
@@ -293,7 +302,7 @@ export async function installMockSupabase(page: Page, options: MockSupabaseOptio
         const creatorName=(id:string)=>data.profiles.find(profile=>profile.id===id)?.nickname??"Creator";
         const full=data.candidates.filter(candidate=>{const apps=data.candidate_applications?.filter(row=>row.candidate_id===candidate.candidate_id)??[],unmatched=data.candidate_profile_capabilities?.find(row=>row.candidate_id===candidate.candidate_id)?.is_unmatched??!apps.length,creator=creatorName(candidate.created_by);if(filters.scope==="pool"&&!unmatched||filters.scope==="active"&&!apps.some(row=>row.state==="active")||filters.scope==="history"&&!apps.some(row=>row.state==="closed"))return false;if(filters.site&&candidate.home_site!==filters.site||filters.owner&&creator!==filters.owner)return false;return [candidate.candidate_id,candidate.name,candidate.nickname,candidate.phone_no,candidate.email,candidate.position_interests].join(" ").toLocaleLowerCase().includes(search);});
         const masked=filters.scope==="all"||filters.scope==="pool"?(data.masked_candidate_pool??[]).filter(row=>!data.candidates.some(candidate=>candidate.candidate_id===row.candidate_id)&&(!filters.owner||row.creator_label===filters.owner)&&[row.candidate_id,row.position_interests,row.creator_label].join(" ").toLocaleLowerCase().includes(search)):[];
-        await json(route,full.length+masked.length);return;
+        await json(route,full.filter(row=>mockCandidateColumnMatch({...row,creator_label:creatorName(row.created_by),active_application_count:(data.candidate_applications??[]).filter(app=>app.candidate_id===row.candidate_id&&app.state==="active").length,masked:false},filters)).length+masked.filter(row=>mockCandidateColumnMatch({...row,masked:true},filters)).length);return;
       }
       if(entity==="candidate_applications"||entity==="pipeline_stage") {
         const rows=enrichCandidates(data).filter(row=>recruitmentPipelineRowMatches(data,row,entity,filters,search));
@@ -407,12 +416,12 @@ export async function installMockSupabase(page: Page, options: MockSupabaseOptio
         if(filters.scope==="pool"&&!unmatched||filters.scope==="active"&&!apps.some(row=>row.state==="active")||filters.scope==="history"&&!apps.some(row=>row.state==="closed"))return false;
         if(filters.site&&candidate.home_site!==filters.site||filters.owner&&creator!==filters.owner)return false;
         return [candidate.name,candidate.nickname,candidate.candidate_id,idSearch(candidate.candidate_id),candidate.phone_no,candidate.email,candidate.position_interests].join(" ").toLocaleLowerCase().includes(search);
-      }).map(candidate=>{const apps=data.candidate_applications?.filter(row=>row.candidate_id===candidate.candidate_id)??[];return {candidate_id:candidate.candidate_id,name:candidate.name,nickname:candidate.nickname,phone_no:candidate.phone_no,email:candidate.email,home_site:candidate.home_site,creator_label:creatorName(candidate.created_by),channel:candidate.channel,position_interests:candidate.position_interests,active_application_count:apps.filter(row=>row.state==="active").length,updated_at:candidate.updated_at,created_at:candidate.created_at,masked:false,is_unmatched:data.candidate_profile_capabilities?.find(row=>row.candidate_id===candidate.candidate_id)?.is_unmatched??!apps.length};});
-      const all=filters.scope==="all"||filters.scope==="pool"?(data.masked_candidate_pool??[]).filter(row=>!data.candidates.some(candidate=>candidate.candidate_id===row.candidate_id)&&(!filters.owner||row.creator_label===filters.owner)&&[row.candidate_id,idSearch(row.candidate_id),row.position_interests,row.creator_label].join(" ").toLocaleLowerCase().includes(search)).map(row=>({candidate_id:row.candidate_id,name:null,nickname:null,phone_no:null,email:null,home_site:null,creator_label:row.creator_label,channel:null,position_interests:row.position_interests,active_application_count:null,updated_at:null,created_at:row.created_at,masked:true,is_unmatched:true})):[];
-      const rows=[...full,...all].sort((a,b)=>(b.updated_at??b.created_at??"").localeCompare(a.updated_at??a.created_at??"")||a.candidate_id.localeCompare(b.candidate_id));
+      }).map(candidate=>{const apps=data.candidate_applications?.filter(row=>row.candidate_id===candidate.candidate_id)??[];return {candidate_id:candidate.candidate_id,name:candidate.name,nickname:candidate.nickname,phone_no:candidate.phone_no,email:candidate.email,home_site:candidate.home_site,creator_label:creatorName(candidate.created_by),channel:candidate.channel,position_interests:candidate.position_interests,active_application_count:apps.filter(row=>row.state==="active").length,updated_at:candidate.updated_at,created_at:candidate.created_at,masked:false,has_priority_requisition:apps.some(app=>app.state==="active"&&data.document_groups.some(link=>link.group_id===app.group_id&&data.requisitions.some(req=>req.doc_id===link.doc_id&&req.is_priority))),is_unmatched:data.candidate_profile_capabilities?.find(row=>row.candidate_id===candidate.candidate_id)?.is_unmatched??!apps.length};});
+      const all=filters.scope==="all"||filters.scope==="pool"?(data.masked_candidate_pool??[]).filter(row=>!data.candidates.some(candidate=>candidate.candidate_id===row.candidate_id)&&(!filters.owner||row.creator_label===filters.owner)&&[row.candidate_id,idSearch(row.candidate_id),row.position_interests,row.creator_label].join(" ").toLocaleLowerCase().includes(search)).map(row=>({candidate_id:row.candidate_id,name:null,nickname:null,phone_no:null,email:null,home_site:null,creator_label:row.creator_label,channel:null,position_interests:row.position_interests,active_application_count:null,updated_at:null,created_at:row.created_at,masked:true,has_priority_requisition:false,is_unmatched:true})):[];
+      const rows=[...full,...all].filter(row=>mockCandidateColumnMatch(row,filters)).sort((a,b)=>(body?.p_direction==="asc"?1:-1)*(a.updated_at??a.created_at??"").localeCompare(b.updated_at??b.created_at??"")||a.candidate_id.localeCompare(b.candidate_id));
       const cursor=body?.p_cursor_value as string|null,cursorId=String(body?.p_cursor_id??""),before=body?.p_before===true;
       if(options.emptyContinuationOnceEntity==="candidate_registry"&&cursorId&&!emptyContinuationEntities.has("candidate_registry")) { emptyContinuationEntities.add("candidate_registry"); await json(route,{items:[],total_count:rows.length,has_more:false,has_more_before:false,next_cursor:null,previous_cursor:null});return; }
-      const cursorCompare=(row:typeof rows[number])=>cursor.localeCompare(row.updated_at??row.created_at??"")||row.candidate_id.localeCompare(cursorId);
+      const cursorCompare=(row:typeof rows[number])=>(body?.p_direction==="asc"?1:-1)*(row.updated_at??row.created_at??"").localeCompare(cursor)||row.candidate_id.localeCompare(cursorId);
       const eligible=cursor===null||cursor===undefined?rows:rows.filter(row=>before?cursorCompare(row)<0:cursorCompare(row)>0);
       const items=before?eligible.slice(-limit):eligible.slice(0,limit),first=items[0],last=items.at(-1),firstIndex=first?rows.indexOf(first):0;
       const hasMore=firstIndex+items.length<rows.length,hasMoreBefore=firstIndex>0;
@@ -563,7 +572,7 @@ export async function installMockSupabase(page: Page, options: MockSupabaseOptio
       if (route.request().method() === "PATCH") { const id = url.searchParams.get("reason_id")?.replace(/^eq\./, ""); const row = data.rejection_reasons.find((reason) => reason.reason_id === id); if (row) Object.assign(row, body); }
       await json(route, []); return;
     }
-    let rows = tableRows(data, table);
+    let rows = table === "recruitment_notifications" ? notificationRows : tableRows(data, table);
     if (bootstrapExcludedCandidateIds.size) {
       const candidateScope = url.searchParams.get("candidate_id")?.replace(/^eq\./, "") ?? "";
       const applicationScope = url.searchParams.get("application_id")?.replace(/^eq\./, "") ?? "";
@@ -596,7 +605,7 @@ export async function installMockSupabase(page: Page, options: MockSupabaseOptio
     await json(route, applyRestQuery(rows, url));
   });
 
-  return { data, rpcCalls, restReads, excludeBootstrapCandidate: candidateId => { bootstrapExcludedCandidateIds.add(candidateId); } };
+  return { data, notifications: notificationRows, rpcCalls, restReads, excludeBootstrapCandidate: candidateId => { bootstrapExcludedCandidateIds.add(candidateId); } };
 }
 
 export async function expectWorkspaceReady(page: Page) {
@@ -621,6 +630,7 @@ export function seedCrossSiteMatchScenario(data: DashboardData) {
 }
 
 function requisitionListRows(data: DashboardData, filters: Record<string, unknown>, search: string) {
+  if(Array.isArray(filters.docIds)){const selected=filters.docIds as string[];const {docIds,...rest}=filters;return requisitionListRows(data,rest,search).filter(row=>selected.includes(row.doc_id));}
   return enrichRequisitions(data).filter(row => {
     if(filters.homeTab==="open_headcount"&&(row.status==="filled"||row.status==="cancel"||row.open_headcount<=0))return false;
     const role=data.profile?.role??"viewer",admin=role==="system_admin"||role==="admin_recruiter";
@@ -1397,4 +1407,18 @@ function sourcingUpdate(groupId: string, weekStart: string, applicants: number) 
     created_at: "2026-07-06T00:00:00",
     updated_at: "2026-07-06T00:00:00"
   };
+}
+
+function mockCandidateColumnMatch(row:Record<string,unknown>,filters:Record<string,unknown>) {
+ const text=(key:string)=>String(filters[key]??"").trim().toLowerCase(),masked=row.masked===true;
+ const includes=(key:string,values:unknown[])=>!text(key)||values.filter(value=>value!=null).join(" ").toLowerCase().includes(text(key));
+ if(Array.isArray(filters.candidateIds)&&!filters.candidateIds.includes(row.candidate_id))return false;
+ const id=String(row.candidate_id??"").replace(/^(CAN|GRP)-(\d+)$/i,(_,prefix:string,digits:string)=>prefix.toUpperCase()+"-"+digits.padStart(5,"0"));
+ if(!includes("candidateText",[row.candidate_id,id,...(masked?[]:[row.name,row.nickname])]))return false;
+ for(const [key,values]of [["contactText",[row.phone_no,row.email]],["candidateSite",[row.home_site]],["sourceText",[row.channel]]] as const)if(text(key)&&(masked||!includes(key,[...values])))return false;
+ if(!includes("creatorText",[row.creator_label])||!includes("interestsText",[row.position_interests]))return false;
+ if(text("activeMin")&&(masked||Number(row.active_application_count)<Number(filters.activeMin)))return false;
+ if(text("activeMax")&&(masked||Number(row.active_application_count)>Number(filters.activeMax)))return false;
+ const date=String(masked?row.created_at:row.updated_at??row.created_at??"").slice(0,10);
+ return (!text("updatedFrom")||date>=text("updatedFrom"))&&(!text("updatedTo")||date<=text("updatedTo"));
 }

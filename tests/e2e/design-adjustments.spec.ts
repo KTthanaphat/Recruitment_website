@@ -5,7 +5,7 @@ import { enrichCandidates } from "../../src/lib/data";
 import { expectWorkspaceReady, installMockSupabase } from "./support/mock-supabase";
 
 test.setTimeout(60_000);
-for (const size of [23,1005]) test("Pipeline preloads complete "+size+" population then pages five locally",async({page})=>{
+for (const size of [23,1005]) test("Pipeline keeps five-card pages for "+size+" candidates in bounded cursor blocks",async({page})=>{
   const mock=await installMockSupabase(page,{role:"admin_recruiter"});
   const base=enrichCandidates(mock.data).find(row=>row.latest_process==="Phone Screen")!;
   const rows=Array.from({length:size},(_,i)=>({...base,application_id:"board-"+String(i+1).padStart(5,"0"),candidate_id:"CAN-"+String(i+1).padStart(5,"0"),name:"Board Candidate "+(i+1),nickname:null}));
@@ -47,7 +47,7 @@ for (const size of [23,1005]) test("Pipeline preloads complete "+size+" populati
     await expect(navigation).toContainText("4/5");
     expect(requests.length).toBe(readCount);
   }
-  expect((requests as Array<{p_limit:number}>).every(row=>row.p_limit===100)).toBe(true);
+  expect((requests as Array<{p_limit:number}>).every(row=>row.p_limit===25)).toBe(true);
   fs.mkdirSync("outputs/design-adjustments",{recursive:true});
   fs.writeFileSync("outputs/design-adjustments/pipeline-"+size+".json",JSON.stringify({population:size,listRequests:requests.length,transferredListBytes:bytes,firstCompleteBoardMs},null,2));
   await page.screenshot({path:"outputs/design-adjustments/pipeline-"+size+".png",fullPage:true});

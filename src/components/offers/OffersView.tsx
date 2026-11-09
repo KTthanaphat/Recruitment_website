@@ -1,3 +1,4 @@
+import { RECORD_PAGE_SIZE, RecordHeaderFilterRow, RecordPagination, RecordCreateButton, RecordCell, RecordFilterPanel, useRecordFilterDraft, useRecordsCardLayout, useRecordCategoryOptions } from "@/components/ui/RecordsControls";
 import { RetryIconButton } from "@/components/ui/RetryIconButton";
 import { NumberSkeleton, TableSkeletonRows, LoadingSkeleton, RefreshIndicator } from "@/components/ui/LoadingSkeleton";
 import { Plus, Search } from "lucide-react";
@@ -6,7 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PAGE_SIZE_OPTIONS, Pagination, paginateRows } from "@/components/ui/Pagination";
 import { Panel } from "@/components/ui/Panel";
-import { SortableFilterHeader, TableToolbar, TruncatedTableText, type TableColumn, useTableControls } from "@/components/ui/TableControls";
+import { SortableFilterHeader, TableFilterField, TableToolbar, TruncatedTableText, type TableColumn, useTableControls } from "@/components/ui/TableControls";
 import { Tag } from "@/components/ui/Tag";
 import { RecordQuickActions, type RecordQuickAction } from "@/components/ui/Operations";
 import { BulkActionToolbar, BulkReviewModal } from "@/components/ui/Workflow";
@@ -45,8 +46,8 @@ export function OffersView({
   listScope?: Record<string, unknown>;
 }) {
   const initialTableState = useMemo(() => readTableUrlState("offer"), []);
-  const [page, setPage] = useState(initialTableState.page);
-  const [pageSize, setPageSize] = useState<number>((PAGE_SIZE_OPTIONS as readonly number[]).includes(initialTableState.pageSize) ? initialTableState.pageSize : PAGE_SIZE_OPTIONS[0]);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(RECORD_PAGE_SIZE);
   const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(Object.keys(initialTableState.filters ?? {}).length > 0);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selectedRowCache, setSelectedRowCache] = useState<Record<string, EnrichedOffer>>({});
@@ -54,17 +55,19 @@ export function OffersView({
   const [bulkResult, setBulkResult] = useState<BulkActionResult | null>(null);
   const tableInitialized = useRef(false);
   const columns: TableColumn<EnrichedOffer>[] = [
-    { key: "candidate", label: "Candidate", value: (row) => row.candidate_name ?? row.candidate_id },
-    { key: "doc_id", label: "Doc ID", value: (row) => row.doc_id },
-    { key: "position", label: "Position", value: (row) => formatRequisitionTitle(row) },
-    { key: "status", label: "Offer Status", value: (row) => offerStatusLabel(language, offerStatus(row).label), filterMode: "category" },
-    { key: "impact", label: "Impact", value: (row) => offerImpact(row, allOffers, requisitions), filterMode: "category" },
-    { key: "accepted", label: "Accepted", value: (row) => row.accepted_date ? formatDate(row.accepted_date, language) : translate(language, "pending"), sortValue: (row) => row.accepted_date ?? "" },
-    { key: "first_working", label: "First Working", value: (row) => formatDate(row.first_working_date), sortValue: (row) => row.first_working_date ?? "" },
-    { key: "age", label: "Age", value: (row) => ageLabel(row), sortValue: (row) => offerStatus(row).ageDays ?? Number.POSITIVE_INFINITY }
+    { key: "candidate", label: translate(language,"candidate"), value: (row) => row.candidate_name ?? row.candidate_id },
+    { key: "doc_id", label: translate(language,"docId"), value: (row) => row.doc_id },
+    { key: "position", label: translate(language,"position"), value: (row) => formatRequisitionTitle(row) },
+    { key: "status", label: translate(language,"recordsOfferStatus"), value: (row) => offerStatusLabel(language, offerStatus(row).label), filterMode: "category" },
+    { key: "impact", label: translate(language,"recordsOfferImpact"), value: (row) => offerImpact(row, allOffers, requisitions), filterMode: "category" },
+    { key: "accepted", label: translate(language,"accepted"), value: (row) => row.accepted_date ? formatDate(row.accepted_date, language) : translate(language, "pending"), sortValue: (row) => row.accepted_date ?? "" },
+    { key: "first_working", label: translate(language,"firstWorking"), value: (row) => formatDate(row.first_working_date), sortValue: (row) => row.first_working_date ?? "" },
+    { key: "age", label: translate(language,"ageLabel"), value: (row) => ageLabel(row), sortValue: (row) => offerStatus(row).ageDays ?? Number.POSITIVE_INFINITY }
   ];
   const table = useTableControls(rows, columns, initialTableState);
-  const list = useRecruitmentList<EnrichedOffer>({ client, accessScope, entity: "offers", filters: { ...listScope, ...table.filters }, sort: table.sortKey ?? "accepted", direction: table.sortDirection ?? "desc", initialPageSize: pageSize === 25 || pageSize === 50 || pageSize === 100 ? pageSize : 50, enabled: Boolean(client && accessScope), searchInput: { value: table.search, setValue: table.setSearch } });
+  const staged = useRecordFilterDraft(table.filters, advancedFiltersOpen);
+  const list = useRecruitmentList<EnrichedOffer>({ client, accessScope, entity: "offers", filters: { ...listScope, ...table.filters }, sort: table.sortKey ?? "accepted", direction: table.sortDirection ?? "desc", initialPageSize: RECORD_PAGE_SIZE, enabled: Boolean(client && accessScope), searchInput: { value: table.search, setValue: table.setSearch } });
+  const recordFilterOptions=useRecordCategoryOptions(columns,[...rows,...list.items],JSON.stringify([accessScope,listScope,language]));
   const paginated = { page: list.page };
   const visibleRows = client && accessScope ? list.items : paginateRows(table.controlledRows, page, pageSize).rows;
   const selectedRows = selectedIds.map(id => selectedRowCache[id] ?? [...rows, ...list.items].find(row => String(row.offer_id) === id)).filter((row): row is EnrichedOffer => Boolean(row));
@@ -90,22 +93,22 @@ export function OffersView({
   }, [list.page, list.pageSize, list.search, table.filters, table.sortDirection, table.sortKey]);
 
   return (
-    <Panel>{list.refreshing ? <RefreshIndicator language={language} /> : null}
+    <Panel className="records-surface records-offers">{list.refreshing ? <RefreshIndicator language={language} /> : null}
       {list.error ? <div role="alert" className="mb-3 flex items-center gap-3 text-sm text-scarlet"><span>Could not load offers.</span><RetryIconButton title={`${language === "th" ? "ลองโหลดข้อมูลอีกครั้ง" : "Retry loading"}: Offers`} type="button"  onClick={list.retry} loading={list.loading}>{language === "th" ? "ลองอีกครั้ง" : "Retry"}</RetryIconButton></div> : null}
       {!client && rows.length === 0 ? (
-        <>{canWrite ? <div className="mb-4 flex justify-end"><Button type="button" size="sm" icon={<Plus size={17} />} onClick={onNew}>{translate(language, "newOffer")}</Button></div> : null}<EmptyState message={translate(language, "noData")} /></>
+        <>{canWrite ? <div className="mb-4 flex justify-end"><RecordCreateButton label={translate(language,"newOffer")} onClick={onNew}/></div> : null}<EmptyState message={translate(language, "noData")} /></>
       ) : (
         <>
-        {list.initialLoading ? <LoadingSkeleton variant="cards" language={language} className="md:hidden" /> : null}<TableToolbar
-          advancedFiltersOpen={advancedFiltersOpen}
+        {list.initialLoading ? <LoadingSkeleton variant="cards" language={language} className="md:hidden" /> : null}<TableToolbar records advancedFiltersPanelId="records-offer-filters" filtersActive={Object.values(table.filters).some(Boolean)}           advancedFiltersOpen={advancedFiltersOpen}
           language={language}
           onAdvancedFiltersToggle={() => setAdvancedFiltersOpen((open) => !open)}
           onSearch={list.setSearch}
           resultCount={client ? list.totalCount : table.controlledRows.length}
           searchValue={list.search}
-          trailingActions={canWrite ? <Button type="button" size="sm" icon={<Plus size={17} />} onClick={onNew}>{translate(language, "newOffer")}</Button> : null}
+          trailingActions={canWrite ? <RecordCreateButton label={translate(language,"newOffer")} onClick={onNew}/> : null}
           totalCount={client ? list.totalCount : rows.length}
         />
+<RecordFilterPanel id="records-offer-filters" open={advancedFiltersOpen} language={language} onClose={()=>setAdvancedFiltersOpen(false)} onApply={()=>table.setFilters({...staged.draft})} onClear={()=>{staged.setDraft({});table.setFilters({});}} columns={columns} filters={staged.draft} onFilter={staged.setField} filterOptions={recordFilterOptions}/>
         {client && list.totalCount === 0 ? <EmptyState variant="quiet" message={translate(language, "noData")} /> : null}
         <div className="grid gap-3 md:hidden">
           {visibleRows.map((row) => (
@@ -130,8 +133,8 @@ export function OffersView({
           <table className="w-full border-collapse text-left text-sm">
             <thead className="bg-lightgray text-xs uppercase text-slate">
               <tr>
-                <th scope="col" className="px-3 py-3">
-                  <input
+                <th scope="col" className="records-selection-cell">
+                  <input className="record-selection-checkbox"
                     aria-label={translate(language, "selectVisibleOffers")}
                     type="checkbox"
                     checked={visibleRows.length > 0 && visibleRows.every((row) => selectedIds.includes(String(row.offer_id)))}
@@ -147,10 +150,10 @@ export function OffersView({
                       label={column.label}
                       onFilter={table.setFilter}
                       onSort={table.toggleSort}
-                      filterOptions={table.categoryFilterOptions(column.key)}
+                      filterOptions={recordFilterOptions(column.key)}
                       sortDirection={table.sortDirection}
                       sortKey={table.sortKey}
-                      showFilter={advancedFiltersOpen}
+                      showFilter={false} viewportBoundedFilters
                     />
                   </th>
                 ))}
@@ -160,35 +163,33 @@ export function OffersView({
             <tbody aria-busy={list.loading}>{list.initialLoading ? <TableSkeletonRows columns={[{kind:"action"}, ...columns.map(column => ({kind: /date/i.test(column.key) ? "date" as const : "text" as const})), {kind:"action"}]} language={language}/> : null}
               {visibleRows.map((row) => (
                 <tr key={row.offer_id} className="border-b border-[#D7DEE8] last:border-0">
-                  <td className="px-3 py-3">
-                    <input
+                  <td className="records-selection-cell"><input className="record-selection-checkbox"
                       aria-label={translate(language, "selectOffer", { id: row.offer_id })}
                       type="checkbox"
                       checked={selectedIds.includes(String(row.offer_id))}
                       onChange={(event) => { const id=String(row.offer_id); setSelectedIds((current) => event.target.checked ? [...new Set([...current,id])] : current.filter((value) => value !== id)); setSelectedRowCache(current=>{const next={...current};if(event.target.checked)next[id]=row;else delete next[id];return next;}); }}
-                    />
-                  </td>
-                  <td className="px-3 py-3">
+                    /></td>
+                  <td className="px-3 py-3"><RecordCell>
                     <TruncatedTableText value={row.candidate_name ?? formatRecruitmentId(row.candidate_id)} className="font-bold text-navy" />
-                  </td>
-                  <td className="px-3 py-3 font-semibold text-navy">{row.doc_id}</td>
-                  <td className="px-3 py-3 text-slate"><TruncatedTableText value={formatRequisitionTitle(row)} /></td>
-                  <td className="px-3 py-3"><Tag tone={offerStatus(row).tone}>{offerStatusLabel(language, offerStatus(row).label)}</Tag></td>
-                  <td className="px-3 py-3 text-slate">{offerImpact(row, allOffers, requisitions)}</td>
-                  <td className="px-3 py-3">{row.accepted_date ? <Tag tone="success">{formatDate(row.accepted_date, language)}</Tag> : <Tag tone="muted">{translate(language, "pending")}</Tag>}</td>
-                  <td className="px-3 py-3 text-slate">{formatDate(row.first_working_date, language)}</td>
-                  <td className="px-3 py-3 text-slate">{ageLabel(row)}</td>
-                  <td className="px-3 py-3">
+                  </RecordCell></td>
+                  <td className="px-3 py-3 font-semibold text-navy"><RecordCell>{row.doc_id}</RecordCell></td>
+                  <td className="px-3 py-3 text-slate"><RecordCell><TruncatedTableText value={formatRequisitionTitle(row)} /></RecordCell></td>
+                  <td className="px-3 py-3"><RecordCell><Tag tone={offerStatus(row).tone}>{offerStatusLabel(language, offerStatus(row).label)}</Tag></RecordCell></td>
+                  <td className="px-3 py-3 text-slate"><RecordCell>{offerImpact(row, allOffers, requisitions)}</RecordCell></td>
+                  <td className="px-3 py-3"><RecordCell>{row.accepted_date ? <Tag tone="success">{formatDate(row.accepted_date, language)}</Tag> : <Tag tone="muted">{translate(language, "pending")}</Tag>}</RecordCell></td>
+                  <td className="px-3 py-3 text-slate"><RecordCell>{formatDate(row.first_working_date, language)}</RecordCell></td>
+                  <td className="px-3 py-3 text-slate"><RecordCell>{ageLabel(row)}</RecordCell></td>
+                  <td className="px-3 py-3"><RecordCell>
                     <div className="flex items-center justify-end gap-2">
                       <RecordQuickActions label={translate(language, "recordActionsFor", { label: row.candidate_name ?? row.candidate_id })} actions={offerActions(row, language, onOpenCandidate)} />
                     </div>
-                  </td>
+                  </RecordCell></td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-        {client ? <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-[#D7DEE8] pt-3 text-sm"><span>Page {list.page} · {list.totalCount === null && list.countLoading ? <NumberSkeleton/> : list.countLabel} offers{list.countError?<RetryIconButton type="button"   onClick={list.retryCount} loading={list.countLoading}>{language === "th" ? "ลองนับอีกครั้ง" : "Retry count"}</RetryIconButton>:null}</span><div className="flex gap-2"><Button type="button" variant="secondary" disabled={!list.canPrevious} onClick={list.goPrevious}>Previous</Button><Button type="button" variant="secondary" disabled={!list.canNext} onClick={list.goNext}>Next</Button><select aria-label="Rows per page" value={list.pageSize} onChange={event=>list.setPageSize(Number(event.target.value))} className="min-h-10 rounded-md border border-[#C9D5E6] bg-white px-2">{PAGE_SIZE_OPTIONS.map(size=><option key={size} value={size}>{size}</option>)}</select></div></div> : <Pagination language={language} page={paginated.page} pageSize={pageSize} totalRows={table.controlledRows.length} onPageChange={setPage} onPageSizeChange={setPageSize} />}
+        <RecordPagination pageSize={client ? list.pageSize : pageSize} onPageSizeChange={size => { setPageSize(size); list.setPageSize(size); setPage(1); }} language={language} page={client ? list.page : page} totalCount={client ? list.totalCount : table.controlledRows.length} countLoading={client ? list.countLoading : false} countError={client ? list.countError : false} loading={client ? list.loading : false} canPrevious={client ? list.canPrevious : page > 1} canNext={client ? list.canNext : page * pageSize < table.controlledRows.length} onPrevious={client ? list.goPrevious : () => setPage(value => Math.max(1,value-1))} onNext={client ? list.goNext : () => setPage(value=>value+1)} onRetryCount={list.retryCount}/>
         <BulkActionToolbar
           disabledReason={bulkDisabledReason}
           entityLabel={translate(language, "offers")}

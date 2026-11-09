@@ -41,12 +41,13 @@ function matchesScope(receipt: RequisitionActionReceipt, filters: Record<string,
 }
 export function requisitionQueryAffected(request: { entity: string; filters?: Record<string, unknown> }, receipt: RequisitionActionReceipt) {
   const f = request.filters ?? {}, docs = [receipt.doc_id, receipt.previous_doc_id, ...(receipt.aliases ?? [])], groups = [...receipt.groups, ...receipt.source_groups];
+  // Candidate priority is a server-derived relationship projection, including unfiltered pages.
+  if (request.entity === "candidate_registry") return true;
   if (!matchesScope(receipt, f)) return false;
   if (f.docId && !docs.includes(String(f.docId))) return false;
   if (f.groupId && !groups.includes(String(f.groupId))) return false;
   if (f.group_id && !groups.includes(String(f.group_id))) return false;
   if (receipt.operation === "app_set_requisition_priority_v1") return request.entity === "requisitions" || request.entity === "audit_log" || Boolean(f.priorityOnly);
-  if (request.entity === "candidate_registry") return Boolean(f.priorityOnly || f.headerSite || f.headerPic);
   if (receipt.operation === "app_upsert_requisition" && !receipt.changed_fields.some(key => ["doc_id","site","person_in_charge","status","head_count","pr_approved_date","position","department","section","level","is_priority"].includes(key))) return ["requisitions","position_groups","sourcing","sourcing_records","audit_log"].includes(request.entity);
   return true;
 }

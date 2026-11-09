@@ -1,12 +1,20 @@
 "use client";
 
-import { ArrowDown, ArrowDownUp, ArrowUp, Search, SlidersHorizontal } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { ArrowDown, ArrowDownUp, ArrowUp, ChevronDown, Search, SlidersHorizontal } from "lucide-react";
+import { useEffect, useRef, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { formatNumber } from "@/lib/format";
 import { translate } from "@/lib/i18n/dictionary";
 import type { Language } from "@/types/recruitment";
 
 export type SortDirection = "asc" | "desc" | null;
+
+export function RecordSortTriangles({ direction }: { direction: SortDirection | false }) {
+  return <svg width="12" height="16" viewBox="0 0 12 16" aria-hidden="true" focusable="false" data-record-sort-triangles>
+    <path d="M6 1 10 6H2Z" fill={direction === "asc" ? "#0A3CDC" : "#A9B6C9"} />
+    <path d="M6 15 2 10h8Z" fill={direction === "desc" ? "#0A3CDC" : "#A9B6C9"} />
+  </svg>;
+}
 
 export type TableColumn<T> = {
   key: string;
@@ -95,6 +103,7 @@ export function useTableControls<T>(rows: T[], columns: TableColumn<T>[], initia
     filters,
     search,
     setFilter,
+    setFilters,
     setSearch,
     sortDirection,
     sortKey,
@@ -110,7 +119,13 @@ export function TableToolbar({
   resultCount,
   searchValue,
   trailingActions,
-  totalCount
+  totalCount,
+  records = false,
+  hideFilters = false,
+  filtersActive = false,
+  controls,
+  searchLabel,
+  advancedFiltersPanelId
 }: {
   advancedFiltersOpen: boolean;
   language: Language;
@@ -120,11 +135,17 @@ export function TableToolbar({
   searchValue: string;
   trailingActions?: ReactNode;
   totalCount: number | null;
+  records?: boolean;
+  hideFilters?: boolean;
+  filtersActive?: boolean;
+  controls?: ReactNode;
+  searchLabel?: string;
+  advancedFiltersPanelId?: string;
 }) {
   return (
-    <div data-table-toolbar className="mb-3 flex flex-col gap-2 rounded-2xl border border-[#E4E9F2] bg-[#F8FAFD] p-3 sm:flex-row sm:items-center sm:justify-between">
+    <div data-table-toolbar className={records ? "records-toolbar" : "mb-3 flex flex-col gap-2 rounded-2xl border border-[#E4E9F2] bg-[#F8FAFD] p-3 sm:flex-row sm:items-center sm:justify-between"}>
       <label className="relative min-w-0 flex-1">
-        <span className="sr-only">{translate(language, "searchTable")}</span>
+        <span className="sr-only">{searchLabel ?? translate(language, "searchTable")}</span>
         <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate" size={15} aria-hidden="true" />
         <input
           className="min-h-10 w-full rounded-xl border border-[#C9D5E6] bg-white py-1.5 pl-9 pr-3 text-sm font-medium text-navy placeholder:text-cool focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
@@ -134,19 +155,25 @@ export function TableToolbar({
           type="search"
         />
       </label>
+      {controls}
       <div className="flex flex-wrap items-center justify-between gap-2 sm:justify-end">
         <span className="text-xs font-medium text-slate">{translate(language, "recordsCount", { result: resultCount === null ? "…" : formatNumber(resultCount, language), total: totalCount === null ? "…" : formatNumber(totalCount, language) })}</span>
-        <button
+        {!hideFilters ? <button
           type="button"
           className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-xl px-3 text-sm font-semibold transition-colors ${
-            advancedFiltersOpen ? "bg-primary text-white hover:bg-primary/90" : "bg-white text-navy ring-1 ring-inset ring-[#C9D5E6] hover:bg-[#F8FAFD]"
+            (advancedFiltersOpen || filtersActive) ? "bg-primary text-white hover:bg-primary/90" : "bg-white text-navy ring-1 ring-inset ring-[#C9D5E6] hover:bg-[#F8FAFD]"
           }`}
+          aria-label={translate(language,"advancedFilters")}
+          title={translate(language,"advancedFilters")}
+          data-filters-active={filtersActive}
+          aria-controls={advancedFiltersPanelId}
+          aria-expanded={advancedFiltersOpen}
           aria-pressed={advancedFiltersOpen}
           onClick={onAdvancedFiltersToggle}
         >
           <SlidersHorizontal size={15} aria-hidden="true" />
-          {translate(language, "advancedFilters")}
-        </button>
+          <span className={records ? "sr-only" : undefined}>{translate(language, "advancedFilters")}</span>
+        </button> : null}
         {trailingActions}
       </div>
     </div>
@@ -163,7 +190,8 @@ export function SortableFilterHeader({
   filterOptions,
   sortDirection,
   sortKey,
-  showFilter = true
+  showFilter = true,
+  viewportBoundedFilters = false
 }: {
   columnKey: string;
   filterValue: string;
@@ -175,6 +203,7 @@ export function SortableFilterHeader({
   sortDirection: SortDirection;
   sortKey: string | null;
   showFilter?: boolean;
+  viewportBoundedFilters?: boolean;
 }) {
   const active = sortKey === columnKey && sortDirection;
   const Icon = active === "asc" ? ArrowUp : active === "desc" ? ArrowDown : ArrowDownUp;
@@ -183,33 +212,20 @@ export function SortableFilterHeader({
     <div className="grid min-w-28 gap-1">
       <button
         type="button"
-        className="flex items-center justify-between gap-2 text-left font-semibold text-slate transition-colors hover:text-navy focus:outline-none focus:ring-2 focus:ring-primary/25"
+        className={"flex items-center text-left font-semibold text-slate transition-colors hover:text-navy focus:outline-none focus:ring-2 focus:ring-primary/25 "+(viewportBoundedFilters?"justify-start gap-1.5":"justify-between gap-2")}
         onClick={() => onSort(columnKey)}
         aria-label={translate(language, "sortLabel", { label })}
       >
         <span>{label}</span>
-        <Icon size={13} aria-hidden="true" />
+        {viewportBoundedFilters ? <RecordSortTriangles direction={active} /> : <Icon size={13} aria-hidden="true" />}
       </button>
-      {showFilter ? filterOptions ? (
-        <CategoryFilter
-          columnKey={columnKey}
-          filterValue={filterValue}
-          language={language}
-          options={filterOptions}
-          onFilter={onFilter}
-          label={label}
-        />
-      ) : (
-        <input
-          className="min-h-8 rounded-lg border border-[#C9D5E6] bg-white px-2 py-1 text-xs font-medium normal-case text-navy placeholder:text-cool focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15"
-          value={filterValue}
-          onChange={(event) => onFilter(columnKey, event.target.value)}
-          placeholder={translate(language, "filter")}
-          aria-label={translate(language, "filterLabel", { label })}
-        />
-      ) : null}
+      {showFilter ? <TableFilterField columnKey={columnKey} filterValue={filterValue} language={language} label={label} onFilter={onFilter} filterOptions={filterOptions} viewportBounded={viewportBoundedFilters}/> : null}
     </div>
   );
+}
+
+export function TableFilterField({columnKey,filterValue,language,label,onFilter,filterOptions,viewportBounded=false,sidebar=false}:{columnKey:string;filterValue:string;language:Language;label:string;onFilter:(key:string,value:string)=>void;filterOptions?:string[];viewportBounded?:boolean;sidebar?:boolean}) {
+  return filterOptions ? <CategoryFilter columnKey={columnKey} filterValue={filterValue} language={language} options={filterOptions} onFilter={onFilter} label={label} viewportBounded={viewportBounded} sidebar={sidebar}/> : <input className="min-h-8 min-w-0 w-full rounded-lg border border-[#C9D5E6] bg-white px-2 py-1 text-xs font-medium normal-case text-navy placeholder:text-cool focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15" value={filterValue} onChange={event=>onFilter(columnKey,event.target.value)} placeholder={translate(language,"filter")} aria-label={translate(language,"filterLabel",{label})}/>;
 }
 
 export function TruncatedTableText({ value, maxLength = 36, className = "" }: { value: string | number | null | undefined; maxLength?: number; className?: string }) {
@@ -218,23 +234,42 @@ export function TruncatedTableText({ value, maxLength = 36, className = "" }: { 
   return <span className={`block min-w-0 ${className}`} title={shortened ? text : undefined}>{shortened ? `${text.slice(0, maxLength).trimEnd()}...` : text}</span>;
 }
 
-function CategoryFilter({ columnKey, filterValue, language, options, onFilter, label }: { columnKey: string; filterValue: string; language: Language; options: string[]; onFilter: (key: string, value: string) => void; label: string }) {
+function CategoryFilter({ columnKey, filterValue, language, options, onFilter, label, viewportBounded=false, sidebar=false }: { columnKey: string; filterValue: string; language: Language; options: string[]; onFilter: (key: string, value: string) => void; label: string; viewportBounded?:boolean; sidebar?:boolean }) {
+
+  const detailsRef=useRef<HTMLDetailsElement>(null);
+  const menuRef=useRef<HTMLDivElement>(null);
+  const [menuOpen,setMenuOpen]=useState(false);
+  const [menuPosition,setMenuPosition]=useState<CSSProperties>();
+  useEffect(()=>{
+    if(!viewportBounded||!menuOpen)return;
+    const place=()=>{
+      const trigger=detailsRef.current?.querySelector("summary");
+      const menu=menuRef.current;
+      if(!trigger||!menu)return;
+      const rect=trigger.getBoundingClientRect();
+      const below=window.innerHeight-rect.bottom-12,above=rect.top-12;
+      const desired=Math.min(240,menu.scrollHeight);
+      const flip=below<Math.min(160,desired)&&above>below;
+      const height=Math.min(desired,Math.max(44,flip?above:below));
+      const width=Math.min(Math.max(rect.width,192),window.innerWidth-24);
+      setMenuPosition({position:"fixed",left:Math.max(12,Math.min(rect.left,window.innerWidth-12-width)),top:flip?rect.top-height-4:rect.bottom+4,width,maxHeight:height,marginTop:0,zIndex:120});
+    };
+    place();window.addEventListener("resize",place);window.addEventListener("scroll",place,true);
+    return()=>{window.removeEventListener("resize",place);window.removeEventListener("scroll",place,true);};
+  },[viewportBounded,menuOpen,options.length]);
+
+  useEffect(()=>{if(!viewportBounded||!menuOpen)return;const dismiss=(event:PointerEvent)=>{const node=event.target as Node;if(!detailsRef.current?.contains(node)&&!menuRef.current?.contains(node)&&detailsRef.current)detailsRef.current.open=false;};document.addEventListener("pointerdown",dismiss);return()=>document.removeEventListener("pointerdown",dismiss);},[viewportBounded,menuOpen]);
+
   const selected = decodeCategoryFilter(filterValue);
   const allSelected = options.length > 0 && options.every((option) => selected.includes(option.toLowerCase()));
   const selectedCount = options.filter((option) => selected.includes(option.toLowerCase())).length;
 
   function update(next: string[]) {
-    onFilter(columnKey, next.length === 0 || next.length === options.length ? "" : JSON.stringify(next));
+    onFilter(columnKey, next.length === 0 || !viewportBounded && next.length === options.length ? "" : JSON.stringify(next));
   }
 
-  return (
-    <details className="relative min-w-28 normal-case">
-      <summary className="ats-dropdown-trigger flex min-h-8 min-w-0 cursor-pointer list-none items-center justify-between gap-1 rounded-lg border px-2 py-1 text-xs font-medium text-navy [&::-webkit-details-marker]:hidden" aria-label={translate(language, "filterLabel", { label })}>
-        <span className="min-w-0 truncate" title={selectedCount === 0 ? translate(language, "all") : translate(language, "filterSelected", { count: selectedCount })}>{selectedCount === 0 ? translate(language, "all") : translate(language, "filterSelected", { count: selectedCount })}</span>
-        <span aria-hidden="true">⌄</span>
-      </summary>
-      <div className="ats-dropdown-menu absolute left-0 z-30 mt-1 grid max-h-60 min-w-48 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-lg border text-xs font-medium text-navy">
-        <label className={`ats-dropdown-option flex items-center gap-2 font-semibold ${allSelected ? "is-selected" : ""}`}>
+  const menu = (<div ref={menuRef} data-category-menu style={viewportBounded?{...menuPosition,visibility:menuPosition?"visible":"hidden"}:undefined} className={"ats-dropdown-menu absolute left-0 z-30 mt-1 grid max-h-60 min-w-48 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-lg border text-navy "+(sidebar?"text-sm font-normal":"text-xs font-medium")}>
+        <label className={`ats-dropdown-option flex items-center gap-2 ${sidebar ? "font-normal" : "font-semibold"} ${allSelected ? "is-selected" : ""}`}>
           <input type="checkbox" checked={allSelected} onChange={(event) => update(event.target.checked ? options : [])} />
           {translate(language, "selectAll")}
         </label>
@@ -242,7 +277,14 @@ function CategoryFilter({ columnKey, filterValue, language, options, onFilter, l
           const checked = selected.includes(option.toLowerCase());
           return <label key={option} className={`ats-dropdown-option flex items-center gap-2 ${checked ? "is-selected" : ""}`}><input type="checkbox" checked={checked} onChange={(event) => update(event.target.checked ? [...selected, option] : selected.filter((value) => value !== option.toLowerCase()))} /><span className="break-words">{option}</span></label>;
         })}
-      </div>
+      </div>);
+  return (
+    <details ref={detailsRef} onToggle={event=>{if(viewportBounded){setMenuOpen(event.currentTarget.open);if(!event.currentTarget.open)setMenuPosition(undefined);}}} onKeyDown={event=>{if(viewportBounded&&event.key==="Escape"&&event.currentTarget.open){event.preventDefault();event.currentTarget.open=false;event.currentTarget.querySelector("summary")?.focus();}}} className="relative min-w-28 normal-case">
+      <summary className={"ats-dropdown-trigger flex min-w-0 cursor-pointer list-none items-center justify-between border text-navy [&::-webkit-details-marker]:hidden "+(sidebar?"min-h-11 gap-2 rounded-xl px-3 text-sm font-normal":"min-h-8 gap-1 rounded-lg px-2 py-1 text-xs font-medium")} aria-label={translate(language, "filterLabel", { label })}>
+        <span className="min-w-0 truncate" title={selectedCount === 0 ? translate(language, "all") : translate(language, "filterSelected", { count: selectedCount })}>{selectedCount === 0 ? translate(language, "all") : translate(language, "filterSelected", { count: selectedCount })}</span>
+        {sidebar?<ChevronDown size={17} className="shrink-0 text-slate" aria-hidden="true"/>:<span aria-hidden="true">⌄</span>}
+      </summary>
+      {viewportBounded ? (menuOpen && typeof document!=="undefined" ? createPortal(menu,document.body) : null) : menu}
     </details>
   );
 }

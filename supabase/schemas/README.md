@@ -1,5 +1,7 @@
 # Declarative Supabase Schemas
 
+`66_recruitment_notifications.sql` owns the recipient-scoped in-app notification table, RLS, mark-read RPC, Bangkok-daily private generator, lifecycle triggers, and indexes. Forward migrations `20261108131608_recruitment_notifications.sql`, `20261108133002_notification_lifecycle_triggers.sql`, and `20261108134043_notification_offer_index.sql` were applied to Supabase project `mppnlkldlctvketcsald`; they enable `pg_cron`, schedule `recruitment-notifications-daily` for 02:00 UTC (09:00 Bangkok), resolve or reassign active reminders immediately when offer dates/status or requisition ownership changes, index the offer foreign key, and require one exact recruiter match in migration 20261108135516_notification_exact_recipient.sql. Migration 20261108135700_notification_reactivate_current.sql reopens an existing applicable reminder while preserving its read state. Keep the frontend paired with this database contract and verify recipient RLS plus the `cron.job` entry before release.
+
 These files are the source of truth for the recruitment app database shape.
 Edit these files first, then generate and review a migration with the Supabase CLI before deploying.
 
@@ -66,3 +68,14 @@ The requisition receipt release also requires forward migration 20261104073701_r
 ## Candidate deletion
 
 The candidate branch of [50](50_rpc_functions.sql) supports profiles without a legacy group anchor. It collects requisitions from current applications, assignment history, explicit candidate links, legacy anchors and offers before cascading profile deletion; an empty collection is safe. The repair migration preserves each installed deployment's other entity branches and authorization. [Rollback-only SQL checks](../../tests/db/candidate-delete.sql) verify server role denial, talent-pool deletion, application/child cascades, retained shared records/audit and missing-record handling using synthetic fixtures.
+
+
+Candidate registry column filters and bounded selected-ID export: 60 owns authorized projection predicates and validation; migration 20261108082731_candidate_registry_column_filters.sql is develop-only for local delivery. [Contract](../../docs/WEBSITE_STRUCTURE.md#candidate-registry-column-filters-and-selection), [rollback checks](../../tests/db/candidate-registry-column-filters.sql).
+
+
+Bounded Requisition selected-ID export: 60 adds optional docIds to all requisition list/count paths. Develop-only local migration 20261108121827_requisition_selected_ids.sql preserves invoker security/signatures. [Contract](../../docs/WEBSITE_STRUCTURE.md#records-captured-selection), [rollback checks](../../tests/db/requisition-selected-ids.sql).
+
+
+
+
+Records list limits: migration 20261108143127_records_dynamic_page_size.sql allows page sizes 1–100 while preserving count-only 0. Applied to mppnlkldlctvketcsald; canonical validators are in 60. [Adaptive pagination](../../docs/design/controls.md#records-tables-and-fixed-pagination).

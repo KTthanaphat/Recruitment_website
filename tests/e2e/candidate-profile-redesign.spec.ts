@@ -24,21 +24,34 @@ test("new candidate flow keeps group search in the picker when using an existing
 });
 
 test("new profile has adjacent identity fields, no ownership fields, and contact review precedes save",async({page})=>{
- const mock=await installMockSupabase(page);await page.goto("/candidates");await expectWorkspaceReady(page);
+ const mock=await installMockSupabase(page);
+ const base=mock.data.candidates[0];base.email="matching@example.com";
+ for(let i=0;i<30;i++)mock.data.candidates.push({...base,candidate_id:"LONG-MATCH-ID-"+String(i).padStart(4,"0"),email:i%2?null:base.email});
+ await page.goto("/candidates");await expectWorkspaceReady(page);
  const form=await openNew(page);
  await expect(form.locator('[name="home_site"],[name="responsible_recruiter_id"],[name="duplicate_acknowledged"]')).toHaveCount(0);
  const name=form.locator('[name="name"]'),nickname=form.locator('[name="nickname"]');
  const a=await name.boundingBox(),b=await nickname.boundingBox();expect(Math.abs(a!.y-b!.y)).toBeLessThan(4);expect(b!.x).toBeGreaterThan(a!.x);
  await name.fill("New separate candidate");await nickname.fill("Newbie");
- const existing=mock.data.candidates[0];await form.locator('[name="phone_no"]').fill(existing.phone_no!);
+ const existing=mock.data.candidates[0];await form.locator('[name="phone_no"]').fill(existing.phone_no!);await form.locator('[name="email"]').fill(existing.email!);
  await form.getByRole("button",{name:"Channel",exact:true}).click();await page.getByRole("option",{name:"LinkedIn",exact:true}).click();
  await form.getByRole("button",{name:"First Contact Date",exact:true}).click(); await page.getByRole("button",{name:"24/07/2026",exact:true}).click();
  await form.getByRole("button",{name:"Review changes",exact:true}).click();
  const duplicate=page.getByRole("dialog",{name:"Matching candidate contacts"});await expect(duplicate).toBeVisible();await expect(duplicate).toContainText(existing.candidate_id);
  await expect(page.getByRole("dialog",{name:"Confirm Save",exact:true})).toBeHidden();
  await expect(duplicate.getByRole("link",{name:"Open existing profile"}).first()).toHaveAttribute("target","_blank");
- await duplicate.getByRole("button",{name:"Back to form"}).click();await expect(name).toHaveValue("New separate candidate");
- await form.getByRole("button",{name:"Review changes",exact:true}).click();await duplicate.getByRole("button",{name:"Continue as a separate candidate"}).click();
+ expect(await duplicate.locator(".contact-match-row").count()).toBeGreaterThan(30);
+ await expect(duplicate).toContainText("Phone + Email");
+ expect(mock.rpcCalls.some(call=>call.endpoint==="app_upsert_candidate_profile_v2")).toBe(false);
+ await expect(duplicate.getByRole("button",{name:"Back to form"})).toHaveCount(0);
+ await expect(duplicate.locator(".contact-match-header")).toHaveCSS("border-bottom-width","0px");
+ await expect(duplicate).toHaveAttribute("aria-describedby",await duplicate.locator(".contact-match-header p").getAttribute("id") as string);
+ await expect(duplicate.getByRole("button",{name:"Create Separate Cand.",exact:true})).toHaveCSS("background-color","rgb(199, 77, 91)");
+ const footer=await duplicate.locator(".contact-match-footer").boundingBox();expect(footer!.y+footer!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
+ await duplicate.focus();await page.keyboard.press("Escape");await expect(duplicate).toBeHidden();await expect(name).toHaveValue("New separate candidate");
+ await form.getByRole("button",{name:"Review changes",exact:true}).click();
+ await duplicate.getByRole("button",{name:"Close",exact:true}).click();await expect(name).toHaveValue("New separate candidate");
+ await form.getByRole("button",{name:"Review changes",exact:true}).click();await duplicate.getByRole("button",{name:"Create Separate Cand.",exact:true}).click();
  const count=mock.data.candidates.length;expect(count).toBeGreaterThan(0);await confirm(page);
  expect(mock.data.candidates.length).toBe(count+1);
  const write=mock.rpcCalls.findLast(row=>row.endpoint==="app_upsert_candidate_profile_v2")!;

@@ -14,7 +14,7 @@ export type RecruitmentListRequest = {
   filters?: Record<string, unknown>;
   sort?: string;
   direction?: "asc" | "desc";
-  limit?: 25 | 50 | 100;
+  limit?: number;
   cursor?: RecruitmentListCursor | null;
   before?: boolean;
   signal?: AbortSignal;
@@ -192,10 +192,11 @@ export async function fetchCompleteRecruitmentList<T>(client: RpcClient, request
 }
 
 /** Counts the full authorized criteria scope separately from cursor projection and pages. */
-export async function fetchRecruitmentListCount(client: RpcClient, request: RecruitmentListRequest): Promise<number> {
+export async function fetchRecruitmentListCount(client: RpcClient, request: RecruitmentListRequest, options:{fresh?:boolean}={}): Promise<number> {
   pruneCache(countCache, MAX_COUNT_CACHE_ENTRIES);
   const normalized = { ...request, search: request.search ?? "", filters: request.filters ?? {} };
   const key = countKey(client, normalized);
+  if(options.fresh)countCache.delete(key);
   let cached = countCache.get(key);
   if (cached && cached.expiresAt <= Date.now()) { countCache.delete(key); cached = undefined; }
   if (!cached || cached.controller.signal.aborted) {
@@ -269,10 +270,10 @@ export function clearRecruitmentListCache() {
   for (const entity of listeners.keys()) { revision.set(entity, (revision.get(entity) ?? 0) + 1); listeners.get(entity)?.forEach(listener => listener()); }
 }
 
-export function useRecruitmentList<T>({ client, accessScope, entity, filters = {}, sort = "", direction = "asc", initialPageSize = 50, enabled = true, searchInput, complete = false, completeKey }: { client: SupabaseClient | null; accessScope: string; entity: RecruitmentListEntity; filters?: Record<string, unknown>; sort?: string; direction?: "asc" | "desc"; initialPageSize?: 25 | 50 | 100; enabled?: boolean; searchInput?: { value: string; setValue: (value: string) => void }; complete?: boolean; completeKey?: (row: T) => string }) {
+export function useRecruitmentList<T>({ client, accessScope, entity, filters = {}, sort = "", direction = "asc", initialPageSize = 50, enabled = true, searchInput, complete = false, completeKey }: { client: SupabaseClient | null; accessScope: string; entity: RecruitmentListEntity; filters?: Record<string, unknown>; sort?: string; direction?: "asc" | "desc"; initialPageSize?: number; enabled?: boolean; searchInput?: { value: string; setValue: (value: string) => void }; complete?: boolean; completeKey?: (row: T) => string }) {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [page, setPage] = useState(1), [displayPage, setDisplayPage] = useState(1), [pageSize, setPageSize] = useState<25 | 50 | 100>(initialPageSize);
+  const [page, setPage] = useState(1), [displayPage, setDisplayPage] = useState(1), [pageSize, setPageSize] = useState<number>(initialPageSize);
   const [cursor, setCursor] = useState<RecruitmentListCursor | null>(null), [before, setBefore] = useState(false), [cursorCriteria, setCursorCriteria] = useState("");
   const [result, setResult] = useState<RecruitmentListPage<T> | null>(null), [loadedKey, setLoadedKey] = useState(""), [loading, setLoading] = useState(false), [error, setError] = useState(false), [retry, setRetry] = useState(0);
   const [errorKey, setErrorKey] = useState("");
@@ -331,9 +332,15 @@ export function useRecruitmentList<T>({ client, accessScope, entity, filters = {
     navigationPending.current = true; setCursor(current.previous_cursor); setBefore(true); setCursorCriteria(criteriaKey); setPage(value => value - 1);
   }
   function goFirst() { if (loading || navigationPending.current || page <= 1) return; navigationPending.current = true; setCursor(null); setBefore(false); setCursorCriteria(criteriaKey); setPage(1); }
-  function changePageSize(value: number) { if (value !== 25 && value !== 50 && value !== 100) return; setPageSize(value); }
+  function changePageSize(value: number) { if (!Number.isInteger(value) || value < 1 || value > 100) return; setPageSize(value); }
+  useEffect(() => {
+    if ((initialPageSize !== 7 && initialPageSize !== 10) || loading || activeError || !current || current.items.length > 0 || displayPage <= 1) return;
+    // A concurrent delete can invalidate the current cursor page. Recover through a bounded first-page read.
+    navigationPending.current = true;
+    setCursor(null); setBefore(false); setCursorCriteria(criteriaKey); setPage(1);
+  }, [initialPageSize, loading, activeError, current, displayPage, criteriaKey]);
   const totalCount = currentCount?.value ?? null;
   const countLoading = currentCount?.loading ?? Boolean(enabled && client && accessScope);
   const countError = currentCount?.error ?? false;
-  return { readTiming: current?.readTiming, settled: loadedKey === requestKey || activeError, initialLoading: Boolean(enabled && client && accessScope && !current && !activeError), refreshing: Boolean(loading && current), search: activeSearch, setSearch: searchInput?.setValue ?? setSearch, items: client && current ? patchRequisitionRows(client, accessScope, patchCandidateRows(client, accessScope, current.items, { entity, filters, search: debouncedSearch }, current.readStarted), { entity, filters }, current.readStarted) : [], totalCount, countLabel: totalCount === null ? countError ? "—" : countLoading ? "…" : "—" : String(totalCount), countLoading, countError, page: displayPage, pageSize, setPageSize: changePageSize, loading, error: activeError, canPrevious: !loading && page > 1, canNext: !loading && Boolean(current?.has_more && current.next_cursor), goPrevious, goNext, goFirst, retry: () => setRetry(value => value + 1), retryCount: () => setCountRetry(value => value + 1) };
+  return { criteriaPending: activeSearch.trim()!==debouncedSearch||loadedKey!==requestKey||loading||activeError, readTiming: current?.readTiming, settled: loadedKey === requestKey || activeError, initialLoading: Boolean(enabled && client && accessScope && !current && !activeError), refreshing: Boolean(loading && current), search: activeSearch, setSearch: searchInput?.setValue ?? setSearch, items: client && current ? patchRequisitionRows(client, accessScope, patchCandidateRows(client, accessScope, current.items, { entity, filters, search: debouncedSearch }, current.readStarted), { entity, filters }, current.readStarted) : [], totalCount, countLabel: totalCount === null ? countError ? "—" : countLoading ? "…" : "—" : String(totalCount), countLoading, countError, page: displayPage, pageSize, setPageSize: changePageSize, loading, error: activeError, canPrevious: !loading && page > 1, canNext: !loading && Boolean(current?.has_more && current.next_cursor), goPrevious, goNext, goFirst, retry: () => setRetry(value => value + 1), retryCount: () => setCountRetry(value => value + 1) };
 }
