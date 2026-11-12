@@ -432,7 +432,7 @@ begin
       left join lateral (
         select count(distinct c.candidate_id)::integer candidate_count
         from public.candidate_applications a join public.candidates c on c.candidate_id=a.candidate_id
-        where a.group_id=any(coalesce(links.sourcing_group_ids,'{}'::text[]))
+        join lateral unnest(coalesce(links.sourcing_group_ids,'{}'::text[])) target_group(group_id) on target_group.group_id=a.group_id where true
           and app_private.can_read_application(a.application_id) and app_private.can_read_candidate(c.candidate_id)
       ) cands on true
       left join lateral (
@@ -492,7 +492,7 @@ begin
     left join lateral (
       select count(distinct c.candidate_id)::integer candidate_count
       from public.candidate_applications a join public.candidates c on c.candidate_id=a.candidate_id
-      where a.group_id=any(coalesce(links.sourcing_group_ids,'{}'::text[]))
+      join lateral unnest(coalesce(links.sourcing_group_ids,'{}'::text[])) target_group(group_id) on target_group.group_id=a.group_id where true
         and app_private.can_read_application(a.application_id) and app_private.can_read_candidate(c.candidate_id)
     ) cands on true
     left join lateral (
