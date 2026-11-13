@@ -946,6 +946,21 @@ begin
   return v_result;
 end; $$;
 
+-- Minimal projection for the registry. The public list remains SECURITY INVOKER.
+-- These are the same readable rows and fields as the existing capability RPC.
+create or replace function app_private.candidate_registry_capabilities_v1()
+returns table(candidate_id text, creator_label text, is_unmatched boolean)
+language sql stable security definer set search_path = ''
+as $$
+  select c.candidate_id, coalesce(p.nickname,p.full_name,'Unknown'),
+    not exists(select 1 from public.candidate_applications a where a.candidate_id=c.candidate_id)
+  from public.candidates c
+  left join public.profiles p on p.id=c.created_by
+  where auth.uid() is not null and app_private.can_read_candidate(c.candidate_id)
+$$;
+revoke all on function app_private.candidate_registry_capabilities_v1() from public, anon;
+grant execute on function app_private.candidate_registry_capabilities_v1() to authenticated;
+
 create or replace function public.app_recruitment_list_v1(
   p_entity text,
   p_search text default '',
@@ -1069,10 +1084,7 @@ begin
 
   with capabilities as (
     select c.candidate_id,c.creator_label,c.is_unmatched
-    from jsonb_to_recordset(public.app_candidate_profile_capabilities_v1()) as c(
-      candidate_id text, creator_label text, can_edit boolean, can_read_note boolean,
-      can_edit_note boolean, can_add_application boolean, is_unmatched boolean, note_editor_label text
-    )
+    from app_private.candidate_registry_capabilities_v1() as c
   ), readable_candidates as (
     select
       c.candidate_id,
