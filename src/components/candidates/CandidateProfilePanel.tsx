@@ -23,9 +23,9 @@ const ApplicationDetailsActionContext = createContext<ReactNode>(null);
 export function CandidateApplicationDetailsExtras() { return useContext(ApplicationDetailsContext); }
 export function CandidateApplicationDetailsAction() { return useContext(ApplicationDetailsActionContext); }
 
-export function CandidateProfilePanel({candidateId, applicationId, data, language, client, accessScope, onSelect, onEdit, onAction, applicationLoading=false, applicationError=null, onApplicationRetry, children}: {
+export function CandidateProfilePanel({candidateId, applicationId, data, language, client, accessScope, onSelect, onEdit, onAction, applicationLoading=false, applicationError=null, profilePending=false, onApplicationRetry, children}: {
   candidateId:string; applicationId:string|null; data:DashboardData; language:Language;
-  applicationLoading?:boolean; applicationError?:string|null; onApplicationRetry?:()=>void;
+  applicationLoading?:boolean; applicationError?:string|null; profilePending?:boolean; onApplicationRetry?:()=>void;
   client:SupabaseClient|null; accessScope:string;
   onSelect:(id:string)=>void; onEdit:()=>void; onAction:(rpc:string,payload:Record<string,unknown>,summary:string)=>void; children?:ReactNode;
 }) {
@@ -41,7 +41,7 @@ export function CandidateProfilePanel({candidateId, applicationId, data, languag
   const [destinationError,setDestinationError]=useState(false);
   const [destinationRetry,setDestinationRetry]=useState(0);
   const tabs=useRef<Array<HTMLButtonElement|null>>([]);
-  useEffect(()=>{setIntent(null);setGroup("");setReason("");setDestinationSearch("");},[applicationId,candidateId]);
+  useEffect(()=>{setIntent(null);setGroup("");setReason("");setDestinationSearch("");},[applicationId,candidateId,profilePending]);
   useEffect(()=>{
     if(!intent||!client||!accessScope){setDestinationRows([]);setDestinationCursor(null);setDestinationHasMore(false);setDestinationLoading(false);return;}
     let cancelled=false;setDestinationRows([]);setDestinationCursor(null);setDestinationHasMore(false);setDestinationLoading(true);setDestinationError(false);
@@ -118,13 +118,13 @@ export function CandidateProfilePanel({candidateId, applicationId, data, languag
   return <div className="grid min-w-0 gap-5">
     {profileWarnings.length?<div aria-label={t("Profile warnings","คำเตือนข้อมูลผู้สมัคร")}><InlineDataQualityIssues issues={profileWarnings} language={language}/></div>:null}
     <section className="candidate-profile-card" aria-label={t("Candidate profile","ข้อมูลผู้สมัคร")}>
-      <div className="mb-3 flex items-center justify-between gap-3"><SectionHeading icon={<ContactRound size={19}/>} title={t("Candidate profile","ข้อมูลผู้สมัคร")}/>{capabilities.can_edit?<Button type="button" variant="ghost" size="icon-sm" className="min-h-11 min-w-11 text-primary" icon={<Pencil size={18} aria-hidden="true"/>} aria-label={t("Edit profile","แก้ไขข้อมูลผู้สมัคร")} title={t("Edit profile","แก้ไขข้อมูลผู้สมัคร")} onClick={onEdit}/>:null}</div>
+      <div className="mb-3 flex items-center justify-between gap-3"><SectionHeading icon={<ContactRound size={19}/>} title={t("Candidate profile","ข้อมูลผู้สมัคร")}/>{capabilities.can_edit&&!profilePending?<Button type="button" variant="ghost" size="icon-sm" className="min-h-11 min-w-11 text-primary" icon={<Pencil size={18} aria-hidden="true"/>} aria-label={t("Edit profile","แก้ไขข้อมูลผู้สมัคร")} title={t("Edit profile","แก้ไขข้อมูลผู้สมัคร")} onClick={onEdit}/>:null}</div>
       <DetailGrid workspace language={language} rows={fields}/>
       {candidate.candidate_folder_url?<a href={candidate.candidate_folder_url} target="_blank" rel="noreferrer" className="mt-3 inline-flex min-h-11 items-center break-all text-sm font-medium text-primary underline">{t("Open CV / candidate folder","เปิดประวัติ / แฟ้มผู้สมัคร")}</a>:null}
       <div className="mt-4"><h4 className="text-sm font-semibold text-navy">{t("Position interests","ตำแหน่งที่สนใจ")}</h4><p className="mt-2 whitespace-pre-wrap break-words text-sm text-slate">{candidate.position_interests??"—"}</p></div>
     <section className="mt-4 border-t border-[#E7EDF5] pt-4" aria-label={t("Profile note","บันทึกผู้สมัคร")}>
       <h3 className="mb-3 text-base font-semibold text-navy">{t("Profile note","บันทึกผู้สมัคร")}</h3>
-      {!capabilities.can_read_note?<p className="flex items-center gap-2 text-sm text-slate"><LockKeyhole size={16}/>{t("Private note — available to the creator, application PICs, and administrators.","บันทึกส่วนตัว สำหรับผู้สร้าง ผู้รับผิดชอบกลุ่มใบสมัคร และผู้ดูแลระบบ")}</p>:<>
+      {profilePending ? (applicationError ? <div role="alert" className="text-sm text-slate">{applicationError} <RetryIconButton type="button" onClick={onApplicationRetry}>{t("Retry","ลองอีกครั้ง")}</RetryIconButton></div> : <LoadingSkeleton variant="lookup" label={t("Loading profile note","กำลังโหลดบันทึกผู้สมัคร")}/>) : !capabilities.can_read_note?<p className="flex items-center gap-2 text-sm text-slate"><LockKeyhole size={16}/>{t("Private note — available to the creator, application PICs, and administrators.","บันทึกส่วนตัว สำหรับผู้สร้าง ผู้รับผิดชอบกลุ่มใบสมัคร และผู้ดูแลระบบ")}</p>:<>
         <p className="whitespace-pre-wrap break-words text-sm text-navy">{currentNote?.body||t("No profile note.","ยังไม่มีบันทึกผู้สมัคร")}</p>
         {currentNote?<p className="mt-2 text-xs text-slate">{t("Last edited by","แก้ไขล่าสุดโดย")} {capabilities.note_editor_label??data.profiles.find(row=>row.id===(currentNote.updated_by??currentNote.created_by))?.nickname??(currentNote.updated_by===data.profile?.id?data.profile?.nickname:t("Recruiter","ผู้สรรหา"))} · {formatDateTime(currentNote.updated_at??currentNote.created_at,language)}</p>:null}
 
@@ -134,7 +134,7 @@ export function CandidateProfilePanel({candidateId, applicationId, data, languag
     </section>
 
     <section className="min-w-0" aria-label={t("Applications","ใบสมัคร")}>
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3"><h3 className="text-lg font-semibold text-navy">{t("Applications","ใบสมัคร")}</h3>{capabilities.can_add_application?<Button type="button" variant="secondary" size="icon-sm" className="min-h-11 min-w-11" aria-label={t("Add application","เพิ่มใบสมัคร")} title={t("Add application","เพิ่มใบสมัคร")} icon={<Plus size={20} aria-hidden="true"/>} onClick={()=>{setIntent("add");setGroup("");setReason("");}}/>:null}</div>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3"><h3 className="text-lg font-semibold text-navy">{t("Applications","ใบสมัคร")}</h3>{capabilities.can_add_application&&!profilePending?<Button type="button" variant="secondary" size="icon-sm" className="min-h-11 min-w-11" aria-label={t("Add application","เพิ่มใบสมัคร")} title={t("Add application","เพิ่มใบสมัคร")} icon={<Plus size={20} aria-hidden="true"/>} onClick={()=>{setIntent("add");setGroup("");setReason("");}}/>:null}</div>
       {applications.length?<div role="tablist" aria-label={t("Candidate applications","ใบสมัครของผู้สมัคร")} className="flex max-w-full gap-1 overflow-x-auto relative z-10 -mb-px items-end pb-0">{applications.map((application,index)=><button key={application.application_id} ref={element=>{tabs.current[index]=element;}} type="button" role="tab" id={`application-tab-${application.application_id}`} aria-controls={`application-panel-${application.application_id}`} aria-selected={selected?.application_id===application.application_id} tabIndex={selected?selected.application_id===application.application_id?0:-1:index===0?0:-1} onKeyDown={event=>moveTab(event,index)} onClick={()=>onSelect(application.application_id)} className={`min-h-11 min-w-40 shrink-0 rounded-t-lg border px-3 py-3 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${selected?.application_id===application.application_id?"border-primary border-b-white bg-white text-navy":"border-[#E4E9F2] bg-[#F8FAFD] text-slate"}`}><span className="block max-w-60 whitespace-normal break-words font-semibold">{groupName(application.group_id)}</span><span className="mt-1 block text-xs">{formatRecruitmentId(application.group_id)} · {application.state==="active"?t("Active","ดำเนินการ"):t("Closed","ปิดแล้ว")}</span></button>)}</div>:<p className="py-3 text-sm text-slate">{t("No applications are available. This profile may be unmatched, or its journeys may be outside your access.","ไม่มีใบสมัครที่เปิดดูได้ อาจยังไม่จับคู่หรือใบสมัครอยู่นอกสิทธิ์ของคุณ")}</p>}
       {selected?<div role="tabpanel" id={`application-panel-${selected.application_id}`} aria-labelledby={`application-tab-${selected.application_id}`} className="grid min-w-0 gap-4 rounded-b-xl rounded-tr-xl border border-primary bg-white p-3 sm:p-4">
         {applicationLoading?<CandidateApplicationSkeleton language={language}/>:applicationError?<div role="alert" className="grid gap-3 py-4 text-sm text-slate"><p>{applicationError}</p><RetryIconButton type="button" onClick={onApplicationRetry}>{t("Retry","ลองอีกครั้ง")}</RetryIconButton></div>:<>
@@ -154,7 +154,7 @@ export function CandidateProfilePanel({candidateId, applicationId, data, languag
 
       </div>:applications.length?<p className="py-4 text-sm text-slate">{t("Select an application tab to view its journey and actions.","เลือกแท็บใบสมัครเพื่อดูเส้นทางและการดำเนินการ")}</p>:null}
 
-      {intent==="add"?applicationForm:null}
+      {!profilePending&&intent==="add"?applicationForm:null}
     </section>
   </div>;
 }

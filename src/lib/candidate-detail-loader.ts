@@ -52,11 +52,14 @@ async function readInChunks<T>(values: readonly string[], loadChunk: (chunk: str
 
 async function readList<T>(client: SupabaseClient, accessScope: string, filters: Record<string, unknown>, label: string, signal?: AbortSignal): Promise<T[]> {
   const output: T[] = [], seen = new Set<string>();
-  const total = await fetchRecruitmentListCount(client, { accessScope, entity: "pipeline_history", filters, priority: -1, signal });
+  const [total, firstPage] = await Promise.all([
+    fetchRecruitmentListCount(client, { accessScope, entity: "pipeline_history", filters, priority: -1, signal }),
+    fetchRecruitmentList<T>(client, { accessScope, entity: "pipeline_history", filters, signal, sort: "log_id", direction: "asc", limit: 100, cursor: null })
+  ]);
   let cursor: { value: unknown; id: string } | null = null;
   const anchors = new Set<string>();
   for (let pageNumber = 0; pageNumber < 1000; pageNumber++) {
-    const page: RecruitmentListPage<T> = await fetchRecruitmentList<T>(client, { accessScope, entity: "pipeline_history", filters, signal, sort: "log_id", direction: "asc", limit: 100, cursor });
+    const page: RecruitmentListPage<T> = pageNumber === 0 ? firstPage : await fetchRecruitmentList<T>(client, { accessScope, entity: "pipeline_history", filters, signal, sort: "log_id", direction: "asc", limit: 100, cursor });
     if (page.total_count !== null && total !== page.total_count) throw new Error(`${label} changed while loading. Please retry.`);
     for (const item of page.items) {
       const id = String((item as { log?: { log_id?: unknown } }).log?.log_id ?? "");
@@ -75,29 +78,27 @@ async function readList<T>(client: SupabaseClient, accessScope: string, filters:
 /** Resolves profile privacy first, then hydrates application headers and only the selected journey. All reads remain subject to RLS. */
 export function loadCandidateDetail(client: SupabaseClient, accessScope: ScopedAccessIdentity, candidateId: string, applicationId: string | null, base: DashboardData, signal?: AbortSignal): Promise<DashboardData> {
   const key = JSON.stringify(["candidate", candidateId, applicationId]);
-  return loadCachedScopedDetail(client, accessScope, key, requestSignal => loadCandidateDetailUncached(client, accessScope.key, candidateId, applicationId, base, requestSignal), signal);
+  return loadCachedScopedDetail(client, accessScope, key, requestSignal => loadCandidateDetailUncached(client, accessScope, candidateId, applicationId, base, requestSignal), signal);
 }
 
-async function loadCandidateDetailUncached(client: SupabaseClient, accessScope: string, candidateId: string, applicationId: string | null, base: DashboardData, signal?: AbortSignal): Promise<DashboardData> {
+type CandidateShell = { projection: DetailProjection; visibleApps: CandidateApplication[]; visibleGroups: DashboardData["position_groups"] };
+function getCandidateShell(client: SupabaseClient, identity: ScopedAccessIdentity, candidateId: string, signal?: AbortSignal): Promise<CandidateShell> {
+  return loadCachedScopedDetail(client, identity, JSON.stringify(["candidate-shell", candidateId]), requestSignal => loadCandidateShellUncached(client, identity.key, candidateId, requestSignal), signal);
+}
+async function loadCandidateShellUncached(client: SupabaseClient, accessScope: string, candidateId: string, signal?: AbortSignal): Promise<CandidateShell> {
   const { data: projected, error: projectionError } = await scheduleRecruitmentRead(client, () => client.rpc("app_candidate_profile_detail_v1", { p_candidate_id: candidateId }).abortSignal(signal ?? new AbortController().signal), -1, {signal});
   if (projectionError) throw new Error(projectionError.message);
   const projection = projected as DetailProjection | null;
   if (!projection || (!projection.candidate && !projection.masked)) throw new Error("This candidate is unavailable or access has changed.");
-  if (!projection.candidate) {
-    return {
-      ...base, candidates: [], candidate_applications: [], candidate_application_assignments: [],
-      recruitment_logs: [], recruitment_log_history: [], candidate_references: [], candidate_reference_checks: [],
-      candidate_notes: [], offers: [], interview_meetings: [], requisitions: [], requisition_logs: [],
-      candidate_profile_capabilities: projection.capabilities ? [projection.capabilities] : [],
-      masked_candidate_pool: projection.masked ? [projection.masked] : []
-    };
-  }
-
+  if (!projection.candidate) return { projection, visibleApps: [], visibleGroups: [] };
   const appRows: Record<string, unknown>[] = [], appIds = new Set<string>(), anchors = new Set<string>();
   let cursor: { value: unknown; id: string } | null = null;
-  const expectedApps = await fetchRecruitmentListCount(client, { accessScope, entity: "candidate_applications", filters: { candidateId }, priority: -1, signal });
+  const [expectedApps, firstPage] = await Promise.all([
+    fetchRecruitmentListCount(client, { accessScope, entity: "candidate_applications", filters: { candidateId }, priority: -1, signal }),
+    fetchRecruitmentList<Record<string, unknown>>(client, { accessScope, entity: "candidate_applications", filters: { candidateId }, limit: 100, cursor: null, signal })
+  ]);
   for (let pageNumber = 0; pageNumber < 1000; pageNumber++) {
-    const page: RecruitmentListPage<Record<string, unknown>> = await fetchRecruitmentList<Record<string, unknown>>(client, { accessScope, entity: "candidate_applications", filters: { candidateId }, limit: 100, cursor, signal });
+    const page: RecruitmentListPage<Record<string, unknown>> = pageNumber === 0 ? firstPage : await fetchRecruitmentList<Record<string, unknown>>(client, { accessScope, entity: "candidate_applications", filters: { candidateId }, limit: 100, cursor, signal });
     if (page.total_count !== null && expectedApps !== page.total_count) throw new Error("Candidate applications changed while loading. Please retry.");
     for (const row of page.items) {
       const id = String(row.application_id ?? "");
@@ -124,6 +125,33 @@ async function loadCandidateDetailUncached(client: SupabaseClient, accessScope: 
     created_at: String(row.created_at ?? ""),
     updated_at: String(row.updated_at ?? "")
   })) as CandidateApplication[];
+  const groupIds = [...new Set(visibleApps.map(row => row.group_id))];
+  const visibleGroups = await readInChunks<DashboardData["position_groups"][number]>(groupIds, chunk => readComplete<DashboardData["position_groups"][number]>(client,
+    (from, to) => client.from("position_groups").select("*", { count: "exact" }).in("group_id", chunk).order("group_id", { ascending: true }).range(from, to),
+    row => row.group_id, "candidate application groups", signal
+  ), row => row.group_id, "candidate application groups");
+  return { projection, visibleApps, visibleGroups };
+}
+/** Publish only verified profile and complete application choices before loading the selected journey. */
+export async function loadCandidateDetailShell(client: SupabaseClient, identity: ScopedAccessIdentity, candidateId: string, base: DashboardData, signal?: AbortSignal): Promise<DashboardData> {
+  const { projection, visibleApps, visibleGroups } = await getCandidateShell(client, identity, candidateId, signal);
+  return {
+    ...base, candidates: projection.candidate ? [{ ...projection.candidate, application_id: undefined, application_state: undefined, doc_group_id: null, group_id: null } as Candidate] : [],
+    candidate_applications: visibleApps, position_groups: visibleGroups,
+    candidate_application_assignments: [], recruitment_logs: [], recruitment_log_history: [],
+    candidate_references: [], candidate_reference_checks: [], candidate_notes: [], rejection_letter_drafts: [],
+    offers: [], interview_meetings: [], requisitions: [], requisition_logs: [], document_groups: [],
+    candidate_profile_capabilities: projection.capabilities ? [projection.capabilities] : [],
+    masked_candidate_pool: projection.masked ? [projection.masked] : []
+  };
+}
+async function loadCandidateDetailUncached(client: SupabaseClient, identity: ScopedAccessIdentity, candidateId: string, applicationId: string | null, base: DashboardData, signal?: AbortSignal): Promise<DashboardData> {
+  const accessScope = identity.key;
+  const shell = await getCandidateShell(client, identity, candidateId, signal);
+  const projection = shell.projection;
+  if (!projection.candidate) return loadCandidateDetailShell(client, identity, candidateId, base, signal);
+  const visibleApps = shell.visibleApps.map(row => ({ ...row }));
+  const visibleGroups = shell.visibleGroups;
   const selectedId = applicationId ?? (visibleApps.length === 1 ? visibleApps[0].application_id : null);
   let selected = selectedId ? visibleApps.find(row => row.application_id === selectedId) : null;
   if (selectedId && !selected) throw new Error("This application is no longer available to your account.");
@@ -138,11 +166,7 @@ async function loadCandidateDetailUncached(client: SupabaseClient, accessScope: 
     // authorized row (including its current version) in the hydrated context.
     visibleApps[selectedIndex] = selected;
   }
-  const groupIds = [...new Set(visibleApps.map(row => row.group_id))];
-  const visibleGroups = await readInChunks<DashboardData["position_groups"][number]>(groupIds, chunk => readComplete<DashboardData["position_groups"][number]>(client,
-    (from, to) => client.from("position_groups").select("*", { count: "exact" }).in("group_id", chunk).order("group_id", { ascending: true }).range(from, to),
-    row => row.group_id, "candidate application groups", signal
-  ), row => row.group_id, "candidate application groups");
+
 
   let assignments: ApplicationAssignment[] = [], history: RecruitmentLog[] = [], checks: CandidateReferenceCheck[] = [], offers: DashboardData["offers"] = [], meetings: DashboardData["interview_meetings"] = [], references: CandidateReference[] = [], notes: CandidateNote[] = [], rejectionDrafts: RejectionLetterDraft[] = [], requisitions: Requisition[] = [], requisitionLogs: RequisitionLog[] = [];
   if (selected) {

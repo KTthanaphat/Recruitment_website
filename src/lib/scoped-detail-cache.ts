@@ -51,14 +51,16 @@ export function patchScopedCandidateDetail<T>(client: object, scope: string, can
  for (const [key, entry] of cache) {
   const parts = key.split("\u001f"); if (parts[1] !== scope) continue;
   let identity: unknown; try { identity = JSON.parse(parts[2]); } catch { continue; }
-  if (!Array.isArray(identity) || identity[0] !== "candidate" || identity[1] !== candidateId) continue;
+  if (!Array.isArray(identity) || identity[1] !== candidateId) continue;
+  if (identity[0] === "candidate-shell") { cache.delete(key); continue; }
+  if (identity[0] !== "candidate") continue;
   entry.expiresAt = Date.now()+TTL_MS; entry.value = entry.value.then(value => patch(value as T));
  }
 }
 
 export function invalidateScopedCandidateDetail(client: object, scope: string, candidateIds: ReadonlySet<string>) {
  const cache = clientCaches.get(client); if (!cache) return;
- for (const key of cache.keys()) { const parts = key.split("\u001f"); if (parts[1] !== scope) continue; try { const identity = JSON.parse(parts[2]); if (identity[0] === "candidate" && candidateIds.has(identity[1])) cache.delete(key); } catch { /* Other detail namespaces stay cached. */ } }
+ for (const key of cache.keys()) { const parts = key.split("\u001f"); if (parts[1] !== scope) continue; try { const identity = JSON.parse(parts[2]); if ((identity[0] === "candidate" || identity[0] === "candidate-shell") && candidateIds.has(identity[1])) cache.delete(key); } catch { /* Other detail namespaces stay cached. */ } }
 }
 
 /** Candidate actions invalidate only their authorized source/destination workspace caches. */
