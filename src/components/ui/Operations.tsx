@@ -1,6 +1,6 @@
 "use client";
 
-import { LampDesk, MoreVertical } from "lucide-react";
+import { ArrowUpRight, LampDesk, MoreVertical } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
@@ -232,15 +232,17 @@ export function OperationalSummaryStrip({ items, density = "default", className 
   return (
     <div aria-busy={loading} className={`grid ${stackedLines ? "grid-cols-1 divide-y divide-[#B8CCE4]" : `gap-2 ${stacked ? "grid-cols-1" : density === "compact" ? "[grid-template-columns:repeat(auto-fit,minmax(130px,1fr))]" : "[grid-template-columns:repeat(auto-fit,minmax(150px,1fr))]"}`} ${className}`}>
       {loading ? <span role="status" className="sr-only">{language === "th" ? "กำลังโหลดข้อมูล…" : "Loading data…"}</span> : null}
-      {items.map((item) => (
-        <div key={item.label} className={stackedLines ? "grid grid-cols-[minmax(0,4fr)_minmax(2.5rem,1fr)] items-center gap-3 px-0 py-2" : `rounded-xl border ${stacked ? "grid grid-cols-[minmax(0,4fr)_minmax(2.5rem,1fr)] items-center gap-3 px-3 py-2" : density === "compact" ? "px-3 py-2" : "p-3"} ${summaryCardClass(item.tone)}`}>
-          <div className="min-w-0">
-            <p className="text-xs font-medium text-slate">{item.label}</p>
-            {item.helper ? <p className={`${vertical ? "mt-0.5 font-light" : "mt-1 font-medium"} text-xs text-cool`}>{loading ? <span aria-hidden="true" className="ats-skeleton block h-3 w-24 rounded-md"/> : item.helper}</p> : null}
-          </div>
-          <p className={`${vertical ? "text-right" : "mt-1"} font-semibold tabular-nums ${density === "compact" ? "text-lg" : "text-xl"} ${valueTone === "navy" ? "text-navy" : summaryValueClass(item.tone)}`}>{loading ? <NumberSkeleton ratio={typeof item.value === "string" && item.value.includes("/")}/> : item.value}</p>
-        </div>
-      ))}
+      {items.map(item => {
+        const rowClass = stackedLines ? "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-0 py-2" : `rounded-xl border ${stacked ? "grid grid-cols-[minmax(0,4fr)_minmax(2.5rem,1fr)] items-center gap-3 px-3 py-2" : density === "compact" ? "px-3 py-2" : "p-3"} ${summaryCardClass(item.tone)}`;
+        const value = <p className={`${vertical ? "text-right" : "mt-1"} font-semibold tabular-nums ${density === "compact" ? "text-lg" : "text-xl"} ${valueTone === "navy" ? "text-navy" : summaryValueClass(item.tone)}`}>{loading ? <NumberSkeleton ratio={typeof item.value === "string" && item.value.includes("/")}/> : item.value}</p>;
+        const content = <><div className="min-w-0">
+          <p className="text-xs font-medium text-slate">{item.label}</p>
+          {item.helper ? <p className={`${vertical ? "mt-0.5 font-light" : "mt-1 font-medium"} text-xs text-cool`}>{loading ? <span aria-hidden="true" className="ats-skeleton block h-3 w-24 rounded-md"/> : item.helper}</p> : null}
+        </div>{item.onOpen ? <div className="flex items-center justify-end gap-2">{value}<ArrowUpRight aria-hidden size={16} className="shrink-0 text-primary" /></div> : value}</>;
+        return item.onOpen
+          ? <button key={item.label} type="button" onClick={item.onOpen} disabled={loading || item.value === "—"} aria-label={`${language === "th" ? "เปิดรายการ" : "Open List"}: ${item.label}`} className={`${rowClass} group min-h-11 w-full rounded-md text-left transition-colors hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 disabled:cursor-wait disabled:opacity-60`}>{content}</button>
+          : <div key={item.label} className={rowClass}>{content}</div>;
+      })}
     </div>
   );
 }

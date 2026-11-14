@@ -177,8 +177,7 @@ stable
 security definer
 set search_path = public
 as $$
-  select
-    app_private.is_global_recruitment_reader()
+ select (app_private.secret_requisition_access(p_doc_id)) and (app_private.is_global_recruitment_reader()
     or (
       app_private.current_app_role() = 'site_recruiter'
       and exists (
@@ -190,7 +189,7 @@ as $$
             or r.person_in_charge = app_private.current_profile_nickname()
           )
       )
-    )
+    ))
 $$;
 
 create or replace function app_private.can_manage_requisition(p_doc_id text)
@@ -200,8 +199,7 @@ stable
 security definer
 set search_path = public
 as $$
-  select
-    app_private.current_app_role() in ('system_admin', 'admin_recruiter')
+ select (app_private.secret_requisition_access(p_doc_id)) and (app_private.current_app_role() in ('system_admin', 'admin_recruiter')
     or (
       app_private.current_app_role() = 'site_recruiter'
       and exists (
@@ -213,7 +211,7 @@ as $$
           or r.person_in_charge = app_private.current_profile_nickname()
         )
       )
-    )
+    ))
 $$;
 
 create or replace function app_private.can_manage_doc_group(p_doc_group_id text)
@@ -238,15 +236,14 @@ stable
 security definer
 set search_path = public
 as $$
-  select
-    app_private.current_app_role() in ('system_admin', 'admin_recruiter')
+ select (app_private.secret_candidate_access(p_candidate_id)) and (app_private.current_app_role() in ('system_admin', 'admin_recruiter')
     or exists (
       select 1
       from public.candidates c
       join public.document_groups dg on dg.group_id = c.group_id
       where c.candidate_id = p_candidate_id
         and app_private.can_manage_requisition(dg.doc_id)
-    )
+    ))
 $$;
 
 create or replace function app_private.can_read_candidate(p_candidate_id text)
@@ -256,15 +253,14 @@ stable
 security definer
 set search_path = public
 as $$
-  select
-    app_private.is_global_recruitment_reader()
+ select (app_private.secret_candidate_access(p_candidate_id)) and (app_private.is_global_recruitment_reader()
     or exists (
       select 1
       from public.candidates c
       join public.document_groups dg on dg.group_id = c.group_id
       where c.candidate_id = p_candidate_id
         and app_private.can_read_requisition(dg.doc_id)
-    )
+    ))
 $$;
 
 create or replace function app_private.has_open_group_requisition(p_group_id text)
@@ -300,6 +296,7 @@ set search_path = public
 as $$
 declare v_role text; v_site text; v_nickname text; v_full_name text; v_doc_id text; v_req_site text; v_pic text;
 begin
+ if not (app_private.secret_group_access(p_group_id)) then return false; end if;
   if auth.uid() is null then return false; end if;
   v_role:=app_private.current_app_role();
   if v_role in ('system_admin','admin_recruiter') then return true; end if;
@@ -386,8 +383,7 @@ stable
 security definer
 set search_path = public
 as $$
-  select
-    app_private.current_app_role() in ('system_admin', 'admin_recruiter')
+ select (app_private.secret_group_access(p_group_id)) and (app_private.current_app_role() in ('system_admin', 'admin_recruiter')
     or (
       app_private.current_app_role() = 'site_recruiter'
       and exists (
@@ -409,7 +405,7 @@ as $$
           )
           and greatest(r.head_count - coalesce(accepted.accepted_count, 0), 0) > 0
       )
-    )
+    ))
 $$;
 
 create or replace function app_private.next_app_id(p_entity text, p_prefix text)

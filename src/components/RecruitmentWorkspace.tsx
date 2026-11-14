@@ -1,6 +1,10 @@
 "use client";
+import { SecretBadge, SecretReveal, secretErrorMessage } from "@/components/requisitions/SecretClassification";
+import { OnOffSwitch } from "@/components/ui/OnOffSwitch";
+import { reportingOnlyData } from "@/lib/reporting-visibility";
 import { clearRequisitionActionState, isRequisitionAction, performRequisitionAction, publishRequisitionReceipt, applyRequisitionReceipt, patchRequisitionDetail, patchRequisitionDataSince, markRequisitionDisplayed, type RequisitionActionReceipt } from "@/lib/requisition-action-receipt";
 
+import { CandidateLookup, clearCandidateLookup } from "@/components/candidates/CandidateLookup";
 import { AttendanceDecisionActions } from "@/components/ui/AttendanceDecisionActions";
 import { RetryIconButton } from "@/components/ui/RetryIconButton";
 import { NumberSkeleton, LoadingSkeleton, RefreshIndicator } from "@/components/ui/LoadingSkeleton";
@@ -333,6 +337,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const [requisitionDetailRetry, setRequisitionDetailRetry] = useState(0);
   const [activeModal, setActiveModal] = useState<ModalName>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const reviewTriggerRef = useRef<HTMLElement | null>(null);
   const pendingSaveLock = useRef(false);
   const [destructiveAction, setDestructiveAction] = useState<DestructiveAction | null>(null);
   const [offerPassHandoff, setOfferPassHandoff] = useState<OfferPassHandoff | null>(null);
@@ -647,9 +652,11 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     setCandidateActionContext(null);
     setReportRefreshKey(value => value + 1);
   }, [detail, detailAccessScope, supabase]);
+  useEffect(() => { const changed = () => { clearCandidateLookup(); clearRecruitmentListCache(); clearDashboardReportCache(); clearDashboardSummaryCache(); if (supabase) clearScopedDetailCache(supabase); setCandidateDetailRetry(value => value + 1); void loadData(true, true); setReportRefreshKey(value => value + 1); }; window.addEventListener("recruitment:classification-changed", changed); return () => window.removeEventListener("recruitment:classification-changed", changed); }, [loadData]);
   const candidateRefresh = useRef<{ timer: ReturnType<typeof setTimeout> | null; effects: Set<string>; entities: Set<RecruitmentListEntity>; candidates: Set<string>; receipts: CandidateActionReceipt[] }>({ timer: null, effects: new Set(), entities: new Set(), candidates: new Set(), receipts: [] });
   useEffect(() => () => { if (candidateRefresh.current.timer) clearTimeout(candidateRefresh.current.timer); candidateRefresh.current = { timer: null, effects: new Set(), entities: new Set(), candidates: new Set(), receipts: [] }; }, [detailAccessScope]);
   const commitCandidateResult = (receipt: CandidateActionReceipt) => {
+    window.dispatchEvent(new Event("recruitment:lookup-invalidate"));
     if (!supabase || activeAccessRef.current !== detailAccessScope) return;
     setCommittedRequestId(receipt.request_id);
     setData(current => applyCandidateReceipt(current, receipt));
@@ -682,6 +689,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const requisitionRefresh = useRef<{ timer: ReturnType<typeof setTimeout> | null; receipts: RequisitionActionReceipt[] }>({ timer: null, receipts: [] });
   useEffect(() => () => { if (requisitionRefresh.current.timer) clearTimeout(requisitionRefresh.current.timer); requisitionRefresh.current = { timer: null, receipts: [] }; }, [detailAccessScope]);
   const commitRequisitionResult = (receipt: RequisitionActionReceipt) => {
+    window.dispatchEvent(new Event("recruitment:lookup-invalidate"));
     if (!supabase || activeAccessRef.current !== detailAccessScope || !publishRequisitionReceipt(supabase, detailAccessScope, receipt)) return;
     setData(current => applyRequisitionReceipt(current, receipt));
     setCompanyDashboardReport(current => current ? applyRequisitionReceipt(current as DashboardData, receipt) as DashboardReportData : current);
@@ -771,8 +779,10 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const canManageRejectionTemplates = role === "system_admin" || role === "admin_recruiter";
   const canDeleteRecords = role === "system_admin";
 
+  const publicData = useMemo(() => reportingOnlyData(data), [data]);
   const priorityData = useMemo(() => priorityRequisitionScope(data, filters.priorityOnly), [data, filters.priorityOnly]);
 
+  const publicPriorityData = useMemo(() => reportingOnlyData(priorityData), [priorityData]);
   const enrichedRequisitions = useMemo(() => enrichRequisitions(data), [data]);
   const enrichedCandidates = useMemo(() => enrichCandidates(data), [data]);
   const enrichedOffers = useMemo(() => enrichOffers(data), [data]);
@@ -970,6 +980,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   }, [data.profile, initialView, loading]);
 
   async function signOut() {
+    clearCandidateLookup();
     if(supabase)clearRequisitionActionState(supabase);
     clearDashboardReportCache();
     clearDashboardSummaryCache();
@@ -1325,6 +1336,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   }
 
   function prepareAction(modal: Exclude<ModalName, null>, form: HTMLFormElement) {
+    reviewTriggerRef.current = form.querySelector<HTMLButtonElement>('button[type="submit"]');
     const formData = new FormData(form);
     const payload = modal === "candidate" && formData.get("existing_candidate_id") ? {} : buildPayload(modal, formData);
     const actionPayload = payload as Record<string, unknown>;
@@ -1363,6 +1375,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   }
 
   function prepareRpcAction(endpoint: string, payload: Record<string, unknown>, summary: string) {
+    reviewTriggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setPendingAction({
       title: "Confirm Save",
       summary,
@@ -1372,43 +1385,44 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     });
   }
 
-  async function confirmPendingAction() {
+  async function confirmPendingAction(secretConfirmed = false) {
     if (!pendingAction || !supabase || (pendingSaveLock.current && !isCandidateAction(pendingAction.endpoint) && !isRequisitionAction(pendingAction.endpoint))) return;
     pendingSaveLock.current = true;
 
-    const savedAction = pendingAction;
+    const savedAction = { ...pendingAction, payload: secretConfirmed ? { ...pendingAction.payload, secret_link_confirmed: true } : pendingAction.payload };
     setBusy(true);
     setStatus("Saving...");
     try {
       let result: RpcResult = { ok: true };
-      if (pendingAction.route === "api") {
+      if (savedAction.route === "api") {
         const session = await supabase.auth.getSession();
-        const response = await fetch(pendingAction.endpoint, {
+        const response = await fetch(savedAction.endpoint, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${session.data.session?.access_token ?? ""}`
           },
-          body: JSON.stringify(pendingAction.payload)
+          body: JSON.stringify(savedAction.payload)
         });
         result = (await response.json()) as RpcResult;
         if (!response.ok || result.error) throw new Error(result.error ?? "User creation failed.");
       } else {
-        const { data: rpcResult, error: rpcError } = isCandidateAction(pendingAction.endpoint)
-          ? await performCandidateAction(supabase, pendingAction.endpoint, pendingAction.payload).then(data => ({ data, error: null as { message: string } | null }), error => ({ data: null, error: { message: error instanceof Error ? error.message : String(error) } }))
-          : isRequisitionAction(pendingAction.endpoint)
-            ? await performRequisitionAction(supabase, detailAccessScope, pendingAction.endpoint, pendingAction.payload).then(data => ({ data, error: null as {message:string}|null }), error => ({data:null,error:{message:error instanceof Error ? error.message : String(error)}}))
-            : await supabase.rpc(pendingAction.endpoint, { payload: pendingAction.payload });
-        if(rpcError && pendingAction.endpoint==="app_upsert_candidate_profile_v2" && rpcError.message.includes("PROFILE_DUPLICATE_REVIEW_REQUIRED")) {
-          const latest=await supabase.rpc("app_candidate_duplicate_matches_v1",{payload:pendingAction.payload});
+        const { data: rpcResult, error: rpcError } = isCandidateAction(savedAction.endpoint)
+          ? await performCandidateAction(supabase, savedAction.endpoint, savedAction.payload).then(data => ({ data, error: null as { message: string } | null }), error => ({ data: null, error: { message: error instanceof Error ? error.message : String(error) } }))
+          : isRequisitionAction(savedAction.endpoint)
+            ? await performRequisitionAction(supabase, detailAccessScope, savedAction.endpoint, savedAction.payload).then(data => ({ data, error: null as {message:string}|null }), error => ({data:null,error:{message:error instanceof Error ? error.message : String(error)}}))
+            : await supabase.rpc(savedAction.endpoint, { payload: savedAction.payload });
+        if(rpcError && savedAction.endpoint==="app_upsert_candidate_profile_v2" && rpcError.message.includes("PROFILE_DUPLICATE_REVIEW_REQUIRED")) {
+          const latest=await supabase.rpc("app_candidate_duplicate_matches_v1",{payload:savedAction.payload});
           if(latest.error) throw new Error(latest.error.message);
-          setPendingAction(null);setDuplicateReview({matches:Array.isArray(latest.data)?latest.data:[],payload:pendingAction.payload,summary:pendingAction.summary});return;
+          setPendingAction(null);setDuplicateReview({matches:Array.isArray(latest.data)?latest.data:[],payload:savedAction.payload,summary:savedAction.summary});return;
         }
         if (rpcError) throw new Error(rpcError.message);
         result = (rpcResult ?? { ok: true }) as RpcResult;
       }
 
       if (result.error) throw new Error(result.error);
+      if (["app_create_group_match","app_create_and_match_sourcing_group_v2"].includes(savedAction.endpoint)) window.dispatchEvent(new Event("recruitment:classification-changed"));
       setPendingAction(null);
       setActiveModal(null);
       setProcessDefaults({});
@@ -1439,7 +1453,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       setPendingAction(null);
       if (isCandidateAction(savedAction.endpoint) && detail?.type === "candidate") { invalidateScopedCandidateDetail(supabase, detailAccessScope, new Set([detail.id])); setCandidateDetailRetry(value => value+1); }
       const message = saveError instanceof Error ? saveError.message : translate(language, "updateDeniedFallback");
-      showUpdateDenial(message.includes("APPLICATION_GROUP_ALREADY_USED") ? (language === "th" ? "ผู้สมัครมีเส้นทางใบสมัครสำหรับกลุ่มนี้แล้ว โปรดเลือกกลุ่มอื่น หรือย้ายเส้นทางเดิมกลับมา" : "This candidate already has a journey for this group. Choose another group, or return the original journey.") : message);
+      showUpdateDenial(message.includes("APPLICATION_GROUP_ALREADY_USED") ? (language === "th" ? "ผู้สมัครมีเส้นทางใบสมัครสำหรับกลุ่มนี้แล้ว โปรดเลือกกลุ่มอื่น หรือย้ายเส้นทางเดิมกลับมา" : "This candidate already has a journey for this group. Choose another group, or return the original journey.") : secretErrorMessage(message, language));
     } finally {
       pendingSaveLock.current = false;
       setBusy(false);
@@ -1761,12 +1775,12 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       ) : null}
 
       {initialView === "home" ? (
-        <HomeView onInitialDataSettled={handleHomeInitialDataSettled} refreshKey={reportRefreshKey + candidateHomeRevision + requisitionHomeRevision} bannerSummary={visibleHomeBannerSummary} bannerSummaryLoading={homeBannerLoading} bannerSummaryError={homeBannerError} onRetryBannerSummary={() => setHomeBannerRetry(value => value + 1)} listClient={supabase} accessScope={detailAccessScope} summaryScope={{ headerSite: filters.site, headerPic: filters.owner, priorityOnly: filters.priorityOnly }} language={language} profile={data.profile} requisitions={filteredRequisitions} candidates={filteredCandidates} offers={filteredOffers} recruitmentLogs={data.recruitment_logs} sourcingGroups={homeSourcingGroups} sourcingHref={buildContextualHref("/sourcing", { language, site: filters.site, owner: filters.owner, sourcingWeek, priority: filters.priorityOnly ? "only" : "all" })} staleSourcingGroups={staleSourcingGroups} changeLogs={filteredChangeLogs} dataQualityIssues={dataQualityIssues} canViewRecentActivity={canWrite} onConfirmStart={(offer, outcome) => { setProcessDefaults({ offer_id: offer.offer_id, offer_expected_updated_at: offer.updated_at, offer_start_confirmation: outcome ?? offer.start_confirmation }); setActiveModal("start_confirmation"); }} onEditPending={openPendingEdit} onOpenRequisition={(id) => setDetail({ type: "requisition", id })} onOpenCandidate={openCandidateDetail} />
+        <HomeView onInitialDataSettled={handleHomeInitialDataSettled} refreshKey={reportRefreshKey + candidateHomeRevision + requisitionHomeRevision} bannerSummary={visibleHomeBannerSummary} bannerSummaryLoading={homeBannerLoading} bannerSummaryError={homeBannerError} onRetryBannerSummary={() => setHomeBannerRetry(value => value + 1)} listClient={supabase} accessScope={detailAccessScope} summaryScope={{ headerSite: filters.site, headerPic: filters.owner, priorityOnly: filters.priorityOnly }} language={language} profile={data.profile} requisitions={filteredRequisitions.filter(row => !row.is_secret)} candidates={filteredCandidates.filter(row => !row.application_id || publicData.candidate_applications?.some(app => app.application_id === row.application_id))} offers={filteredOffers.filter(row => publicData.offers.some(offer => offer.offer_id === row.offer_id))} recruitmentLogs={publicData.recruitment_logs} sourcingGroups={homeSourcingGroups.filter(row => !data.position_groups.find(group => group.group_id === row.group_id)?.is_secret)} sourcingHref={buildContextualHref("/sourcing", { language, site: filters.site, owner: filters.owner, sourcingWeek, priority: filters.priorityOnly ? "only" : "all" })} staleSourcingGroups={staleOpenSourcingGroups(publicPriorityData)} changeLogs={filteredChangeLogs.filter(row => !row.is_secret)} dataQualityIssues={deriveDataQualityIssues(publicPriorityData)} canViewRecentActivity={canWrite} onConfirmStart={(offer, outcome) => { setProcessDefaults({ offer_id: offer.offer_id, offer_expected_updated_at: offer.updated_at, offer_start_confirmation: outcome ?? offer.start_confirmation }); setActiveModal("start_confirmation"); }} onEditPending={openPendingEdit} onOpenRequisition={(id) => setDetail({ type: "requisition", id })} onOpenCandidate={openCandidateDetail} />
       ) : null}
 
       {initialView === "dashboard" ? (
         <div className="grid min-w-0 gap-6">
-          <DashboardPortal language={language} data={dashboardReportData} requisitions={dashboardRequisitions} offers={dashboardOffers} candidateOffers={priorityData.offers} globalSite={filters.site} globalOwner={filters.owner} globalPriorityOnly={filters.priorityOnly}
+          <DashboardPortal language={language} data={dashboardReportData} requisitions={dashboardRequisitions} offers={dashboardOffers} candidateOffers={publicPriorityData.offers} globalSite={filters.site} globalOwner={filters.owner} globalPriorityOnly={filters.priorityOnly}
             refreshKey={reportRefreshKey + candidateReportRevision + requisitionReportRevision}
             onOpenCandidate={(id, applicationId) => openCandidateDetail(id, applicationId)}
             onOpenRequisition={async row => { if (!supabase) return false; setBusy(true); setError(null); try {
@@ -1978,7 +1992,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
         reasons={data.rejection_reasons}
         action={pendingAction}
         busy={busy}
-        onClose={() => setPendingAction(null)}
+        onClose={() => { setPendingAction(null); window.setTimeout(() => { if (reviewTriggerRef.current?.isConnected) reviewTriggerRef.current.focus(); }, 0); }}
         onConfirm={confirmPendingAction}
       />
 
@@ -2037,6 +2051,7 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
       {currentStageActionCandidateId && invitationTemplateError ? <p role="alert" className="fixed bottom-4 right-4 z-[90] rounded-md bg-white p-3 text-sm text-scarlet shadow-lg">Could not load interview templates: {invitationTemplateError}</p> : null}
       {currentStageActionCandidateId && invitationProfilesError ? <p role="alert" className="fixed bottom-4 right-4 z-[90] rounded-md bg-white p-3 text-sm text-scarlet shadow-lg">Could not load interviewer options: {invitationProfilesError} <RetryIconButton type="button" onClick={() => setInvitationProfilesRetry(value => value + 1)}>{translate(language, "retry")}</RetryIconButton></p> : null}
       </>}
+      {supabase && data.profile ? <CandidateLookup client={supabase} scope={detailAccessScope} language={language} onOpen={openCandidateDetail} /> : null}
     </AppShell></DesktopInteractionContext.Provider>
   );
 }
@@ -2047,6 +2062,7 @@ function buildPayload(modal: Exclude<ModalName, null>, formData: FormData) {
       mode: String(formData.get("mode") ?? "new"),
       doc_id: emptyToNull(formData.get("doc_id")),
       previous_doc_id: emptyToNull(formData.get("previous_doc_id")),
+      is_secret: boolFromForm(formData.get("is_secret")),
       pr_approved_date: emptyToNull(formData.get("pr_approved_date")),
       site: emptyToNull(formData.get("site")),
       position: emptyToNull(formData.get("position")),
@@ -2759,6 +2775,7 @@ function RequisitionFields({
   onSelectRow: (row: EnrichedRequisition | null) => void;
 }) {
   const isSiteRecruiter = profile?.role === "site_recruiter";
+  const [secretNew, setSecretNew] = useState(false);
   const forceAssignedScope = isSiteRecruiter && mode === "new";
   const nickname = profile?.nickname ?? profile?.full_name ?? "";
   const assignedSite = profile?.site ?? "";
@@ -2828,6 +2845,9 @@ function RequisitionFields({
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
+      {mode === "new" && ["system_admin","admin_recruiter"].includes(profile?.role ?? "") ? <div className="flex items-center justify-between gap-4 rounded-xl bg-primary/5 p-3 md:col-span-2"><div><p className="text-sm font-semibold text-navy">{language === "th" ? "ใบขออัตราลับ" : "Secret requisition"}</p><p className="mt-1 text-xs text-slate">{language === "th" ? "เฉพาะผู้ดูแลเท่านั้นที่เข้าถึงได้ และไม่รวมในหน้าแรกหรือรายงาน" : "Admin-only access; excluded from Home and reports."}</p></div><OnOffSwitch checked={secretNew} onCheckedChange={setSecretNew} language={language} label={language === "th" ? "ใบขออัตราลับ" : "Secret requisition"}/></div> : null}
+      <input type="hidden" name="is_secret" value={String(mode === "new" ? secretNew : Boolean(selected?.is_secret))} />
+
       {mode === "change" ? (
         <>
           <AuthorizedRequisitionLookup client={client} accessScope={accessScope} language={language} filters={{ ...lookupScope, managedOnly: true }} value={selectedId} selectedRow={selected} onSelect={onSelectRow} label={translate(language, "selectRequisitionOption")} name="selected_doc_id" searchInsideMenu loadAllResults />
@@ -3944,7 +3964,7 @@ function CreateAndMatchGroupFields({ client, accessScope, lookupScope, profile, 
       </div>
       <section className="grid gap-3 rounded-md border border-[#C9D5E6] bg-[#F8FAFD] p-3 md:col-span-2">
         <div><h3 className="font-semibold text-navy">{translate(language, "linkRequisitions")}</h3><p className="mt-1 text-sm text-slate">{translate(language, "groupRequisitionSiteHint")}</p></div>
-        <div className="flex flex-wrap items-end gap-2"><div className="min-w-[16rem] flex-1"><AuthorizedRequisitionLookup client={client} accessScope={accessScope} language={language} filters={{ ...lookupScope, ...(selectedSite ? { headerSite: selectedSite } : {}), status: "ongoing", homeTab: "open_headcount", managedOnly: true, unmatchedOnly: true }} value={pendingDocId} selectedRow={pendingRequisition} onSelect={row => { setPendingRequisition(row); setPendingDocId(row?.doc_id ?? ""); }} label={translate(language, "docId")} name="pending_doc_id" /></div><Button type="button" size="icon-sm" variant="secondary" icon={<Plus size={17} />} aria-label={translate(language, "addRequisition")} title={translate(language, "addRequisition")} onClick={addRequisition} disabled={!pendingDocId || !pendingRequisition || selectedRequisitions.some(row => row.doc_id === pendingDocId)} /></div>
+        <div className="flex flex-wrap items-end gap-2"><div className="min-w-[16rem] flex-1"><AuthorizedRequisitionLookup client={client} accessScope={accessScope} language={language} filters={{ ...lookupScope, ...(selectedSite ? { headerSite: selectedSite } : {}), status: "ongoing", managedOnly: true, unmatchedOnly: true }} value={pendingDocId} selectedRow={pendingRequisition} onSelect={row => { setPendingRequisition(row); setPendingDocId(row?.doc_id ?? ""); }} label={translate(language, "docId")} name="pending_doc_id" /></div><Button type="button" size="icon-sm" variant="secondary" icon={<Plus size={17} />} aria-label={translate(language, "addRequisition")} title={translate(language, "addRequisition")} onClick={addRequisition} disabled={!pendingDocId || !pendingRequisition || selectedRequisitions.some(row => row.doc_id === pendingDocId)} /></div>
         <div className="grid gap-2">{selectedRequisitions.map((row) => <div key={row.doc_id} className="flex min-w-0 items-center gap-2 rounded border border-[#D7DEE8] bg-white px-3 py-2"><input type="hidden" name="doc_ids" value={row.doc_id} /><p className="min-w-0 flex-1 truncate text-sm font-semibold text-navy" title={`${row.doc_id} · ${row.position} · ${row.site} · ${row.person_in_charge ?? translate(language, "unassigned")}`}>{row.doc_id} · {row.position} · {row.site} · {row.person_in_charge ?? translate(language, "unassigned")}</p><Button type="button" size="icon-sm" variant="ghost" className="text-danger hover:bg-danger/10 hover:text-danger" icon={<X size={16} />} onClick={() => setSelectedRequisitions(rows => rows.filter(item => item.doc_id !== row.doc_id))} aria-label={translate(language, "removeRequisition", { docId: row.doc_id })} /></div>)}</div>
         {selectedRequisitions.length === 0 ? <p className="text-sm font-medium text-danger">{translate(language, "selectAtLeastOneRequisition")}</p> : null}
       </section>
@@ -4041,37 +4061,116 @@ function GuidePrompt({
   );
 }
 
-function ConfirmModal({
-  language,
-  reasons,
-  action,
-  busy,
-  onClose,
-  onConfirm
-}: {
+// Review labels describe submitted values, never the RPC payload structure.
+const reviewLabels: Record<string, [string, string]> = {
+  is_secret: ["Secret requisition", "ใบขออัตราลับ"], mode: ["Action", "การดำเนินการ"], doc_id: ["Requisition ID", "เลขที่ใบขออัตรา"], doc_ids: ["Requisitions", "ใบขออัตรา"], candidate_id: ["Candidate ID", "รหัสผู้สมัคร"], group_id: ["Group ID", "รหัสกลุ่ม"], user_id: ["User ID", "รหัสผู้ใช้"], full_name: ["Full name", "ชื่อเต็ม"], password: ["Password", "รหัสผ่าน"], role: ["Role", "บทบาท"], week_start: ["Week start", "วันเริ่มสัปดาห์"], waterfall_category: ["Category", "หมวดหมู่"], vacancy_count: ["Vacancies", "จำนวนตำแหน่งว่าง"],
+  name: ["Name", "ชื่อ"], nickname: ["Nickname", "ชื่อเล่น"], phone_no: ["Phone", "โทรศัพท์"], email: ["Email", "อีเมล"], position_interests: ["Position interests", "ตำแหน่งที่สนใจ"], note: ["Note", "บันทึก"], channel: ["Channel", "ช่องทาง"], ref_name: ["Referral name", "ชื่อผู้อ้างอิง"], first_contact_date: ["First contact date", "วันที่ติดต่อครั้งแรก"], candidate_folder_url: ["Candidate folder", "โฟลเดอร์ผู้สมัคร"], references: ["References", "ผู้ให้ข้อมูลอ้างอิง"], reference_name: ["Reference name", "ชื่อผู้ให้ข้อมูลอ้างอิง"], relationship: ["Relationship", "ความสัมพันธ์"], channel_type: ["Contact channel", "ช่องทางติดต่อ"], channel_value: ["Contact details", "ข้อมูลติดต่อ"], other_channel_label: ["Other channel", "ช่องทางอื่น"],
+  site: ["Site", "พื้นที่"], position: ["Position", "ตำแหน่ง"], department: ["Department", "ฝ่าย"], section: ["Section", "ส่วนงาน"], level: ["Level", "ระดับ"], head_count: ["Headcount", "จำนวนอัตรา"], person_in_charge: ["Person in charge", "ผู้รับผิดชอบ"], line_manager: ["Line manager", "ผู้จัดการสายงาน"], request_type: ["Request type", "ประเภทคำขอ"], replacement_names: ["Replacement names", "ชื่อผู้ถูกทดแทน"], pr_approved_date: ["Approval date", "วันที่อนุมัติ"], previous_doc_id: ["Previous requisition ID", "เลขที่ใบขออัตราเดิม"],
+  status: ["Status", "สถานะ"], remark: ["Remark", "หมายเหตุ"], reason: ["Reason", "เหตุผล"], date: ["Date", "วันที่"], log_date: ["Date", "วันที่"], opened_date: ["Opened date", "วันที่เริ่ม"], estimated_action_date: ["Estimated action date", "วันที่คาดว่าจะดำเนินการ"], interviewer: ["Interviewer", "ผู้สัมภาษณ์"], pending: ["Pending details", "ข้อมูลรอดำเนินการ"], outcome: ["Outcome", "ผลการดำเนินการ"], next_pending: ["Next step", "ขั้นตอนถัดไป"], target_pending: ["Target step", "ขั้นตอนเป้าหมาย"], passed_stages: ["Passed stages", "ขั้นตอนที่ผ่าน"], stage: ["Stage", "ขั้นตอน"], round: ["Round", "รอบ"], result: ["Result", "ผล"], failure_actor: ["Who ended the process", "ผู้สิ้นสุดกระบวนการ"], failure_main_reason_id: ["Main reason", "เหตุผลหลัก"], failure_detail_reason_id: ["Detailed reason", "เหตุผลโดยละเอียด"], accepted_date: ["Accepted date", "วันที่ตอบรับ"], first_working_date: ["First working date", "วันเริ่มงาน"], group_position: ["Group position", "ตำแหน่งของกลุ่ม"], start_confirmation: ["Start confirmation", "ยืนยันการเริ่มงาน"], checked_date: ["Checked date", "วันที่ตรวจสอบ"], duration_minutes: ["Duration (minutes)", "ระยะเวลา (นาที)"], conversation_summary: ["Conversation summary", "สรุปการสนทนา"]
+};
+const reviewHiddenKeys = new Set(["duplicate_review", "secret_link_confirmed", "application_id", "stage_instance_id", "current_stage_instance_id", "reference_id"]);
+const reviewContactKeys = new Set(["phone_no", "email", "channel", "ref_name", "first_contact_date", "candidate_folder_url"]);
+const reviewIdentityKeys = new Set(["name", "nickname", "candidate_id", "doc_id", "group_id", "position", "group_position", "site", "department", "section", "level"]);
+const reviewValues: Record<string, [string, string]> = {
+  new: ["New", "สร้างใหม่"], change: ["Change", "แก้ไข"], pass: ["Passed", "ผ่าน"], fail: ["Failed", "ไม่ผ่าน"], ongoing: ["Ongoing", "กำลังดำเนินการ"], closed: ["Closed", "ปิดแล้ว"], cancelled: ["Cancelled", "ยกเลิก"], available: ["Available", "ติดต่อได้"], unavailable: ["Unavailable", "ติดต่อไม่ได้"], archived: ["Archived", "เก็บถาวร"], started: ["Started", "เริ่มงานแล้ว"], did_not_start: ["Did not start", "ไม่เริ่มงาน"], phone: ["Phone", "โทรศัพท์"], email: ["Email", "อีเมล"], other: ["Other", "อื่น ๆ"], replacement: ["Replacement", "ทดแทน"]
+};
+
+function reviewLabel(key: string, language: Language) {
+  const channel = SOURCING_CHANNELS.find(item => item.enabled === key || item.count === key);
+  if (channel) return channel.count === key ? (language === "th" ? `จำนวนผู้สมัคร ${channel.label}` : `${channel.label} applicants`) : channel.label;
+  return reviewLabels[key]?.[language === "th" ? 1 : 0] ?? key.replace(/_/g, " ").replace(/^./, letter => letter.toUpperCase());
+}
+
+function hasReviewValue(value: unknown): boolean {
+  if (value === null || value === undefined || (typeof value === "string" && !value.trim())) return false;
+  if (Array.isArray(value)) return value.some(hasReviewValue);
+  if (typeof value === "object") return reviewEntries(value as Record<string, unknown>).length > 0;
+  return true;
+}
+
+function reviewEntries(value: Record<string, unknown>) {
+  return Object.entries(value).filter(([key, item]) => !key.startsWith("expected_") && !reviewHiddenKeys.has(key) && hasReviewValue(item));
+}
+
+function reviewValue(key: string, item: unknown, language: Language) {
+  if (key === "password") return "••••••••";
+  if (typeof item === "boolean") return item ? (language === "th" ? "ใช่" : "Yes") : (language === "th" ? "ไม่" : "No");
+  if (typeof item === "string") {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(item)) return formatDate(item, language);
+    if (["mode", "status", "result", "start_confirmation", "channel_type", "request_type"].includes(key)) return reviewValues[item.toLowerCase()]?.[language === "th" ? 1 : 0] ?? item;
+    return item;
+  }
+  return String(item);
+}
+
+function ReviewArray({ items, field, label, language }: { items: unknown[]; field: string; label: string; language: Language }) {
+  return <>{items.filter(hasReviewValue).map((entry, index) => Array.isArray(entry)
+    ? <ReviewArray key={index} items={entry} field={field} label={label} language={language} />
+    : typeof entry === "object" && entry !== null
+      ? <div key={index} className="mt-2 border-l-2 border-primary/25 pl-3"><p className="pt-1 text-xs font-semibold text-slate">{label} {index + 1}</p><ReviewFields entries={reviewEntries(entry as Record<string, unknown>)} language={language} /></div>
+      : <p key={index} className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{reviewValue(field, entry, language)}</p>)}</>;
+}
+
+function ReviewFields({ entries, language }: { entries: [string, unknown][]; language: Language }) {
+  return <dl className="divide-y divide-[#E4E9F2]">{entries.map(([key, item]) => {
+    const label = reviewLabel(key, language);
+    if (Array.isArray(item)) return <div key={key} className="py-3"><dt className="text-xs font-semibold text-slate">{label}</dt><dd className="mt-1 min-w-0 text-sm text-navy"><ReviewArray items={item} field={key} label={label} language={language} /></dd></div>;
+    if (typeof item === "object" && item !== null) return <div key={key} className="py-3"><dt className="text-xs font-semibold text-slate">{label}</dt><dd className="mt-1 border-l-2 border-primary/25 pl-3"><ReviewFields entries={reviewEntries(item as Record<string, unknown>)} language={language} /></dd></div>;
+    return <div key={key} className="grid gap-1 py-3 sm:grid-cols-[minmax(0,10rem)_minmax(0,1fr)] sm:gap-4"><dt className="text-xs font-semibold text-slate sm:pt-0.5">{label}</dt><dd className="min-w-0 whitespace-pre-wrap break-words text-sm font-medium text-navy [overflow-wrap:anywhere]">{reviewValue(key, item, language)}</dd></div>;
+  })}</dl>;
+}
+
+function ConfirmModal({ language, reasons, action, busy, onClose, onConfirm }: {
   language: Language;
   reasons: DashboardData["rejection_reasons"];
   action: PendingAction | null;
   busy: boolean;
   onClose: () => void;
-  onConfirm: () => void;
+  onConfirm: (secretConfirmed?: boolean) => void;
 }) {
-  const outcome = (action?.payload.outcome ?? null) as { result?: string; date?: string | null; interviewer?: string | null; remark?: string | null; failure_actor?: "candidate" | "company"; failure_main_reason_id?: string; failure_detail_reason_id?: string } | null;
-  const failure = action?.modal === "stage_outcome" && outcome?.result === "fail";
-  const main = reasons.find((reason) => reason.reason_id === outcome?.failure_main_reason_id);
-  const detail = reasons.find((reason) => reason.reason_id === outcome?.failure_detail_reason_id);
-  return (
-    <Modal open={Boolean(action)} title={action?.title ?? "Confirm Save"} closeDisabled={busy} onClose={() => { if (!busy) onClose(); }} width="max-w-lg">
-      <div className="grid gap-4">
-        <p className="text-sm font-bold text-slate">{action?.summary}</p>
-        {failure ? <dl className="grid gap-2 rounded-md border border-[#D7DEE8] bg-lightgray p-3 text-sm text-navy"><div><dt className="font-semibold">{translate(language, "outcomeDate")}</dt><dd>{formatDate(outcome?.date, language)}</dd></div><div><dt className="font-semibold">{translate(language, "interviewer")}</dt><dd>{outcome?.interviewer || "—"}</dd></div><div><dt className="font-semibold">{language === "th" ? "ผู้สิ้นสุดกระบวนการ" : "Who ended the process"}</dt><dd>{outcome?.failure_actor ? failureActorLabel(outcome.failure_actor, language) : "—"}</dd></div><div><dt className="font-semibold">{language === "th" ? "เหตุผลหลัก" : "Main reason"}</dt><dd>{main ? language === "th" ? main.label_th : main.label_en : "—"}</dd></div><div><dt className="font-semibold">{language === "th" ? "เหตุผลโดยละเอียด" : "Detailed reason"}</dt><dd>{detail ? language === "th" ? detail.label_th : detail.label_en : "—"}</dd></div><div><dt className="font-semibold">{language === "th" ? "หมายเหตุ" : "Remark"}</dt><dd>{outcome?.remark || "—"}</dd></div></dl> : <pre className="max-h-72 overflow-auto rounded-md border border-[#D7DEE8] bg-lightgray p-3 text-xs text-navy">{JSON.stringify(action?.payload ?? {}, null, 2)}</pre>}
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="secondary" disabled={busy} onClick={onClose}>{translate(language, "cancel")}</Button>
-          <Button type="button" disabled={busy} onClick={onConfirm}>{translate(language, "saveChanges")}</Button>
-        </div>
+  const linking = Boolean(action && ["app_create_group_match","app_create_and_match_sourcing_group_v2"].includes(action.endpoint));
+  const [privacy, setPrivacy] = useState<{ action: PendingAction; required: boolean; error: boolean } | null>(null);
+  const [privacyAcknowledged, setPrivacyAcknowledged] = useState(false);
+  useEffect(() => { let active = true; setPrivacyAcknowledged(false); setPrivacy(null); if (linking && action && supabase) { void Promise.resolve(supabase.rpc("app_secret_link_review_v1", { payload: action.payload })).then(({data,error}) => { if (active) setPrivacy({action, required: Boolean(data?.requires_confirmation), error: Boolean(error)}); }, () => { if (active) setPrivacy({action,required:false,error:true}); }); } return () => { active = false; }; }, [action, linking]);
+  const privacyBlocked = linking && (!privacy || privacy.action !== action || privacy.error || (privacy.required && !privacyAcknowledged));
+  const closeState = useRef({ busy, onClose });
+  closeState.current = { busy, onClose };
+  const closeReview = useCallback(() => { if (!closeState.current.busy) closeState.current.onClose(); }, []);
+  const payload = action?.payload ?? {};
+  const outcome = payload.outcome && typeof payload.outcome === "object" && !Array.isArray(payload.outcome) ? payload.outcome as Record<string, unknown> : null;
+  const reviewPayload = { ...payload };
+  if (outcome?.result === "fail") {
+    const main = reasons.find(reason => reason.reason_id === outcome.failure_main_reason_id);
+    const detail = reasons.find(reason => reason.reason_id === outcome.failure_detail_reason_id);
+    reviewPayload.outcome = { ...outcome,
+      failure_actor: outcome.failure_actor === "candidate" || outcome.failure_actor === "company" ? failureActorLabel(outcome.failure_actor, language) : outcome.failure_actor,
+      failure_main_reason_id: main ? (language === "th" ? main.label_th : main.label_en) : outcome.failure_main_reason_id,
+      failure_detail_reason_id: detail ? (language === "th" ? detail.label_th : detail.label_en) : outcome.failure_detail_reason_id
+    };
+  }
+  const entries = reviewEntries(reviewPayload);
+  const groups: { title: string; entries: [string, unknown][] }[] = [
+    { title: language === "th" ? "ข้อมูลหลัก" : "Record details", entries: entries.filter(([key, item]) => reviewIdentityKeys.has(key) && (typeof item !== "object" || item === null)) },
+    { title: language === "th" ? "ข้อมูลติดต่อ" : "Contact details", entries: entries.filter(([key]) => reviewContactKeys.has(key)) },
+    { title: language === "th" ? "รายละเอียดเพิ่มเติม" : "Additional details", entries: entries.filter(([key, item]) => !reviewIdentityKeys.has(key) && !reviewContactKeys.has(key) && !Array.isArray(item) && (typeof item !== "object" || item === null)) },
+    ...entries.filter(([, item]) => Array.isArray(item) || (typeof item === "object" && item !== null)).map(entry => ({ title: reviewLabel(entry[0], language), entries: [entry] }))
+  ].filter(group => group.entries.length);
+  const identity = [payload.name, payload.position, payload.group_position, payload.doc_id, payload.candidate_id, payload.group_id].find(value => typeof value === "string" && value.trim());
+  return <Modal open={Boolean(action)} title={language === "th" ? "ตรวจสอบข้อมูลก่อนบันทึก" : "Confirm Save"} subtitle={language === "th" ? "ตรวจสอบข้อมูลก่อนยืนยัน หรือกลับไปแก้ไขได้" : "Review the details before saving, or go back to make changes."} titleIcon={<CheckCircle2 size={19} className="text-primary" />} closeLabel={language === "th" ? "ปิด" : "Close"} closeDisabled={busy} onClose={closeReview} width="max-w-md">
+    <div className="grid gap-4">
+      <div className="flex items-center gap-3 rounded-xl bg-primary/5 px-4 py-3"><span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><Files size={18} aria-hidden="true" /></span><div className="min-w-0"><p className="text-xs font-medium text-slate">{language === "th" ? "กำลังตรวจสอบ" : "Reviewing"}</p><p className="break-words text-sm font-semibold text-navy [overflow-wrap:anywhere]">{typeof identity === "string" ? identity : (language === "th" ? "ข้อมูลที่เปลี่ยนแปลง" : "Your changes")}</p></div></div>
+      <div className="max-h-[min(45vh,26rem)] space-y-4 overflow-y-auto overscroll-contain pr-1" data-save-review-details>
+        {groups.length ? groups.map(group => <section key={group.title} className="rounded-xl border border-[#E4E9F2] bg-white px-4"><h4 className="pt-3 text-sm font-semibold text-navy">{group.title}</h4><ReviewFields entries={group.entries} language={language} /></section>) : <p className="rounded-xl bg-lightgray p-4 text-sm text-slate">{language === "th" ? "ไม่มีข้อมูลที่แสดงเพื่อตรวจสอบ" : "There are no details to review."}</p>}
       </div>
-    </Modal>
-  );
+      {linking && (!privacy || privacy.action !== action) ? <p role="status" className="text-sm text-slate">{language === "th" ? "กำลังตรวจสอบสิทธิ์กลุ่ม…" : "Checking group confidentiality…"}</p> : null}
+      {linking && privacy?.error ? <p role="alert" className="text-sm text-danger">{language === "th" ? "ตรวจสอบกลุ่มไม่สำเร็จ กรุณากลับไปแก้ไขและลองใหม่" : "Could not check this group. Go back and review again."}</p> : null}
+      {linking && privacy?.required ? <label className="flex items-start gap-3 rounded-xl bg-primary/5 p-3 text-sm text-navy"><input type="checkbox" className="mt-1 h-4 w-4 shrink-0" checked={privacyAcknowledged} onChange={event => setPrivacyAcknowledged(event.target.checked)} disabled={busy}/><span>{language === "th" ? "ยืนยันว่ากลุ่มนี้และประวัติใบสมัครจะเป็นข้อมูลลับสำหรับผู้ดูแลเท่านั้น ห้ามรวมใบขออัตราทั่วไปกับลับในกลุ่มเดียวกัน" : "I confirm this group and its application history will become admin-only. Ordinary and secret requisitions cannot share a group."}</span></label> : null}
+      <div className="flex flex-col-reverse gap-2 border-t border-[#E4E9F2] pt-4 sm:flex-row sm:justify-end">
+        <Button type="button" variant="secondary" className="min-h-11 sm:min-h-10" disabled={busy} onClick={onClose}>{language === "th" ? "กลับไปแก้ไข" : "Back to edit"}</Button>
+        <Button type="button" className="min-h-11 sm:min-h-10" disabled={busy || privacyBlocked} onClick={() => onConfirm(Boolean(privacy?.required && privacyAcknowledged))}>{busy ? (language === "th" ? "กำลังบันทึก…" : "Saving…") : translate(language, "saveChanges")}</Button>
+      </div><span className="sr-only" role="status">{busy ? (language === "th" ? "กำลังบันทึก" : "Saving") : ""}</span>
+    </div>
+  </Modal>;
 }
 
 function DestructiveConfirmModal({
@@ -4264,6 +4363,7 @@ function buildDetailBodyV2(
       body: (
         <div className="grid min-w-0 gap-4" data-requisition-detail>
           <section className="requisition-overview">
+          {requisition.is_secret ? <div className="mb-3 flex flex-wrap items-center justify-between gap-3"><SecretBadge language={language}/>{["system_admin","admin_recruiter"].includes(data.profile?.role ?? "") ? <SecretReveal kind="requisition" id={requisition.doc_id} updatedAt={requisition.updated_at} language={language}/> : null}</div> : null}
           <SectionHeading className="mb-3" icon={<BriefcaseBusiness size={19} />} title={translate(language, "requisitionOverview")} />
           <dl className="requisition-overview-metrics">{[
             { label: translate(language, "openHeadcountShort"), value: requisition.open_headcount, tone: requisition.open_headcount > 0 ? "warning" : "success", helper: translate(language, "remainingDemand") },

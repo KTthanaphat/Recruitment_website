@@ -73,6 +73,7 @@ begin
 
   if v_mode = 'change' then
     update public.requisitions set
+      is_secret=case when payload ? 'is_secret' then (payload->>'is_secret')::boolean else is_secret end,
       doc_id = v_doc_id,
       pr_approved_date = nullif(payload ->> 'pr_approved_date', '')::date,
       site = v_site,
@@ -89,11 +90,11 @@ begin
     where doc_id = v_previous_doc_id;
   else
     insert into public.requisitions (
-      doc_id, pr_approved_date, site, position, department, section, level,
+      is_secret, doc_id, pr_approved_date, site, position, department, section, level,
       head_count, person_in_charge, line_manager, request_type, replacement_names, status
     )
     values (
-      v_doc_id,
+      coalesce((payload->>'is_secret')::boolean,false), v_doc_id,
       nullif(payload ->> 'pr_approved_date', '')::date,
       v_site,
       nullif(payload ->> 'position', ''),
@@ -216,6 +217,7 @@ declare
   v_doc_group_id text;
   v_group public.position_groups%rowtype;
 begin
+  if coalesce((payload->>'secret_link_confirmed')::boolean,false) and app_private.secret_admin() then perform set_config('app.secret_link_ack',payload->>'group_id',true); end if;
   perform app_private.assert_recruitment_writer();
   if v_doc_id is null or not exists(select 1 from public.requisitions where doc_id = v_doc_id) then
     raise exception 'Requisition does not exist.';
@@ -2366,3 +2368,96 @@ begin
   return jsonb_build_object('ok', true, 'id', v_row.doc_id, 'is_priority', v_row.is_priority, 'updated_at', v_row.updated_at);
 end;
 $$;
+
+create or replace function public.app_create_and_match_sourcing_group_v2(payload jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, app_private
+as $$
+declare
+  v_group_position text := nullif(btrim(payload ->> 'group_position'), '');
+  v_doc_ids text[];
+  v_group_id text;
+  v_doc_group_ids text[] := array[]::text[];
+  v_site_count integer;
+  v_invalid_count integer;
+  v_doc_id text;
+  v_doc_group_id text;
+begin
+  perform app_private.assert_recruitment_writer();
+  if v_group_position is null then
+    raise exception 'SOURCING_GROUP_POSITION_REQUIRED: Group Position is required.';
+  end if;
+  if jsonb_typeof(payload -> 'doc_ids') <> 'array' then
+    raise exception 'SOURCING_GROUP_REQUISITIONS_REQUIRED: Select at least one requisition.';
+  end if;
+
+  select array_agg(doc_id order by doc_id)
+    into v_doc_ids
+  from (
+    select nullif(btrim(value), '') as doc_id
+    from jsonb_array_elements_text(payload -> 'doc_ids') as item(value)
+  ) ids
+  where doc_id is not null;
+
+  if coalesce(array_length(v_doc_ids, 1), 0) = 0
+    or cardinality(v_doc_ids) <> cardinality(array(select distinct unnest(v_doc_ids))) then
+    raise exception 'SOURCING_GROUP_REQUISITIONS_INVALID: Select one or more distinct requisitions.';
+  end if;
+
+  select count(distinct r.site), count(*) filter (where r.doc_id is null
+      or r.status <> 'ongoing'
+      or coalesce((select count(*) from public.offers o where o.doc_id = r.doc_id and o.accepted_date is not null), 0) >= r.head_count
+      or exists (select 1 from public.document_groups dg where dg.doc_id = r.doc_id)
+      or not app_private.can_manage_requisition(r.doc_id))
+    into v_site_count, v_invalid_count
+  from unnest(v_doc_ids) requested(doc_id)
+  left join public.requisitions r on r.doc_id = requested.doc_id;
+
+  if v_site_count <> 1 then
+    raise exception 'SOURCING_GROUP_SITE_MISMATCH: Group ID can only be matched to requisitions at one site.';
+  end if;
+  if v_invalid_count > 0 then
+    raise exception 'SOURCING_GROUP_REQUISITION_DENIED: Every requisition must exist, be open, unmatched, and be manageable by you.';
+  end if;
+
+  v_group_id := app_private.next_app_id('position_groups', 'GRP');
+  perform set_config('app.action', 'position_group:create_and_match', true);
+  insert into public.position_groups (
+    group_id, group_position,
+    channel_fb, channel_jobthai, channel_jobtopgun, channel_jobdb, channel_jobbkk,
+    channel_linkedin, channel_walkin, channel_referral, channel_others
+  ) values (
+    v_group_id, v_group_position,
+    coalesce((payload ->> 'channel_fb')::boolean, false),
+    coalesce((payload ->> 'channel_jobthai')::boolean, false),
+    coalesce((payload ->> 'channel_jobtopgun')::boolean, false),
+    coalesce((payload ->> 'channel_jobdb')::boolean, false),
+    coalesce((payload ->> 'channel_jobbkk')::boolean, false),
+    coalesce((payload ->> 'channel_linkedin')::boolean, false),
+    coalesce((payload ->> 'channel_walkin')::boolean, false),
+    coalesce((payload ->> 'channel_referral')::boolean, false),
+    coalesce((payload ->> 'channel_others')::boolean, false)
+  );
+
+  if coalesce((payload->>'secret_link_confirmed')::boolean,false) and app_private.secret_admin() then perform set_config('app.secret_link_ack',v_group_id,true); end if;
+  foreach v_doc_id in array v_doc_ids loop
+    v_doc_group_id := app_private.next_app_id('document_groups', 'DGRP');
+    insert into public.document_groups (
+      doc_group_id, doc_id, group_id, group_position,
+      channel_fb, channel_jobthai, channel_jobtopgun, channel_jobdb, channel_jobbkk,
+      channel_linkedin, channel_walkin, channel_referral, channel_others
+    )
+    select v_doc_group_id, v_doc_id, group_id, group_position,
+      channel_fb, channel_jobthai, channel_jobtopgun, channel_jobdb, channel_jobbkk,
+      channel_linkedin, channel_walkin, channel_referral, channel_others
+    from public.position_groups where group_id = v_group_id;
+    v_doc_group_ids := array_append(v_doc_group_ids, v_doc_group_id);
+  end loop;
+
+  return jsonb_build_object('ok', true, 'id', v_group_id, 'doc_group_ids', to_jsonb(v_doc_group_ids));
+end;
+$$;
+revoke all on function public.app_create_and_match_sourcing_group_v2(jsonb) from public,anon,authenticated;
+grant execute on function public.app_create_and_match_sourcing_group_v2(jsonb) to authenticated;

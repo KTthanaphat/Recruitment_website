@@ -191,7 +191,7 @@ async function main() {
   assert.equal((declarativeIndexes.match(historyIndexDeclaration)||[]).length,1,'one canonical all-history application index declaration exists');
   assert.equal(assignmentHistoryMigration.replace(/\s+/g,' ').trim(),declarativeIndexes.match(historyIndexDeclaration)[0].replace(/\s+/g,' ').trim(),'additive history index migration matches its declarative source');
   await db.exec(declarativeIndexes.replace(historyIndexDeclaration,''));
-  await db.exec(fs.readFileSync(path.join(root,'supabase/schemas/55_dashboard_report.sql'),'utf8'));
+  await db.exec(fs.readFileSync(path.join(root,'tests/db/fixtures/company-report-before-confidentiality.sql'),'utf8'));
   for (const name of [
     '20261101125118_candidate_registry_list.sql',
     '20261101130623_dashboard_summaries.sql',
@@ -576,6 +576,8 @@ async function main() {
     console.log('Dashboard migration outputs match before and after under five authenticated access scopes; anonymous execution denied.');
   }
   if (process.argv.includes('--requisition-actions')) await require('./verify-requisition-actions.cjs')(db, root);
+  if (process.argv.includes("--contact-lookup")) await require("./verify-contact-lookup.cjs")(db, root);
+  if (process.argv.includes("--confidentiality")) await require("./verify-confidentiality.cjs")(db, root);
   await db.close();
 }
 main().catch(async error=>{console.error(error.message);await db.close();process.exitCode=1;});

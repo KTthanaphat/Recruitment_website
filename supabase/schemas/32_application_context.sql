@@ -3,11 +3,12 @@ create or replace function app_private.is_profile_admin() returns boolean langua
  select app_private.current_app_role() in ('system_admin','admin_recruiter')
 $$;
 create or replace function app_private.is_group_pic(p_group text) returns boolean language sql stable security definer set search_path=public,app_private as $$
- select app_private.is_recruitment_writer() and exists(select 1 from public.document_groups d join public.requisitions r using(doc_id) join public.profiles p on p.id=auth.uid() where d.group_id=p_group and nullif(btrim(r.person_in_charge),'') is not null and lower(btrim(r.person_in_charge)) in (lower(btrim(p.nickname)),lower(btrim(p.full_name))))
+ select (app_private.secret_group_access(p_group)) and (app_private.is_recruitment_writer() and exists(select 1 from public.document_groups d join public.requisitions r using(doc_id) join public.profiles p on p.id=auth.uid() where d.group_id=p_group and nullif(btrim(r.person_in_charge),'') is not null and lower(btrim(r.person_in_charge)) in (lower(btrim(p.nickname)),lower(btrim(p.full_name)))))
 $$;
 create or replace function app_private.can_read_requisition(p_doc_id text) returns boolean language plpgsql stable security definer set search_path=public,app_private as $$
 declare v_role text; v_req_site text; v_pic text; v_profile_site text; v_nickname text; v_full_name text;
 begin
+ if not (app_private.secret_requisition_access(p_doc_id)) then return false; end if;
  if auth.uid() is null then return false; end if;
  v_role:=app_private.current_app_role();
  if v_role in ('system_admin','admin_recruiter','viewer') then return true; end if;
@@ -24,6 +25,7 @@ $$;
 create or replace function app_private.can_read_application(p_id uuid) returns boolean language plpgsql stable security definer set search_path=public,app_private as $$
 declare v_role text; v_group text;
 begin
+ if not (app_private.secret_application_access(p_id)) then return false; end if;
  if auth.uid() is null then return false; end if;
  v_role:=app_private.current_app_role();
  if v_role not in ('system_admin','admin_recruiter','site_recruiter','viewer') then return false; end if;
@@ -34,11 +36,12 @@ begin
 end
 $$;
 create or replace function app_private.can_manage_application(p_id uuid) returns boolean language sql stable security definer set search_path=public,app_private as $$
- select app_private.is_recruitment_writer() and exists(select 1 from public.candidate_applications a where a.application_id=p_id and (app_private.is_profile_admin() or app_private.is_group_pic(a.group_id)))
+ select (app_private.secret_application_access(p_id)) and (app_private.is_recruitment_writer() and exists(select 1 from public.candidate_applications a where a.application_id=p_id and (app_private.is_profile_admin() or app_private.is_group_pic(a.group_id))))
 $$;
 create or replace function app_private.can_read_candidate(p_candidate_id text) returns boolean language plpgsql stable security definer set search_path=public,app_private as $$
 declare v_role text; v_created_by uuid; v_home_site text; v_group text; v_profile_site text;
 begin
+ if not (app_private.secret_candidate_access(p_candidate_id)) then return false; end if;
  if auth.uid() is null then return false; end if;
  v_role:=app_private.current_app_role();
  if v_role not in ('system_admin','admin_recruiter','site_recruiter','viewer') then return false; end if;
@@ -59,13 +62,13 @@ begin
 end
 $$;
 create or replace function app_private.can_manage_candidate(p_candidate_id text) returns boolean language sql stable security definer set search_path=public,app_private as $$
- select app_private.is_recruitment_writer() and exists(select 1 from public.candidates c where c.candidate_id=p_candidate_id and (app_private.is_profile_admin() or c.created_by=auth.uid() or exists(select 1 from public.candidate_applications a where a.candidate_id=c.candidate_id and app_private.is_group_pic(a.group_id))))
+ select (app_private.secret_candidate_access(p_candidate_id)) and (app_private.is_recruitment_writer() and exists(select 1 from public.candidates c where c.candidate_id=p_candidate_id and (app_private.is_profile_admin() or c.created_by=auth.uid() or exists(select 1 from public.candidate_applications a where a.candidate_id=c.candidate_id and app_private.is_group_pic(a.group_id)))))
 $$;
 create or replace function app_private.can_read_profile_note(p_candidate_id text) returns boolean language sql stable security definer set search_path=public,app_private as $$
- select app_private.is_recruitment_reader() and exists(select 1 from public.candidates c where c.candidate_id=p_candidate_id and (app_private.is_profile_admin() or c.created_by=auth.uid() or exists(select 1 from public.candidate_applications a where a.candidate_id=c.candidate_id and app_private.is_group_pic(a.group_id))))
+ select (app_private.secret_candidate_access(p_candidate_id)) and (app_private.is_recruitment_reader() and exists(select 1 from public.candidates c where c.candidate_id=p_candidate_id and (app_private.is_profile_admin() or c.created_by=auth.uid() or exists(select 1 from public.candidate_applications a where a.candidate_id=c.candidate_id and app_private.is_group_pic(a.group_id)))))
 $$;
 create or replace function app_private.can_edit_profile_note(p_candidate_id text) returns boolean language sql stable security definer set search_path=public,app_private as $$
- select app_private.is_recruitment_writer() and exists(select 1 from public.candidates c where c.candidate_id=p_candidate_id and (app_private.is_profile_admin() or c.created_by=auth.uid()))
+ select (app_private.secret_candidate_access(p_candidate_id)) and (app_private.is_recruitment_writer() and exists(select 1 from public.candidates c where c.candidate_id=p_candidate_id and (app_private.is_profile_admin() or c.created_by=auth.uid())))
 $$;
 create or replace function app_private.can_match_candidate(p_candidate_id text) returns boolean language sql stable security definer set search_path=public,app_private as $$
  select app_private.can_manage_candidate(p_candidate_id)
@@ -73,6 +76,7 @@ $$;
 create or replace function app_private.can_read_candidate_audit(p_entity text,p_id text,p_old jsonb,p_new jsonb) returns boolean language plpgsql stable security definer set search_path=public,app_private as $$
 declare v jsonb:=coalesce(p_new,p_old,'{}'::jsonb); v_candidate text; v_application uuid;
 begin
+ if not (app_private.secret_audit_access(p_entity,p_id,p_old,p_new)) then return false; end if;
  if not app_private.is_global_recruitment_reader() then return false; end if;
  if app_private.is_profile_admin() then return true; end if;
  if p_entity='candidates' then return app_private.can_read_candidate(p_id); end if;

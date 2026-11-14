@@ -1,3 +1,4 @@
+import { SecretBadge } from "@/components/requisitions/SecretClassification";
 import {fetchMatchingRecordIds,fetchSelectedRequisitions} from "@/lib/records-selection";
 import { downloadCsv } from "@/lib/download-csv";
 import { RECORD_PAGE_SIZE, RecordPagination, RecordCreateButton, RecordCell, RecordFilterPanel, useRecordFilterDraft, RecordPriorityIndicator, useRecordCategoryOptions, useRecordSelection, RecordSelectionCheckbox, RecordSelectionProgress } from "@/components/ui/RecordsControls";
@@ -148,7 +149,7 @@ export function RequisitionsView({
             <article key={row.doc_id} className={"ats-card p-3 text-left "+(selection.flashing(row.doc_id)?"records-selection-flash":"")}><label className="record-selection-target mb-1 w-11"><RecordSelectionCheckbox label={translate(language,"selectRequisition",{id:row.doc_id})} checked={selectedIds.includes(row.doc_id)} onChange={checked=>selection.toggle(row.doc_id,checked)} disabled={list.loading||selection.captureBusy}/></label>
               <div className="mb-2 flex items-center justify-between gap-2">
                 <div className="min-w-0">
-                  <div className="flex items-start gap-2"><button type="button" className="records-requisition-identity text-left" aria-label={translate(language,"viewRequisitionDetailFor",{id:row.doc_id})} onClick={()=>onOpen(row.doc_id)}><span className="records-position-primary">{formatRequisitionTitle(row)}</span><span className="records-position-id">{row.doc_id}</span></button><RecordPriorityIndicator priority={row.is_priority===true} language={language}/></div>
+                  <div className="flex items-start gap-2"><button type="button" className="records-requisition-identity text-left" aria-label={translate(language,"viewRequisitionDetailFor",{id:row.doc_id})} onClick={()=>onOpen(row.doc_id)}><span className="records-position-primary">{formatRequisitionTitle(row)} {row.is_secret ? <SecretBadge language={language}/> : null}</span><span className="records-position-id">{row.doc_id}</span></button><RecordPriorityIndicator priority={row.is_priority===true} language={language}/></div>
                 </div>
                 <Tag appearance="soft" tone={statusTone(row.status) as never}>{requisitionStatusLabel(language, row.status)}</Tag>
               </div>
@@ -199,7 +200,7 @@ export function RequisitionsView({
                 <tr key={row.doc_id} className={selection.flashing(row.doc_id)?"records-selection-flash":""}>
                   <td className="records-selection-cell"><RecordSelectionCheckbox label={translate(language,"selectRequisition",{id:row.doc_id})} checked={selectedIds.includes(row.doc_id)} onChange={checked=>selection.toggle(row.doc_id,checked)} disabled={list.loading||selection.captureBusy}/></td>
 <td className="records-priority-column"><RecordCell><RecordPriorityIndicator priority={row.is_priority===true} language={language}/></RecordCell></td>
-<td><RecordCell><button type="button" className="records-requisition-identity text-left focus-visible:ring-2 focus-visible:ring-primary" aria-label={translate(language,"viewRequisitionDetailFor",{id:row.doc_id})} title={formatRequisitionTitle(row)+" / "+row.doc_id} onClick={()=>onOpen(row.doc_id)}><span className="records-position-primary">{formatRequisitionTitle(row)}</span><span className="records-position-id">{row.doc_id}</span></button></RecordCell></td>
+<td><RecordCell><button type="button" className="records-requisition-identity text-left focus-visible:ring-2 focus-visible:ring-primary" aria-label={translate(language,"viewRequisitionDetailFor",{id:row.doc_id})} title={formatRequisitionTitle(row)+" / "+row.doc_id} onClick={()=>onOpen(row.doc_id)}><span className="records-position-primary">{formatRequisitionTitle(row)} {row.is_secret ? <SecretBadge language={language}/> : null}</span><span className="records-position-id">{row.doc_id}</span></button></RecordCell></td>
 <td className="px-3 py-3"><RecordCell><Tag appearance="soft" tone={statusTone(row.status) as never}>{requisitionStatusLabel(language, row.status)}</Tag></RecordCell></td>
 <td className="px-3 py-3"><RecordCell><ReadinessText row={row} candidates={candidates} language={language} /></RecordCell></td>
 <td className="px-3 py-3 text-slate"><RecordCell>{getRequisitionSlaState(row, { openOnly: true }).label}</RecordCell></td>

@@ -21,7 +21,7 @@ Use for auth/configuration or branch-to-service mismatch.
 
 - Variable names and server-only boundaries: [environment variables](../DEPLOYMENT.md#environment-variables).
 - Branch mapping: [README Supabase mapping](../../README.md#supabase-branch-mapping). Read configured identifiers without exposing secret values.
-- Provider instructions in Deployment describe a Vercel target; the Teams contract mentions Render. Verify the actual configured host for the requested deployment instead of inferring it from either document alone.
+- Verified branch/service targets and the plain-Git release process: [Deployment](../DEPLOYMENT.md#target-deployment). Recheck the actual service/branch/database before each release; the earlier Vercel section is historical.
 - Edges: `configures` → [SYS-PLATFORM](system/platform.md), [SYS-INTEGRATIONS](system/integrations.md); `used by` → SETUP-LOCAL / SETUP-RELEASE.
 
 ## SETUP-DATABASE

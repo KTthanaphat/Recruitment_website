@@ -1,5 +1,6 @@
 create or replace function app_private.assert_application_destination(p_candidate text,p_group text) returns void language plpgsql security definer set search_path=public,app_private as $$
 begin
+ if not app_private.secret_group_access(p_group) then raise exception 'APPLICATION_GROUP_NOT_AVAILABLE'; end if;
  if not app_private.has_open_group_requisition(p_group) then raise exception 'APPLICATION_GROUP_NOT_AVAILABLE: Select a group with remaining open demand.'; end if;
 end $$;
 

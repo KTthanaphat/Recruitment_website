@@ -19,6 +19,10 @@ Read this node for this feature only. It indexes ownership; product rules remain
 - Entry: `/workspace`, requisition/candidate/Pipeline modals.
 - Existing check/search: [tests/e2e/workspace.spec.ts](../../../tests/e2e/workspace.spec.ts), [tests/e2e/forms-validation.spec.ts](../../../tests/e2e/forms-validation.spec.ts), [tests/e2e/pipeline-actions.spec.ts](../../../tests/e2e/pipeline-actions.spec.ts).
 
+### Shared Save review
+
+- Owner: [RecruitmentWorkspace](../../../src/components/RecruitmentWorkspace.tsx) (`ConfirmModal`, `ReviewFields`), shared focus in [Modal](../../../src/components/ui/Modal.tsx); contract: [Controls](../../design/controls.md#shared-save-review); checks: [Save review](../../../tests/e2e/save-review.spec.ts).
+
 ### F05: Records sidebar dropdown
 
 Dashboard-only inline header filters placement variant (shared dark sidebar and profile theme): [AppShell](../../../src/components/layout/AppShell.tsx) `variant="dashboard"`, `headerScopeSummary`; [globals.css](../../../src/app/globals.css) scoped `[data-shell-variant]`; visual owner [Dashboard portal](../../design/dashboard-portal.md), report callers [Reporting subviews](reporting.md#risk-and-bottleneck-subviews). Default shell callers retain their styling.
@@ -119,3 +123,7 @@ Shared attendance icon owner: [AttendanceDecisionActions](../../../src/component
 - Selection/continuous-row owners: useRecordSelection, RecordSelectionCheckbox and BulkActionToolbar selectionNote/exportBusy; [contract](../../design/controls.md#records-selection-and-linked-indicators) → [checks](../../../tests/e2e/records-divider-filters.spec.ts).
 
 - 48px shared label/filter geometry: RecordHeaderFilterRow / RecordSelectionProgress; [contract](../../design/controls.md#records-headings-and-captured-selection) → [checks](../../../tests/e2e/records-capture-history.spec.ts).
+
+## Candidate contact lookup
+
+Owner: [CandidateLookup](../../../src/components/candidates/CandidateLookup.tsx); data: [67 lookup RPCs](../../../supabase/schemas/67_candidate_contact_lookup.sql); contract: [compact layout / automatic-search design](../../design/candidate-lookup.md); [browser checks](../../../tests/e2e/candidate-lookup.spec.ts), `rehearse-profile-contract.cjs --contact-lookup --confidentiality` ([prefix/active checks](../../../scripts/verify-contact-lookup-prefix.cjs)). [Prefix rollout](../../work-items/candidate-lookup-prefix/implementation.md). Real p95 evidence is separate from mock/SQL timings; see [delivery record](../../work-items/confidential-recruitment/implementation.md).

@@ -19,7 +19,7 @@ begin
 if auth.uid() is null or not app_private.is_recruitment_reader() then raise exception 'RECRUITMENT_READ_NOT_AUTHORIZED'; end if;
   with eligible_applications as materialized (
     select a.* from public.candidate_applications a
-    where case when v_global_reader then true else app_private.can_read_application(a.application_id) end and case when v_global_reader then true else app_private.can_read_candidate(a.candidate_id) end
+    where case when v_global_reader then app_private.secret_application_access(a.application_id) else app_private.can_read_application(a.application_id) end and case when v_global_reader then app_private.secret_candidate_access(a.candidate_id) else app_private.can_read_candidate(a.candidate_id) end
       and (coalesce(p_filters->>'candidateId','')='' or a.candidate_id=p_filters->>'candidateId')
       and (v_group='' or a.group_id=v_group)
       and (coalesce(p_filters->>'headerSite','')='' or exists(select 1 from public.document_groups d join public.requisitions r using(doc_id) where d.group_id=a.group_id and r.site=p_filters->>'headerSite'))
@@ -77,7 +77,7 @@ if auth.uid() is null or not app_private.is_recruitment_reader() then raise exce
         array_agg(distinct r.person_in_charge order by r.person_in_charge) filter(where nullif(btrim(r.person_in_charge),'') is not null) owners
       from public.document_groups d join public.requisitions r on r.doc_id=d.doc_id where d.group_id=a.group_id
     ) ctx on true
-    where case when v_global_reader then true else app_private.can_read_application(a.application_id) end and case when v_global_reader then true else app_private.can_read_candidate(a.candidate_id) end
+    where case when v_global_reader then app_private.secret_application_access(a.application_id) else app_private.can_read_application(a.application_id) end and case when v_global_reader then app_private.secret_candidate_access(a.candidate_id) else app_private.can_read_candidate(a.candidate_id) end
       and (coalesce(p_filters->>'candidateId','')='' or c.candidate_id=p_filters->>'candidateId')
       and (v_group='' or a.group_id=v_group)
       and (coalesce(p_filters->>'headerSite','')='' or exists(select 1 from public.document_groups d join public.requisitions r using(doc_id) where d.group_id=a.group_id and r.site=p_filters->>'headerSite'))
@@ -142,7 +142,7 @@ begin
 
   with eligible_applications as materialized (
     select a.* from public.candidate_applications a
-    where case when v_global_reader then true else app_private.can_read_application(a.application_id) end and case when v_global_reader then true else app_private.can_read_candidate(a.candidate_id) end
+    where case when v_global_reader then app_private.secret_application_access(a.application_id) else app_private.can_read_application(a.application_id) end and case when v_global_reader then app_private.secret_candidate_access(a.candidate_id) else app_private.can_read_candidate(a.candidate_id) end
       and (coalesce(p_filters->>'candidateId','')='' or a.candidate_id=p_filters->>'candidateId')
       and (v_group='' or a.group_id=v_group)
       and (coalesce(p_filters->>'headerSite','')='' or exists(select 1 from public.document_groups d join public.requisitions r using(doc_id) where d.group_id=a.group_id and r.site=p_filters->>'headerSite'))
@@ -199,7 +199,7 @@ begin
         array_agg(distinct r.person_in_charge order by r.person_in_charge) filter(where nullif(btrim(r.person_in_charge),'') is not null) owners
       from public.document_groups d join public.requisitions r on r.doc_id=d.doc_id where d.group_id=a.group_id
     ) ctx on true
-    where case when v_global_reader then true else app_private.can_read_application(a.application_id) end and case when v_global_reader then true else app_private.can_read_candidate(a.candidate_id) end
+    where case when v_global_reader then app_private.secret_application_access(a.application_id) else app_private.can_read_application(a.application_id) end and case when v_global_reader then app_private.secret_candidate_access(a.candidate_id) else app_private.can_read_candidate(a.candidate_id) end
       and (coalesce(p_filters->>'candidateId','')='' or c.candidate_id=p_filters->>'candidateId')
       and (v_group='' or a.group_id=v_group)
       and (coalesce(p_filters->>'headerSite','')='' or exists(select 1 from public.document_groups d join public.requisitions r using(doc_id) where d.group_id=a.group_id and r.site=p_filters->>'headerSite'))

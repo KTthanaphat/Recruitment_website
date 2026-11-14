@@ -73,10 +73,12 @@ export function Modal({
 }
 
 function useDialogFocus(open: boolean, panelRef: RefObject<HTMLElement>, onClose: () => void) {
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   useEffect(() => {
     if (!open) return;
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    window.setTimeout(() => panelRef.current?.focus(), 0);
+    const focusTimer = window.setTimeout(() => panelRef.current?.focus(), 0);
 
     function onKeyDown(event: globalThis.KeyboardEvent) {
       if (event.key !== "Escape" || event.defaultPrevented) return;
@@ -84,15 +86,16 @@ function useDialogFocus(open: boolean, panelRef: RefObject<HTMLElement>, onClose
       const dialogs = document.querySelectorAll('[role="dialog"][aria-modal="true"]');
       if (dialogs[dialogs.length - 1] !== panelRef.current) return;
       event.preventDefault();
-      onClose();
+      onCloseRef.current();
     }
 
     document.addEventListener("keydown", onKeyDown);
     return () => {
+      window.clearTimeout(focusTimer);
       document.removeEventListener("keydown", onKeyDown);
       previousFocus?.focus();
     };
-  }, [onClose, open, panelRef]);
+  }, [open, panelRef]);
 }
 
 function trapDialogTabKey(event: KeyboardEvent, container: HTMLElement | null) {

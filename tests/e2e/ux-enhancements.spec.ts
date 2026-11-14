@@ -219,7 +219,7 @@ test("home calendar shows filtered unresolved estimates and opens candidate deta
   expect(calendarBox?.y ?? 0).toBeLessThan(recordsBox?.y ?? 0);
 
   await expect(calendar.getByText("July 2026", { exact: true })).toBeVisible();
-  await expect(page.getByText("Last touch > 7 days", { exact: true })).toBeVisible();
+  await expect(page.getByText("Overdue scheduled actions", { exact: true })).toBeVisible();
   await expect(page.getByText("Groups needing updates", { exact: true })).toBeVisible();
   const patPhoneEvent = calendar.getByRole("button", { name: "Open Pat Phone, Stage event, 25/07/2026" });
   await expect(patPhoneEvent).toBeVisible();
@@ -235,11 +235,11 @@ test("home calendar shows filtered unresolved estimates and opens candidate deta
   await expect(dayEventsDialog.getByText("Avery Aging", { exact: true })).toBeVisible();
   await expect(dayEventsDialog.getByText("Olivia Offer Pass", { exact: true })).toBeVisible();
   await expect(dayEventsDialog.getByText("Pending details:", { exact: false }).first()).toBeVisible();
-  await expect(dayEventsDialog.getByRole("button", { name: "Edit", exact: true })).toHaveCount(2);
-  await dayEventsDialog.getByRole("button", { name: "Edit", exact: true }).first().click();
-  const pendingDialog = page.getByRole("dialog", { name: "Edit Pending Details" });
-  await expect(pendingDialog).toBeVisible();
-  await pendingDialog.getByRole("button", { name: "Cancel" }).click();
+  // Bounded calendar summaries do not fabricate writable candidate context from bootstrap data.
+  await expect(dayEventsDialog.getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
+  await dayEventsDialog.getByText("Avery Aging", {exact:true}).locator("../..").getByRole("button", {name:"View detail",exact:true}).click();
+  await expect(page.getByRole("dialog", {name:/C-AGING/})).toBeVisible();
+  await page.keyboard.press("Escape");
 
   await calendar.getByRole("button", { name: "Next month" }).click();
   await expect(calendar.getByText("August 2026", { exact: true })).toBeVisible();
@@ -411,9 +411,10 @@ test("Today's Events stays on Bangkok today while the calendar month changes", a
   }
   const records = page.getByRole("tabpanel");
   const sort = records.getByLabel("Sort open headcount");
-  await expect(sort.locator("option").nth(0)).toHaveText("Oldest first");
-  await sort.selectOption("demand");
-  await expect(sort).toHaveValue("demand");
+  await sort.click();
+  await expect(page.getByRole("option", { name: "Oldest first", exact: true })).toBeVisible();
+  await page.getByRole("option", { name: "Most open demand", exact: true }).click();
+  await expect(sort).toContainText("Most open demand");
   const tabs = page.getByRole("tablist");
   await tabs.getByRole("tab", { name: /Candidate Pipeline/ }).focus();
   await page.keyboard.press("End");
@@ -449,7 +450,9 @@ test("Today's Events stays on Bangkok today while the calendar month changes", a
   const thaiWelcome = thaiPage.getByRole("dialog", { name: "ยินดีต้อนรับกลับ" });
   if (await thaiWelcome.isVisible()) await thaiWelcome.getByRole("button", { name: "ปิด" }).last().click();
   await expect(thaiPage.getByRole("heading", { name: "กิจกรรมวันนี้" })).toBeVisible();
-  await expect(thaiPage.getByLabel("เรียงอัตราคงค้าง").locator("option").nth(1)).toHaveText("จำนวนอัตราคงค้างมากที่สุด");
+  await thaiPage.getByLabel("เรียงอัตราคงค้าง").click();
+  await expect(thaiPage.getByRole("option", {name:"จำนวนอัตราคงค้างมากที่สุด",exact:true})).toBeVisible();
+  await thaiPage.keyboard.press("Escape");
   await expect(thaiPage.getByRole("tabpanel").locator("[data-home-record-header]")).toContainText("อัตราคงค้าง");
   await expect(thaiPage.getByRole("tab", { name: "ยืนยันการเริ่มงานใหม่" })).toBeVisible();
   await thaiPage.close();
@@ -459,10 +462,10 @@ test("home calendar distinguishes due, confirmed, future, and no-show start-work
   const mock = await installMockSupabase(page, { role: "admin_recruiter" });
   const baseOffer = mock.data.offers[1];
   mock.data.offers = [
-    { ...baseOffer, offer_id: 21, candidate_id: "C-OFFER-PASS", first_working_date: "2026-07-20", start_confirmation: null },
-    { ...baseOffer, offer_id: 22, candidate_id: "C-PHONE", first_working_date: "2026-07-21", start_confirmation: "started" },
-    { ...baseOffer, offer_id: 23, candidate_id: "C-HR", first_working_date: "2026-07-25", start_confirmation: null },
-    { ...baseOffer, offer_id: 24, candidate_id: "C-LINE", first_working_date: "2026-07-22", start_confirmation: "did_not_start" }
+    { ...baseOffer, offer_id: 21, candidate_id: "C-OFFER-PASS", application_id: mock.data.candidate_applications!.find(row => row.candidate_id === "C-OFFER-PASS")!.application_id, first_working_date: "2026-07-20", start_confirmation: null },
+    { ...baseOffer, offer_id: 22, candidate_id: "C-PHONE", application_id: mock.data.candidate_applications!.find(row => row.candidate_id === "C-PHONE")!.application_id, first_working_date: "2026-07-21", start_confirmation: "started" },
+    { ...baseOffer, offer_id: 23, candidate_id: "C-HR", application_id: mock.data.candidate_applications!.find(row => row.candidate_id === "C-HR")!.application_id, first_working_date: "2026-07-25", start_confirmation: null },
+    { ...baseOffer, offer_id: 24, candidate_id: "C-LINE", application_id: mock.data.candidate_applications!.find(row => row.candidate_id === "C-LINE")!.application_id, first_working_date: "2026-07-22", start_confirmation: "did_not_start" }
   ];
   await page.goto("/home");
   await expectWorkspaceReady(page);
@@ -479,12 +482,13 @@ test("home calendar distinguishes due, confirmed, future, and no-show start-work
   await expect(due).toHaveClass(/bg-\[#FFF8F7\]/);
   await expect(confirmed).toHaveClass(/bg-\[#F2FBF5\]/);
   await due.click();
-  const candidateDetail = page.getByRole("dialog", { name: /C-OFFER-PASS/ });
-  await expect(candidateDetail.getByText("New hire confirmation due")).toHaveCount(1);
-  await candidateDetail.getByRole("button", { name: "Accept: Started work" }).last().click();
-  await expect(page.getByRole("dialog", { name: "New Hire Confirmation" })).toBeVisible();
-  await page.getByRole("dialog", { name: "New Hire Confirmation" }).getByRole("button", { name: "Cancel" }).click();
-  await candidateDetail.getByRole("button", { name: "Close" }).click();
+  const calendarConfirmation = page.getByRole("dialog").filter({has:page.locator("[data-calendar-start-confirmation]")});
+  await expect(calendarConfirmation.locator("[data-new-hire-confirmation]")).toBeVisible();
+  await calendarConfirmation.getByRole("button", { name: "Accept: Started work", exact: true }).click();
+  const attendanceReview = page.getByRole("dialog").filter({has:page.locator('[name="start_confirmation"]')});
+  await expect(attendanceReview).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(attendanceReview).toHaveCount(0);
   await page.setViewportSize({ width: 360, height: 800 });
   await calendar.locator('[data-recruitment-calendar="mobile"] button[aria-label^="21/07/2026"]').click();
   await expect(calendar.getByRole("button", { name: /Open Pat Phone.*Started work confirmed/ })).toBeVisible();

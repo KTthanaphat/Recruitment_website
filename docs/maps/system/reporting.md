@@ -111,3 +111,7 @@ Candidate hydration/exports retain RLS; masked summaries remain separate from fu
 - [ReasonTreemap](../../../src/components/dashboard/ReasonTreemap.tsx) owns measured geometry, reason selection, tooltip and accessible directory; [layoutReasonTreemap](../../../src/lib/rejection-treemap.ts) owns deterministic area-preserving layout.
 - RejectionDashboardView owns Treemap/Bars composition and breadcrumbs; dashboard-filters owns rejectionReasonView. buildRejectionReport separates comparison/selected events and Saturday–Friday buckets; buildRejectionExport owns comparison summary/source tables.
 - [Canonical populations](../../WEBSITE_STRUCTURE.md#reason-treemap-and-comparison-population) → [compact design](../../design/dashboard-rejections.md) → [focused checks](../../../tests/e2e/rejection-dashboard.spec.ts). No new inventory ID or SQL owner.
+
+## Confidential report membership
+
+Owner: [29 membership views](../../../supabase/schemas/29_confidentiality_primitives.sql); consumed by company, Home, Dashboard, bottleneck and sourcing summaries. Local fallback/export guard: [reporting-visibility](../../../src/lib/reporting-visibility.ts). [Canonical behavior](../../WEBSITE_STRUCTURE.md#confidential-recruitment); [parity/limits](../../work-items/confidential-recruitment/implementation.md). Operational admin visibility is owned by [Records](records.md#confidential-requisitions-and-groups).

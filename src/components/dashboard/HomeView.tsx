@@ -1,5 +1,5 @@
 "use client";
-import { AttendanceDecisionActions, type AttendanceOutcome } from "@/components/ui/AttendanceDecisionActions";
+import { type AttendanceOutcome } from "@/components/ui/AttendanceDecisionActions";
 import { RetryIconButton } from "@/components/ui/RetryIconButton";
 import { NumberSkeleton, LoadingSkeleton, RefreshIndicator } from "@/components/ui/LoadingSkeleton";
 import { compareApplicationLogs } from "@/lib/application-stage-order";
@@ -7,12 +7,18 @@ import { belongsToApplication } from "@/lib/applications";
 
 
 import type { KeyboardEvent } from "react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useId, useRef, useState } from "react";
 import { useEffect } from "react";
 import { Button } from "@/components/ui/Button";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import homeBanner from "../../../home_banner.png";
+import Image from "next/image";
+import homeFloral from "../../../public/images/home-banner-floral-stickers-v9.png";
+import homeWorkFloral from "../../../public/images/home-work-floral-corner-stickers-v2.png";
+import { HomeMetricDialog, type HomeMetric } from "@/components/dashboard/HomeMetricDialog";
+import homeBanner from "../../../public/images/home-recruitment-banner-v2.png";
+import { CalendarStartConfirmation } from "@/components/dashboard/CalendarStartConfirmation";
+import { NewHireConfirmationRow as StartConfirmationCard, NEW_HIRE_CONFIRMATION_COLUMNS as confirmationColumns } from "@/components/dashboard/NewHireConfirmationRow";
 import { RecruitmentCalendar, TodayEventsPanel, type CalendarEvent } from "@/components/dashboard/RecruitmentCalendar";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { OperationalSummaryStrip } from "@/components/ui/Operations";
@@ -45,10 +51,9 @@ const headcountColumns = "md:grid-cols-[minmax(0,1.8fr)_minmax(0,.8fr)_minmax(0,
 const pipelineColumns = "md:grid-cols-[minmax(10rem,1.45fr)_minmax(8rem,.9fr)_minmax(10rem,1fr)_minmax(8rem,.8fr)_minmax(11rem,1.15fr)_minmax(11rem,1.4fr)]";
 const sourcingColumns = "md:grid-cols-[minmax(10rem,1.5fr)_minmax(9rem,1.1fr)_minmax(6rem,.7fr)_minmax(10rem,1fr)_minmax(8rem,.85fr)_minmax(9rem,1fr)]";
 const qualityColumns = "md:grid-cols-[minmax(10rem,1.2fr)_minmax(10rem,1.1fr)_minmax(7rem,.7fr)_minmax(12rem,1.4fr)_minmax(8rem,.8fr)_minmax(8rem,.8fr)]";
-const confirmationColumns = "md:grid-cols-[minmax(10rem,1.25fr)_minmax(11rem,1.35fr)_minmax(9rem,1fr)_minmax(8rem,.85fr)_minmax(8rem,.8fr)_minmax(9rem,1fr)]";
 
 // Adjust this value from 0 to 1 to tune the Home-banner glass surface.
-const BANNER_GLASS_OPACITY = 0.2;
+const BANNER_GLASS_OPACITY = 0.8;
 
 export function HomeView({
   language,
@@ -107,6 +112,14 @@ export function HomeView({
   const handleTodayEventsChange = useCallback((payload: { date: string; events: CalendarEvent[] }) => setTodayEventData(payload), []);
   const summaryScopeKey = JSON.stringify(summaryScope ?? null);
   const sectionKey = JSON.stringify([accessScope, summaryScopeKey, refreshKey]);
+  const [metricSelection, setMetricSelection] = useState<{ scopeKey: string; metric: HomeMetric } | null>(null);
+  const selectedMetric = metricSelection?.scopeKey === sectionKey ? metricSelection.metric : null;
+  const openMetric = (metric: HomeMetric) => setMetricSelection({ scopeKey: sectionKey, metric });
+  const [startSelection, setStartSelection] = useState<{ scopeKey: string; event: CalendarEvent } | null>(null);
+  const selectedStart = startSelection?.scopeKey === sectionKey ? startSelection.event : null;
+  const openStart = (event: CalendarEvent) => setStartSelection({ scopeKey: sectionKey, event });
+  useEffect(() => { setMetricSelection(null); setStartSelection(null); }, [sectionKey]);
+
   const sameSectionScope = useCallback((key: string) => key.startsWith(JSON.stringify([accessScope, summaryScopeKey]).slice(0, -1) + ","), [accessScope, summaryScopeKey]);
   const [core, setCore] = useState<{ key: string; data: HomeCoreSummary | null; error: boolean }>({ key: "", data: null, error: false });
   const [coreRetry, setCoreRetry] = useState(0);
@@ -155,6 +168,7 @@ export function HomeView({
   );
   const needsAction = [...openRequisitions];
   const urgentCandidates = candidates.filter(isCandidateAging).length;
+  const bannerFadeId=useId(),bannerGrainId=useId();
   const welcomeName = profile?.nickname ?? profile?.full_name ?? profile?.email ?? translate(language, "system");
   const todayParts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
   const today = `${todayParts.find((part) => part.type === "year")?.value ?? ""}-${todayParts.find((part) => part.type === "month")?.value ?? ""}-${todayParts.find((part) => part.type === "day")?.value ?? ""}`;
@@ -179,25 +193,45 @@ export function HomeView({
 
   return (
     <div className="grid gap-5" data-home-core-ready={Boolean(homeSummary)}>
-      <div data-home-banner="true" className="relative -mx-4 aspect-[6/1] w-[calc(100%+2rem)] bg-[#F8FAFF] sm:-mx-6 sm:w-[calc(100%+3rem)] lg:-mx-7 lg:w-[calc(100%+3.5rem)]">
-        <img
-          src={homeBanner.src}
-          alt=""
-          className="pointer-events-none absolute inset-0 h-full w-full object-contain object-center"
-        />
-        <div className="pointer-events-none absolute inset-y-0 left-0 flex w-[52%] min-w-0 items-center px-4 sm:px-6 lg:px-7">
-          <div
-            className="pointer-events-auto min-w-0 rounded-xl px-3 py-2.5 backdrop-blur-md sm:px-4 sm:py-3"
-            style={{ backgroundColor: `rgb(239 246 255 / ${BANNER_GLASS_OPACITY})` }}
-          >
+      <div data-home-banner="true" className="relative isolate -mx-4 aspect-[6/1] w-[calc(100%+2rem)] bg-white sm:-mx-6 sm:w-[calc(100%+3rem)] lg:-mx-7 lg:w-[calc(100%+3.5rem)]">
+        <svg aria-hidden="true" focusable="false" viewBox="0 0 1200 200" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 h-full w-full">
+          <defs>
+            <linearGradient id={bannerFadeId} x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stopColor="#FFFFFF"/><stop offset="100%" stopColor="#D8E6FF"/></linearGradient>
+            <filter id={bannerGrainId} x="0" y="0" width="100%" height="100%" colorInterpolationFilters="sRGB">
+              <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves={2} seed={11} stitchTiles="stitch" result="noise"/>
+              <feColorMatrix in="noise" type="saturate" values="0" result="monochrome"/>
+              <feComponentTransfer in="monochrome" result="softNoise"><feFuncA type="linear" slope="0.15"/></feComponentTransfer>
+              <feComposite in="softNoise" in2="SourceGraphic" operator="in" result="clippedGrain"/>
+              <feBlend in="clippedGrain" in2="SourceGraphic" mode="soft-light"/>
+            </filter>
+          </defs>
+          <path d="M0 142C170 112 220 182 400 162S680 104 850 145S1050 174 1200 120V200H0Z" fill={`url(#${bannerFadeId})`} filter={`url(#${bannerGrainId})`}/>
+          <path d="M0 182C200 145 310 207 510 186S900 162 1200 184V200H0Z" fill="#E8EFFF" fillOpacity="0.75"/>
+        </svg>
+        <div data-home-banner-floral aria-hidden="true" className="pointer-events-none absolute z-10 inset-y-0 left-4 right-1/2 overflow-hidden sm:left-6 lg:left-7" style={{maskImage:"linear-gradient(to right, #000 0%, #000 25%, rgb(0 0 0 / 0.75) 60%, transparent 100%)",WebkitMaskImage:"linear-gradient(to right, #000 0%, #000 25%, rgb(0 0 0 / 0.75) 60%, transparent 100%)"}}>
+          {/* Inset the flowers from the left, keeping a clear greeting center and a rightward fade. */}
+          <Image src={homeFloral} alt="" fill priority sizes="50vw" className="object-cover object-left" style={{maskImage:"radial-gradient(ellipse 48% 58% at 52% 50%, transparent 55%, #000 100%)",WebkitMaskImage:"radial-gradient(ellipse 48% 58% at 52% 50%, transparent 55%, #000 100%)"}}/>
+        </div>
+        <div data-home-banner-artwork className="pointer-events-none absolute z-10 inset-y-0 right-0 w-1/2">
+          <Image src={homeBanner} alt="" fill priority sizes="50vw" className="object-contain object-center"/>
+        </div>
+        <div className="pointer-events-none absolute z-20 inset-y-0 left-0 flex w-1/2 min-w-0 items-center px-4 sm:px-6 lg:px-7">
+          <div className="pointer-events-auto relative min-w-0 rounded-xl px-3 py-2.5 sm:px-4 sm:py-3">
+            <div data-home-banner-glass="true" aria-hidden="true" className="pointer-events-none absolute inset-0 z-0 rounded-xl backdrop-blur-md" style={{ backgroundColor: `rgb(239 246 255 / ${BANNER_GLASS_OPACITY})` }}/>
+            <div className="relative z-20">
             <h3 className="truncate text-base font-semibold tracking-normal text-navy sm:text-2xl lg:text-3xl">Welcome back, Khun {welcomeName}!</h3>
             {bannerSummaryLoading && bannerSummary ? <RefreshIndicator language={language} /> : null}{welcomeDailyMessage ? <p className="mt-1 hidden max-w-2xl text-[11px] font-medium leading-4 text-slate sm:line-clamp-2 lg:block lg:text-xs lg:leading-5">{welcomeDailyMessage}</p> : bannerSummaryLoading ? <LoadingSkeleton variant="text" label={<>{translate(language, "loading")}</>} className="mt-1 text-xs text-slate" /> : <div role="alert" className="mt-1 flex items-center gap-2 text-xs text-danger">{bannerSummaryError || translate(language, "loadFailed")}<RetryIconButton title={`${language === "th" ? "ลองโหลดข้อมูลอีกครั้ง" : "Retry loading"}: Home`} type="button"  disabled={!onRetryBannerSummary} onClick={onRetryBannerSummary}>{translate(language, "retry")}</RetryIconButton></div>}
+            </div>
           </div>
         </div>
       </div>
       <div className="grid gap-5 lg:items-start lg:grid-cols-4">
         <div className="order-2 min-h-0 lg:order-1 lg:col-span-1">
-        <Panel variant="primary">
+        <Panel variant="primary" className="relative isolate overflow-visible">
+          <div data-home-work-floral aria-hidden="true" className="pointer-events-none absolute inset-0 z-10 overflow-visible">
+            <Image src={homeWorkFloral} alt="" width={88} height={88} className="absolute -right-2 -top-2 h-[88px] w-[88px]" />
+            <Image src={homeWorkFloral} alt="" width={80} height={80} className="absolute -bottom-2 -left-2 h-20 w-20 rotate-180" />
+          </div>
           <SectionTitle
             title={profile?.role === "viewer" ? translate(language, "workspaceWatchlist") : translate(language, "todaysWork")}
             eyebrow={profile?.role === "viewer" ? translate(language, "monitoringView") : undefined}
@@ -208,8 +242,8 @@ export function HomeView({
             layout="stacked_lines"
             valueTone="navy"
             items={[
-              { label: translate(language, "openRequisition"), value: homeOpenCount ?? "—", tone: homeOpenCount === null ? "muted" : homeOpenCount > 0 ? "warning" : "success" },
-              { label: translate(language, "urgentItems"), value: homeWorkQueueCount ?? "—", tone: homeWorkQueueCount === null ? "muted" : homeWorkQueueCount > 0 ? "warning" : "success" }
+              { onOpen: () => openMetric("open"), label: translate(language, "openRequisition"), value: homeOpenCount ?? "—", tone: homeOpenCount === null ? "muted" : homeOpenCount > 0 ? "warning" : "success" },
+              { onOpen: () => openMetric("urgent"), label: translate(language, "urgentItems"), value: homeWorkQueueCount ?? "—", tone: homeWorkQueueCount === null ? "muted" : homeWorkQueueCount > 0 ? "warning" : "success" }
             ]}
           />
         </div>
@@ -219,10 +253,10 @@ export function HomeView({
             layout="stacked_lines"
             valueTone="navy"
             items={[
-              { label: translate(language, "openRequisition"), value: homeOpenCount ?? "—", tone: homeOpenCount === null ? "muted" : homeOpenCount > 0 ? "warning" : "success", helper: translate(language, "openHeadcount") },
-              { label: translate(language, "urgentItems"), value: homeWorkQueueCount ?? "—", tone: homeWorkQueueCount === null ? "muted" : homeWorkQueueCount > 0 ? "warning" : "success", helper: profile?.role === "viewer" ? translate(language, "readOnlyWatchlist") : translate(language, "sortedByRisk") },
-              { label: translate(language, "agingCandidates"), value: homeSummary?.needsAction.overduePending ?? "—", tone: homeSummary ? homeSummary.needsAction.overduePending > 0 ? "danger" : "success" : "muted", helper: translate(language, "lastTouchOlderThan7Days") },
-              { label: translate(language, "sourcingGaps"), value: homeStaleGroups ?? "—", tone: homeStaleGroups === null ? "muted" : homeStaleGroups > 0 ? "warning" : "success", helper: translate(language, "openGroupsNeedingUpdates") }
+              { onOpen: () => openMetric("open"), label: translate(language, "openRequisition"), value: homeOpenCount ?? "—", tone: homeOpenCount === null ? "muted" : homeOpenCount > 0 ? "warning" : "success", helper: translate(language, "openHeadcount") },
+              { onOpen: () => openMetric("urgent"), label: translate(language, "urgentItems"), value: homeWorkQueueCount ?? "—", tone: homeWorkQueueCount === null ? "muted" : homeWorkQueueCount > 0 ? "warning" : "success", helper: profile?.role === "viewer" ? translate(language, "readOnlyWatchlist") : translate(language, "sortedByRisk") },
+              { onOpen: () => openMetric("aging"), label: translate(language, "agingCandidates"), value: homeSummary?.needsAction.overduePending ?? "—", tone: homeSummary ? homeSummary.needsAction.overduePending > 0 ? "danger" : "success" : "muted", helper: language === "th" ? "รายการที่เลยกำหนดดำเนินการ" : "Overdue scheduled actions" },
+              { onOpen: () => openMetric("sourcing"), label: translate(language, "sourcingGaps"), value: homeStaleGroups ?? "—", tone: homeStaleGroups === null ? "muted" : homeStaleGroups > 0 ? "warning" : "success", helper: translate(language, "openGroupsNeedingUpdates") }
             ]}
           />
         </div>
@@ -243,6 +277,7 @@ export function HomeView({
               recruitmentLogs={recruitmentLogs}
               onEditPending={onEditPending}
               onOpenCandidate={onOpenCandidate}
+              onOpenStart={openStart}
               onTodayEventsChange={handleTodayEventsChange}
               onLoadSettled={handleCalendarSettled}
               listClient={listClient}
@@ -251,7 +286,7 @@ export function HomeView({
               refreshKey={refreshKey}
             />
           </div>
-          {todayEventData.date ? <TodayEventsPanel date={todayEventData.date} events={todayEventData.events} language={language} onOpenCandidate={onOpenCandidate} /> : null}
+          {todayEventData.date ? <TodayEventsPanel date={todayEventData.date} events={todayEventData.events} language={language} onOpenCandidate={onOpenCandidate} onOpenStart={openStart} /> : null}
         </div>
       </div>
 
@@ -279,6 +314,8 @@ export function HomeView({
         onQualityCount={handleQualityCount}
         onRecordsSettled={handleRecordsSettled}
       />
+      {selectedStart ? <CalendarStartConfirmation key={sectionKey + (selectedStart.id ?? selectedStart.candidateId + selectedStart.date)} event={selectedStart} language={language} client={listClient} offers={offers} requisitions={requisitions} profile={profile} canConfirm={canViewRecentActivity} onClose={() => setStartSelection(null)} onConfirmStart={onConfirmStart} onOpenCandidate={onOpenCandidate}/> : null}
+      {selectedMetric ? <HomeMetricDialog key={sectionKey + selectedMetric} metric={selectedMetric} client={listClient} scope={summaryScope ?? { headerSite: "", headerPic: "", priorityOnly: false }} language={language} sourcingHref={sourcingHref} onClose={() => setMetricSelection(null)} onOpenCandidate={onOpenCandidate} onOpenRequisition={onOpenRequisition} /> : null}
     </div>
   );
 }
@@ -352,7 +389,7 @@ function HomeRecordTabs({
   const groupWeekStart = (() => { const date = new Date(`${requestedWeek??today}T12:00:00+07:00`); date.setDate(date.getDate() - ((date.getDay() + 1) % 7)); return formatLocalDateInput(date); })();
   const reqPage = useRecruitmentList<EnrichedRequisition>({client:listClient,accessScope,entity:"requisitions",filters:{homeTab:"open_headcount",...(summaryScope??{})},sort:headcountSort==="oldest"?"home_oldest":headcountSort==="demand"?"home_demand":"home_position",direction:headcountSort==="position"?"asc":"desc",enabled:selectedTab.key==="open_headcount"});
   const pipelinePage = useRecruitmentList<EnrichedCandidate & {home_last_touch_date?:string|null;home_pending_remark?:string|null}>({client:listClient,accessScope,entity:"candidate_applications",filters:{homeTab:"active_pipeline",asOf:today,...(summaryScope??{})},sort:({oldest_touch:"home_oldest_touch",newest_touch:"home_newest_touch",name:"name",progression:"home_progression"} as const)[candidateSort],direction:candidateSort==="oldest_touch"?"asc":candidateSort==="name"?"asc":"desc",enabled:selectedTab.key==="candidate_pipeline"});
-  const groupPage = useRecruitmentList<EnrichedSourcingGroup>({client:listClient,accessScope,entity:"position_groups",filters:{scope:"ongoing",weekStart:groupWeekStart,...(summaryScope??{})},sort:"name",direction:"asc",enabled:selectedTab.key==="sourcing_updates"});
+  const groupPage = useRecruitmentList<EnrichedSourcingGroup>({client:listClient,accessScope,entity:"position_groups",filters:{scope:"ongoing",reportOnly:true,weekStart:groupWeekStart,...(summaryScope??{})},sort:"name",direction:"asc",enabled:selectedTab.key==="sourcing_updates"});
   const startPage = useRecruitmentList<EnrichedOffer>({client:listClient,accessScope,entity:"offers",filters:{homeTab:"start_confirmation",today,...(summaryScope??{})},sort:"home_first_working",direction:"asc",enabled:selectedTab.key==="start_confirmation"});
   const selectedRecords = selectedTab.key === "candidate_pipeline" ? pipelinePage : selectedTab.key === "sourcing_updates" ? groupPage : selectedTab.key === "start_confirmation" ? startPage : reqPage;
   const selectedRecordsSettled = selectedTab.key === "data_quality" ? qualityLoadedKey === qualityScopeKey || qualityError : selectedRecords.settled;
@@ -631,19 +668,6 @@ function HomeQualityRow({ candidates, issue, language, offers, onOpenCandidate, 
     <div className="min-w-0"><MobileFieldLabel>{translate(language, "context")}</MobileFieldLabel><span className="block break-words text-slate">{translate(language, issue.entity === "offer" ? "workspaceOffer" : issue.entity)}{site ? ` · ${site}` : ""}</span></div>
     <div className="min-w-0"><MobileFieldLabel>{translate(language, "action")}</MobileFieldLabel>{issue.href && issue.actionLabel ? <Link className="inline-flex min-h-11 items-center rounded-md px-2 text-xs font-semibold text-primary hover:bg-primary/5 focus:outline-none focus:ring-2 focus:ring-primary/30 md:min-h-9" href={issue.href}>{issue.actionLabel}</Link> : <span className="text-slate">—</span>}</div>
   </article>;
-}
-
-function StartConfirmationCard({ language, offer, onConfirm, onOpenCandidate, requisition }: { language: Language; offer: EnrichedOffer; onConfirm: (outcome: AttendanceOutcome) => void; onOpenCandidate: (candidateId: string, applicationId?: string) => void; requisition?: EnrichedRequisition }) {
-  return (
-    <article className={`grid min-w-0 gap-2 px-2 py-2.5 text-[13px] md:items-center md:gap-3 md:text-xs xl:text-[13px] ${confirmationColumns}`}>
-      <div className="min-w-0"><MobileFieldLabel>{translate(language, "candidate")}</MobileFieldLabel><button type="button" className="block min-h-11 max-w-full rounded-sm text-left font-semibold text-navy underline-offset-2 hover:text-primary hover:underline focus:outline-none focus:ring-2 focus:ring-primary/30 md:min-h-0" title={offer.candidate_name ?? formatRecruitmentId(offer.candidate_id)} aria-label={`${translate(language, "openCandidate")}: ${offer.candidate_name ?? formatRecruitmentId(offer.candidate_id)}`} onClick={() => onOpenCandidate(offer.candidate_id, offer.application_id)}><span className="block truncate">{offer.candidate_name ?? formatRecruitmentId(offer.candidate_id)}</span></button><span className="block truncate text-[11px] font-medium text-slate">{formatRecruitmentId(offer.candidate_id)}</span></div>
-      <div className="min-w-0"><MobileFieldLabel>{translate(language, "requisition")}</MobileFieldLabel><span className="block truncate font-medium text-navy" title={`${formatRequisitionTitle(offer)} · ${offer.doc_id}`}>{formatRequisitionTitle(offer)} · {offer.doc_id}</span></div>
-      <div className="min-w-0"><MobileFieldLabel>{translate(language, "siteOwner")}</MobileFieldLabel><span className="block break-words text-slate">{requisition?.site || offer.site || "—"} · {requisition?.person_in_charge || offer.person_in_charge || translate(language, "unassigned")}</span></div>
-      <div className="min-w-0"><MobileFieldLabel>{translate(language, "firstWorkingDate")}</MobileFieldLabel><span className="block font-medium tabular-nums text-slate">{formatDate(offer.first_working_date, language)}</span></div>
-      <div className="min-w-0"><MobileFieldLabel>{translate(language, "confirmationState")}</MobileFieldLabel><Tag appearance="soft" tone="warning">{translate(language, "pending")}</Tag></div>
-      <div className="min-w-0"><MobileFieldLabel>{translate(language, "confirmationAction")}</MobileFieldLabel><AttendanceDecisionActions language={language} eligible={Boolean(offer.accepted_date && offer.first_working_date && offer.first_working_date <= formatLocalDateInput() && !offer.start_confirmation)} onDecision={onConfirm}/></div>
-    </article>
-  );
 }
 
 function compareHeadcount(a: EnrichedRequisition, b: EnrichedRequisition, sort: "oldest" | "demand" | "position") {

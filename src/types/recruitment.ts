@@ -31,6 +31,7 @@ export type Profile = {
 };
 
 export type Requisition = {
+  is_secret?: boolean;
   doc_id: string;
   is_priority?: boolean;
   pr_approved_date: string | null;
@@ -59,6 +60,7 @@ export type RequisitionLog = {
 };
 
 export type PositionGroup = {
+  is_secret?: boolean;
   group_id: string;
   group_position: string;
   channel_fb: boolean;
@@ -312,6 +314,7 @@ export type VacancyWeeklySnapshot = {
 };
 
 export type ChangeLog = {
+  is_secret?: boolean;
   log_id: number;
   entity: string;
   entity_id: string;

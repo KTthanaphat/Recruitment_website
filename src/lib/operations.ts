@@ -40,6 +40,7 @@ export type WorkQueueItem = {
 };
 
 export type OperationalSummaryItem = {
+  onOpen?: () => void;
   label: string;
   value: string | number;
   tone?: NextActionTone;

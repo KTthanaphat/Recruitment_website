@@ -8,6 +8,7 @@ schema_paths = [
   "./schemas/13_candidate_profile_ownership.sql",
   "./schemas/15_rejection_reason_seed.sql",
   "./schemas/20_indexes.sql",
+  "./schemas/29_confidentiality_primitives.sql",
   "./schemas/30_triggers_audit.sql",
   "./schemas/32_application_context.sql",
   "./schemas/40_rls_policies.sql",
@@ -22,6 +23,10 @@ schema_paths = [
   "./schemas/62_bottleneck_report.sql",
   "./schemas/63_operational_lookups.sql",
   "./schemas/64_home_welcome_summaries.sql",
+  "./schemas/65_requisition_actions.sql",
   "./schemas/66_recruitment_notifications.sql",
+  "./schemas/67_candidate_contact_lookup.sql",
+  "./schemas/68_confidential_requisitions.sql",
+  "./schemas/69_home_metric_drilldowns.sql",
   "./schemas/90_grants.sql"
 ]

@@ -1,0 +1,14 @@
+# Home banner floral pattern
+
+Current asset: [home-banner-floral-stickers-v9.png](../../../public/images/home-banner-floral-stickers-v9.png). Edited with built-in `image_gen.imagegen` using sparse v8 as the composition target and the user's `Colorful Floral Sticker Sheet.png` as the flower design/style/color reference. Transparent alpha enabled; copied unchanged into KT without raster postprocessing.
+
+Pink hibiscus, yellow plumeria/rose, lavender-purple bellflower and small colorful blossoms with green foliage match the Today’s Work card-border family. Sparse placement and the clear center/right remain. Full floral opacity, responsive 16/24/28px left insets, central-clearance/rightward-fade CSS masks, 80% pale-blue greeting glass tint and medium backdrop blur are unchanged. Recruiter stays in the right half. [Canonical contract](../../design/home.md#banner).
+
+## Final built-in edit prompt
+
+Use case: precise-object-edit / replace flower designs using a sticker reference.
+Input image 1 is the EDIT TARGET, a sparse 3:1 horizontal floral ornament for the left half of a recruitment Home banner. Input image 2 is the user's STYLE/SHAPE/COLOR reference, the Colorful Floral Sticker Sheet.
+Replace the target's simple flat daisy designs with the rounded flower designs from the sticker sheet, matching the new Today’s Work card-corner family. Use a large cheerful pink hibiscus with curved cream stamen at far left, a yellow five-petal pinwheel/plumeria near the upper edge, a lavender-purple bellflower in the lower-left group, and a small yellow rose toward the lower middle/right. Keep about three small rounded blossoms in cyan, pink and apricot. Both leafy stems and all leaves remain fresh green/green-teal.
+Preserve the target's overall sparse layout, approximate positions and size hierarchy, 3:1 aspect ratio, wide genuinely transparent center for greeting text, and progressive reduction of flowers toward the mostly empty right edge. Strongest cluster stays at far left with a few separated flowers along top/bottom edges. Do not turn this into a dense carpet, sticker grid or bouquet.
+Use the reference's softly rounded petal silhouettes, bright coordinated candy colors, gentle inner shading and fine paper-like texture inside shapes. Simplify small details so the flowers read at about 500x166px. No heavy shadow, glossy 3D, dark outlines, white sticker rims or noisy edge halos.
+All flower/leaf fills normal full strength with true transparent alpha outside shapes, including open central greeting area; no white/cream background rectangle and no checkerboard. No text, people, office objects, logos, watermark, glass panel or embedded blur. The existing recruiter artwork is separate and MUST NOT be added or altered; website CSS supplies the greeting glass and edge fade. This edit replaces only the floral pattern in the top Home banner.
