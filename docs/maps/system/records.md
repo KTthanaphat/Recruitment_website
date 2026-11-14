@@ -100,3 +100,7 @@ Requisition status, creation/editing and priority use the additive requisition a
 - Captured selection/fresh export: fetchMatchingRecordIds and fetchSelectedRequisitions in [records-selection](../../../src/lib/records-selection.ts), useRecordSelection, criteriaPending/fresh counts; [contract](../../WEBSITE_STRUCTURE.md#records-captured-selection) → [browser](../../../tests/e2e/records-capture-history.spec.ts) / [SQL](../../../tests/db/requisition-selected-ids.sql).
 
 - Candidate history workbook and staged Records filter sidebar: [contract](../../WEBSITE_STRUCTURE.md#candidate-registry-column-filters-and-selection) → [export](../../../src/lib/candidate-full-export.ts) / [checks](../../../tests/e2e/records-divider-filters.spec.ts).
+
+## Confidential requisitions and groups
+
+Behavior: [Confidential recruitment](../../WEBSITE_STRUCTURE.md#confidential-recruitment). Owners: [classification SQL](../../../supabase/schemas/68_confidential_requisitions.sql), [controls](../../../src/components/requisitions/SecretClassification.tsx), [unlinked groups](../../../src/components/sourcing/UnlinkedGroups.tsx). Authorization helpers and list projections enforce the same boundary. [UI checks](../../../tests/e2e/confidential-requisitions.spec.ts); SQL: `rehearse-profile-contract.cjs --confidentiality` and `rehearse-confidentiality-fresh.cjs`. Reporting edge: [report membership](reporting.md#confidential-report-membership).

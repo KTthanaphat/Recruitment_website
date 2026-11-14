@@ -1,0 +1,13 @@
+# Today’s Work flower-sticker corners
+
+Current asset: [home-work-floral-corner-stickers-v2.png](../../../public/images/home-work-floral-corner-stickers-v2.png). Created with built-in `image_gen.imagegen` as an edit of the prior corner ornament using the user's `Colorful Floral Sticker Sheet.png` as its shape/color/style reference. Genuine transparent alpha enabled; copied unchanged into KT without raster postprocessing.
+
+Pink hibiscus, yellow plumeria and lavender-purple bellflower designs replace the prior daisies, with fresh green leaves and the reference's soft shading/texture. Native CSS retains the existing 88px top-right / 80px rotated bottom-left sizes, 8px outward overlap and pointer-inert decorative layer. Metric arrows, popup/data behavior, Home greeting banner and SQL remain unchanged. [Canonical contract](../../design/home.md#summary-cards-and-rows).
+
+## Final built-in edit prompt
+
+Use case: precise-object-edit / flower-design replacement.
+Input image 1 is the EDIT TARGET: a sparse square top-right L-shaped floral corner ornament for a dashboard card. Input image 2 is the user's STYLE/SHAPE reference: a colorful floral sticker sheet.
+Replace the target's simple daisies with flowers designed like the sticker sheet: a rounded pink hibiscus with its slender curved cream stamen at the top-right corner, a small sunny-yellow five-petal pinwheel/plumeria toward the left end of the top edge, and a small lavender-purple bellflower on the right edge. Use the reference's soft rounded silhouettes, playful candy colors, subtle soft inner color gradients and fine paper-like texture. Keep stems/leaves fresh green or green-teal like the reference; no dark navy foliage. These three flowers are enough. Do not copy the entire sticker sheet or add a grid.
+PRESERVE the original corner ornament's square canvas, slender green L-shaped curving vine, sparse layout and exact outer-edge footprint: colored elements only in a narrow band along TOP and RIGHT edges, large center and whole lower-left region genuinely transparent. Keep the inner 75% completely empty. The finished asset will be shown at 88px square on a white card, so retain clear simplified forms, enough petal separation and small leaf details. Match the reference's flower design, not photorealism or glossy 3D.
+Render normal-strength opaque colors with true transparent alpha outside flowers/stems/leaves. No background rectangle, no checkerboard, no sticker-sheet layout, no white sticker outline, no cast shadows, no lettering, numbers, logos or watermark. No new objects. This is only a replacement for the Today’s Work CARD BORDER corner asset; the separate Home greeting banner is not part of the edit.

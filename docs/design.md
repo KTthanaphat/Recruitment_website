@@ -28,3 +28,5 @@ Product behavior remains in [Website Structure](WEBSITE_STRUCTURE.md). Visual gu
 The previous generic ATS concept is retained in `archive/design-concept-2026-09-14.md` for history only, not current implementation guidance.
 
 Dashboard editable data exports: [Dashboard data export](design/dashboard-data-export.md), with owner links in [Reporting](maps/system/reporting.md#dashboard-data-exports).
+
+Candidate contact lookup: [panel contract](design/candidate-lookup.md). Confidential classification controls: [requisition detail](design/requisition-detail.md#confidentiality-controls).

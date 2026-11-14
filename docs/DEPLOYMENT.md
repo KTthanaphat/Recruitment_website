@@ -1,16 +1,19 @@
 # Recruitment Website Deployment Guide
 
-Last updated: 2026-07-05
+Last updated: 2026-11-14
 
 ## Target Deployment
 
-Free cloud prototype:
+Verified existing Render services (2026-11-14):
 
-```text
-GitHub repository
-  -> Vercel Hobby deployment
-  -> Supabase Free Auth/Postgres/RLS
-```
+| Branch | Render service / URL | Supabase project |
+| --- | --- | --- |
+| `develop` | `Recruitment_website` — https://recruitment-website-1heg.onrender.com | `mppnlkldlctvketcsald` |
+| `main` | `Recruitment_website-Production` — https://recruitment-website-1.onrender.com | `sawiklexaafczfmzqhnr` |
+
+Both services track this repository and automatically deploy on commit. Push the intended branch with plain Git, then monitor that exact commit until Render reports `live`; verify the public response and assets. Do not trigger an additional manual deployment after an automatic push. A develop release does not promote changes or migrations to main/production. Never print environment secrets while checking configuration.
+
+For the UI/lookup/confidentiality release see the [verification record](work-items/confidential-recruitment/release.md).
 
 Before production or real candidate data, confirm company approval for cloud storage of HR/recruitment records.
 
@@ -25,7 +28,7 @@ Current stack:
 ## Local Run
 
 ```powershell
-cd "C:\Users\thanaphat-krea\OneDrive - GFPT Public Company Limited\HR_database\recruitment_website"
+cd "C:\Users\thanaphat-krea\OneDrive - Krungthai Food Public Company Limited\HR_database\recruitment_website"
 copy .env.example .env.local
 pnpm install
 pnpm dev
@@ -62,7 +65,7 @@ where email = 'your-admin-email@example.com';
 
 ## Environment Variables
 
-Local `.env.local` and Vercel project variables:
+Local `.env.local` and Render service environment variables:
 
 ```text
 NEXT_PUBLIC_SUPABASE_URL
@@ -77,7 +80,9 @@ POWER_AUTOMATE_REJECTION_LETTER_SHARED_MAILBOX
 `SUPABASE_SERVICE_ROLE_KEY` must remain server-only. It is used by `/api/admin/users` for admin user creation.
 The three Power Automate values are server-only. The configured flow must send the approved email from the shared HR mailbox; see `docs/REJECTION_LETTER_POWER_AUTOMATE_CONTRACT.md`.
 
-## Vercel Setup
+## Historical Vercel Setup
+
+The existing services above use Render. This section describes the earlier optional hosting setup, not the current release target.
 
 1. Connect GitHub repository `KTthanaphat/Recruitment_website`.
 2. Framework preset: Next.js.

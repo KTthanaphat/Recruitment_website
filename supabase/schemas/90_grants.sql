@@ -90,8 +90,11 @@ grant execute on function public.app_recruitment_groups_page_v1(text,jsonb,text,
 revoke all on function public.app_dashboard_bottleneck_summary_v1(date,date,date,date,jsonb,text,date[]), public.app_dashboard_bottleneck_queue_v1(date,jsonb,text,text,text,text,text,text,text,text,text,integer) from public,anon,authenticated;
 grant execute on function public.app_dashboard_bottleneck_summary_v1(date,date,date,date,jsonb,text,date[]), public.app_dashboard_bottleneck_queue_v1(date,jsonb,text,text,text,text,text,text,text,text,text,integer) to authenticated;
 -- Legacy writes remain authenticated RPCs with explicit application resolution.
-revoke all on function public.app_insert_pipeline_passes(jsonb), public.app_insert_pipeline_test_exit(jsonb), public.app_insert_recruitment_log(jsonb), public.app_insert_test_maintenance(jsonb) from public, anon;
-grant execute on function public.app_insert_pipeline_passes(jsonb), public.app_insert_pipeline_test_exit(jsonb), public.app_insert_recruitment_log(jsonb), public.app_insert_test_maintenance(jsonb) to authenticated;
+do $$ declare signature text; begin
+ foreach signature in array array['public.app_insert_pipeline_passes(jsonb)','public.app_insert_pipeline_test_exit(jsonb)','public.app_insert_recruitment_log(jsonb)','public.app_insert_test_maintenance(jsonb)'] loop
+  if to_regprocedure(signature) is not null then execute format('revoke all on function %s from public,anon',signature); execute format('grant execute on function %s to authenticated',signature); end if;
+ end loop;
+end $$;
 
 -- Trigger-only internal ledger maintenance is never callable by API users.
 revoke all on function app_private.claim_candidate_application_group() from public,anon,authenticated;
@@ -104,3 +107,5 @@ grant execute on function public.app_home_core_summary_v1(jsonb) to authenticate
 
 revoke all on function public.app_candidate_action_v1(text,jsonb,uuid), public.app_pipeline_card_location_v1(uuid,text,jsonb,text,text), app_private.candidate_action_cards_v1(uuid[],date) from public,anon;
 grant execute on function public.app_candidate_action_v1(text,jsonb,uuid), public.app_pipeline_card_location_v1(uuid,text,jsonb,text,text), app_private.candidate_action_cards_v1(uuid[],date) to authenticated;
+
+do $$ declare f record;begin for f in select p.oid::regprocedure name from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='app_private' and p.proname in ('guard_secret_requisition','guard_secret_group','guard_secret_link','guard_secret_transfer','after_secret_reveal','stamp_secret_audit','classify_group_audit') loop execute format('revoke all on function %s from public,anon,authenticated',f.name);end loop;end $$;

@@ -79,7 +79,7 @@ export function RecruitmentNotifications({
     setLoading(false);
   }, [client, profile?.id]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void load(); const changed = () => { setRows([]); setUnreadCount(0); void load(); }; window.addEventListener("recruitment:classification-changed", changed); return () => window.removeEventListener("recruitment:classification-changed", changed); }, [load]);
   useEffect(() => {
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible") void load();

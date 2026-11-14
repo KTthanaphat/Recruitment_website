@@ -79,3 +79,14 @@ Bounded Requisition selected-ID export: 60 adds optional docIds to all requisiti
 
 
 Records list limits: migration 20261108143127_records_dynamic_page_size.sql allows page sizes 1–100 while preserving count-only 0. Applied to mppnlkldlctvketcsald; canonical validators are in 60. [Adaptive pagination](../../docs/design/controls.md#records-tables-and-fixed-pagination).
+
+## Contact lookup and confidential recruitment
+
+[67](67_candidate_contact_lookup.sql) owns normalized exact-contact compatibility endpoints, C-collated phone-prefix indexing and v2 invoker lookup/application pages with active-only filtering before pagination. V1 contact lookup remains exact. See [prefix rollout and checks](../../docs/work-items/candidate-lookup-prefix/implementation.md). [29](29_confidentiality_primitives.sql) owns the private confidentiality predicates and security-invoker report populations; existing authorization/list/report files consume them. [68](68_confidential_requisitions.sql) owns transition/link/transfer triggers, guarded reveal/link-review APIs, unlinked-group paging, and notification/audit restrictions. `is_secret` columns originate in 10. Operational permissions and report eligibility have separate owners; preserve both when extending feeds or exports.
+
+Run `node scripts/rehearse-profile-contract.cjs --contact-lookup --confidentiality` and `node scripts/rehearse-confidentiality-fresh.cjs`. The fresh fixture stubs extension installation/cron delivery; do not infer live scheduler or performance verification. [Migration rollout and exact limits](../../docs/work-items/confidential-recruitment/implementation.md).
+
+
+## Today’s Work metric lists
+
+[69_home_metric_drilldowns.sql](69_home_metric_drilldowns.sql) owns the additive authenticated invoker page. Migration `20261114081339_home_metric_drilldowns.sql` was CLI-generated and applied to `mppnlkldlctvketcsald` before enabling the UI. Existing aggregates remain unchanged; maintain parity whenever they change. Run `node scripts/rehearse-home-metrics.cjs` using existing disposable PGlite tooling (`RECRUITMENT_DB_TOOLS` overrides its installation root). [Behavior and verification](../../docs/work-items/home-work-metrics/implementation.md).

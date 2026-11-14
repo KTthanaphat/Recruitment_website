@@ -69,7 +69,7 @@ test("Welcome summary retries a failed RPC without rendering zero metrics", asyn
   await expect(retryDialog.getByRole("alert")).toHaveCount(0);
 });
 
-test("Home banner uses the returned header scope and retries a failed aggregate", async ({ page }) => {
+test("Home banner uses the returned header scope and retries a failed aggregate", async ({ page }, testInfo) => {
   const mock = await installMockSupabase(page, { role: "admin_recruiter", homeBannerSummaryFailureOnce: true });
   await page.goto("/home?lang=en");
   await expectWorkspaceReady(page);
@@ -99,4 +99,11 @@ test("Home banner uses the returned header scope and retries a failed aggregate"
   expect(latest.payload.p_scope).toEqual({ headerSite: "KT1", headerPic: "", priorityOnly: false });
   expect(response).toEqual(expected);
   await expect(homeBanner.getByRole("status")).toHaveCount(0);
+  await homeBanner.locator("img").evaluateAll(async images=>{await Promise.all(images.map(image=>(image as HTMLImageElement).decode()));});
+  await page.screenshot({path:testInfo.outputPath("home-banner-desktop.png")});
+  await page.setViewportSize({width:360,height:800});
+  await page.getByRole("button",{name:"TH",exact:true}).click();
+  await expect(page.getByRole("button",{name:"EN",exact:true})).toBeVisible();
+  await homeBanner.locator("img").evaluateAll(async images=>{await Promise.all(images.map(image=>(image as HTMLImageElement).decode()));});
+  await page.screenshot({path:testInfo.outputPath("home-banner-phone.png")});
 });

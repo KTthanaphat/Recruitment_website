@@ -52,7 +52,7 @@ returns uuid language sql stable security definer set search_path = '' as $$
   join public.profiles p on p.role in ('site_recruiter','admin_recruiter','system_admin')
     and ((nullif(btrim(p.nickname),'') is not null and lower(btrim(p.nickname)) = lower(btrim(coalesce(r.person_in_charge,''))))
       or (nullif(btrim(p.full_name),'') is not null and lower(btrim(p.full_name)) = lower(btrim(coalesce(r.person_in_charge,'')))))
-  where r.doc_id = p_doc_id;
+  where r.doc_id = p_doc_id and (not r.is_secret or p.role in ('system_admin','admin_recruiter'));
 $$;
 revoke all on function app_private.notification_assigned_recruiter_v1(text) from public, anon, authenticated;
 

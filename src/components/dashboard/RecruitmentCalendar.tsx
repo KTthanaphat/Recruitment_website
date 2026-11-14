@@ -17,6 +17,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { EnrichedCandidate, EnrichedOffer, Language, ProcessStage, Profile, RecruitmentLog } from "@/types/recruitment";
 
 export type CalendarEvent = {
+  id?: string;
   candidateId: string;
   applicationId?: string;
   candidateName: string;
@@ -30,6 +31,9 @@ export type CalendarEvent = {
   stage: ProcessStage;
   position: string | null;
   log?: RecruitmentLog;
+  remark?: string | null;
+  logDate?: string | null;
+  interviewer?: string | null;
 };
 
 const weekdayLabels = {
@@ -46,6 +50,7 @@ export function RecruitmentCalendar({
   className = "",
   onEditPending,
   onOpenCandidate,
+  onOpenStart,
   onTodayEventsChange
   , listClient = null,
   summaryScope,
@@ -61,6 +66,7 @@ export function RecruitmentCalendar({
   recruitmentLogs: RecruitmentLog[];
   onEditPending?: (candidate: EnrichedCandidate) => void;
   onOpenCandidate: (candidateId: string, applicationId?: string) => void;
+  onOpenStart?: (event: CalendarEvent) => void;
   onTodayEventsChange?: (payload: { date: string; events: CalendarEvent[] }) => void;
   listClient?: SupabaseClient | null;
   summaryScope?: { headerSite: string; headerPic: string; priorityOnly: boolean };
@@ -101,6 +107,7 @@ export function RecruitmentCalendar({
       const candidate = candidateById.get(offer.application_id ?? offer.candidate_id);
       if (!candidate || !offer.first_working_date || offer.start_confirmation === "did_not_start") return [];
       return [{
+        id: `offer:${offer.offer_id}`,
         candidateId: candidate.candidate_id,
       applicationId: candidate.application_id,
         candidateName: formatCandidateName(candidate),
@@ -140,7 +147,13 @@ export function RecruitmentCalendar({
       .then(result => {
         if (cancelled) return;
         const deduped = new Map<string, CalendarEvent>();
-        for (const row of result.events) deduped.set(row.id || `${row.applicationId}:${row.eventType}:${row.date}:${row.round}`, { ...row, stage: row.stage as ProcessStage });
+        for (const row of result.events) {
+          const cachedLog = row.eventType === "stage" && row.logId != null ? recruitmentLogs.find(log => log.log_id === row.logId && log.application_id === row.applicationId) : undefined;
+          const log = cachedLog ? { ...cachedLog, log_date: row.logDate ?? cachedLog.log_date, estimated_action_date: row.date,
+            interviewer: row.interviewer === undefined ? cachedLog.interviewer : row.interviewer,
+            remark: row.remark === undefined ? cachedLog.remark : row.remark, updated_at: row.updatedAt ?? cachedLog.updated_at } : undefined;
+          deduped.set(row.id || `${row.applicationId}:${row.eventType}:${row.date}:${row.round}`, { ...row, stage: row.stage as ProcessStage, log });
+        }
         setSummaryEvents([...deduped.values()].sort(compareEvents)); setLoadedCalendarIdentity(calendarIdentity);
         setCalendarError(false);
       })
@@ -156,7 +169,13 @@ export function RecruitmentCalendar({
       .then(result => {
         if (cancelled) return;
         const deduped = new Map<string, CalendarEvent>();
-        for (const row of result.events) deduped.set(row.id || `${row.applicationId}:${row.eventType}:${row.date}:${row.round}`, { ...row, stage: row.stage as ProcessStage });
+        for (const row of result.events) {
+          const cachedLog = row.eventType === "stage" && row.logId != null ? recruitmentLogs.find(log => log.log_id === row.logId && log.application_id === row.applicationId) : undefined;
+          const log = cachedLog ? { ...cachedLog, log_date: row.logDate ?? cachedLog.log_date, estimated_action_date: row.date,
+            interviewer: row.interviewer === undefined ? cachedLog.interviewer : row.interviewer,
+            remark: row.remark === undefined ? cachedLog.remark : row.remark, updated_at: row.updatedAt ?? cachedLog.updated_at } : undefined;
+          deduped.set(row.id || `${row.applicationId}:${row.eventType}:${row.date}:${row.round}`, { ...row, stage: row.stage as ProcessStage, log });
+        }
         setTodaySummaryEvents([...deduped.values()].sort(compareEvents)); setLoadedTodayIdentity(todayIdentity);
       })
       .catch(() => { if (!cancelled) setCalendarError(true); });
@@ -234,7 +253,7 @@ export function RecruitmentCalendar({
               <span className={`absolute left-1 top-1 inline-grid size-4 place-items-center rounded text-[10px] font-semibold tabular-nums ${date === today ? "bg-primary text-white" : "text-navy"}`}>{Number(date.slice(-2))}</span>
               {dayEvents.length >= 3 ? <button type="button" className="absolute right-1 top-1 rounded px-1 text-[10px] font-semibold tabular-nums text-primary hover:bg-[#F1F7FF] focus:outline-none focus:ring-2 focus:ring-primary/30" aria-label={translate(language, "showAllEvents", { count: dayEvents.length, date: formatDate(date, language) })} title={translate(language, "showAllEvents", { count: dayEvents.length, date: formatDate(date, language) })} onClick={() => setEventListDate(date)}>({dayEvents.length})</button> : null}
               <div className="mt-5 grid gap-0.5">
-                {visibleEvents.map((event) => <CalendarEventButton key={`${event.applicationId ?? event.candidateId}-${event.eventType}-${event.stage}-${event.round}`} compact event={event} language={language} onOpenCandidate={onOpenCandidate} />)}
+                {visibleEvents.map((event) => <CalendarEventButton key={event.id ?? `${event.applicationId ?? event.candidateId}-${event.eventType}-${event.stage}-${event.round}`} compact event={event} language={language} onOpenCandidate={onOpenCandidate} onOpenStart={onOpenStart} />)}
               </div>
             </div>;
           })}
@@ -259,7 +278,7 @@ export function RecruitmentCalendar({
         <div className="mt-3 border-t border-[#E4E9F2] pt-3" aria-label={translate(language, "selectedDayEvents", { date: formatDate(selectedDate, language) })} data-mobile-selected-agenda="true">
           <p className="mb-2 text-xs font-semibold text-slate">{translate(language, "selectedDayEvents", { date: formatDate(selectedDate, language) })}</p>
           <div className="grid gap-2">
-            {selectedEvents.length > 0 ? selectedEvents.map((event) => <CalendarEventButton key={`${event.applicationId ?? event.candidateId}-${event.eventType}-${event.stage}-${event.round}`} event={event} language={language} mobile onOpenCandidate={onOpenCandidate} />) : <p className="rounded-lg bg-[#F8FAFD] px-3 py-3 text-sm font-medium text-slate">{translate(language, "noEstimatedActionsForDate")}</p>}
+            {selectedEvents.length > 0 ? selectedEvents.map((event) => <CalendarEventButton key={event.id ?? `${event.applicationId ?? event.candidateId}-${event.eventType}-${event.stage}-${event.round}`} event={event} language={language} mobile onOpenCandidate={onOpenCandidate} onOpenStart={onOpenStart} />) : <p className="rounded-lg bg-[#F8FAFD] px-3 py-3 text-sm font-medium text-slate">{translate(language, "noEstimatedActionsForDate")}</p>}
           </div>
         </div>
       </div>
@@ -273,26 +292,25 @@ export function RecruitmentCalendar({
         title={eventListDate ? translate(language, "selectedDayEvents", { date: formatDate(eventListDate, language) }) : ""}
       >
         <div className="grid gap-2">
-          {eventListEvents.map((event) => <CalendarEventDetail key={`${event.applicationId ?? event.candidateId}-${event.eventType}-${event.stage}-${event.round}`} candidate={candidateById.get(event.applicationId ?? event.candidateId)} event={event} language={language} profile={profile} onEditPending={(candidate) => { setEventListDate(null); onEditPending?.(candidate); }} onOpenCandidate={(candidateId, applicationId) => { setEventListDate(null); onOpenCandidate(candidateId, applicationId); }} />)}
+          {eventListEvents.map((event) => <CalendarEventDetail key={event.id ?? `${event.applicationId ?? event.candidateId}-${event.eventType}-${event.stage}-${event.round}`} candidate={candidateById.get(event.applicationId ?? event.candidateId)} event={event} language={language} profile={profile} onEditPending={(candidate) => { setEventListDate(null); onEditPending?.(candidate); }} onOpenStart={onOpenStart ? event => { setEventListDate(null); onOpenStart(event); } : undefined} onOpenCandidate={(candidateId, applicationId) => { setEventListDate(null); onOpenCandidate(candidateId, applicationId); }} />)}
         </div>
       </Drawer>
     </Panel>
   );
 }
 
-function CalendarEventDetail({ candidate, event, language, profile, onEditPending, onOpenCandidate }: { candidate: EnrichedCandidate | undefined; event: CalendarEvent; language: Language; profile: Profile | null; onEditPending: (candidate: EnrichedCandidate) => void; onOpenCandidate: (candidateId: string, applicationId?: string) => void }) {
-  const isStageEvent = event.eventType === "stage" && Boolean(event.log) && Boolean(candidate);
-  const canEdit = isStageEvent && candidatePipelineCapability(candidate!, [event.log!], profile).canWrite;
-  if (!isStageEvent) {
+function CalendarEventDetail({ candidate, event, language, profile, onEditPending, onOpenCandidate, onOpenStart }: { candidate: EnrichedCandidate | undefined; event: CalendarEvent; language: Language; profile: Profile | null; onEditPending: (candidate: EnrichedCandidate) => void; onOpenCandidate: (candidateId: string, applicationId?: string) => void; onOpenStart?: (event: CalendarEvent) => void }) {
+  const canEdit = event.eventType === "stage" && Boolean(event.log) && Boolean(candidate) && candidatePipelineCapability(candidate!, [event.log!], profile).canWrite;
+  if (event.eventType !== "stage") {
     return <div className="rounded-md border border-[#D7DEE8] bg-white p-3 shadow-[0_6px_16px_rgba(11,19,43,0.025)]">
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-2"><strong className="min-w-0 break-words text-navy">{event.candidateName}</strong><Tag tone={event.startWorkStatus === "started" ? "success" : event.startWorkStatus === "confirmation_pending" ? "danger" : "teal"}>{event.startWorkStatus === "started" ? translate(language, "startedWorkConfirmed") : event.startWorkStatus === "confirmation_pending" ? translate(language, "startConfirmationPending") : translate(language, "startWorkingEvent")}</Tag></div>
       <p className="mt-1 break-words text-sm font-medium text-slate">{event.position ?? "-"}</p>
       <p className="mt-1 text-sm font-semibold text-primary">{formatDate(event.date, language)}</p>
-      <div className="mt-3"><Button type="button" size="sm" variant="secondary" onClick={() => onOpenCandidate(event.candidateId, event.applicationId)}>{translate(language, "viewDetail")}</Button></div>
+      <div className="mt-3"><Button type="button" size="sm" variant="secondary" onClick={() => event.eventType === "start_work" && onOpenStart ? onOpenStart(event) : onOpenCandidate(event.candidateId, event.applicationId)}>{translate(language, "viewDetail")}</Button></div>
     </div>;
   }
 
-  const log = event.log!;
+  const log = event.log ?? { log_date: event.logDate ?? null, interviewer: event.interviewer ?? null, remark: event.remark ?? null };
   return <div className="min-w-0 rounded-md border border-[#D7DEE8] bg-white p-3 shadow-[0_6px_16px_rgba(11,19,43,0.025)]">
     <div className="flex min-w-0 flex-wrap items-center justify-between gap-2"><strong className="min-w-0 break-words text-navy">{event.candidateName}</strong><Tag tone="warning">{translate(language, "awaitingOutcome")}</Tag></div>
     <p className="mt-1 text-sm font-semibold text-navy">{processLabel(event.stage, language)} / {translate(language, "round")} {event.round}</p>
@@ -302,12 +320,12 @@ function CalendarEventDetail({ candidate, event, language, profile, onEditPendin
     <div className="mt-3 flex flex-wrap items-center gap-2">
       {event.overdue ? <Tag tone="danger">{translate(language, "overdue")}</Tag> : null}
       {canEdit ? <Button type="button" size="sm" variant="secondary" onClick={() => onEditPending(candidate!)}>{translate(language, "edit")}</Button> : null}
-      <Button type="button" size="sm" variant="secondary" onClick={() => onOpenCandidate(event.candidateId, event.applicationId)}>{translate(language, "viewDetail")}</Button>
+      <Button type="button" size="sm" variant="secondary" onClick={() => event.eventType === "start_work" && onOpenStart ? onOpenStart(event) : onOpenCandidate(event.candidateId, event.applicationId)}>{translate(language, "viewDetail")}</Button>
     </div>
   </div>;
 }
 
-function CalendarEventButton({ compact = false, event, language, mobile = false, onOpenCandidate }: { compact?: boolean; event: CalendarEvent; language: Language; mobile?: boolean; onOpenCandidate: (candidateId: string, applicationId?: string) => void }) {
+function CalendarEventButton({ compact = false, event, language, mobile = false, onOpenCandidate, onOpenStart }: { compact?: boolean; event: CalendarEvent; language: Language; mobile?: boolean; onOpenCandidate: (candidateId: string, applicationId?: string) => void; onOpenStart?: (event: CalendarEvent) => void }) {
   const isStartWork = event.eventType === "start_work";
   const detail = isStartWork ? event.position ?? "-" : `${processLabel(event.stage, language)} · ${translate(language, "round")} ${event.round}`;
   const eventType = translate(language, isStartWork ? "startWorkingEvent" : "stageEvent");
@@ -325,7 +343,7 @@ function CalendarEventButton({ compact = false, event, language, mobile = false,
     : event.startWorkStatus === "confirmation_pending" || event.overdue
       ? "border-[#F4B4AE] bg-[#FFF8F7] text-scarlet hover:bg-[#FFF1F0]"
       : "border-[rgb(var(--app-primary-rgb)/0.22)] bg-[rgb(var(--app-primary-rgb)/0.08)] text-navy hover:bg-[#F1F7FF]";
-  return <button type="button" aria-label={label} title={label} className={`${mobile ? "min-h-11 p-3" : compact ? "flex min-h-7 items-center gap-1 px-1 py-0.5" : "min-h-9 p-1.5"} min-w-0 rounded-md border text-left focus:outline-none focus:ring-2 focus:ring-primary/30 ${colorClass}`} onClick={() => onOpenCandidate(event.candidateId, event.applicationId)}>
+  return <button type="button" aria-label={label} title={label} className={`${mobile ? "min-h-11 p-3" : compact ? "flex min-h-7 items-center gap-1 px-1 py-0.5" : "min-h-9 p-1.5"} min-w-0 rounded-md border text-left focus:outline-none focus:ring-2 focus:ring-primary/30 ${colorClass}`} onClick={() => event.eventType === "start_work" && onOpenStart ? onOpenStart(event) : onOpenCandidate(event.candidateId, event.applicationId)}>
     {compact ? <><span className="shrink-0" aria-hidden="true">{isStartWork ? <BriefcaseBusiness size={11} /> : <CalendarClock size={11} />}</span><strong className="block min-w-0 truncate text-[11px] leading-4 font-semibold">{event.candidateName}</strong></> : <>
     <strong className={`block truncate font-semibold ${compact ? "text-[11px] leading-3" : "text-xs"}`}>{event.candidateName}</strong>
     <span className={`flex min-w-0 items-center gap-1 font-medium ${compact ? "text-[10px] leading-3" : "text-[11px]"}`}><span className="shrink-0" aria-hidden="true">{isStartWork ? <BriefcaseBusiness size={compact ? 11 : 13} /> : <CalendarClock size={compact ? 11 : 13} />}</span><span className="truncate">{detail}</span></span>
@@ -336,7 +354,7 @@ function CalendarEventButton({ compact = false, event, language, mobile = false,
 
 const todayEventColumns = "grid-cols-[minmax(0,1.25fr)_minmax(0,1.05fr)_minmax(0,.85fr)_minmax(0,1fr)_minmax(0,1.1fr)]";
 
-export function TodayEventsPanel({ date, events, language, onOpenCandidate }: { date: string; events: CalendarEvent[]; language: Language; onOpenCandidate: (candidateId: string, applicationId?: string) => void }) {
+export function TodayEventsPanel({ date, events, language, onOpenCandidate, onOpenStart }: { date: string; events: CalendarEvent[]; language: Language; onOpenCandidate: (candidateId: string, applicationId?: string) => void; onOpenStart?: (event: CalendarEvent) => void }) {
   return <div className="hidden min-w-0 md:block" aria-label={translate(language, "todaysEvents")} data-todays-events="true"><Panel variant="workspace" className="p-3 sm:p-4">
     <div className="mb-2 flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1">
       <div className="flex min-w-0 items-baseline gap-2">
@@ -350,21 +368,21 @@ export function TodayEventsPanel({ date, events, language, onOpenCandidate }: { 
         <span className="min-w-0 truncate">{translate(language, "candidate")}</span><span className="min-w-0 truncate">{translate(language, "eventContext")}</span><span className="min-w-0 truncate">{translate(language, "status")}</span><span className="min-w-0 truncate">{translate(language, "siteOwner")}</span><span className="min-w-0 truncate">{translate(language, "remark")}</span>
       </div>
       <div className="grid max-h-[min(22rem,40dvh)] divide-y divide-[#E4E9F2] overflow-y-auto overscroll-contain pr-1">
-        {events.map((event) => <TodayEventRow key={`${event.applicationId ?? event.candidateId}-${event.eventType}-${event.stage}-${event.round}`} event={event} language={language} onOpenCandidate={onOpenCandidate} />)}
+        {events.map((event) => <TodayEventRow key={event.id ?? `${event.applicationId ?? event.candidateId}-${event.eventType}-${event.stage}-${event.round}`} event={event} language={language} onOpenCandidate={onOpenCandidate} onOpenStart={onOpenStart} />)}
       </div>
     </> : <p className="rounded-lg bg-[#F8FAFD] px-3 py-2 text-sm font-medium text-slate">{translate(language, "noEstimatedActionsForDate")}</p>}
   </Panel></div>;
 }
 
-function TodayEventRow({ event, language, onOpenCandidate }: { event: CalendarEvent; language: Language; onOpenCandidate: (candidateId: string, applicationId?: string) => void }) {
+function TodayEventRow({ event, language, onOpenCandidate, onOpenStart }: { event: CalendarEvent; language: Language; onOpenCandidate: (candidateId: string, applicationId?: string) => void; onOpenStart?: (event: CalendarEvent) => void }) {
   const status = event.eventType === "start_work"
     ? event.startWorkStatus === "started" ? "startedWorkConfirmed" : "dueToday"
     : "awaiting";
   const tone = event.startWorkStatus === "started" ? "success" : event.overdue || event.startWorkStatus === "confirmation_pending" ? "danger" : "muted";
   const context = event.eventType === "start_work" ? event.position ?? "-" : `${processLabel(event.stage, language)} · ${translate(language, "round")} ${event.round}`;
-  const remark = event.log?.remark?.trim() || "—";
+  const remark = event.remark === undefined ? event.log?.remark?.trim() || "—" : event.remark?.trim() || "—";
   return <div data-today-event-row="true" className={`grid min-w-0 ${todayEventColumns} items-center gap-2 px-2 py-2 text-left text-xs xl:text-[13px]`}>
-    <span className="flex min-w-0 flex-col"><button type="button" className="min-w-0 truncate rounded-sm text-left font-semibold text-navy underline-offset-2 hover:text-primary hover:underline focus:outline-none focus:ring-2 focus:ring-primary/30" aria-label={`${translate(language, "openCandidate")}: ${event.candidateName}`} title={event.candidateName} onClick={() => onOpenCandidate(event.candidateId, event.applicationId)}>{event.candidateName}</button><span className="truncate text-[11px] font-medium text-cool">{event.candidateId}</span></span>
+    <span className="flex min-w-0 flex-col"><button type="button" className="min-w-0 truncate rounded-sm text-left font-semibold text-navy underline-offset-2 hover:text-primary hover:underline focus:outline-none focus:ring-2 focus:ring-primary/30" aria-label={`${translate(language, event.eventType === "start_work" && onOpenStart ? "newHireConfirmation" : "openCandidate")}: ${event.candidateName}`} title={event.candidateName} onClick={() => event.eventType === "start_work" && onOpenStart ? onOpenStart(event) : onOpenCandidate(event.candidateId, event.applicationId)}>{event.candidateName}</button><span className="truncate text-[11px] font-medium text-cool">{event.candidateId}</span></span>
     <span className="min-w-0 truncate font-medium text-slate" title={context}>{context}</span>
     <span className="flex min-w-0 flex-wrap items-center gap-1"><Tag appearance="soft" tone={tone}>{translate(language, status)}</Tag>{event.overdue ? <Tag appearance="soft" tone="danger">{translate(language, "overdue")}</Tag> : null}</span>
     <span className="min-w-0 truncate font-medium text-slate" title={`${event.site ?? "-"} · ${event.owner ?? translate(language, "unassigned")}`}>{event.site ?? "-"} · {event.owner ?? translate(language, "unassigned")}</span>

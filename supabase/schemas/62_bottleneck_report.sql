@@ -13,11 +13,11 @@ begin
   v_as_of:=least(p_end,(now() at time zone 'Asia/Bangkok')::date);
   if exists(select 1 from (select d,lag(d) over(order by ord) prev from unnest(coalesce(p_trend_dates,'{}'::date[])) with ordinality t(d,ord)) x where d is null or d<=prev) then raise exception 'REPORT_RANGE_INVALID'; end if;
   with authorized_candidates as materialized (
-    select c.candidate_id,c.name,c.channel from public.candidates c where app_private.can_read_candidate(c.candidate_id)
+    select c.candidate_id,c.name,c.channel from app_private.report_candidates c where app_private.can_read_candidate(c.candidate_id)
   ), authorized_applications as materialized (
-    select a.application_id,a.candidate_id,a.group_id from public.candidate_applications a where app_private.can_read_application(a.application_id)
+    select a.application_id,a.candidate_id,a.group_id from app_private.report_candidate_applications a where app_private.can_read_application(a.application_id)
   ), authorized_logs as materialized (
-    select l.* from public.recruitment_logs l join authorized_candidates c on c.candidate_id=l.candidate_id
+    select l.* from app_private.report_recruitment_logs l join authorized_candidates c on c.candidate_id=l.candidate_id
       left join authorized_applications a on a.application_id=l.application_id
     where l.superseded_at is null and l.superseded_by_stage_instance_id is null
       and l.recruitment_process in ('Phone Screen','HR Interview','Line Interview','Test','Reference Check','Offer')
@@ -58,7 +58,7 @@ begin
     from (select * from direct_rows union all select * from paired_results union all select * from standalone_pending) a
     ), scoped_req as materialized (
       select r.doc_id,r.site,r.department,r.position,r.person_in_charge,r.level,r.is_priority,r.head_count,r.status,r.created_at,r.pr_approved_date,dg.group_id
-      from public.document_groups dg join public.requisitions r on r.doc_id=dg.doc_id
+      from app_private.report_document_groups dg join app_private.report_requisitions r on r.doc_id=dg.doc_id
       where app_private.can_read_requisition(r.doc_id) and (coalesce(p_scope->>'headerSite','')='' or r.site=p_scope->>'headerSite')
         and (coalesce(p_scope->>'headerPic','')='' or lower(btrim(coalesce(r.person_in_charge,'')))=lower(btrim(p_scope->>'headerPic')))
         and (not coalesce((p_scope->>'priorityOnly')::boolean,false) or r.is_priority)
@@ -67,17 +67,17 @@ begin
         and (jsonb_array_length(coalesce(p_scope->'levels','[]'::jsonb))=0 or exists(select 1 from jsonb_array_elements_text(p_scope->'levels') x(band)
           where btrim(coalesce(r.level,'')) ~* '^L?(0|[1-9]|1[0-4])$' and substring(r.level from '([0-9]+)$')::integer between split_part(x.band,'-',1)::integer and split_part(x.band,'-',2)::integer))
     ), assignments as materialized (
-      select aa.* from public.candidate_application_assignments aa join authorized_applications a using(application_id)
+      select aa.* from app_private.report_candidate_application_assignments aa join authorized_applications a using(application_id)
     ), scoped_logs as materialized (
-      select l.* from public.requisition_logs l where exists(select 1 from scoped_req r where r.doc_id=l.doc_id)
+      select l.* from app_private.report_requisition_logs l where exists(select 1 from scoped_req r where r.doc_id=l.doc_id)
     ), scoped_offers as materialized (
-      select o.* from public.offers o where exists(select 1 from scoped_req r where r.doc_id=o.doc_id)
+      select o.* from app_private.report_offers o where exists(select 1 from scoped_req r where r.doc_id=o.doc_id)
     ), terminal_events as materialized (
       select t.application_id,case when t.recruitment_process in ('Rejected','Withdrawn') or t.stage_instance_id is null then t.log_date else t.outcome_date end terminal_date
-      from public.recruitment_logs t join authorized_applications a on a.application_id=t.application_id join authorized_candidates c on c.candidate_id=t.candidate_id
+      from app_private.report_recruitment_logs t join authorized_applications a on a.application_id=t.application_id join authorized_candidates c on c.candidate_id=t.candidate_id
       where t.superseded_at is null and t.superseded_by_stage_instance_id is null and (t.recruitment_process in ('Rejected','Withdrawn') or t.result=0)
     ), accepted_apps as materialized (
-      select o.application_id,o.accepted_date from public.offers o where o.application_id is not null and o.accepted_date<=v_as_of and o.start_confirmation is distinct from 'did_not_start'
+      select o.application_id,o.accepted_date from app_private.report_offers o where o.application_id is not null and o.accepted_date<=v_as_of and o.start_confirmation is distinct from 'did_not_start'
     ), windows as (
       select 0::bigint ord,p_start starts,v_as_of as_of,p_end display_end
       union all select -1,p_prior_start,least(p_prior_end,v_as_of),p_prior_end where p_start<=v_as_of and p_prior_start<=v_as_of
@@ -200,11 +200,11 @@ begin
   if length(coalesce(p_search,''))>200 or jsonb_typeof(coalesce(p_scope,'{}'::jsonb))<>'object'
     or exists(select 1 from jsonb_object_keys(coalesce(p_scope,'{}'::jsonb)) k where k not in ('headerSite','headerPic','priorityOnly','sites','departments','levels')) then raise exception 'BOTTLENECK_FILTER_INVALID'; end if;
   with authorized_candidates as materialized (
-    select c.candidate_id,c.name,c.channel from public.candidates c where app_private.can_read_candidate(c.candidate_id)
+    select c.candidate_id,c.name,c.channel from app_private.report_candidates c where app_private.can_read_candidate(c.candidate_id)
   ), authorized_applications as materialized (
-    select a.application_id,a.candidate_id,a.group_id from public.candidate_applications a where app_private.can_read_application(a.application_id)
+    select a.application_id,a.candidate_id,a.group_id from app_private.report_candidate_applications a where app_private.can_read_application(a.application_id)
   ), authorized_logs as materialized (
-    select l.* from public.recruitment_logs l join authorized_candidates c on c.candidate_id=l.candidate_id
+    select l.* from app_private.report_recruitment_logs l join authorized_candidates c on c.candidate_id=l.candidate_id
       left join authorized_applications a on a.application_id=l.application_id
     where l.superseded_at is null and l.superseded_by_stage_instance_id is null
       and l.recruitment_process in ('Phone Screen','HR Interview','Line Interview','Test','Reference Check','Offer')
@@ -252,7 +252,7 @@ begin
     select a.*,case when a.exclusion is null and a.entry_date is not null and a.outcome_date is not null then a.outcome_date-a.entry_date end::integer duration
     from (select * from direct_rows union all select * from paired_results union all select * from standalone_pending) a
   ), assignment_at_date as materialized (
-    select distinct on (aa.application_id) aa.application_id,aa.group_id from public.candidate_application_assignments aa
+    select distinct on (aa.application_id) aa.application_id,aa.group_id from app_private.report_candidate_application_assignments aa
     where (aa.started_at at time zone 'Asia/Bangkok')::date<=p_as_of and (aa.ended_at is null or (aa.ended_at at time zone 'Asia/Bangkok')::date>p_as_of)
     order by aa.application_id,aa.started_at desc,aa.assignment_id desc
   ), app_context as materialized (
@@ -263,7 +263,7 @@ begin
     where (lower(coalesce(nullif(btrim(c.channel),''),'Others'))=lower(coalesce(nullif(btrim(p_channel),''),'all')) or lower(coalesce(p_channel,'all'))='all')
   ), scoped_req as (
     select r.doc_id,r.site,r.department,r.position,r.person_in_charge,r.level,r.is_priority,r.head_count,r.status,r.created_at,r.pr_approved_date,dg.group_id
-    from public.document_groups dg join public.requisitions r on r.doc_id=dg.doc_id
+    from app_private.report_document_groups dg join app_private.report_requisitions r on r.doc_id=dg.doc_id
     where app_private.can_read_requisition(r.doc_id)
       and (coalesce(p_scope->>'headerSite','')='' or r.site=p_scope->>'headerSite')
       and (coalesce(p_scope->>'headerPic','')='' or lower(btrim(coalesce(r.person_in_charge,'')))=lower(btrim(p_scope->>'headerPic')))
@@ -273,17 +273,17 @@ begin
       and (jsonb_array_length(coalesce(p_scope->'levels','[]'::jsonb))=0 or exists(select 1 from jsonb_array_elements_text(p_scope->'levels') x(band)
         where btrim(coalesce(r.level,'')) ~* '^L?(0|[1-9]|1[0-4])$' and substring(r.level from '([0-9]+)$')::integer between split_part(x.band,'-',1)::integer and split_part(x.band,'-',2)::integer))
   ), requisition_history_any as materialized (
-    select distinct doc_id from public.requisition_logs
+    select distinct doc_id from app_private.report_requisition_logs
   ), requisition_history_at_date as materialized (
-    select distinct on (doc_id) doc_id,status from public.requisition_logs where log_date<=p_as_of order by doc_id,log_date asc,log_id desc
+    select distinct on (doc_id) doc_id,status from app_private.report_requisition_logs where log_date<=p_as_of order by doc_id,log_date asc,log_id desc
   ), requisition_filled_at_date as materialized (
-    select doc_id,min(log_date) filled_log_date from public.requisition_logs where log_date<=p_as_of and status='filled' group by doc_id
+    select doc_id,min(log_date) filled_log_date from app_private.report_requisition_logs where log_date<=p_as_of and status='filled' group by doc_id
   ), offer_by_doc as materialized (
     select doc_id,count(*) filter(where accepted_date<=p_as_of and (start_confirmation is distinct from 'did_not_start'
       or (start_confirmed_at at time zone 'Asia/Bangkok')::date>p_as_of))::integer accepted_at_date,
       max((start_confirmed_at at time zone 'Asia/Bangkok')::date) filter(where start_confirmation='did_not_start'
         and (start_confirmed_at at time zone 'Asia/Bangkok')::date<=p_as_of) no_show_date
-    from public.offers group by doc_id
+    from app_private.report_offers group by doc_id
   ), req_state as (
     select r.*,case when ha.doc_id is not null then hd.status
       else case when (r.created_at at time zone 'Asia/Bangkok')::date>p_as_of then 'ongoing' else r.status end end state_at_date,
@@ -305,14 +305,14 @@ begin
   ), unresolved as (
     select a.* from ranked_attempts a where a.latest_rank=1 and (a.outcome_date is null or a.outcome_date>p_as_of)
   ), terminal_apps as materialized (
-    select t.application_id from public.recruitment_logs t join authorized_applications allowed_a on allowed_a.application_id=t.application_id
+    select t.application_id from app_private.report_recruitment_logs t join authorized_applications allowed_a on allowed_a.application_id=t.application_id
       join authorized_candidates allowed_c on allowed_c.candidate_id=t.candidate_id
     where t.application_id is not null and t.superseded_at is null and t.superseded_by_stage_instance_id is null
       and (t.recruitment_process in ('Rejected','Withdrawn') or t.result=0)
       and case when t.recruitment_process in ('Rejected','Withdrawn') or t.stage_instance_id is null then t.log_date else t.outcome_date end<=p_as_of
     group by t.application_id
     union
-    select o.application_id from public.offers o where o.application_id is not null and o.accepted_date<=p_as_of and o.start_confirmation is distinct from 'did_not_start'
+    select o.application_id from app_private.report_offers o where o.application_id is not null and o.accepted_date<=p_as_of and o.start_confirmation is distinct from 'did_not_start'
   ), eligible_queue as (
     select u.*,c.name candidate_name,c.group_id,c.req_count,u.unresolved_count>1 conflict,(t.application_id is not null) terminal
     from unresolved u join contexts c on c.application_id=u.application_id left join terminal_apps t on t.application_id=u.application_id where c.req_count>0

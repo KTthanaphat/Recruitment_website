@@ -37,3 +37,7 @@ Standalone Records Linked presentation follows the [shared indicator contract](c
 Standalone Requisitions merges Position and Doc ID into one left-aligned identity opening the existing detail. Position is 13px semibold navy above 11px regular slate Doc ID. Both are one visible desktop line with full-value access; phones may wrap. Preserve Position/Doc ID filters and URL sort keys, including secondary Sort Doc ID within the advanced filter area.
 
 Order: Selection, Priority, Position/Doc ID, Status, Linked, SLA, Actual Age, Owner, Department, Request Type, Section, Open HC, Headcount, Accepted, Candidates, Requisition Date, Updated, Actions. Linked follows shared soft-tag styling without changing readiness calculations. [Shared controls](controls.md#records-headings-and-captured-selection), [checks](../../tests/e2e/records-capture-history.spec.ts).
+
+## Confidentiality controls
+
+Secret requisition creation uses the shared OnOffSwitch only for System Admin/Admin Recruiter. Editing an ordinary record has no secrecy switch. Admin operational rows/details and Save review display the classification. Make ordinary opens an explicit irreversible-impact confirmation with busy/error/retry states. Sourcing's Unlinked groups window keeps unlinked secret groups manageable. Link review loads server-derived confidentiality impact and requires an acknowledgement before a confidential link can save. [Canonical behavior](../WEBSITE_STRUCTURE.md#confidential-recruitment); [checks](../../tests/e2e/confidential-requisitions.spec.ts).

@@ -18,20 +18,20 @@ begin
 
   with responsible_requisitions as materialized (
     select r.doc_id,r.site,r.person_in_charge,r.status,r.head_count,r.pr_approved_date
-    from public.requisitions r
+    from app_private.report_requisitions r
     where app_private.can_read_requisition(r.doc_id)
       and (v_profile.role in ('system_admin','admin_recruiter')
         or (coalesce(v_profile.nickname,'')<>'' and position(lower(v_profile.nickname) in lower(coalesce(r.person_in_charge,'')))>0)
         or (coalesce(v_profile.full_name,'')<>'' and position(lower(v_profile.full_name) in lower(coalesce(r.person_in_charge,'')))>0)
         or (coalesce(v_profile.site,'')<>'' and position(lower(v_profile.site) in lower(coalesce(r.site,'')))>0))
   ), readable_offers as materialized (
-    select o.* from public.offers o where app_private.can_read_application(o.application_id)
+    select o.* from app_private.report_offers o where app_private.can_read_application(o.application_id)
   ), offer_totals as (
     select o.doc_id,count(*) filter(where o.accepted_date is not null and o.start_confirmation is distinct from 'did_not_start') as accepted,
       max(o.accepted_date) as close_date
     from readable_offers o group by o.doc_id
   ), filled_dates as (
-    select l.doc_id,max(l.log_date) as close_date from public.requisition_logs l
+    select l.doc_id,max(l.log_date) as close_date from app_private.report_requisition_logs l
     join responsible_requisitions r using(doc_id) where l.status='filled' group by l.doc_id
   ), actionable_requisitions as (
     select r.doc_id,r.head_count,
@@ -47,12 +47,12 @@ begin
     select p.* from pim_requisitions p where p.close_date is null or p.close_date>=v_month_start
   ), visible_apps as materialized (
     select a.application_id,a.candidate_id,a.group_id
-    from public.candidate_applications a
-    join public.candidates c on c.candidate_id=a.candidate_id and app_private.can_read_candidate(c.candidate_id)
+    from app_private.report_candidate_applications a
+    join app_private.report_candidates c on c.candidate_id=a.candidate_id and app_private.can_read_candidate(c.candidate_id)
     where app_private.can_read_application(a.application_id)
       and (
         v_profile.role in ('system_admin','admin_recruiter')
-        or exists(select 1 from public.document_groups d join public.requisitions r using(doc_id)
+        or exists(select 1 from app_private.report_document_groups d join app_private.report_requisitions r using(doc_id)
           where d.group_id=a.group_id and (
             app_private.can_read_requisition(r.doc_id) and (
             (coalesce(v_profile.nickname,'')<>'' and position(lower(v_profile.nickname) in lower(coalesce(r.person_in_charge,'')))>0)
@@ -61,7 +61,7 @@ begin
       )
   ), latest_logs as (
     select distinct on (l.application_id) l.application_id,l.recruitment_process,l.result
-    from public.recruitment_logs l join visible_apps a using(application_id)
+    from app_private.report_recruitment_logs l join visible_apps a using(application_id)
     where l.superseded_at is null and l.superseded_by_stage_instance_id is null
     order by l.application_id,
       case l.recruitment_process when 'Phone Screen' then 1 when 'HR Interview' then 2 when 'Line Interview' then 3 when 'Test' then 4 when 'Reference Check' then 5 when 'Offer' then 6 else 0 end desc,
@@ -118,7 +118,7 @@ begin
     or (p_scope ? 'headerPic' and jsonb_typeof(p_scope->'headerPic')<>'string')
     or (p_scope ? 'priorityOnly' and jsonb_typeof(p_scope->'priorityOnly')<>'boolean') then raise exception 'HOME_SCOPE_INVALID'; end if;
   with scoped_reqs as (
-    select r.doc_id,r.head_count,r.status from public.requisitions r
+    select r.doc_id,r.head_count,r.status from app_private.report_requisitions r
     where app_private.can_read_requisition(r.doc_id)
       and (coalesce(btrim(p_scope->>'headerSite'),'')='' or position(lower(btrim(p_scope->>'headerSite')) in lower(coalesce(r.site,'')))>0)
       and (coalesce(btrim(p_scope->>'headerPic'),'')='' or position(lower(btrim(p_scope->>'headerPic')) in lower(coalesce(r.person_in_charge,'')))>0)
@@ -126,7 +126,7 @@ begin
   )
   select jsonb_build_object(
     'monthlyFillCapacity',coalesce((select sum(head_count)::integer from scoped_reqs where status<>'cancel'),0),
-    'monthlyFilledCount',(select count(*)::integer from public.offers o join scoped_reqs r using(doc_id)
+    'monthlyFilledCount',(select count(*)::integer from app_private.report_offers o join scoped_reqs r using(doc_id)
       where left(o.accepted_date::text,7)=v_month
         and app_private.can_read_requisition(o.doc_id) and app_private.can_read_application(o.application_id))
   ) into v_result;

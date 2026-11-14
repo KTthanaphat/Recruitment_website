@@ -68,7 +68,7 @@ begin
   if p_before and p_cursor_value is null then raise exception 'RECRUITMENT_LIST_CURSOR_INVALID'; end if;
   with eligible_applications as materialized (
     select a.* from public.candidate_applications a
-    where case when v_global_reader then true else app_private.can_read_application(a.application_id) end and case when v_global_reader then true else app_private.can_read_candidate(a.candidate_id) end
+    where case when v_global_reader then (app_private.secret_application_access(a.application_id) and (v_home_tab='' or app_private.report_application(a.application_id))) else (app_private.can_read_application(a.application_id) and (v_home_tab='' or app_private.report_application(a.application_id))) end and case when v_global_reader then app_private.secret_candidate_access(a.candidate_id) else app_private.can_read_candidate(a.candidate_id) end
       and (coalesce(p_filters->>'candidateId','')='' or a.candidate_id=p_filters->>'candidateId')
       and (v_group='' or a.group_id=v_group)
       and (coalesce(p_filters->>'headerSite','')='' or exists(select 1 from public.document_groups d join public.requisitions r using(doc_id) where d.group_id=a.group_id and r.site=p_filters->>'headerSite'))
@@ -120,7 +120,7 @@ begin
       and (v_stage='' or coalesce(lat.recruitment_process,'No activity')=v_stage)
       and (not v_active_board or (coalesce(lat.recruitment_process,'No activity') in ('No activity','Phone Screen','HR Interview','Line Interview','Test','Reference Check','Offer') and lat.result is distinct from 0 and not coalesce(lat.recruitment_process='Offer' and lat.result=1,false)))
       and (not v_active_board or v_board<>'offer_pending' or off.accepted_date is null)
-      and (v_home_tab='' or (v_home_tab='active_pipeline' and lat.application_id is not null and lat.recruitment_process in ('Phone Screen','HR Interview','Line Interview','Test','Reference Check','Offer') and lat.result is distinct from 0 and not exists(select 1 from public.offers any_offer where any_offer.candidate_id=a.candidate_id and app_private.can_read_application(any_offer.application_id))))
+      and (v_home_tab='' or (v_home_tab='active_pipeline' and lat.application_id is not null and lat.recruitment_process in ('Phone Screen','HR Interview','Line Interview','Test','Reference Check','Offer') and lat.result is distinct from 0 and not exists(select 1 from public.offers any_offer where any_offer.candidate_id=a.candidate_id and (app_private.can_read_application(any_offer.application_id) and (v_home_tab='' or app_private.report_application(any_offer.application_id))))))
       and (v_board='all'
         or (v_board in ('aging','over_sla') and lat.log_date is not null and v_as_of-lat.log_date>7 and lat.result is distinct from 0 and off.accepted_date is null and lat.recruitment_process in ('Phone Screen','HR Interview','Line Interview','Test','Reference Check','Offer'))
         or (v_board='no_activity' and lat.application_id is null)
@@ -345,7 +345,7 @@ begin
   if p_count_only and v_fast_base_criteria then
     select count(*)::integer into v_exact_count
     from public.requisitions r
-    where app_private.can_read_requisition(r.doc_id)
+    where (app_private.can_read_requisition(r.doc_id) and (v_home_tab='' or not r.is_secret))
       and (not (p_filters ? 'docIds') or r.doc_id in (select jsonb_array_elements_text(p_filters->'docIds')))
       and (not v_managed_only or app_private.can_manage_requisition(r.doc_id))
       and (not v_unmatched_only or not exists(select 1 from public.document_groups unmatched where unmatched.doc_id=r.doc_id))
@@ -379,7 +379,7 @@ begin
       select r.doc_id,r.updated_at,
         to_char(r.updated_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as sort_value
       from public.requisitions r
-      where app_private.can_read_requisition(r.doc_id)
+      where (app_private.can_read_requisition(r.doc_id) and (v_home_tab='' or not r.is_secret))
       and (not (p_filters ? 'docIds') or r.doc_id in (select jsonb_array_elements_text(p_filters->'docIds')))
         and (not v_managed_only or app_private.can_manage_requisition(r.doc_id))
         and (not v_unmatched_only or not exists(select 1 from public.document_groups unmatched where unmatched.doc_id=r.doc_id))
@@ -420,7 +420,7 @@ begin
         (array_agg(sort_value order by case when v_direction='desc' then sort_value end asc,case when v_direction='asc' then sort_value end desc,doc_id desc))[1] last_sort,
         (array_agg(doc_id order by case when v_direction='desc' then sort_value end asc,case when v_direction='asc' then sort_value end desc,doc_id desc))[1] last_id from page_keys
     ), page_info as (select count(*)>p_limit has_extra from page_raw), enriched as (
-      select k.sort_value,r.doc_id,r.is_priority,r.pr_approved_date,r.site,r.position,r.department,r.section,r.level,r.head_count,
+      select k.sort_value,r.doc_id,r.is_secret,r.is_priority,r.pr_approved_date,r.site,r.position,r.department,r.section,r.level,r.head_count,
         r.person_in_charge,r.line_manager,r.request_type,r.replacement_names,r.status,r.created_at,r.updated_at,
         coalesce(links.sourcing_group_ids,'{}'::text[]) sourcing_group_ids,
         coalesce(cands.candidate_count,0)::integer candidate_count,
@@ -441,7 +441,7 @@ begin
         from public.offers o where o.doc_id=r.doc_id and app_private.can_read_application(o.application_id)
       ) ofrs on true
     ) select jsonb_build_object('items',coalesce((select jsonb_agg(jsonb_build_object(
-        'doc_id',e.doc_id,'is_priority',e.is_priority,'pr_approved_date',e.pr_approved_date,'site',e.site,'position',e.position,'department',e.department,'section',e.section,'level',e.level,'head_count',e.head_count,
+        'doc_id',e.doc_id,'is_secret',e.is_secret,'is_priority',e.is_priority,'pr_approved_date',e.pr_approved_date,'site',e.site,'position',e.position,'department',e.department,'section',e.section,'level',e.level,'head_count',e.head_count,
         'person_in_charge',e.person_in_charge,'line_manager',e.line_manager,'request_type',e.request_type,'replacement_names',e.replacement_names,'status',e.status,'created_at',e.created_at,'updated_at',e.updated_at,
         'sourcing_group_ids',e.sourcing_group_ids,'candidate_count',e.candidate_count,'accepted_count',e.accepted_count,'open_headcount',e.open_headcount,'sla_restart_date',e.sla_restart_date)
       order by case when v_direction='desc' then e.sort_value end desc,case when v_direction='asc' then e.sort_value end asc,e.doc_id asc) from enriched e),'[]'::jsonb),
@@ -454,7 +454,7 @@ begin
   end if;
 
   with rows as not materialized (
-    select r.doc_id,r.is_priority,r.pr_approved_date,r.site,r.position,r.department,r.section,r.level,r.head_count,
+    select r.doc_id,r.is_secret,r.is_priority,r.pr_approved_date,r.site,r.position,r.department,r.section,r.level,r.head_count,
       r.person_in_charge,r.line_manager,r.request_type,r.replacement_names,r.status,r.created_at,r.updated_at,
       coalesce(links.sourcing_group_ids,'{}'::text[]) sourcing_group_ids,
       coalesce(cands.candidate_count,0)::integer candidate_count,
@@ -503,7 +503,7 @@ begin
     left join lateral (select greatest((timezone('Asia/Bangkok',now())::date-coalesce(ofrs.sla_restart_date,r.pr_approved_date)),0)::integer age_days) age on true
     left join lateral (select case when r.level is null or r.level !~ '^(L)?(0|[1-9]|1[0-4])$' then null
       when replace(r.level,'L','')::integer<=6 then 30 when replace(r.level,'L','')::integer<=9 then 45 else 60 end::integer sla_days) sla on true
-    where app_private.can_read_requisition(r.doc_id)
+    where (app_private.can_read_requisition(r.doc_id) and (v_home_tab='' or not r.is_secret))
       and (not (p_filters ? 'docIds') or r.doc_id in (select jsonb_array_elements_text(p_filters->'docIds')))
       and (not v_managed_only or app_private.can_manage_requisition(r.doc_id))
       and (not v_unmatched_only or not exists(select 1 from public.document_groups unmatched where unmatched.doc_id=r.doc_id))
@@ -610,7 +610,7 @@ begin
   if auth.uid() is null or not app_private.is_recruitment_reader() then raise exception 'RECRUITMENT_READ_NOT_AUTHORIZED'; end if;
   if p_limit is null or p_count_only is null or p_before is null or (p_count_only and p_limit<>0) or (not p_count_only and (p_limit < 1 or p_limit > 100)) then raise exception 'RECRUITMENT_LIST_LIMIT_INVALID'; end if;
   if v_scope not in ('ongoing','all') or v_sort not in ('attention','name','oldest') or v_dir not in ('asc','desc') then raise exception 'RECRUITMENT_LIST_FILTER_INVALID'; end if;
-  if jsonb_typeof(coalesce(p_filters,'{}'::jsonb))<>'object' or exists(select 1 from jsonb_object_keys(coalesce(p_filters,'{}'::jsonb)) k where k not in ('scope','group_id','exactGroupId','position','site','owner','doc_id','readiness','headerSite','headerPic','priorityOnly','weekStart')) then raise exception 'RECRUITMENT_LIST_FILTER_INVALID'; end if;
+  if jsonb_typeof(coalesce(p_filters,'{}'::jsonb))<>'object' or exists(select 1 from jsonb_object_keys(coalesce(p_filters,'{}'::jsonb)) k where k not in ('scope','group_id','exactGroupId','position','site','owner','doc_id','readiness','headerSite','headerPic','priorityOnly','weekStart','reportOnly')) then raise exception 'RECRUITMENT_LIST_FILTER_INVALID'; end if;
   if (p_cursor_value is null)<>(p_cursor_id is null) or (p_cursor_value is not null and jsonb_typeof(p_cursor_value)<>'string') or (p_before and p_cursor_value is null) then raise exception 'RECRUITMENT_LIST_CURSOR_INVALID'; end if;
   with latest as (
     select distinct on(l.application_id) l.application_id,l.recruitment_process,l.result,l.log_date,l.outcome_date,l.round,l.log_id
@@ -630,7 +630,7 @@ begin
     from public.candidate_application_assignments x join app_rows a on a.application_id=x.application_id
     group by x.group_id
   ), base as not materialized (
-    select g.group_id,g.group_position,g.created_at,g.updated_at,
+    select g.group_id,g.is_secret,g.group_position,g.created_at,g.updated_at,
       coalesce(links.sites,'{}'::text[]) sites,coalesce(links.owners,'{}'::text[]) owners,coalesce(links.doc_ids,'{}'::text[]) doc_ids,
       coalesce(links.open_headcount,0)::integer open_headcount,coalesce(stats.candidate_count,0)::integer candidate_count,
       coalesce(links.demand_count,0)::integer demand_count,coalesce(links.filled_count,0)::integer filled_count,coalesce(stats.active_count,0)::integer active_candidate_count,
@@ -665,7 +665,7 @@ begin
     left join assignment_stats stats on stats.group_id=g.group_id
     left join lateral(select to_jsonb(u) update,u.updated_at from public.sourcing_weekly_updates u where u.group_id=g.group_id and u.week_start in (v_week_start,v_week_start+2) order by case when u.week_start=v_week_start then 0 else 1 end,u.updated_at desc limit 1) selected on true
     left join lateral(select max(u.updated_at) updated_at from public.sourcing_weekly_updates u where u.group_id=g.group_id) latest_saved on true
-    where app_private.can_read_position_group(g.group_id) and cardinality(coalesce(links.doc_ids,'{}'::text[]))>0
+    where (app_private.can_read_position_group(g.group_id) and (coalesce((p_filters->>'reportOnly')::boolean,false)=false or not g.is_secret)) and cardinality(coalesce(links.doc_ids,'{}'::text[]))>0
       and (coalesce(p_filters->>'group_id','')='' or g.group_id ilike '%'||(case when btrim(p_filters->>'group_id') ~* '^GRP-[0-9]+$' then 'GRP-'||lpad(split_part(btrim(p_filters->>'group_id'),'-',2),greatest(5,length(split_part(btrim(p_filters->>'group_id'),'-',2))),'0') else p_filters->>'group_id' end)||'%' or
         (g.group_id ~* '^GRP-[0-9]+$' and ('GRP-'||lpad(split_part(g.group_id,'-',2),greatest(5,length(split_part(g.group_id,'-',2))),'0')) ilike '%'||(case when btrim(p_filters->>'group_id') ~* '^GRP-[0-9]+$' then 'GRP-'||lpad(split_part(btrim(p_filters->>'group_id'),'-',2),greatest(5,length(split_part(btrim(p_filters->>'group_id'),'-',2))),'0') else p_filters->>'group_id' end)||'%'))
       and (coalesce(p_filters->>'exactGroupId','')='' or g.group_id=p_filters->>'exactGroupId')
@@ -683,7 +683,7 @@ begin
   page_rows as (select * from page_raw order by case when not p_before and v_dir='asc' then sort_value end asc,case when not p_before and v_dir='desc' then sort_value end desc,case when p_before and v_dir='asc' then sort_value end desc,case when p_before and v_dir='desc' then sort_value end asc,case when p_before then group_id end desc,case when not p_before then group_id end asc limit p_limit),
   edges as (select (array_agg(sort_value order by case when v_dir='asc' then sort_value end asc,case when v_dir='desc' then sort_value end desc,group_id asc))[1] first_sort,(array_agg(group_id order by case when v_dir='asc' then sort_value end asc,case when v_dir='desc' then sort_value end desc,group_id asc))[1] first_id,(array_agg(sort_value order by case when v_dir='asc' then sort_value end desc,case when v_dir='desc' then sort_value end asc,group_id desc))[1] last_sort,(array_agg(group_id order by case when v_dir='asc' then sort_value end desc,case when v_dir='desc' then sort_value end asc,group_id desc))[1] last_id from page_rows),
   info as (select count(*)>p_limit extra from page_raw)
-  select jsonb_build_object('items',coalesce((select jsonb_agg(jsonb_build_object('group_id',p.group_id,'group_position',p.group_position,'sites',p.sites,'owners',p.owners,'doc_ids',p.doc_ids,'open_headcount',p.open_headcount,'candidate_count',p.candidate_count,'demand_count',p.demand_count,'filled_count',p.filled_count,'active_candidate_count',p.active_candidate_count,'readiness_label',p.readiness_label,'readiness_count',p.readiness_count,'readiness_total',p.readiness_total,'channel_fb',p.channel_fb,'channel_jobthai',p.channel_jobthai,'channel_jobtopgun',p.channel_jobtopgun,'channel_jobdb',p.channel_jobdb,'channel_jobbkk',p.channel_jobbkk,'channel_linkedin',p.channel_linkedin,'channel_walkin',p.channel_walkin,'channel_referral',p.channel_referral,'channel_others',p.channel_others,'latest_update',p.latest_update,'latest_saved_at',p.latest_saved_at) order by case when v_dir='asc' then p.sort_value end asc,case when v_dir='desc' then p.sort_value end desc,p.group_id) from page_rows p),'[]'::jsonb),'total_count',case when p_count_only then (select count(*)::integer from base) else null end,'has_more',case when p_before then exists(select 1 from page_rows) else info.extra end,'has_more_before',case when p_before then info.extra else p_cursor_value is not null and exists(select 1 from page_rows) end,'next_cursor',case when (case when p_before then exists(select 1 from page_rows) else info.extra end) then jsonb_build_object('value',edges.last_sort,'id',edges.last_id) else null end,'previous_cursor',case when (case when p_before then info.extra else p_cursor_value is not null and exists(select 1 from page_rows) end) then jsonb_build_object('value',edges.first_sort,'id',edges.first_id) else null end)
+  select jsonb_build_object('items',coalesce((select jsonb_agg(jsonb_build_object('group_id',p.group_id,'is_secret',p.is_secret,'group_position',p.group_position,'sites',p.sites,'owners',p.owners,'doc_ids',p.doc_ids,'open_headcount',p.open_headcount,'candidate_count',p.candidate_count,'demand_count',p.demand_count,'filled_count',p.filled_count,'active_candidate_count',p.active_candidate_count,'readiness_label',p.readiness_label,'readiness_count',p.readiness_count,'readiness_total',p.readiness_total,'channel_fb',p.channel_fb,'channel_jobthai',p.channel_jobthai,'channel_jobtopgun',p.channel_jobtopgun,'channel_jobdb',p.channel_jobdb,'channel_jobbkk',p.channel_jobbkk,'channel_linkedin',p.channel_linkedin,'channel_walkin',p.channel_walkin,'channel_referral',p.channel_referral,'channel_others',p.channel_others,'latest_update',p.latest_update,'latest_saved_at',p.latest_saved_at) order by case when v_dir='asc' then p.sort_value end asc,case when v_dir='desc' then p.sort_value end desc,p.group_id) from page_rows p),'[]'::jsonb),'total_count',case when p_count_only then (select count(*)::integer from base) else null end,'has_more',case when p_before then exists(select 1 from page_rows) else info.extra end,'has_more_before',case when p_before then info.extra else p_cursor_value is not null and exists(select 1 from page_rows) end,'next_cursor',case when (case when p_before then exists(select 1 from page_rows) else info.extra end) then jsonb_build_object('value',edges.last_sort,'id',edges.last_id) else null end,'previous_cursor',case when (case when p_before then info.extra else p_cursor_value is not null and exists(select 1 from page_rows) end) then jsonb_build_object('value',edges.first_sort,'id',edges.first_id) else null end)
   into v_result from edges cross join info;
   return v_result;
 end; $$;
@@ -896,7 +896,7 @@ begin
       case when o.accepted_date is null then current_date-o.created_at::date when o.first_working_date is null then current_date-o.accepted_date else abs(current_date-o.first_working_date) end::integer age_days,
       case v_sort when 'home_first_working' then coalesce(o.first_working_date::text,'') when 'candidate' then case when c.candidate_id ~* '^CAN-[0-9]+$' then lower(split_part(c.candidate_id,'-',1))||'-'||lpad(length(coalesce(nullif(ltrim(split_part(c.candidate_id,'-',2),'0'),''),'0'))::text,20,'0')||'-'||coalesce(nullif(ltrim(split_part(c.candidate_id,'-',2),'0'),''),'0')||'-'||lower(c.candidate_id) else lower(c.candidate_id) end||'|'||lower(concat_ws(' ',c.name,c.nickname)) when 'doc_id' then lower(o.doc_id) when 'position' then lower(concat_ws(' ',r.position,r.level)) when 'status' then lower(case when o.accepted_date is null then 'pending' when o.start_confirmation='did_not_start' then 'did not start' when o.start_confirmation='started' then 'started' when o.first_working_date is null then 'missing start date' else 'accepted' end) when 'impact' then lpad(coalesce((select count(*) from public.offers x where x.doc_id=o.doc_id and x.accepted_date is not null and x.start_confirmation is distinct from 'did_not_start'),0)::text,8,'0')||'/'||lpad(r.head_count::text,8,'0') when 'first_working' then coalesce(o.first_working_date::text,'') when 'age' then lpad((2147483647-coalesce(case when o.accepted_date is null then current_date-o.created_at::date else current_date-o.accepted_date end,0))::text,10,'0') else coalesce(o.accepted_date::text,'') end sort_value
     from public.offers o join public.candidates c on c.candidate_id=o.candidate_id join public.requisitions r on r.doc_id=o.doc_id
-    where app_private.can_read_application(o.application_id) and app_private.can_read_candidate(o.candidate_id) and app_private.can_read_requisition(o.doc_id)
+    where app_private.can_read_application(o.application_id) and app_private.can_read_candidate(o.candidate_id) and (app_private.can_read_requisition(o.doc_id) and (v_home_tab='' or exists(select 1 from public.requisitions home_r where home_r.doc_id=o.doc_id and not home_r.is_secret)))
       and (coalesce(p_filters->>'headerSite','')='' or r.site=p_filters->>'headerSite') and (coalesce(p_filters->>'headerPic','')='' or lower(btrim(r.person_in_charge))=lower(btrim(p_filters->>'headerPic')))
       and (not coalesce((p_filters->>'priorityOnly')::boolean,false) or r.is_priority)
       and (v_home_tab='' or (v_home_tab='start_confirmation' and o.accepted_date is not null and o.first_working_date is not null and o.first_working_date<=v_today and o.start_confirmation is null))
