@@ -18,3 +18,12 @@ Scope: shared 28rem Save review, automatic prefix/email lookup with active-only 
 ## Limits
 
 Lookup real authenticated end-to-end p95 remains unverified without representative benchmark accounts/contact samples. Mock browser timing and disposable SQL checks do not establish that target. Independent live concurrent-write stress was not performed. See [implementation evidence](implementation.md) for original verification boundaries. Current deployment target and process are owned by [Deployment](../../DEPLOYMENT.md).
+
+## Hosted delivery
+
+- Application commit: `85e1756ee0a56daf950faca8afbe975e822ef826`, pushed to `origin/develop` using plain Git.
+- Render deploy: `dep-dbs8vclckfvc73dbsmcg`, automatic `new_commit`, **live** at 2026-11-14 16:47:37 UTC.
+- Verified URL: https://recruitment-website-1heg.onrender.com/home. Clean Chromium returned HTTP 200, displayed the unauthenticated login form, and reported no page runtime errors.
+- Public compiled JavaScript identifies only `mppnlkldlctvketcsald`. All four active lookup/banner/floral PNGs returned 200 and SHA-256 matched the local release files. Desktop/390px login screenshots and sanitized asset verification are kept under ignored `outputs/release-20261114/`.
+- Five additional synthetic smoke flows passed against the staged optimized build on local port 3102 (45 browser checks total across the two runs). Hosted authenticated record mutations were not performed; authorization evidence remains the disposable SQL role checks plus deployed metadata.
+- Main/production was not promoted. Unrelated performance/measurement edits remain local and uncommitted. This documentation-only follow-up uses `[skip render]` so the tested application deployment remains unchanged.
