@@ -76,18 +76,8 @@ export function useTableControls<T>(rows: T[], columns: TableColumn<T>[], initia
   }
 
   function toggleSort(key: string) {
-    setSortKey((currentKey) => {
-      if (currentKey !== key) {
-        setSortDirection("asc");
-        return key;
-      }
-      setSortDirection((currentDirection) => {
-        if (currentDirection === "asc") return "desc";
-        if (currentDirection === "desc") return null;
-        return "asc";
-      });
-      return key;
-    });
+    setSortDirection(sortKey !== key ? "asc" : sortDirection === "asc" ? "desc" : sortDirection === "desc" ? null : "asc");
+    setSortKey(key);
   }
 
   function categoryFilterOptions(key: string) {

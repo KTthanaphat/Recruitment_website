@@ -115,3 +115,7 @@ Candidate hydration/exports retain RLS; masked summaries remain separate from fu
 ## Confidential report membership
 
 Owner: [29 membership views](../../../supabase/schemas/29_confidentiality_primitives.sql); consumed by company, Home, Dashboard, bottleneck and sourcing summaries. Local fallback/export guard: [reporting-visibility](../../../src/lib/reporting-visibility.ts). [Canonical behavior](../../WEBSITE_STRUCTURE.md#confidential-recruitment); [parity/limits](../../work-items/confidential-recruitment/implementation.md). Operational admin visibility is owned by [Records](records.md#confidential-requisitions-and-groups).
+
+### Custom-period history and requisition export recovery
+
+[VacancyWaterfallView](../../../src/components/dashboard/VacancyWaterfallView.tsx) owns format-specific progress/errors, complete cursor export, scope guards and manual retry; shared sort cycling belongs to [TableControls](../../../src/components/ui/TableControls.tsx). Historical Waterfall membership is owned by `dashboard_company_waterfall_v1` in [61](../../../supabase/schemas/61_dashboard_summaries.sql). [Focused browser checks](../../../tests/e2e/dashboard-custom-export.spec.ts), [disposable role/migration rehearsal](../../../scripts/rehearse-vacancy-custom-range.cjs), [verification notes](../../work-items/dashboard-custom-export/verification.md).
