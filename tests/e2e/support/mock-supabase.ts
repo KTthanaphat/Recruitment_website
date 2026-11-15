@@ -449,16 +449,17 @@ export async function installMockSupabase(page: Page, options: MockSupabaseOptio
        if(endpoint==="app_home_work_queue_v1") { await json(route,{items:workQueue,totalCount:workQueue.length});return; }
        await json(route,{requisitions:{open:open.length,priorityOpen:open.filter(row=>row.is_priority).length},candidatePipeline:[...new Set(pipeline.map(row=>row.latest_process))].map(stage=>({stage,count:pipeline.filter(row=>row.latest_process===stage).length})),sourcing:{staleGroups:data.position_groups.filter(group=>!data.sourcing_weekly_updates.some(update=>update.group_id===group.group_id&&update.week_start===latestWeek)).length,latestWeek},needsAction:{pendingCandidates:new Set(pending.map(row=>row.candidate.application_id)).size,overduePending:pending.filter(({log})=>Boolean(log.estimated_action_date&&log.estimated_action_date<today)).length},counts:{openRequisitions:open.length,activePipeline:pipeline.filter(row=>row.latest_process!=="No activity").length,staleSourcing:data.position_groups.filter(group=>!data.sourcing_weekly_updates.some(update=>update.group_id===group.group_id&&update.week_start===latestWeek)).length,pendingOffers:data.offers.filter(offer=>!offer.accepted_date||!offer.first_working_date||offer.start_confirmation==="did_not_start").length,qualityIssues:qualityCount},workQueue:{items:workQueue,totalCount:workQueue.length},recentActivity});return;
     }
-    if(endpoint==="app_home_welcome_summary_v1") {
+    if(endpoint==="app_home_welcome_summary_v1" || endpoint==="app_home_welcome_message_v1") {
       const rpcCall={endpoint,payload:{...body}};rpcCalls.push(rpcCall);
-      if(options.welcomeSummaryDelayMs) await new Promise(resolve=>setTimeout(resolve,options.welcomeSummaryDelayMs));
-      if(options.welcomeSummaryFailureOnce&&!welcomeSummaryFailed){welcomeSummaryFailed=true;await json(route,{message:"Synthetic welcome summary failure"},500);return;}
+      if(endpoint==="app_home_welcome_summary_v1" && options.welcomeSummaryDelayMs) await new Promise(resolve=>setTimeout(resolve,options.welcomeSummaryDelayMs));
+      if(endpoint==="app_home_welcome_summary_v1" && options.welcomeSummaryFailureOnce&&!welcomeSummaryFailed){welcomeSummaryFailed=true;await json(route,{message:"Synthetic welcome summary failure"},500);return;}
       const now=options.now??fixtureNow;
       const parts=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Bangkok",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(now);
       const today=`${parts.find(part=>part.type==="year")?.value}-${parts.find(part=>part.type==="month")?.value}-${parts.find(part=>part.type==="day")?.value}`;
       const summary=buildLegacyWelcomeSummary(enrichRequisitions(data),enrichCandidates(data),data.offers,data.requisition_logs,data.profile,today);
-      rpcCall.response=summary;
-      await json(route,summary);return;
+      const result = endpoint==="app_home_welcome_message_v1" ? {filledThisMonth:summary.filledThisMonth,responsibleVacancyTotal:summary.responsibleVacancyTotal,filledResponsibleVacancyRatio:summary.filledResponsibleVacancyRatio,filledResponsibleVacancyBucket:summary.filledResponsibleVacancyBucket} : summary;
+      rpcCall.response=result;
+      await json(route,result);return;
     }
     if(endpoint==="app_home_banner_summary_v1") {
       const rpcCall={endpoint,payload:{...body}};rpcCalls.push(rpcCall);
