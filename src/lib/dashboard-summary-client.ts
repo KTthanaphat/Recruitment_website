@@ -43,13 +43,13 @@ export function invalidateRequisitionSummaryCache(scope: string, receipts: Requi
   if(receipts.some(receipt=>receipt.effects.some(effect=>["summary","calendar","reports"].includes(effect))&&requisitionQueryAffected({entity:"requisitions",filters},receipt))) { cache.delete(key); dashboardReadLeases.delete(key); }
  }
 }
-function memo<T>(client: SupabaseClient, key: string, fetch: () => Promise<T>, outsideQueue = false): Promise<T> {
+function memo<T>(client: SupabaseClient, key: string, fetch: () => Promise<T>, outsideQueue = false, priority = 1): Promise<T> {
   const now = Date.now();
   for (const [entryKey, entry] of cache) if (entry.expiresAt <= now) cache.delete(entryKey);
   while (cache.size >= 100) cache.delete(cache.keys().next().value!);
   const existing = cache.get(key);
   if (existing && existing.expiresAt > now) return existing.request as Promise<T>;
-  const request = outsideQueue ? Promise.resolve().then(fetch) : scheduleRecruitmentRead(client, fetch, 1);
+  const request = outsideQueue ? Promise.resolve().then(fetch) : scheduleRecruitmentRead(client, fetch, priority);
   cache.set(key, { expiresAt: Number.POSITIVE_INFINITY, request });
   void request.then(() => { const entry = cache.get(key); if (entry?.request === request) entry.expiresAt = Date.now() + 30_000; }, () => {});
   request.catch(() => { if (cache.get(key)?.request === request) cache.delete(key); });
@@ -89,6 +89,13 @@ export type HomeSummary = {
 export type HomeScope = Pick<DashboardSummaryScope, "headerSite" | "headerPic" | "priorityOnly">;
 export type HomeCoreSummary = Pick<HomeSummary, "requisitions" | "candidatePipeline" | "sourcing" | "needsAction"> & { counts: Omit<HomeSummary["counts"], "qualityIssues"> };
 export type HomeWorkQueue = HomeSummary["workQueue"];
+
+class HomeWorkQueueReadError extends Error {
+  constructor(message: string, readonly accessDenied: boolean) { super(message); this.name = "HomeWorkQueueReadError"; }
+}
+export function isHomeWorkQueueAccessDenied(error: unknown): boolean {
+  return error instanceof HomeWorkQueueReadError && error.accessDenied;
+}
 export async function loadHomeCoreSummary(client: SupabaseClient, scope: HomeScope, profileKey: string, refreshKey = 0): Promise<HomeCoreSummary> {
   const namespace = await cacheNamespace(client, profileKey);
   return memo(client, JSON.stringify(["home-core", namespace, scope, refreshKey]), async () => {
@@ -97,17 +104,20 @@ export async function loadHomeCoreSummary(client: SupabaseClient, scope: HomeSco
     const result = data as HomeCoreSummary | null;
     if (!result || !result.requisitions || !result.sourcing || !result.needsAction || !Array.isArray(result.candidatePipeline) || !result.counts || (["openRequisitions", "activePipeline", "staleSourcing", "pendingOffers"] as const).some(key => !Number.isInteger(result.counts[key]) || result.counts[key] < 0)) throw new Error("Home core response is incomplete");
     return result;
-  });
+  }, false, 0);
 }
 export async function loadHomeWorkQueue(client: SupabaseClient, scope: HomeScope, profileKey: string, refreshKey = 0): Promise<HomeWorkQueue> {
   const namespace = await cacheNamespace(client, profileKey);
   return memo(client, JSON.stringify(["home-work-queue", namespace, scope, refreshKey]), async () => {
-    const { data, error } = await client.rpc("app_home_work_queue_v1", { p_scope: scope });
-    if (error) throw new Error(error.message);
+    const { data, error, status } = await client.rpc("app_home_work_queue_v1", { p_scope: scope });
+    if (error) {
+      const accessDenied = status === 401 || status === 403 || error.code === "42501" || /RECRUITMENT_READ_NOT_AUTHORIZED|not authorized|permission denied|invalid jwt|jwt expired/i.test(error.message);
+      throw new HomeWorkQueueReadError(error.message, accessDenied);
+    }
     const result = data as HomeWorkQueue | null;
     if (!result || !Array.isArray(result.items) || result.items.length > 10 || !Number.isInteger(result.totalCount) || result.totalCount < result.items.length) throw new Error("Home work queue response is incomplete");
     return result;
-  });
+  }, false, 0);
 }
 
 export type WelcomeSummary = {
