@@ -124,8 +124,9 @@ export function HomeView({
   const [, expireSnapshot] = useState(0);
   useEffect(() => {
     let timer: number;
+    const snapshotScope = JSON.parse(summaryScopeKey);
     function scheduleExpiry() {
-      const remaining = Math.min(homeSnapshotRemainingMs("core", accessScope, summaryScope), homeSnapshotRemainingMs("urgent", accessScope, summaryScope));
+      const remaining = Math.min(homeSnapshotRemainingMs("core", accessScope, snapshotScope), homeSnapshotRemainingMs("urgent", accessScope, snapshotScope));
       if (Number.isFinite(remaining)) timer = window.setTimeout(() => { expireSnapshot(value => value + 1); scheduleExpiry(); }, Math.max(1, remaining));
     }
     scheduleExpiry();
@@ -140,14 +141,12 @@ export function HomeView({
   useEffect(() => { setQueue({ key: "", data: null, error: false }); }, [accessScope, summaryScopeKey]);
   const [queueLoading, setQueueLoading] = useState(false);
   const [recordsSettledKey, setRecordsSettledKey] = useState("");
-  const [calendarSettledKey, setCalendarSettledKey] = useState("");
   const handleRecordsSettled = useCallback(() => setRecordsSettledKey(sectionKey), [sectionKey]);
-  const handleCalendarSettled = useCallback(() => setCalendarSettledKey(sectionKey), [sectionKey]);
   const cachedCore = !core.data || !sameSectionScope(core.key) ? readHomeSnapshot<HomeCoreSummary>("core", accessScope, summaryScope, (value): value is HomeCoreSummary => { const v = value as HomeCoreSummary; return Boolean(v?.counts && v?.needsAction && v?.sourcing && v?.requisitions && Array.isArray(v.candidatePipeline)); }) : null;
   const cachedUrgent = readHomeSnapshot<HomeWorkQueue>("urgent", accessScope, summaryScope, (value): value is HomeWorkQueue => { const v = value as HomeWorkQueue; return Boolean(v && Array.isArray(v.items) && Number.isInteger(v.totalCount) && v.totalCount >= 0); });
   const homeSummary = (sameSectionScope(core.key) ? core.data : null) ?? (core.error ? null : cachedCore);
   const summaryError = core.key === sectionKey && core.error;
-  const initialSettled = core.key === sectionKey && !bannerSummaryLoading && recordsSettledKey === sectionKey && calendarSettledKey === sectionKey;
+  const initialSettled = core.key === sectionKey && recordsSettledKey === sectionKey;
   useEffect(() => { if (initialSettled) onInitialDataSettled?.(); }, [initialSettled, onInitialDataSettled]);
   useEffect(() => {
     if (!listClient || summaryScopeKey === "null" || !accessScope) return;
@@ -294,7 +293,6 @@ export function HomeView({
               onOpenCandidate={onOpenCandidate}
               onOpenStart={openStart}
               onTodayEventsChange={handleTodayEventsChange}
-              onLoadSettled={handleCalendarSettled}
               listClient={listClient}
               summaryScope={summaryScope}
               profileKey={accessScope}

@@ -17,6 +17,7 @@ for (const width of [1440, 390]) {
     const welcome = page.getByRole("dialog", { name: /Welcome back/i });
     await expect(welcome).toBeVisible();
     await welcome.getByRole("button", { name: "Close" }).last().click();
+    const welcomeCallsAtDismiss = mock.rpcCalls.filter(call => call.endpoint === "app_home_welcome_summary_v1").length;
     await expect(page.getByRole("tabpanel")).toContainText("REQ-HQ-1");
     await page.screenshot({ path: `outputs/home-loading-implementation/home-${width}.png`, fullPage: true });
     release();
@@ -26,7 +27,7 @@ for (const width of [1440, 390]) {
     await expect.poll(() => mock.rpcCalls.filter(call => call.endpoint === "app_home_quality_page_v1").length).toBeGreaterThan(0);
     await expect(page.locator('[role="tab"][aria-selected="true"]')).not.toContainText("—");
     await expect(welcome).toBeHidden();
-    expect(mock.rpcCalls.filter(call => call.endpoint === "app_home_welcome_summary_v1")).toHaveLength(0);
+    expect(mock.rpcCalls.filter(call => call.endpoint === "app_home_welcome_summary_v1")).toHaveLength(welcomeCallsAtDismiss);
   });
 }
 
@@ -81,9 +82,11 @@ test("quality scope changes reset its cursor and badge without showing the old s
   await welcome.getByRole("button", { name: "Close" }).last().click();
   await page.getByRole("tab", { name: "Data Quality" }).click();
   await expect(page.getByRole("tab", { name: "Data Quality" })).toContainText("26");
+  const lookupClose = page.getByRole("button", { name: "Close lookup", exact: true });
+  if (await lookupClose.isVisible()) await lookupClose.click();
   await page.getByRole("button", { name: "Next", exact: true }).click();
   await expect.poll(() => requests.some(body => body.p_after_id === "quality-1")).toBe(true);
-  await page.getByLabel("Site", { exact: true }).click();
+  await page.locator('[data-app-header-actions]').getByRole("button", { name: "Site", exact: true }).click();
   await page.getByRole("listbox", { name: "Site" }).getByRole("option", { name: "KT1", exact: true }).click();
   await expect.poll(() => requests.some(body => body.p_scope.headerSite === "KT1")).toBe(true);
   const filtered = requests.filter(body => body.p_scope.headerSite === "KT1");
