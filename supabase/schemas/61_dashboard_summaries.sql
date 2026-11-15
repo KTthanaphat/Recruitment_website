@@ -1327,7 +1327,10 @@ begin
     select e.doc_id,l.recruitment_process,count(distinct case when p_stage_mode='status' then ca.application_id::text else l.candidate_id end)::integer n
     from stage_apps ca join allowed_stage_applications aa using(application_id) join base_matches e using(doc_id)
     join allowed_stage_candidates c on c.candidate_id=ca.candidate_id
-    join app_private.report_recruitment_logs l on l.candidate_id=c.candidate_id and l.application_id=ca.application_id
+    join lateral (
+      select l.* from app_private.report_recruitment_logs l
+      where l.application_id=ca.application_id and l.candidate_id=c.candidate_id offset 0
+    ) l on true
     left join app_private.report_candidate_application_assignments a on a.assignment_id=case when l.result is null then l.entry_assignment_id else l.outcome_assignment_id end and a.application_id=ca.application_id
     where l.recruitment_process in ('Phone Screen','HR Interview','Line Interview','Test','Reference Check','Offer')
       and (p_stage_mode='status' or a.group_id=ca.group_id or a.assignment_id is null)

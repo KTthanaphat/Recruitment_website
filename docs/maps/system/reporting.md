@@ -119,3 +119,5 @@ Owner: [29 membership views](../../../supabase/schemas/29_confidentiality_primit
 ### Custom-period history and requisition export recovery
 
 [VacancyWaterfallView](../../../src/components/dashboard/VacancyWaterfallView.tsx) owns format-specific progress/errors, complete cursor export, scope guards and manual retry; shared sort cycling belongs to [TableControls](../../../src/components/ui/TableControls.tsx). Historical Waterfall membership is owned by `dashboard_company_waterfall_v1` in [61](../../../supabase/schemas/61_dashboard_summaries.sql). [Focused browser checks](../../../tests/e2e/dashboard-custom-export.spec.ts), [disposable role/migration rehearsal](../../../scripts/rehearse-vacancy-custom-range.cjs), [verification notes](../../work-items/dashboard-custom-export/verification.md).
+
+Dashboard Active Requisitions timeout: application-bounded history lookup in `app_dashboard_active_requisitions_page_v1`; [all-role/full-page SQL parity](../../../scripts/rehearse-dashboard-active-page.cjs), [diagnosis and rollout](../../work-items/dashboard-custom-export/requisition-timeout.md).
