@@ -29,7 +29,10 @@ async function main(){
       if(name==='app_candidate_profile_detail_v1')return {data:{candidate:{candidate_id:'candidate-1'},capabilities:{can_read_note:false}},error:null};
       if(name==='app_recruitment_list_count_v1')return {data:args.p_entity==='candidate_applications'?1:0,error:null};
       return {data:page(args.p_entity==='candidate_applications'?[app]:[]),error:null};
-    },from(table){let first=0,last=199,single=false;const q={select(){return q},eq(){return q},in(){return q},order(column){orders.push({table,column});if(table==='candidate_reference_checks')assert.equal(column,'check_id');return q},range(a,b){first=a;last=b;return q},maybeSingle(){single=true;return q},then(ok,bad){let rows=tables[table]??[];const total=rows.length;rows=rows.slice(first,last+1);if(scenario.incomplete&&table==='candidate_reference_checks'&&first===200)rows=[];return Promise.resolve({data:single?rows[0]:rows,error:null,count:total}).then(ok,bad)}};return q}};
+    },from(table){let first=0,last=199,single=false;const q={abortSignal(){return q},select(){return q},eq(){return q},in(){return q},order(column){orders.push({table,column});if(table==='candidate_reference_checks')assert.equal(column,'check_id');return q},range(a,b){first=a;last=b;return q},maybeSingle(){single=true;return q},then(ok,bad){let rows=tables[table]??[];const total=rows.length;rows=rows.slice(first,last+1);if(scenario.incomplete&&table==='candidate_reference_checks'&&first===200)rows=[];return Promise.resolve({data:single?rows[0]:rows,error:null,count:total}).then(ok,bad)}};return q}};
+    // Match the abortable PostgREST builder consumed by the current detail loader.
+    const rpc=client.rpc;
+    client.rpc=(...args)=>{const pending=rpc(...args);pending.abortSignal=()=>pending;return pending;};
     const request=loadCandidateDetail(client,{profileId:'profile-1',key:'synthetic'},'candidate-1','app-1',emptyDashboardData);
     if(scenario.duplicate)await assert.rejects(request,/Duplicate or invalid reference checks/);
     else if(scenario.incomplete)await assert.rejects(request,/Incomplete reference checks/);
