@@ -29,7 +29,7 @@ import { fetchApplicationDestinations, type ApplicationDestination } from "@/lib
 import { fetchOfferCandidates, type OfferCandidateCursor, type OfferCandidateOption } from "@/lib/offer-candidates";
 import { readScopedInPages } from "@/lib/scoped-detail-read";
 import { clearPipelineSummaryCache } from "@/lib/pipeline-summary-loader";
-import { clearDashboardSummaryCache, invalidateRequisitionSummaryCache, loadDashboardFilterOptions, loadHomeBannerSummary, loadWelcomeSummary, readWelcomeSnapshot, type HomeBannerSummary, type WelcomeSummary } from "@/lib/dashboard-summary-client";
+import { clearDashboardSummaryCache, invalidateRequisitionSummaryCache, loadDashboardFilterOptions, loadHomeBannerSummary, loadWelcomeSummary, readWelcomeSnapshot, loadWelcomeMessage, readWelcomeMessageSnapshot, isHomeWorkQueueAccessDenied, type HomeBannerSummary, type WelcomeSummary, type WelcomeMessageSummary } from "@/lib/dashboard-summary-client";
 import { DetailGrid, SectionHeading } from "@/components/ui/RecordDetailFields";
 import { CandidateProfilePanel, CandidateApplicationDetailsAction, CandidateApplicationDetailsExtras } from "@/components/candidates/CandidateProfilePanel";
 import { applicationLogs, belongsToApplication, selectedApplication, applicationKey } from "@/lib/applications";
@@ -360,6 +360,8 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const [welcomeSummaryLoading, setWelcomeSummaryLoading] = useState(false);
   const [welcomeSummaryError, setWelcomeSummaryError] = useState<string | null>(null);
   const [welcomeSummaryRetry, setWelcomeSummaryRetry] = useState(0);
+  const [welcomeMessage, setWelcomeMessage] = useState<{key: string; data: WelcomeMessageSummary | null; error: string | null}>({key: "", data: null, error: null});
+  const [welcomeMessageRetry, setWelcomeMessageRetry] = useState(0);
   const [homeBannerSummary, setHomeBannerSummary] = useState<HomeBannerSummary | null>(null);
   const [homeBannerLoading, setHomeBannerLoading] = useState(false);
   const [homeBannerError, setHomeBannerError] = useState<string | null>(null);
@@ -582,13 +584,19 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const homeReadKey = JSON.stringify([detailAccessScope, filters.site, filters.owner, filters.priorityOnly]);
   const homeReadIdentity = useRef("");
   const welcomeLoadedIdentity = useRef("");
+  const welcomeReadEpoch = useRef(0);
   const [, expireWelcomeSnapshot] = useState(0);
   useEffect(() => {
-    const remaining = homeSnapshotRemainingMs("welcome", detailAccessScope, formatLocalDateInput());
-    if (!Number.isFinite(remaining)) return;
-    const timer = window.setTimeout(() => expireWelcomeSnapshot(value => value + 1), Math.max(1, remaining));
+    let timer: number;
+    function scheduleExpiry() {
+      const remaining = Math.min(...["welcome", "welcome-message"].map(kind => homeSnapshotRemainingMs(kind, detailAccessScope, formatLocalDateInput())));
+      if (Number.isFinite(remaining)) timer = window.setTimeout(() => { expireWelcomeSnapshot(value => value + 1); scheduleExpiry(); }, Math.max(1, remaining));
+    }
+    scheduleExpiry();
     return () => window.clearTimeout(timer);
   }, [detailAccessScope, welcomeOpen, welcomeReadyKey]);
+  const visibleWelcomeMessage = (welcomeMessage.key === detailAccessScope ? welcomeMessage.data : null)
+    ?? (!welcomeMessage.error ? readWelcomeMessageSnapshot(detailAccessScope) : null);
   const visibleWelcomeSummary = (welcomeLoadedIdentity.current === detailAccessScope ? welcomeSummary : null)
     ?? (!welcomeSummaryError ? readWelcomeSnapshot(detailAccessScope) : null);
   const visibleHomeBannerSummary = homeReadIdentity.current === homeReadKey ? homeBannerSummary : null;
@@ -610,12 +618,31 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
     return () => { active = false; };
   }, [homeReadKey, data.profile, detailAccessScope, filters.owner, filters.priorityOnly, filters.site, homeBannerRetry, initialView, reportRefreshKey, candidateHomeRevision, requisitionHomeRevision, workspaceLoadState]);
   useEffect(() => {
+    if (!welcomeOpen || initialView !== "home" || workspaceLoadState !== "ready" || !supabase || !data.profile) return;
+    let active = true;
+    setWelcomeMessage({key: detailAccessScope, data: null, error: null});
+    const epoch = welcomeReadEpoch.current;
+    void loadWelcomeMessage(supabase, detailAccessScope, reportRefreshKey + welcomeMessageRetry, () => welcomeEligible.current)
+      .then(data => { if (active && epoch === welcomeReadEpoch.current) setWelcomeMessage({key: detailAccessScope, data, error: null}); })
+      .catch(error => { if (active && epoch === welcomeReadEpoch.current) {
+        const message = error instanceof Error ? error.message : "Could not load the welcome message.";
+        if (isHomeWorkQueueAccessDenied(error)) { welcomeReadEpoch.current++; setWelcomeSummary(null); setWelcomeSummaryError(message); }
+        setWelcomeMessage({key: detailAccessScope, data: null, error: message});
+      } });
+    return () => { active = false; };
+  }, [welcomeOpen, initialView, workspaceLoadState, detailAccessScope, reportRefreshKey, welcomeMessageRetry]);
+  useEffect(() => {
     if (!welcomeOpen || initialView !== "home" || welcomeReadyKey !== welcomeInitialKey || !supabase || !data.profile) return;
     let active = true;
     setWelcomeSummary(null); setWelcomeSummaryLoading(true); setWelcomeSummaryError(null);
+    const epoch = welcomeReadEpoch.current;
     void loadWelcomeSummary(supabase, detailAccessScope, reportRefreshKey + welcomeSummaryRetry, () => welcomeEligible.current)
-      .then(value => { if (active) { welcomeLoadedIdentity.current = detailAccessScope; setWelcomeSummary(value); } })
-      .catch(error => { if (active) setWelcomeSummaryError(error instanceof Error ? error.message : "Could not load the welcome summary."); })
+      .then(value => { if (active && epoch === welcomeReadEpoch.current) { welcomeLoadedIdentity.current = detailAccessScope; setWelcomeSummary(value); } })
+      .catch(error => { if (active && epoch === welcomeReadEpoch.current) {
+        const message = error instanceof Error ? error.message : "Could not load the welcome summary.";
+        if (isHomeWorkQueueAccessDenied(error)) { welcomeReadEpoch.current++; setWelcomeMessage({key: detailAccessScope, data: null, error: message}); }
+        setWelcomeSummaryError(message);
+      } })
       .finally(() => { if (active) setWelcomeSummaryLoading(false); });
     return () => { active = false; };
   }, [welcomeOpen, initialView, welcomeReadyKey, welcomeInitialKey, detailAccessScope, reportRefreshKey, welcomeSummaryRetry]);
@@ -1989,6 +2016,9 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
         open={welcomeOpen}
         profile={data.profile}
         summary={visibleWelcomeSummary}
+        messageSummary={visibleWelcomeMessage}
+        messageError={welcomeMessage.key === detailAccessScope ? welcomeMessage.error : null}
+        onRetryMessage={() => setWelcomeMessageRetry(value => value + 1)}
         loading={welcomeSummaryLoading || welcomeReadyKey !== welcomeInitialKey}
         error={welcomeSummaryError}
         onClose={closeWelcomeSummary}

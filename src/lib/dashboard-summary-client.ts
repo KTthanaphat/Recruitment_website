@@ -106,7 +106,7 @@ export async function loadHomeCoreSummary(client: SupabaseClient, scope: HomeSco
     const { data, error, status } = await client.rpc("app_home_core_summary_v1", { p_scope: scope });
     if (error) {
       const denied = status === 401 || status === 403 || error.code === "42501" || /RECRUITMENT_READ_NOT_AUTHORIZED|permission denied|jwt/i.test(error.message);
-      if (denied) clearHomeSnapshots();
+      if (denied) clearDashboardSummaryCache();
       throw new HomeWorkQueueReadError(error.message, denied);
     }
     const result = data as HomeCoreSummary | null;
@@ -122,7 +122,7 @@ export async function loadHomeWorkQueue(client: SupabaseClient, scope: HomeScope
     const { data, error, status } = await client.rpc("app_home_work_queue_v1", { p_scope: scope });
     if (error) {
       const accessDenied = status === 401 || status === 403 || error.code === "42501" || /RECRUITMENT_READ_NOT_AUTHORIZED|not authorized|permission denied|invalid jwt|jwt expired/i.test(error.message);
-      if (accessDenied) clearHomeSnapshots();
+      if (accessDenied) clearDashboardSummaryCache();
       throw new HomeWorkQueueReadError(error.message, accessDenied);
     }
     const result = data as HomeWorkQueue | null;
@@ -143,6 +143,28 @@ export type WelcomeSummary = {
   filledResponsibleVacancyBucket: 0 | 25 | 50 | 75 | 100;
 };
 export type HomeBannerSummary = { monthlyFillCapacity: number; monthlyFilledCount: number };
+export type WelcomeMessageSummary = Pick<WelcomeSummary, "filledThisMonth" | "responsibleVacancyTotal" | "filledResponsibleVacancyRatio" | "filledResponsibleVacancyBucket">;
+function validWelcomeMessage(value: unknown): value is WelcomeMessageSummary {
+  const result = value as WelcomeMessageSummary | null;
+  return Boolean(result && [result.filledThisMonth, result.responsibleVacancyTotal, result.filledResponsibleVacancyRatio].every(value => Number.isInteger(value) && value >= 0) && [0, 25, 50, 75, 100].includes(result.filledResponsibleVacancyBucket));
+}
+export function readWelcomeMessageSnapshot(profileKey: string) { return readHomeSnapshot<WelcomeMessageSummary>("welcome-message", profileKey, formatLocalDateInput(), validWelcomeMessage); }
+export async function loadWelcomeMessage(client: SupabaseClient, profileKey: string, refreshKey = 0, shouldRead: () => boolean = () => true): Promise<WelcomeMessageSummary> {
+  const generation = homeSnapshotGeneration(), date = formatLocalDateInput();
+  const namespace = await cacheNamespace(client, profileKey);
+  return memo(client, `welcome-message:${namespace}:${date}:${refreshKey}`, async () => {
+    if (!shouldRead()) throw new Error("Welcome summary dismissed.");
+    const { data, error, status } = await client.rpc("app_home_welcome_message_v1");
+    if (error) {
+      const denied = status === 401 || status === 403 || error.code === "42501" || /RECRUITMENT_READ_NOT_AUTHORIZED|permission denied|jwt/i.test(error.message);
+      if (denied) clearDashboardSummaryCache();
+      throw new HomeWorkQueueReadError(error.message, denied);
+    }
+    if (!validWelcomeMessage(data)) throw new Error("Welcome message response is incomplete");
+    saveHomeSnapshot("welcome-message", profileKey, date, data, generation);
+    return data;
+  }, false, -1);
+}
 export function validWelcomeSummary(value: unknown): value is WelcomeSummary {
   const result = value as WelcomeSummary | null;
   const fields: (keyof WelcomeSummary)[] = ["openRequisitions", "openVacancy", "activeCandidates", "offerFinalizationNeeded", "filledThisMonth", "responsibleVacancyTotal", "filledResponsibleVacancyRatio"];
@@ -157,8 +179,9 @@ export async function loadWelcomeSummary(client: SupabaseClient, profileKey: str
     if (!shouldRead()) throw new Error("Welcome summary dismissed.");
     const { data, error, status } = await client.rpc("app_home_welcome_summary_v1");
     if (error) {
-      if (status === 401 || status === 403 || error.code === "42501" || /RECRUITMENT_READ_NOT_AUTHORIZED|permission denied|jwt/i.test(error.message)) clearHomeSnapshots();
-      throw new Error(error.message);
+      const denied = status === 401 || status === 403 || error.code === "42501" || /RECRUITMENT_READ_NOT_AUTHORIZED|permission denied|jwt/i.test(error.message);
+      if (denied) clearDashboardSummaryCache();
+      throw new HomeWorkQueueReadError(error.message, denied);
     }
     if (!validWelcomeSummary(data)) throw new Error("Welcome summary response is incomplete");
     saveHomeSnapshot("welcome", profileKey, snapshotDate, data, startedGeneration);

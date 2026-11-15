@@ -51,10 +51,10 @@ test("Welcome summary shows loading instead of zero metrics while the RPC is del
   await page.goto("/home?lang=en");
   await expectWorkspaceReady(page);
   const dialog = page.getByRole("dialog", { name: "Welcome back" });
-  await expect(dialog.getByRole("status")).toBeVisible();
+  await expect(dialog.locator('[data-welcome-counts-ready]').getByRole("status")).toBeVisible();
   await expect(dialog.getByText("0", { exact: true })).toHaveCount(0);
   await expect.poll(() => delayed.rpcCalls.find(row => row.endpoint === "app_home_welcome_summary_v1")?.response).not.toBeUndefined();
-  await expect(dialog.getByRole("status")).toHaveCount(0);
+  await expect(dialog.locator('[data-welcome-counts-ready]').getByRole("status")).toHaveCount(0);
 });
 
 test("Welcome summary retries a failed RPC without rendering zero metrics", async ({ page }) => {

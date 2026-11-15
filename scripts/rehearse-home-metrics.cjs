@@ -12,6 +12,16 @@ const root=path.resolve(__dirname,'..');
  const users=roles.map((role,i)=>({role,id:String(i+1).repeat(8)+'-'+String(i+1).repeat(4)+'-'+String(i+1).repeat(4)+'-'+String(i+1).repeat(4)+'-'+String(i+1).repeat(12)}));
  for(const u of users) await db.query("insert into auth.users(id,email) values($1,$2)",[u.id,u.role+'@example.test']);
  for(const u of users) await db.query("update public.profiles set role=$1,site='KT1',nickname='Alice',full_name='Alice' where id=$2",[u.role,u.id]);
+ async function checkWelcomeMessage(label) {
+  for (const u of users) {
+   await db.exec('reset role');await db.query("select set_config('request.jwt.claim.sub',$1,false)",[u.id]);await db.exec('set role authenticated');
+   const full=(await db.query('select public.app_home_welcome_summary_v1() value')).rows[0].value;
+   const message=(await db.query('select public.app_home_welcome_message_v1() value')).rows[0].value;
+   assert.deepEqual(message,Object.fromEntries(['filledThisMonth','responsibleVacancyTotal','filledResponsibleVacancyRatio','filledResponsibleVacancyBucket'].map(key=>[key,full[key]])),label+' message parity '+u.role);
+  }
+  await db.exec('reset role');
+ }
+ await checkWelcomeMessage('empty');
  await db.exec(`select set_config('request.jwt.claim.sub','${users[0].id}',false);
  insert into public.requisitions(doc_id,site,position,department,head_count,status,pr_approved_date,person_in_charge)
  select 'METRIC-R-'||lpad(n::text,3,'0'),case when n<=10 then 'KT1' else 'KT2' end,'Metric position '||n,'Test',3,'ongoing',current_date-90,'Alice' from generate_series(1,12)n;
@@ -85,6 +95,24 @@ const root=path.resolve(__dirname,'..');
  const migration=fs.readdirSync(path.join(root,'supabase/migrations')).filter(f=>f.endsWith('_home_metric_drilldowns.sql')).at(-1);
  await db.exec(fs.readFileSync(path.join(root,'supabase/migrations',migration),'utf8'));
  await check('upgrade');
+ await checkWelcomeMessage('populated confidential fixture');
+ await db.exec("reset role;drop function public.app_home_welcome_message_v1();");
+ const messageMigration=fs.readdirSync(path.join(root,'supabase/migrations')).filter(file=>file.endsWith('_home_welcome_message.sql')).at(-1);
+ await db.exec(fs.readFileSync(path.join(root,'supabase/migrations',messageMigration),'utf8'));
+ await checkWelcomeMessage('forward migration');
+ assert.equal((await db.query("select has_function_privilege('anon','public.app_home_welcome_message_v1()','execute') allowed")).rows[0].allowed,false);
+ await db.exec("select set_config('request.jwt.claim.sub','',false);set role authenticated");
+ await assert.rejects(db.query('select public.app_home_welcome_message_v1()'),/RECRUITMENT_READ_NOT_AUTHORIZED/);
+ await db.exec('reset role');
+ await db.exec("alter table public.offers disable trigger user;update public.offers set accepted_date=(now() at time zone 'Asia/Bangkok')::date;alter table public.offers enable trigger user;");
+ await checkWelcomeMessage('accepted this Bangkok month');
+ await db.exec("alter table public.offers disable trigger user;update public.offers set accepted_date=(now() at time zone 'Asia/Bangkok')::date+1;alter table public.offers enable trigger user;");
+ await checkWelcomeMessage('future acceptance excluded');
+ await db.exec("alter table public.offers disable trigger user;update public.offers set accepted_date=date_trunc('month',now() at time zone 'Asia/Bangkok')::date-1;alter table public.offers enable trigger user;");
+ await checkWelcomeMessage('prior-month resolved close');
+ await db.exec("alter table public.offers disable trigger user;update public.offers set accepted_date=null;insert into public.offers(candidate_id,application_id,doc_id,accepted_date) values('METRIC-C-1',md5('metric-secret-app')::uuid,'METRIC-SECRET-R',(now() at time zone 'Asia/Bangkok')::date);alter table public.offers enable trigger user;");
+ await checkWelcomeMessage('prior-month close and accepted secret offer excluded');
+ console.log('PASS: independent Welcome message exact ratio parity for four roles, empty/confidential/accepted/future fixtures, forward migration and unauthorized access.');
  await db.exec('reset role');
  assert.equal((await db.query("select has_function_privilege('anon','public.app_home_metric_page_v1(text,jsonb,integer,text,integer)','execute') allowed")).rows[0].allowed,false);
  await db.exec("select set_config('request.jwt.claim.sub','',false);set role authenticated;");
