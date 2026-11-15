@@ -10,7 +10,7 @@ The invoker candidate report view now projects columns directly instead of rebui
 
 - Final source production build and type checking passed. Existing repository lint warnings remain; the new snapshot timer also has an exhaustive-deps warning because its scope identity is a serialized dependency.
 - 16 focused Home browser tests passed on the final local production build, including failed refresh/retry, access denial, filter changes, late responses, scheduling, calendar recovery, and cached reload. Three snapshot unit tests passed.
-- 100 synthetic warm browser visits: median **209 ms**, p95 **282 ms**, maximum **329 ms** for core metrics and a visible default record together. Chromium, local production build, warm assets, mocked auth and records, five-second-old authorized snapshots seeded per visit, fresh core response delayed 2,500 ms. This tests presentation behavior only. It is not a real network, SQL, production, or first-visit p95. Local artifact: `outputs/home-snapshot-synthetic-p95.json`; harness: `outputs/home-cache-p95.spec.ts`.
+- 100 synthetic warm browser visits: median **209 ms**, p95 **282 ms**, maximum **329 ms** for core metrics and a visible default record together. Chromium, local production build, repeated navigations, mocked auth and records, five-second-old authorized snapshots seeded per visit, fresh core response delayed 2,500 ms. This tests presentation behavior only. It is not a real network, SQL, production, or first-visit p95. Local artifact: `outputs/home-snapshot-synthetic-p95.json`; harness: `outputs/home-cache-p95.spec.ts`.
 - A disposable native PostgreSQL 17 database used all current declarative schemas, four synthetic roles, 1,132 applications, and confidential journey fixtures. One diagnostic sample per role measured the following (milliseconds; not p95):
 
 | Role | Core before | Core after | Urgent before | Urgent after |
@@ -35,3 +35,5 @@ Rollback is backward compatible: deploy the preceding frontend, restore the prec
 ## Acceptance limits
 
 The real production p95 below two seconds is **not established**. The user chose synthetic testing rather than a signed-in production session. The fresh site-recruiter core and urgent SQL observations still exceed two seconds. Summary reuse benefits visits with a valid snapshot; empty/expired snapshots and Render Free wake-ups remain outside that result. No production HR records or credentials were copied into artifacts.
+
+Follow-up: [all-role production release and measurements](all-role-welcome-performance.md). The prior staging-pending status above is historical; the follow-up records both completed production releases.
