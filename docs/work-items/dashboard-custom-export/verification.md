@@ -1,6 +1,6 @@
 # Dashboard custom period and requisition exports
 
-Verified locally on 15 November 2026. Reporting week used: 7–13 November, the app's completed Saturday–Friday week. No production frontend or database changes were deployed for this task.
+Verified locally on 15 November 2026. Reporting week used: 7–13 November, the app's completed Saturday–Friday week. The user subsequently authorized deployment; completed rollout is recorded below.
 
 ## Findings and repairs
 
@@ -25,6 +25,15 @@ Production aggregate-only diagnostic found zero potential future-cancellation om
 
 ## Release and rollback
 
-Prepared migration: `supabase/migrations/20261115122106_dashboard_custom_range_history.sql`, generated with Supabase CLI and populated from the declarative function and existing ACL block. Apply through the staging/review workflow before production approval. It preserves the current RPC signature and is compatible with the deployed frontend. Frontend corrections are also backward compatible.
+Prepared migration: `supabase/migrations/20261115122106_dashboard_custom_range_history.sql`, generated with Supabase CLI and populated from the declarative function and existing ACL block. Applied first to staging, then production after the hosted staging checks passed. It preserves the current RPC signature and is compatible with the deployed frontend. Frontend corrections are also backward compatible.
 
-The disposable rehearsal generates `outputs/dashboard-custom-history-rollback.sql`, restores the prior function to reproduce the omission, then reapplies the migration. Rollback replaces only this function and its existing grants; no data or table structure changes. A frontend rollback can use the prior build independently. Production deployment remains pending authorization.
+The disposable rehearsal generates `outputs/dashboard-custom-history-rollback.sql`, restores the prior function to reproduce the omission, then reapplies the migration. Rollback replaces only this function and its existing grants; no data or table structure changes. A frontend rollback can use the prior build independently. Production deployment was authorized by the user and completed as recorded below.
+
+## Completed rollout — 15 November 2026
+
+- Staging migration applied and its complete function body verified against the reviewed migration. Existing stable/definer mode, empty search path, denied anonymous execution and authenticated execution were preserved.
+- Staging commit `9837dcf8b09257b9c6c6efcb23bbeda60cb6cf54`, Render deploy `dep-dbsqf9p5efls73f203ag`, live at 19:41:56 Bangkok. All six hosted export browser checks passed with synthetic API fixtures; Dashboard and 11 initial JavaScript assets returned HTTP 200.
+- Production compatible migration applied before frontend promotion; complete function-body equality and security settings verified again.
+- Production commit `d006add64d2ca9052cfc30761df6c18a1d1ca45c`, Render deploy `dep-dbsqhvajnfac73ciitjg`, live at 19:47:30 Bangkok. All six production-hosted export browser checks passed. Dashboard and 11 initial JavaScript assets returned HTTP 200; the served bundle contains the Excel preparation label. No error-level runtime logs appeared in the initial checked post-deploy window.
+- Hosted checks use synthetic API responses. They verify the deployed client, actual workbook/PNG downloads, pagination, retry, sort cycling, reversed dates and stale-scope cancellation; they do not establish production-data parity or latency. No HR records were exported or changed by these checks. Both Render services remain on Free.
+- Security/performance advisor categories and counts were unchanged in both environments. Existing notices remain: [RLS enabled without policy](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy), [authenticated definer execution](https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable), [leaked-password protection](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection), [unindexed foreign keys](https://supabase.com/docs/guides/database/database-linter?lint=0001_unindexed_foreign_keys), and [unused indexes](https://supabase.com/docs/guides/database/database-linter?lint=0005_unused_index). No unrelated advisor remediation was applied during release.
