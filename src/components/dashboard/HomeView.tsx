@@ -35,7 +35,7 @@ import { ageDays, isCandidateAging, requisitionSourcingLinkReadiness, type DataQ
 import { getRequisitionSlaState } from "@/lib/sla";
 import { useRecruitmentList } from "@/lib/recruitment-list";
 import { CursorPagination } from "@/components/ui/CursorPagination";
-import { loadHomeQualityPage, loadHomeCoreSummary, loadHomeWorkQueue, type HomeBannerSummary, type HomeQualityPage, type HomeCoreSummary, type HomeWorkQueue } from "@/lib/dashboard-summary-client";
+import { loadHomeQualityPage, loadHomeCoreSummary, loadHomeWorkQueue, isHomeWorkQueueAccessDenied, type HomeBannerSummary, type HomeQualityPage, type HomeCoreSummary, type HomeWorkQueue } from "@/lib/dashboard-summary-client";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ChangeLog, EnrichedCandidate, EnrichedOffer, EnrichedRequisition, EnrichedSourcingGroup, Language, Profile, RecruitmentLog } from "@/types/recruitment";
 
@@ -126,6 +126,7 @@ export function HomeView({
   const [coreLoading, setCoreLoading] = useState(false);
   const [queue, setQueue] = useState<{ key: string; data: HomeWorkQueue | null; error: boolean }>({ key: "", data: null, error: false });
   const [queueRetry, setQueueRetry] = useState(0);
+  useEffect(() => { setQueue({ key: "", data: null, error: false }); }, [accessScope, summaryScopeKey]);
   const [queueLoading, setQueueLoading] = useState(false);
   const [recordsSettledKey, setRecordsSettledKey] = useState("");
   const [calendarSettledKey, setCalendarSettledKey] = useState("");
@@ -146,15 +147,15 @@ export function HomeView({
     return () => { cancelled = true; };
   }, [accessScope, listClient, summaryScopeKey, refreshKey, coreRetry, sectionKey, sameSectionScope]);
   useEffect(() => {
-    if (!initialSettled || !listClient || !accessScope) return;
+    if (core.key !== sectionKey || recordsSettledKey !== sectionKey || !listClient || !accessScope) return;
     let cancelled = false;
     setQueueLoading(true);
     loadHomeWorkQueue(listClient, JSON.parse(summaryScopeKey), accessScope, refreshKey + queueRetry)
       .then(data => { if (!cancelled) setQueue({ key: sectionKey, data, error: false }); })
-      .catch(() => { if (!cancelled) setQueue(previous => ({ key: sectionKey, data: sameSectionScope(previous.key) ? previous.data : null, error: true })); })
+      .catch(error => { if (!cancelled) setQueue(previous => ({ key: sectionKey, data: !isHomeWorkQueueAccessDenied(error) && sameSectionScope(previous.key) ? previous.data : null, error: true })); })
       .finally(() => { if (!cancelled) setQueueLoading(false); });
     return () => { cancelled = true; };
-  }, [initialSettled, accessScope, listClient, summaryScopeKey, refreshKey, queueRetry, sectionKey, sameSectionScope]);
+  }, [core.key, recordsSettledKey, accessScope, listClient, summaryScopeKey, refreshKey, queueRetry, sectionKey, sameSectionScope]);
   const [qualityCount, setQualityCount] = useState<{ key: string; count: number } | null>(null);
   const handleQualityCount = useCallback((count: number) => setQualityCount({ key: sectionKey, count }), [sectionKey]);
   const notFilledRequisitions = requisitions.filter((row) => row.status !== "filled" && row.status !== "cancel");
@@ -183,6 +184,7 @@ export function HomeView({
   const homePipelineCount = homeSummary?.counts.activePipeline ?? null;
   const homeStaleGroups = homeSummary?.counts.staleSourcing ?? null;
   const homeWorkQueueCount = sameSectionScope(queue.key) ? queue.data?.totalCount ?? null : null;
+  const urgentStale = queue.key === sectionKey && queue.error && homeWorkQueueCount !== null;
   const tabs: HomeTab[] = [
     { key: "open_headcount", label: translate(language, "openHeadcount"), count: homeOpenCount },
     { key: "candidate_pipeline", label: translate(language, "candidatePipeline"), count: homePipelineCount },
@@ -263,7 +265,7 @@ export function HomeView({
         {coreLoading ? <p role="status" className="px-4 pb-2 text-xs text-slate">{homeSummary ? (language === "th" ? "กำลังอัปเดต" : "Updating") : translate(language, "loading")}</p> : null}
         {queueLoading ? <p role="status" className="px-4 pb-2 text-xs text-slate">{translate(language, "urgentItems")}: {translate(language, "loading")}</p> : null}
         {summaryError ? <div role="alert" className="px-4 pb-3 text-sm text-scarlet">{translate(language, "loadFailed")} <Button variant="secondary" disabled={coreLoading} onClick={() => setCoreRetry(value => value + 1)}>{translate(language, "retry")}</Button></div> : null}
-        {queue.key === sectionKey && queue.error ? <div role="alert" className="px-4 pb-3 text-sm text-scarlet">{translate(language, "urgentItems")}: {translate(language, "loadFailed")} <Button variant="secondary" disabled={queueLoading} onClick={() => setQueueRetry(value => value + 1)}>{translate(language, "retry")}</Button></div> : null}
+        {queue.key === sectionKey && queue.error ? <div role="alert" className="px-4 pb-3 text-sm text-scarlet">{translate(language, "urgentItems")}: {urgentStale ? (language === "th" ? "แสดงจำนวนก่อนหน้า ข้อมูลล่าสุดโหลดไม่สำเร็จ" : "Showing the previous count; the latest update failed.") : translate(language, "loadError")} <Button variant="secondary" disabled={queueLoading} onClick={() => setQueueRetry(value => value + 1)}>{translate(language, "retry")}</Button></div> : null}
         </Panel>
         </div>
 

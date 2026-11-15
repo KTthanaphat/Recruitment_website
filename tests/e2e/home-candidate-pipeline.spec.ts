@@ -25,10 +25,28 @@ test("Home consumes scoped summary metrics and a bounded date-range calendar res
   expect(end).toBeGreaterThanOrEqual(start);
   expect((end - start) / 86_400_000).toBeLessThanOrEqual(61);
   expect(calendar.payload.p_scope).toEqual({ headerSite: "", headerPic: "", priorityOnly: false });
+  await expect(page.locator('[data-home-core-ready="true"]')).toBeVisible();
+  expect(mock.rpcCalls.filter(call => call.endpoint === "app_recruitment_calendar_v1" && call.payload.p_start === call.payload.p_end)).toHaveLength(0);
+});
+
+test("Urgent count starts without waiting for the banner", async ({ page }) => {
+  const mock = await installMockSupabase(page, { role: "admin_recruiter", homeBannerSummaryDelayMs: 8000 });
+  let bannerFinished = false;
+  page.on("response", response => { if (response.url().includes("app_home_banner_summary_v1")) bannerFinished = true; });
+  await page.goto("/home");
+  await expect.poll(() => mock.rpcCalls.some(call => call.endpoint === "app_home_work_queue_v1"), { timeout: 6000 }).toBe(true);
+  expect(bannerFinished).toBe(false);
+});
+
+test("Today events recover independently when the month request fails", async ({ page }) => {
+  const mock = await installMockSupabase(page, { role: "admin_recruiter" });
+  await page.route("**/rest/v1/rpc/app_recruitment_calendar_v1", async route => {
+    const body = route.request().postDataJSON();
+    if (body.p_start !== body.p_end) await route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ message: "Month unavailable" }) });
+    else await route.fallback();
+  });
+  await page.goto("/home");
   await expect.poll(() => mock.rpcCalls.some(call => call.endpoint === "app_recruitment_calendar_v1" && call.payload.p_start === call.payload.p_end)).toBe(true);
-  const today = calendarCalls.find(call => call.payload.p_start === call.payload.p_end);
-  expect(today).toBeTruthy();
-  expect(today?.payload.p_scope).toEqual(calendar.payload.p_scope);
 });
 
 test("Home sourcing and quality use the requested Thai copy", async ({ page }) => {

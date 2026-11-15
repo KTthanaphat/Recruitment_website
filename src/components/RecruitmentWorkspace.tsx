@@ -17,7 +17,6 @@ import type { Requisition } from "@/types/recruitment";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Activity, AlertTriangle, Bookmark, BriefcaseBusiness, Building2, CalendarDays, CalendarPlus, CheckCircle2, ContactRound, Copy, Factory, EyeOff, Files, Hash, Info, LampDesk, Layers3, Mail, Network, Pencil, Phone, Plus, RefreshCw, Send, Trash2, UserRound, UsersRound, X } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { CandidateRegistry } from "@/components/candidates/CandidateRegistry";
 import { clearRecruitmentListCache, invalidateRecruitmentListsForMutation, invalidateRequisitionRecruitmentLists, useRecruitmentList } from "@/lib/recruitment-list";
 import { loadCandidateDetail, loadCandidateDetailShell } from "@/lib/candidate-detail-loader";
 import { isCandidateAction, nextCandidateReadEpoch, markCandidateReceiptDisplayed, markCandidateReconciliation, acknowledgeCandidateReconciliation, performCandidateAction, publishCandidateReceipt, applyCandidateReceipt, patchCandidateDataSince, type CandidateActionReceipt } from "@/lib/candidate-action-receipt";
@@ -41,19 +40,15 @@ import { DesktopInteractionContext } from "@/components/layout/DesktopInteractio
 import { DesktopRequiredNotice } from "@/components/layout/DesktopRequiredNotice";
 import { isDesktopOnlyView, isViewAvailable, useLayoutMode, type LayoutMode } from "@/lib/responsive-layout";
 import { AppShell } from "@/components/layout/AppShell";
-import { OffersView } from "@/components/offers/OffersView";
-import { PipelineBoardView } from "@/components/pipeline/PipelineBoardView";
 import { RejectionLetterComposer } from "@/components/rejection-letters/RejectionLetterComposer";
 import { FailureReasonFields } from "@/components/rejection-reasons/FailureReasonFields";
 import { failureActorLabel, failureReasonText } from "@/lib/rejection-reasons";
 import { TeamsInterviewComposer } from "@/components/interviews/TeamsInterviewComposer";
 import { RequisitionPriorityButton } from "@/components/requisitions/RequisitionPriorityButton";
 import { canManageRequisitionPriority, priorityRequisitionScope } from "@/lib/requisition-priority";
-import { RequisitionsView } from "@/components/requisitions/RequisitionsView";
 import { AuthorizedRequisitionLookup } from "@/components/requisitions/AuthorizedRequisitionLookup";
 import { EmbeddedSourcingEditor, SourcingView } from "@/components/sourcing/SourcingView";
 import { WorkspaceOfferSection } from "@/components/workspace/WorkspaceOfferSection";
-import { HiringWorkspaceView } from "@/components/workspace/HiringWorkspaceView";
 import { Button } from "@/components/ui/Button";
 import { Drawer } from "@/components/ui/Drawer";
 import { CreateSelectInput, DayDateSelector, Field, SelectInput, TextArea, TextInput } from "@/components/ui/Field";
@@ -130,6 +125,11 @@ import type {
   WorkspaceActionRequest
 } from "@/types/recruitment";
 
+const CandidateRegistry = dynamic(() => import("@/components/candidates/CandidateRegistry").then(module => module.CandidateRegistry));
+const OffersView = dynamic(() => import("@/components/offers/OffersView").then(module => module.OffersView));
+const PipelineBoardView = dynamic(() => import("@/components/pipeline/PipelineBoardView").then(module => module.PipelineBoardView));
+const RequisitionsView = dynamic(() => import("@/components/requisitions/RequisitionsView").then(module => module.RequisitionsView));
+const HiringWorkspaceView = dynamic(() => import("@/components/workspace/HiringWorkspaceView").then(module => module.HiringWorkspaceView));
 const AdminView = dynamic(() => import("@/components/admin/AdminView").then(module => module.AdminView));
 const AuditView = dynamic(() => import("@/components/audit/AuditView").then(module => module.AuditView));
 const ConfigurationView = dynamic(() => import("@/components/configuration/ConfigurationView").then(module => module.ConfigurationView));
