@@ -1,4 +1,5 @@
-import { clearHomeSnapshots, homeSnapshotGeneration, saveHomeSnapshot } from "./home-summary-snapshot";
+import { clearHomeSnapshots, homeSnapshotGeneration, saveHomeSnapshot, readHomeSnapshot } from "./home-summary-snapshot";
+import { formatLocalDateInput } from "./dates";
 import { requisitionQueryAffected, type RequisitionActionReceipt } from "./requisition-action-receipt";
 import { scheduleRecruitmentRead } from "./recruitment-read-scheduler";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -142,17 +143,27 @@ export type WelcomeSummary = {
   filledResponsibleVacancyBucket: 0 | 25 | 50 | 75 | 100;
 };
 export type HomeBannerSummary = { monthlyFillCapacity: number; monthlyFilledCount: number };
+export function validWelcomeSummary(value: unknown): value is WelcomeSummary {
+  const result = value as WelcomeSummary | null;
+  const fields: (keyof WelcomeSummary)[] = ["openRequisitions", "openVacancy", "activeCandidates", "offerFinalizationNeeded", "filledThisMonth", "responsibleVacancyTotal", "filledResponsibleVacancyRatio"];
+  return Boolean(result && fields.every(field => Number.isInteger(result[field]) && result[field] >= 0) && [0, 25, 50, 75, 100].includes(result.filledResponsibleVacancyBucket));
+}
+export function readWelcomeSnapshot(profileKey: string) { return readHomeSnapshot<WelcomeSummary>("welcome", profileKey, formatLocalDateInput(), validWelcomeSummary); }
 export async function loadWelcomeSummary(client: SupabaseClient, profileKey: string, refreshKey = 0, shouldRead: () => boolean = () => true): Promise<WelcomeSummary> {
+  const startedGeneration = homeSnapshotGeneration();
+  const snapshotDate = formatLocalDateInput();
   const namespace = await cacheNamespace(client, profileKey);
-  return memo(client, `welcome:${namespace}:${refreshKey}`, async () => {
+  return memo(client, `welcome:${namespace}:${snapshotDate}:${refreshKey}`, async () => {
     if (!shouldRead()) throw new Error("Welcome summary dismissed.");
-    const { data, error } = await client.rpc("app_home_welcome_summary_v1");
-    if (error) throw new Error(error.message);
-    const result = data as WelcomeSummary | null;
-    const fields: (keyof WelcomeSummary)[] = ["openRequisitions", "openVacancy", "activeCandidates", "offerFinalizationNeeded", "filledThisMonth", "responsibleVacancyTotal", "filledResponsibleVacancyRatio"];
-    if (!result || fields.some(field => typeof result[field] !== "number" || !Number.isFinite(result[field] as number)) || ![0, 25, 50, 75, 100].includes(result.filledResponsibleVacancyBucket)) throw new Error("Welcome summary response is incomplete");
-    return result;
-  }, true);
+    const { data, error, status } = await client.rpc("app_home_welcome_summary_v1");
+    if (error) {
+      if (status === 401 || status === 403 || error.code === "42501" || /RECRUITMENT_READ_NOT_AUTHORIZED|permission denied|jwt/i.test(error.message)) clearHomeSnapshots();
+      throw new Error(error.message);
+    }
+    if (!validWelcomeSummary(data)) throw new Error("Welcome summary response is incomplete");
+    saveHomeSnapshot("welcome", profileKey, snapshotDate, data, startedGeneration);
+    return data;
+  }, false, 0);
 }
 export async function loadHomeBannerSummary(client: SupabaseClient, scope: Pick<DashboardSummaryScope, "headerSite" | "headerPic" | "priorityOnly">, profileKey: string, refreshKey = 0): Promise<HomeBannerSummary> {
   const namespace = await cacheNamespace(client, profileKey);

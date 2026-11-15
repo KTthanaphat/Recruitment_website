@@ -1,4 +1,5 @@
 "use client";
+import { homeSnapshotRemainingMs } from "@/lib/home-summary-snapshot";
 import { SecretBadge, SecretReveal, secretErrorMessage } from "@/components/requisitions/SecretClassification";
 import { OnOffSwitch } from "@/components/ui/OnOffSwitch";
 import { reportingOnlyData } from "@/lib/reporting-visibility";
@@ -28,7 +29,7 @@ import { fetchApplicationDestinations, type ApplicationDestination } from "@/lib
 import { fetchOfferCandidates, type OfferCandidateCursor, type OfferCandidateOption } from "@/lib/offer-candidates";
 import { readScopedInPages } from "@/lib/scoped-detail-read";
 import { clearPipelineSummaryCache } from "@/lib/pipeline-summary-loader";
-import { clearDashboardSummaryCache, invalidateRequisitionSummaryCache, loadDashboardFilterOptions, loadHomeBannerSummary, loadWelcomeSummary, type HomeBannerSummary, type WelcomeSummary } from "@/lib/dashboard-summary-client";
+import { clearDashboardSummaryCache, invalidateRequisitionSummaryCache, loadDashboardFilterOptions, loadHomeBannerSummary, loadWelcomeSummary, readWelcomeSnapshot, type HomeBannerSummary, type WelcomeSummary } from "@/lib/dashboard-summary-client";
 import { DetailGrid, SectionHeading } from "@/components/ui/RecordDetailFields";
 import { CandidateProfilePanel, CandidateApplicationDetailsAction, CandidateApplicationDetailsExtras } from "@/components/candidates/CandidateProfilePanel";
 import { applicationLogs, belongsToApplication, selectedApplication, applicationKey } from "@/lib/applications";
@@ -581,7 +582,15 @@ export function RecruitmentWorkspace({ initialView }: { initialView: ViewId }) {
   const homeReadKey = JSON.stringify([detailAccessScope, filters.site, filters.owner, filters.priorityOnly]);
   const homeReadIdentity = useRef("");
   const welcomeLoadedIdentity = useRef("");
-  const visibleWelcomeSummary = welcomeLoadedIdentity.current === detailAccessScope ? welcomeSummary : null;
+  const [, expireWelcomeSnapshot] = useState(0);
+  useEffect(() => {
+    const remaining = homeSnapshotRemainingMs("welcome", detailAccessScope, formatLocalDateInput());
+    if (!Number.isFinite(remaining)) return;
+    const timer = window.setTimeout(() => expireWelcomeSnapshot(value => value + 1), Math.max(1, remaining));
+    return () => window.clearTimeout(timer);
+  }, [detailAccessScope, welcomeOpen, welcomeReadyKey]);
+  const visibleWelcomeSummary = (welcomeLoadedIdentity.current === detailAccessScope ? welcomeSummary : null)
+    ?? (!welcomeSummaryError ? readWelcomeSnapshot(detailAccessScope) : null);
   const visibleHomeBannerSummary = homeReadIdentity.current === homeReadKey ? homeBannerSummary : null;
   useEffect(() => {
     if (initialView !== "home" || workspaceLoadState !== "ready" || !supabase || !data.profile) {
