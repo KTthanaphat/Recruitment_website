@@ -73,3 +73,24 @@ test("late urgent result cannot overwrite a new site", async ({page}) => {
   await expect(urgent).toContainText("2"); release();
   await expect(urgent).toContainText("2"); await expect(urgent).not.toContainText("7");
 });
+
+
+test("recent same-scope Home counts render during reload revalidation", async ({page}) => {
+ const {urgent}=await setup(page);
+ await expect(urgent).toContainText("7");
+ let release!:()=>void; const hold=new Promise<void>(resolve=>{release=resolve});
+ await page.route("**/rest/v1/rpc/app_home_core_summary_v1",async route=>{await hold;await route.fallback().catch(()=>{});});
+ await page.reload();
+ await expect(page.locator('[data-home-core-ready="true"]')).toBeVisible();
+ await expect(page.getByRole("button",{name:"Open List: Urgent items"}).first()).toContainText("7");
+ release();
+});
+
+
+test("core access denial clears previously authorized snapshots", async ({page}) => {
+ const {urgent}=await setup(page); await expect(urgent).toContainText("7");
+ await page.route("**/rest/v1/rpc/app_home_core_summary_v1",route=>route.fulfill({status:403,json:{code:"42501",message:"permission denied"}}));
+ await page.locator('[data-app-header-actions]').getByRole("button",{name:"Refresh"}).click();
+ await expect(page.locator('[data-home-core-ready="false"]')).toBeVisible();
+ expect(await page.evaluate(()=>Object.keys(sessionStorage).some(k=>k.startsWith('recruitment:home-summary:v1:["core"')))).toBe(false);
+});

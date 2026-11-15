@@ -1,4 +1,5 @@
 "use client";
+import { readHomeSnapshot, homeSnapshotRemainingMs } from "@/lib/home-summary-snapshot";
 import { type AttendanceOutcome } from "@/components/ui/AttendanceDecisionActions";
 import { RetryIconButton } from "@/components/ui/RetryIconButton";
 import { NumberSkeleton, LoadingSkeleton, RefreshIndicator } from "@/components/ui/LoadingSkeleton";
@@ -120,6 +121,16 @@ export function HomeView({
   const openStart = (event: CalendarEvent) => setStartSelection({ scopeKey: sectionKey, event });
   useEffect(() => { setMetricSelection(null); setStartSelection(null); }, [sectionKey]);
 
+  const [, expireSnapshot] = useState(0);
+  useEffect(() => {
+    let timer: number;
+    function scheduleExpiry() {
+      const remaining = Math.min(homeSnapshotRemainingMs("core", accessScope, summaryScope), homeSnapshotRemainingMs("urgent", accessScope, summaryScope));
+      if (Number.isFinite(remaining)) timer = window.setTimeout(() => { expireSnapshot(value => value + 1); scheduleExpiry(); }, Math.max(1, remaining));
+    }
+    scheduleExpiry();
+    return () => window.clearTimeout(timer);
+  }, [accessScope, summaryScopeKey]);
   const sameSectionScope = useCallback((key: string) => key.startsWith(JSON.stringify([accessScope, summaryScopeKey]).slice(0, -1) + ","), [accessScope, summaryScopeKey]);
   const [core, setCore] = useState<{ key: string; data: HomeCoreSummary | null; error: boolean }>({ key: "", data: null, error: false });
   const [coreRetry, setCoreRetry] = useState(0);
@@ -132,7 +143,9 @@ export function HomeView({
   const [calendarSettledKey, setCalendarSettledKey] = useState("");
   const handleRecordsSettled = useCallback(() => setRecordsSettledKey(sectionKey), [sectionKey]);
   const handleCalendarSettled = useCallback(() => setCalendarSettledKey(sectionKey), [sectionKey]);
-  const homeSummary = sameSectionScope(core.key) ? core.data : null;
+  const cachedCore = !core.data || !sameSectionScope(core.key) ? readHomeSnapshot<HomeCoreSummary>("core", accessScope, summaryScope, (value): value is HomeCoreSummary => { const v = value as HomeCoreSummary; return Boolean(v?.counts && v?.needsAction && v?.sourcing && v?.requisitions && Array.isArray(v.candidatePipeline)); }) : null;
+  const cachedUrgent = readHomeSnapshot<HomeWorkQueue>("urgent", accessScope, summaryScope, (value): value is HomeWorkQueue => { const v = value as HomeWorkQueue; return Boolean(v && Array.isArray(v.items) && Number.isInteger(v.totalCount) && v.totalCount >= 0); });
+  const homeSummary = (sameSectionScope(core.key) ? core.data : null) ?? (core.error ? null : cachedCore);
   const summaryError = core.key === sectionKey && core.error;
   const initialSettled = core.key === sectionKey && !bannerSummaryLoading && recordsSettledKey === sectionKey && calendarSettledKey === sectionKey;
   useEffect(() => { if (initialSettled) onInitialDataSettled?.(); }, [initialSettled, onInitialDataSettled]);
@@ -142,7 +155,7 @@ export function HomeView({
     setCoreLoading(true);
     loadHomeCoreSummary(listClient, JSON.parse(summaryScopeKey), accessScope, refreshKey + coreRetry)
       .then(data => { if (!cancelled) setCore({ key: sectionKey, data, error: false }); })
-      .catch(() => { if (!cancelled) setCore(previous => ({ key: sectionKey, data: sameSectionScope(previous.key) ? previous.data : null, error: true })); })
+      .catch(error => { if (!cancelled) setCore(previous => ({ key: sectionKey, data: !isHomeWorkQueueAccessDenied(error) && sameSectionScope(previous.key) ? previous.data : null, error: true })); })
       .finally(() => { if (!cancelled) setCoreLoading(false); });
     return () => { cancelled = true; };
   }, [accessScope, listClient, summaryScopeKey, refreshKey, coreRetry, sectionKey, sameSectionScope]);
@@ -183,7 +196,7 @@ export function HomeView({
   const homeOpenCount = homeSummary?.counts.openRequisitions ?? null;
   const homePipelineCount = homeSummary?.counts.activePipeline ?? null;
   const homeStaleGroups = homeSummary?.counts.staleSourcing ?? null;
-  const homeWorkQueueCount = sameSectionScope(queue.key) ? queue.data?.totalCount ?? null : null;
+  const homeWorkQueueCount = (sameSectionScope(queue.key) ? queue.data?.totalCount : null) ?? (queue.error ? null : cachedUrgent?.totalCount) ?? null;
   const urgentStale = queue.key === sectionKey && queue.error && homeWorkQueueCount !== null;
   const tabs: HomeTab[] = [
     { key: "open_headcount", label: translate(language, "openHeadcount"), count: homeOpenCount },

@@ -65,6 +65,21 @@ const root=path.resolve(__dirname,'..');
   }
  }
  }
+
+ const viewSchema=fs.readFileSync(path.join(root,'supabase/schemas/29_confidentiality_primitives.sql'),'utf8');
+ const optimizedView=viewSchema.slice(viewSchema.indexOf('create or replace view app_private.report_candidates '),viewSchema.indexOf('create or replace view app_private.report_change_logs'));
+ const legacyView="create or replace view app_private.report_candidates with (security_invoker=true) as\r\n select (jsonb_populate_record(null::public.candidates,to_jsonb(c)||jsonb_build_object('group_id',case when exists(select 1 from public.position_groups g where g.group_id=c.group_id and not g.is_secret) then c.group_id end,'doc_group_id',case when exists(select 1 from public.document_groups d join public.requisitions r using(doc_id) left join public.position_groups g using(group_id) where d.doc_group_id=c.doc_group_id and not r.is_secret and g.is_secret is not true) then c.doc_group_id end))).*\r\n from public.candidates c where not exists(select 1 from public.candidate_applications a where a.candidate_id=c.candidate_id) or exists(select 1 from public.candidate_applications a join public.position_groups g using(group_id) where a.candidate_id=c.candidate_id and not g.is_secret);\r\n";
+ for(const u of users){
+  const results=[];
+  for(const definition of [legacyView,fs.readFileSync(path.join(root,"supabase/migrations/20261115062118_home_candidate_projection.sql"),"utf8"),legacyView]){
+   await db.exec('reset role;'+definition);
+   await db.query("select set_config('request.jwt.claim.sub',$1,false)",[u.id]);await db.exec('set role authenticated');
+   results.push({rows:(await db.query('select * from app_private.report_candidates order by candidate_id')).rows,core:(await db.query("select public.app_home_core_summary_v1('{}') value")).rows[0].value,urgent:(await db.query("select public.app_home_work_queue_v1('{}') value")).rows[0].value});
+  }
+  assert.deepEqual(results[0],results[1],'candidate masking and Home parity for '+u.role);
+  assert.deepEqual(results[0],results[2],'rollback parity for '+u.role);
+ }
+ await db.exec('reset role;'+optimizedView);
  await check('fresh');
  await db.exec('reset role;drop function public.app_home_metric_page_v1(text,jsonb,integer,text,integer);');
  const migration=fs.readdirSync(path.join(root,'supabase/migrations')).filter(f=>f.endsWith('_home_metric_drilldowns.sql')).at(-1);

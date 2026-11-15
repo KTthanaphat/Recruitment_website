@@ -1,3 +1,4 @@
+import { clearHomeSnapshots, homeSnapshotGeneration, saveHomeSnapshot } from "./home-summary-snapshot";
 import { requisitionQueryAffected, type RequisitionActionReceipt } from "./requisition-action-receipt";
 import { scheduleRecruitmentRead } from "./recruitment-read-scheduler";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -31,9 +32,10 @@ async function cacheNamespace(client: SupabaseClient, profileKey: string) {
   const project = (client as unknown as { supabaseUrl?: string }).supabaseUrl ?? "supabase";
   return `${project}:${id}:${data.session?.user.id ?? "anonymous"}:${profileKey}`;
 }
-export function clearDashboardSummaryCache() { cache.clear(); dashboardReadLeases.clear(); }
+export function clearDashboardSummaryCache() { clearHomeSnapshots(); cache.clear(); dashboardReadLeases.clear(); }
 /** Expire only this auth scope's affected summaries; Welcome is responsibility-scoped. */
 export function invalidateRequisitionSummaryCache(scope: string, receipts: RequisitionActionReceipt[]) {
+ clearHomeSnapshots();
  for(const key of new Set([...cache.keys(), ...dashboardReadLeases.keys()])){
   if(!key.includes(scope)||key.startsWith("welcome:"))continue;
   let filters: Record<string,unknown>={};
@@ -97,25 +99,34 @@ export function isHomeWorkQueueAccessDenied(error: unknown): boolean {
   return error instanceof HomeWorkQueueReadError && error.accessDenied;
 }
 export async function loadHomeCoreSummary(client: SupabaseClient, scope: HomeScope, profileKey: string, refreshKey = 0): Promise<HomeCoreSummary> {
+  const startedGeneration = homeSnapshotGeneration();
   const namespace = await cacheNamespace(client, profileKey);
   return memo(client, JSON.stringify(["home-core", namespace, scope, refreshKey]), async () => {
-    const { data, error } = await client.rpc("app_home_core_summary_v1", { p_scope: scope });
-    if (error) throw new Error(error.message);
+    const { data, error, status } = await client.rpc("app_home_core_summary_v1", { p_scope: scope });
+    if (error) {
+      const denied = status === 401 || status === 403 || error.code === "42501" || /RECRUITMENT_READ_NOT_AUTHORIZED|permission denied|jwt/i.test(error.message);
+      if (denied) clearHomeSnapshots();
+      throw new HomeWorkQueueReadError(error.message, denied);
+    }
     const result = data as HomeCoreSummary | null;
     if (!result || !result.requisitions || !result.sourcing || !result.needsAction || !Array.isArray(result.candidatePipeline) || !result.counts || (["openRequisitions", "activePipeline", "staleSourcing", "pendingOffers"] as const).some(key => !Number.isInteger(result.counts[key]) || result.counts[key] < 0)) throw new Error("Home core response is incomplete");
+    saveHomeSnapshot("core", profileKey, scope, result, startedGeneration);
     return result;
   }, false, 0);
 }
 export async function loadHomeWorkQueue(client: SupabaseClient, scope: HomeScope, profileKey: string, refreshKey = 0): Promise<HomeWorkQueue> {
+  const startedGeneration = homeSnapshotGeneration();
   const namespace = await cacheNamespace(client, profileKey);
   return memo(client, JSON.stringify(["home-work-queue", namespace, scope, refreshKey]), async () => {
     const { data, error, status } = await client.rpc("app_home_work_queue_v1", { p_scope: scope });
     if (error) {
       const accessDenied = status === 401 || status === 403 || error.code === "42501" || /RECRUITMENT_READ_NOT_AUTHORIZED|not authorized|permission denied|invalid jwt|jwt expired/i.test(error.message);
+      if (accessDenied) clearHomeSnapshots();
       throw new HomeWorkQueueReadError(error.message, accessDenied);
     }
     const result = data as HomeWorkQueue | null;
     if (!result || !Array.isArray(result.items) || result.items.length > 10 || !Number.isInteger(result.totalCount) || result.totalCount < result.items.length) throw new Error("Home work queue response is incomplete");
+    saveHomeSnapshot("urgent", profileKey, scope, { items: [], totalCount: result.totalCount }, startedGeneration);
     return result;
   }, false, 0);
 }

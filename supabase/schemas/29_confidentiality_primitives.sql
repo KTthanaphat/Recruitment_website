@@ -46,9 +46,25 @@ create or replace view app_private.report_recruitment_logs with (security_invoke
 create or replace view app_private.report_offers with (security_invoker=true) as select o.* from public.offers o join public.requisitions r using(doc_id) where not r.is_secret and app_private.report_application(o.application_id);
 create or replace view app_private.report_sourcing_weekly_updates with (security_invoker=true) as select s.* from public.sourcing_weekly_updates s join public.position_groups g using(group_id) where not g.is_secret;
 create or replace view app_private.report_candidate_requisitions with (security_invoker=true) as select c.* from public.candidate_requisitions c join public.requisitions r using(doc_id) where not r.is_secret and app_private.report_application(c.application_id);
-create or replace view app_private.report_candidates with (security_invoker=true) as
- select (jsonb_populate_record(null::public.candidates,to_jsonb(c)||jsonb_build_object('group_id',case when exists(select 1 from public.position_groups g where g.group_id=c.group_id and not g.is_secret) then c.group_id end,'doc_group_id',case when exists(select 1 from public.document_groups d join public.requisitions r using(doc_id) left join public.position_groups g using(group_id) where d.doc_group_id=c.doc_group_id and not r.is_secret and g.is_secret is not true) then c.doc_group_id end))).*
- from public.candidates c where not exists(select 1 from public.candidate_applications a where a.candidate_id=c.candidate_id) or exists(select 1 from public.candidate_applications a join public.position_groups g using(group_id) where a.candidate_id=c.candidate_id and not g.is_secret);
+-- Keep this projection aligned with candidates when adding columns; direct fields allow
+-- PostgreSQL to prune unused masking expressions from count/summary queries.
+create or replace view app_private.report_candidates with (security_invoker=true) as select c.candidate_id,
+ c.name,
+ c.nickname,
+ c.phone_no,
+ c.email,
+ case when exists(select 1 from public.document_groups d join public.requisitions r using(doc_id) left join public.position_groups g using(group_id) where d.doc_group_id=c.doc_group_id and not r.is_secret and g.is_secret is not true) then c.doc_group_id end as doc_group_id,
+ case when exists(select 1 from public.position_groups g where g.group_id=c.group_id and not g.is_secret) then c.group_id end as group_id,
+ c.channel,
+ c.ref_name,
+ c.first_contact_date,
+ c.candidate_folder_url,
+ c.created_at,
+ c.updated_at,
+ c.home_site,
+ c.responsible_recruiter_id,
+ c.position_interests,
+ c.created_by from public.candidates c where not exists(select 1 from public.candidate_applications a where a.candidate_id=c.candidate_id) or exists(select 1 from public.candidate_applications a join public.position_groups g using(group_id) where a.candidate_id=c.candidate_id and not g.is_secret);
 create or replace view app_private.report_change_logs with (security_invoker=true) as select l.* from public.change_logs l where not l.is_secret;
 
 revoke all on function app_private.secret_admin(),app_private.secret_requisition_access(text),app_private.secret_group_access(text),app_private.secret_application_access(uuid),app_private.secret_candidate_access(text),app_private.report_application(uuid),app_private.secret_audit_access(text,text,jsonb,jsonb) from public,anon;
