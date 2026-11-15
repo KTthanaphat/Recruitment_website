@@ -377,7 +377,7 @@ export type ActiveRequisitionReportRow = {
 };
 export type ActiveRequisitionReportPage = {rows:ActiveRequisitionReportRow[];total:number;hasMore:boolean;nextCursor:{value:string;id:string}|null};
 export type ActiveRequisitionReportCriteria={filters:Record<string,string>;search:string;sortKey:string|null;sortDirection:"asc"|"desc"|null};
-export async function loadActiveRequisitionReportPage(client:SupabaseClient,input:{start:string;end:string;period:string;stageMode:"status"|"activity"|"accum";scope:DashboardSummaryScope;criteria:ActiveRequisitionReportCriteria;cursor?:ActiveRequisitionReportPage["nextCursor"]|null;profileKey:string;refreshKey?:number}):Promise<ActiveRequisitionReportPage>{
+export async function loadActiveRequisitionReportPage(client:SupabaseClient,input:{start:string;end:string;period:string;stageMode:"status"|"activity"|"accum";scope:DashboardSummaryScope;criteria:ActiveRequisitionReportCriteria;cursor?:ActiveRequisitionReportPage["nextCursor"]|null;profileKey:string;refreshKey?:number|string}):Promise<ActiveRequisitionReportPage>{
   const namespace=await cacheNamespace(client,input.profileKey),key=JSON.stringify(["active-requisition-report",namespace,input.start,input.end,input.period,input.stageMode,input.scope,input.criteria,input.cursor??null,input.refreshKey??0]);
   return memo(client, key,async()=>{
     const {data,error}=await client.rpc("app_dashboard_active_requisitions_page_v1",{p_start:input.start,p_end:input.end,p_period:input.period,p_stage_mode:input.stageMode,p_scope:input.scope,p_after_value:input.cursor?.value??null,p_after_id:input.cursor?.id??null,p_limit:25,p_search:input.criteria.search,p_filters:input.criteria.filters,p_sort:input.criteria.sortKey,p_direction:input.criteria.sortDirection});

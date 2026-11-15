@@ -103,6 +103,8 @@ export function VacancyWaterfallView({ context, reportGroup }: { context: Dashbo
   const setExecutiveBreakdownOpen = (open: boolean) => onPreferencesChange({ executiveBreakdownOpen: open });
   const setFunnelChannel = (channel: string) => onPreferencesChange({ funnelChannel: channel });
   const [exportPreparing, setExportPreparing] = useState(false);
+  const [exportFormat, setExportFormat] = useState<"png" | "xlsx">("png");
+  const exportLock = useRef(false);
   const [exportError, setExportError] = useState(false);
   const stageCountMode = preferences.stageCountMode;
   const setStageCountMode = (mode: StageCountMode) => onPreferencesChange({ stageCountMode: mode });
@@ -169,6 +171,10 @@ export function VacancyWaterfallView({ context, reportGroup }: { context: Dashbo
   const funnelRows = pipelineReport?.funnelRows ?? [];
   const sourceRows = pipelineReport?.sourceRows ?? [];
   const pipelineMetadata = `${summary} · ${translate(language, "channelMeta")}: ${channelFilterLabel(funnelChannel, language)} · ${language === "th" ? "คำอธิบายสีช่องทาง" : "Channel legend"}: ${funnelLegend ? "ON" : "OFF"}`;
+  const exportScopeKey = JSON.stringify([reportGroup, activeReqKey, activeReqCriteriaDraft, pipelineMetadata]);
+  const exportScopeRef = useRef(exportScopeKey); exportScopeRef.current = exportScopeKey;
+  const exportGeneration = useRef(0);
+  useEffect(() => () => { exportGeneration.current++; }, []);
   const [pipelinePngSnapshot, setPipelinePngSnapshot] = useState<{ funnelRows: PipelineFunnelRow[]; sourceRows: SourceEffectivenessRow[]; metadata: string; start: string; end: string; legend: boolean } | null>(null);
   const pngPipeline = pipelinePngSnapshot ?? { funnelRows, sourceRows, metadata: pipelineMetadata, start: funnelStartDate, end: funnelEndDate, legend: funnelLegend };
   async function exportPipelineExcel() {
@@ -206,19 +212,22 @@ export function VacancyWaterfallView({ context, reportGroup }: { context: Dashbo
       if(activeReqKeyRef.current===requestKey){setActiveReqRows(current => [...current,...page.rows.map(mapActiveRequisitionRow)]); setActiveReqCursor(page.nextCursor);}
     } catch { if(activeReqKeyRef.current===requestKey)setActiveReqError(true); } finally { if(activeReqKeyRef.current===requestKey)setActiveReqLoading(false); }
   }
-  async function loadCompleteActiveRequisitionRows() {
+  async function loadCompleteActiveRequisitionRows(assertCurrent: () => void) {
     if (!supabase) throw new Error("Recruitment client is unavailable");
+    const refreshKey = `export:${crypto.randomUUID()}`;
     const rows: RequisitionDetailRow[] = [];
-    const seen = new Set<string>();
+    const seen = new Set<string>(), seenCursors = new Set<string>();
     let cursor: ActiveRequisitionReportPage["nextCursor"] = null;
     let expected: number | null = null;
     for (;;) {
-      const page = await loadActiveRequisitionReportPage(supabase,{start:startDate,end:endDate,period:reportView,stageMode:stageCountMode,scope:activeReqScope,criteria:activeReqCriteria,cursor,profileKey:`${context.data.profile?.id??""}:${context.data.profile?.updated_at??""}`,refreshKey:activeReqRetry});
+      const page = await loadActiveRequisitionReportPage(supabase,{start:startDate,end:endDate,period:reportView,stageMode:stageCountMode,scope:activeReqScope,criteria:activeReqCriteria,cursor,profileKey:`${context.data.profile?.id??""}:${context.data.profile?.updated_at??""}`,refreshKey});
+      assertCurrent();
       if (expected !== null && page.total !== expected) throw new Error("Requisition report changed during export; retry");
       expected = page.total;
       for (const row of page.rows) { if (seen.has(row.doc_id)) throw new Error("Requisition report repeated a row; retry"); seen.add(row.doc_id); rows.push(mapActiveRequisitionRow(row)); }
       if (!page.hasMore) break;
-      if (!page.nextCursor || page.rows.length === 0 || cursor && (page.nextCursor.value < cursor.value || page.nextCursor.value === cursor.value && page.nextCursor.id <= cursor.id)) throw new Error("Requisition report pagination did not advance");
+      if (!page.nextCursor || page.rows.length === 0 || rows.length >= expected || seenCursors.has(JSON.stringify(page.nextCursor))) throw new Error("Requisition report pagination did not advance");
+      seenCursors.add(JSON.stringify(page.nextCursor));
       cursor = page.nextCursor;
     }
     if (rows.length !== expected) throw new Error("Requisition report export is incomplete; retry");
@@ -241,13 +250,24 @@ export function VacancyWaterfallView({ context, reportGroup }: { context: Dashbo
       setStageDrilldown(value=>value?.row.doc_id===current.row.doc_id&&value.stage===current.stage?{...value,matches:[...value.matches,...page.matches as StageCandidateMatch[]],cursor:page.nextCursor,total:page.total,loading:false}:value);
     } catch { setStageDrilldown(value=>value?.row.doc_id===current.row.doc_id&&value.stage===current.stage?{...value,loading:false,error:true}:value); }
   }
+  async function prepareExport(format: "png" | "xlsx", work: (assertCurrent: () => void) => Promise<void>, propagateError = false) {
+    if (exportLock.current) return;
+    exportLock.current = true;
+    setExportFormat(format); setExportPreparing(true); setExportError(false);
+    const scope = exportScopeRef.current, generation = exportGeneration.current;
+    const assertCurrent = () => { if (scope !== exportScopeRef.current || generation !== exportGeneration.current) throw new Error("Report scope changed during export; retry"); };
+    try { await work(assertCurrent); }
+    catch (error) { setExportError(true); if (propagateError) throw error; }
+    finally { exportLock.current = false; setExportPreparing(false); }
+  }
   async function exportRequisitionDetailPng() {
-    setExportPreparing(true);
-    try {
-      setRequisitionPngRows(await loadCompleteActiveRequisitionRows());
-      await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
-      await exportPng(requisitionExportRef.current, `active-requisitions-${startDate}-to-${endDate}.png`, 2, true);
-    } catch { setExportError(true); } finally { setRequisitionPngRows(null); setExportPreparing(false); }
+    await prepareExport("png", async assertCurrent => {
+      try {
+        setRequisitionPngRows(await loadCompleteActiveRequisitionRows(assertCurrent));
+        await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+        await capturePng(requisitionExportRef.current, `active-requisitions-${startDate}-to-${endDate}.png`, 2, assertCurrent);
+      } finally { setRequisitionPngRows(null); }
+    });
   }
 
   useEffect(() => {
@@ -257,44 +277,40 @@ export function VacancyWaterfallView({ context, reportGroup }: { context: Dashbo
   }, []);
 
   async function exportPng(surface: HTMLDivElement | null, filename: string, pixelRatio = 2, propagateError = false) {
-    if (!surface) { if (propagateError) throw new Error("Missing export surface"); return; }
-    setExportPreparing(true);
-    setExportError(false);
-    try {
-      const { toPng } = await import("html-to-image");
-      await waitForExportSurface();
-      const width = surface.scrollWidth;
-      const height = surface.scrollHeight;
-      if (width < 2 || height < 2) throw new Error("Export surface has no dimensions");
-      if (surface === funnelExportRef.current && (width > surface.clientWidth + 1 || height > surface.clientHeight + 1)) throw new Error("Pipeline export content exceeds its slide");
-      const dataUrl = await toPng(surface, {
-        backgroundColor: "#ffffff",
-        cacheBust: true,
-        height,
-        pixelRatio,
-        style: { left: "0", opacity: "1", position: "static", top: "0", transform: "none", visibility: "visible" },
-        width
-      });
-      if (!await hasVisiblePngContent(dataUrl)) throw new Error("Export surface rendered blank");
-      const blob = await (await fetch(dataUrl)).blob();
-      const objectUrl = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = objectUrl;
-      anchor.download = filename;
-      anchor.click();
-      URL.revokeObjectURL(objectUrl);
-    } catch (error) {
-      setExportError(true);
-      if (propagateError) throw error;
-    } finally {
-      setExportPreparing(false);
-    }
+    await prepareExport("png", assertCurrent => capturePng(surface, filename, pixelRatio, assertCurrent), propagateError);
+  }
+  async function capturePng(surface: HTMLDivElement | null, filename: string, pixelRatio: number, assertCurrent: () => void) {
+    assertCurrent();
+    if (!surface) throw new Error("Missing export surface");
+    const { toPng } = await import("html-to-image");
+    await waitForExportSurface();
+    const width = surface.scrollWidth;
+    const height = surface.scrollHeight;
+    if (width < 2 || height < 2) throw new Error("Export surface has no dimensions");
+    if (surface === funnelExportRef.current && (width > surface.clientWidth + 1 || height > surface.clientHeight + 1)) throw new Error("Pipeline export content exceeds its slide");
+    const dataUrl = await toPng(surface, {
+      backgroundColor: "#ffffff",
+      cacheBust: true,
+      height,
+      pixelRatio,
+      style: { left: "0", opacity: "1", position: "static", top: "0", transform: "none", visibility: "visible" },
+      width
+    });
+    if (!await hasVisiblePngContent(dataUrl)) throw new Error("Export surface rendered blank");
+    assertCurrent();
+    const blob = await (await fetch(dataUrl)).blob();
+    assertCurrent();
+    const objectUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = objectUrl;
+    anchor.download = filename;
+    anchor.click();
+    URL.revokeObjectURL(objectUrl);
   }
 
   async function exportRequisitionDetailXlsx(selectedColumns: ExportColumnKey[] = defaultExportColumns()) {
-    setExportPreparing(true);
-    try {
-      const completeRows = await loadCompleteActiveRequisitionRows();
+    await prepareExport("xlsx", async assertCurrent => {
+      const completeRows = await loadCompleteActiveRequisitionRows(assertCurrent);
       const headers = selectedColumns.map((column) => exportColumnLabel(column, language));
       const { Workbook } = await import("exceljs");
       const workbook = new Workbook();
@@ -327,17 +343,14 @@ export function VacancyWaterfallView({ context, reportGroup }: { context: Dashbo
       metadata.addRows([[translate(language, "generatedAt"), new Date().toISOString()], [translate(language, "generatedBy"), data.profile?.email ?? data.profile?.nickname ?? translate(language, "unknown")], [translate(language, "dateRange"), `${formatDate(startDate, language)} - ${formatDate(endDate, language)}`], [translate(language, "stageCountMode"), stageModeLabel], [translate(language, "rows"), completeRows.length], [language === "th" ? "ขอบเขตที่ใช้" : "Applied scope", summary]]);
       metadata.eachRow((row) => row.eachCell((cell) => { cell.font = { name: "Sarabun" }; cell.alignment = { vertical: "middle" }; }));
       const bytes = await workbook.xlsx.writeBuffer();
+      assertCurrent();
       const objectUrl = URL.createObjectURL(new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
       const anchor = document.createElement("a");
       anchor.href = objectUrl;
       anchor.download = `active-requisitions-${startDate}-to-${endDate}.xlsx`;
       anchor.click();
       URL.revokeObjectURL(objectUrl);
-    } catch {
-      setExportError(true);
-    } finally {
-      window.setTimeout(() => setExportPreparing(false), 300);
-    }
+    });
   }
 
   return (
@@ -348,7 +361,7 @@ export function VacancyWaterfallView({ context, reportGroup }: { context: Dashbo
           <div className="flex flex-wrap items-center gap-2 print:hidden">
           <ReportHelp label={language === "th" ? "คำอธิบายกราฟอัตราว่าง" : "Vacancy Waterfall help"} text={language === "th" ? "แสดงการเปลี่ยนแปลงอัตราว่างจากต้นช่วงถึงปลายช่วง แท่งสีแยกสถานที่และประเภทคำขอ การบรรจุลดอัตราว่าง รายงานนี้ใช้ตัวกรองร่วมของแดชบอร์ด" : "Tracks open vacancies from the start to the end of the selected range. Stacks separate sites and request types; fills reduce open vacancies. The common dashboard filters apply to this report."} />
           <Button type="button" size="toolbar" variant="secondary" icon={<ImageDown size={16} />} aria-label={`${translate(language, "export")} ${translate(language, "vacancyWaterfall")} PNG`} title={`${translate(language, "export")} ${translate(language, "vacancyWaterfall")} PNG`} disabled={exportPreparing || !validReportRange || context.pipelineSummaryStatus !== "ready"} onClick={() => exportPng(chartExportRef.current, `vacancy-waterfall-${startDate}-to-${endDate}.png`)}>{translate(language, "export")}</Button>
-          <Button type="button" size="toolbar" variant="secondary" icon={<Download size={16} />} aria-label={`${translate(language, "export")} ${translate(language, "activeRequisitionsSelectedRange")}`} title={`${translate(language, "export")} ${translate(language, "activeRequisitionsSelectedRange")}`} disabled={exportPreparing || !validReportRange} onClick={() => { if (!exportColumns.length) setExportColumns(defaultExportColumns()); setExportOpen(true); }}>{translate(language, "export")}</Button>
+          <Button type="button" size="toolbar" variant="secondary" icon={<Download size={16} />} aria-label={`${translate(language, "export")} ${translate(language, "activeRequisitionsSelectedRange")}`} title={`${translate(language, "export")} ${translate(language, "activeRequisitionsSelectedRange")}`} disabled={exportPreparing || !validReportRange || activeReqCriteriaPending} onClick={() => { if (!exportColumns.length) setExportColumns(defaultExportColumns()); setExportOpen(true); }}>{translate(language, "export")}</Button>
           </div>
         </div>
         <div className="border-t border-[#E4E9F2] bg-white py-4">
@@ -365,14 +378,14 @@ export function VacancyWaterfallView({ context, reportGroup }: { context: Dashbo
             <VacancyWaterfallChart sites={Array.from(new Set(waterfallRows.map(row => row.site)))} breakdownOpen={executiveBreakdownOpen} onBreakdownChange={setExecutiveBreakdownOpen} language={language} rows={waterfallRows} startDate={startDate} endDate={endDate} />
           </div>
         ) : null}
-        {exportError ? <p className="mx-4 mb-1 text-sm font-medium text-danger sm:mx-6 lg:mx-8" role="alert">{translate(language, "exportPngFailed")}</p> : null}
+        {exportError && !exportOpen ? <p className="mx-4 mb-1 text-sm font-medium text-danger sm:mx-6 lg:mx-8" role="alert">{translate(language, exportFormat === "xlsx" ? "exportXlsxFailed" : "exportPngFailed")}</p> : null}
         <div className="min-w-0 max-w-full overflow-hidden border-t border-[#E4E9F2] bg-white p-4 sm:p-6 lg:p-8">
           <h3 className="mb-3 text-lg font-semibold text-navy">{translate(language, "activeRequisitionsSelectedRange")}</h3>
             <div className="mb-3 inline-flex rounded-xl border border-[#C9D5E6] bg-[#F8FAFD] p-1" role="group" aria-label={translate(language, "stageCountMode")}>
               {(["activity", "status", "accum"] as StageCountMode[]).map((mode) => <button key={mode} type="button" className={`rounded-lg px-3 py-2 text-sm font-semibold ${stageCountMode === mode ? "bg-primary text-white shadow-sm" : "text-slate hover:bg-white"}`} aria-pressed={stageCountMode === mode} onClick={() => setStageCountMode(mode)}>{translate(language, mode === "status" ? "pipelineStatus" : mode === "activity" ? "pipelineActivity" : "pipelineAccum")}</button>)}
             </div>
             {stageCountMode === "accum" ? <p className="mb-3 text-sm font-medium text-slate">{translate(language, "pipelineAccumHelp")}</p> : null}
-            {activeReqLoading && activeReqMatches && requisitionRows.length ? <RefreshIndicator language={language}/> : null}{activeReqCriteriaPending ? <RequisitionDetailTable rows={[]} loading language={language} serverControlled/> : <RequisitionDetailTable rows={requisitionRows} loading={activeReqInitialLoading} language={language} serverControlled onCriteriaChange={changeActiveReqCriteria} onStageClick={(row, stage) => { void openStageCandidates(row,stage); }} />}
+            {activeReqLoading && activeReqMatches && requisitionRows.length ? <RefreshIndicator language={language}/> : null}<RequisitionDetailTable rows={requisitionRows} loading={activeReqCriteriaPending || activeReqInitialLoading} language={language} serverControlled onCriteriaChange={changeActiveReqCriteria} onStageClick={(row, stage) => { void openStageCandidates(row,stage); }} />
             {!activeReqCriteriaPending&&activeReqCursor ? <div className="mt-3 flex justify-center"><Button type="button" size="toolbar" variant="secondary" disabled={activeReqLoading} onClick={loadMoreActiveRequisitions}>{activeReqLoading ? (language === "th" ? "กำลังโหลด..." : "Loading...") : (language === "th" ? "โหลดเพิ่มเติม" : "Load more")}</Button></div> : null}
           </div>
         </div>
@@ -416,7 +429,7 @@ export function VacancyWaterfallView({ context, reportGroup }: { context: Dashbo
         <ReportHeader exportMode language={language} title={translate(language, "activeRequisitionsSelectedRange")} startDate={startDate} endDate={endDate} meta={`${summary} · ${translate(language, "stageCountModeMeta", { mode: translate(language, stageCountMode === "status" ? "pipelineStatus" : stageCountMode === "activity" ? "pipelineActivity" : "pipelineAccum") })}`} />
         <RequisitionExportTable rows={requisitionPngRows ?? requisitionRows} language={language} organizationRows={organizationRows} columns={exportColumns} />
       </div> : null}
-      <ActiveRequisitionExportModal open={exportOpen} language={language} rows={requisitionRows} organizationRows={organizationRows} columns={exportColumns} onClose={() => setExportOpen(false)} onColumnsChange={setExportColumns} onExportXlsx={() => exportRequisitionDetailXlsx(exportColumns)} onExportPng={exportRequisitionDetailPng} />
+      <ActiveRequisitionExportModal open={exportOpen} busy={exportPreparing} error={exportError ? translate(language, exportFormat === "xlsx" ? "exportXlsxFailed" : "exportPngFailed") : null} language={language} rows={requisitionRows} organizationRows={organizationRows} columns={exportColumns} onClose={() => { if (!exportPreparing) setExportOpen(false); }} onColumnsChange={setExportColumns} onExportXlsx={() => exportRequisitionDetailXlsx(exportColumns)} onExportPng={exportRequisitionDetailPng} />
       <StageCandidateModal language={language} drilldown={stageDrilldown} onClose={() => setStageDrilldown(null)} onLoadMore={loadMoreStageCandidates} onRetry={() => { if(stageDrilldown) void openStageCandidates(stageDrilldown.row,stageDrilldown.stage); }} onOpenCandidate={(candidate) => setReportCandidate({ ...candidate, personInCharge: stageDrilldown?.row.person_in_charge ?? "" })} />
       <ReportCandidateDetail language={language} candidate={reportCandidate} onClose={() => setReportCandidate(null)} />
 
@@ -446,7 +459,7 @@ export function VacancyWaterfallView({ context, reportGroup }: { context: Dashbo
         <div className="fixed inset-0 z-[70] grid place-items-center bg-navy/45 p-6 print:hidden" role="status" aria-live="polite" aria-busy="true">
           <div className="rounded-lg border border-[#D7DEE8] bg-white px-6 py-5 text-center shadow-[0_12px_30px_rgba(11,19,43,0.12)]">
             <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-4 border-[#D7DEE8] border-t-primary" />
-            <p className="font-semibold text-navy">{translate(language, "preparingPng")}</p>
+            <p className="font-semibold text-navy">{translate(language, exportFormat === "xlsx" ? "preparingXlsx" : "preparingPng")}</p>
           </div>
         </div>
       ) : null}
@@ -748,12 +761,12 @@ function exportColumnLabel(key: ExportColumnKey, language: Language) {
   return key === "department" ? "Department" : key === "section" ? "Section" : key === "department_th" ? translate(language, "departmentThai") : key === "section_th" ? translate(language, "sectionThai") : key === "request_type" ? translate(language, "requestType") : key === "requisition_date" ? translate(language, "requisitionDate") : key === "person_in_charge" ? translate(language, "personInCharge") : key === "actual_age" ? translate(language, "actualAge") : key === "filled_date" ? translate(language, "filledDate") : key === "applicants" ? translate(language, "applicants") : key === "sla" ? translate(language, "slaAtPeriodEnd") : detailStages.includes(key as ProcessStage) ? processStageLabel(language, key as ProcessStage) : translate(language, key);
 }
 
-function ActiveRequisitionExportModal({ open, language, rows, organizationRows, columns, onClose, onColumnsChange, onExportXlsx, onExportPng }: { open: boolean; language: Language; rows: RequisitionDetailRow[]; organizationRows: DepartmentSectionRow[]; columns: ExportColumnKey[]; onClose: () => void; onColumnsChange: (columns: ExportColumnKey[]) => void; onExportXlsx: () => void; onExportPng: () => void }) {
+function ActiveRequisitionExportModal({ open, busy, error, language, rows, organizationRows, columns, onClose, onColumnsChange, onExportXlsx, onExportPng }: { open: boolean; busy: boolean; error: string | null; language: Language; rows: RequisitionDetailRow[]; organizationRows: DepartmentSectionRow[]; columns: ExportColumnKey[]; onClose: () => void; onColumnsChange: (columns: ExportColumnKey[]) => void; onExportXlsx: () => void; onExportPng: () => void }) {
   const registry: ExportColumnKey[] = ["site", "department", "department_th", "section", "section_th", "position", "level", "vacancy", "request_type", "requisition_date", "person_in_charge", "status", "detail", "applicants", ...SOURCING_CHANNELS.map((channel) => channel.count), ...detailStages, "actual_age", "sla", "filled_date"];
   const label = (key: ExportColumnKey) => exportColumnLabel(key, language);
   const [dragging, setDragging] = useState<ExportColumnKey | null>(null);
   const [insertBefore, setInsertBefore] = useState<ExportColumnKey | null>(null);
-  return <Modal open={open} title={translate(language, "export")} onClose={onClose} width="max-w-6xl" compactControls><div className="dashboard-compact-controls grid gap-4"><p className="text-sm text-slate">{translate(language, "exportColumnHelp")}</p><div className="grid max-h-52 grid-cols-1 gap-2 overflow-y-auto rounded-xl border border-[#D7DEE8] p-3 sm:grid-cols-2 lg:grid-cols-4">{registry.map((key) => <label key={key} className="flex min-w-0 items-center justify-between gap-2 rounded-lg border border-[#E4E9F2] bg-white px-3 py-2.5 shadow-sm transition hover:border-[#B8CCE4] hover:bg-[#F8FAFD]"><span className="flex min-w-0 items-center gap-1.5 text-sm font-medium text-navy"><span className="truncate">{label(key)}</span><span className="group relative shrink-0"><Info size={14} className="text-slate" aria-label={translate(language, "exportFieldDescription", { field: label(key) })} /><span role="tooltip" className="pointer-events-none absolute bottom-full right-0 z-30 mb-2 w-64 rounded-lg bg-navy px-3 py-2 text-xs font-normal leading-relaxed text-white opacity-0 shadow-xl transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">{exportFieldDescription(key, language)}<span className="absolute right-1.5 top-full border-x-4 border-t-4 border-x-transparent border-t-navy" /></span></span></span><input type="checkbox" checked={columns.includes(key)} onChange={() => onColumnsChange(columns.includes(key) ? columns.filter((value) => value !== key) : [...columns, key])} /></label>)}</div><div className="overflow-x-auto rounded-xl border border-[#D7DEE8]"><table className="min-w-max text-xs"><thead><tr>{columns.map((key) => <th key={key} className={`border-b bg-[#F8FAFD] px-3 py-2 text-left transition-[padding,margin] ${insertBefore === key && dragging !== key ? "border-l-4 border-l-primary pl-7" : ""}`} onDragEnter={(event) => { event.preventDefault(); if (dragging && dragging !== key) setInsertBefore(key); }} onDragOver={(event) => { event.preventDefault(); if (dragging && dragging !== key) setInsertBefore(key); }} onDrop={(event) => { event.preventDefault(); const from = (event.dataTransfer.getData("text/plain") || dragging) as ExportColumnKey | null; if (from && from !== key) { const next = columns.filter((item) => item !== from); const targetIndex = next.indexOf(key); if (targetIndex >= 0) { next.splice(targetIndex, 0, from); onColumnsChange(next); } } setDragging(null); setInsertBefore(null); }}><button type="button" draggable onDragStart={(event) => { event.dataTransfer.setData("text/plain", key); event.dataTransfer.effectAllowed = "move"; setDragging(key); }} onDragEnd={() => { setDragging(null); setInsertBefore(null); }} className="inline-flex cursor-grab items-center gap-1.5 font-semibold text-navy active:cursor-grabbing"><ArrowLeftRight size={15} aria-hidden="true" /> {label(key)}</button></th>)}</tr></thead><tbody>{rows.slice(0, 5).map((row) => <tr key={row.doc_id}>{columns.map((key) => <td key={key} className="max-w-44 truncate border-t px-3 py-2" title={String(exportValue(row, key, language, organizationRows))}>{previewValue(exportValue(row, key, language, organizationRows))}</td>)}</tr>)}</tbody></table></div><div className="flex flex-wrap justify-end gap-2"><Button type="button" size="toolbar" variant="secondary" onClick={() => onColumnsChange(defaultExportColumns())}>{translate(language, "restoreDefault")}</Button><Button type="button" size="toolbar" variant="secondary" icon={<ImageDown size={16} />} aria-label={`${translate(language, "export")} ${translate(language, "activeRequisitionsSelectedRange")} PNG`} title={`${translate(language, "export")} ${translate(language, "activeRequisitionsSelectedRange")} PNG`} disabled={!columns.length} onClick={onExportPng}>{translate(language, "export")}</Button><Button type="button" size="toolbar" icon={<FileSpreadsheet size={16} />} aria-label={`${translate(language, "export")} ${translate(language, "activeRequisitionsSelectedRange")} XLSX`} title={`${translate(language, "export")} ${translate(language, "activeRequisitionsSelectedRange")} XLSX`} disabled={!columns.length} onClick={onExportXlsx}>{translate(language, "export")}</Button></div></div></Modal>;
+  return <Modal open={open} closeDisabled={busy} title={translate(language, "export")} onClose={onClose} width="max-w-6xl" compactControls><div className="dashboard-compact-controls grid gap-4"><p className="text-sm text-slate">{translate(language, "exportColumnHelp")}</p>{error ? <p role="alert" className="text-sm text-danger">{error}</p> : null}<div className="grid max-h-52 grid-cols-1 gap-2 overflow-y-auto rounded-xl border border-[#D7DEE8] p-3 sm:grid-cols-2 lg:grid-cols-4">{registry.map((key) => <label key={key} className="flex min-w-0 items-center justify-between gap-2 rounded-lg border border-[#E4E9F2] bg-white px-3 py-2.5 shadow-sm transition hover:border-[#B8CCE4] hover:bg-[#F8FAFD]"><span className="flex min-w-0 items-center gap-1.5 text-sm font-medium text-navy"><span className="truncate">{label(key)}</span><span className="group relative shrink-0"><Info size={14} className="text-slate" aria-label={translate(language, "exportFieldDescription", { field: label(key) })} /><span role="tooltip" className="pointer-events-none absolute bottom-full right-0 z-30 mb-2 w-64 rounded-lg bg-navy px-3 py-2 text-xs font-normal leading-relaxed text-white opacity-0 shadow-xl transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">{exportFieldDescription(key, language)}<span className="absolute right-1.5 top-full border-x-4 border-t-4 border-x-transparent border-t-navy" /></span></span></span><input type="checkbox" disabled={busy} checked={columns.includes(key)} onChange={() => onColumnsChange(columns.includes(key) ? columns.filter((value) => value !== key) : [...columns, key])} /></label>)}</div><div className="overflow-x-auto rounded-xl border border-[#D7DEE8]"><table className="min-w-max text-xs"><thead><tr>{columns.map((key) => <th key={key} className={`border-b bg-[#F8FAFD] px-3 py-2 text-left transition-[padding,margin] ${insertBefore === key && dragging !== key ? "border-l-4 border-l-primary pl-7" : ""}`} onDragEnter={(event) => { event.preventDefault(); if (dragging && dragging !== key) setInsertBefore(key); }} onDragOver={(event) => { event.preventDefault(); if (dragging && dragging !== key) setInsertBefore(key); }} onDrop={(event) => { event.preventDefault(); const from = (event.dataTransfer.getData("text/plain") || dragging) as ExportColumnKey | null; if (from && from !== key) { const next = columns.filter((item) => item !== from); const targetIndex = next.indexOf(key); if (targetIndex >= 0) { next.splice(targetIndex, 0, from); onColumnsChange(next); } } setDragging(null); setInsertBefore(null); }}><button type="button" draggable={!busy} onDragStart={(event) => { event.dataTransfer.setData("text/plain", key); event.dataTransfer.effectAllowed = "move"; setDragging(key); }} onDragEnd={() => { setDragging(null); setInsertBefore(null); }} className="inline-flex cursor-grab items-center gap-1.5 font-semibold text-navy active:cursor-grabbing"><ArrowLeftRight size={15} aria-hidden="true" /> {label(key)}</button></th>)}</tr></thead><tbody>{rows.slice(0, 5).map((row) => <tr key={row.doc_id}>{columns.map((key) => <td key={key} className="max-w-44 truncate border-t px-3 py-2" title={String(exportValue(row, key, language, organizationRows))}>{previewValue(exportValue(row, key, language, organizationRows))}</td>)}</tr>)}</tbody></table></div><div className="flex flex-wrap justify-end gap-2"><Button type="button" size="toolbar" variant="secondary" disabled={busy} onClick={() => onColumnsChange(defaultExportColumns())}>{translate(language, "restoreDefault")}</Button><Button type="button" size="toolbar" variant="secondary" icon={<ImageDown size={16} />} aria-label={`${translate(language, "export")} ${translate(language, "activeRequisitionsSelectedRange")} PNG`} title={`${translate(language, "export")} ${translate(language, "activeRequisitionsSelectedRange")} PNG`} disabled={busy || !columns.length} onClick={onExportPng}>{translate(language, "export")}</Button><Button type="button" size="toolbar" icon={<FileSpreadsheet size={16} />} aria-label={`${translate(language, "export")} ${translate(language, "activeRequisitionsSelectedRange")} XLSX`} title={`${translate(language, "export")} ${translate(language, "activeRequisitionsSelectedRange")} XLSX`} disabled={busy || !columns.length} onClick={onExportXlsx}>{translate(language, "export")}</Button></div></div></Modal>;
 }
 
 function RequisitionExportTable({ rows, language, organizationRows, columns }: { rows: RequisitionDetailRow[]; language: Language; organizationRows: DepartmentSectionRow[]; columns: ExportColumnKey[] }) {

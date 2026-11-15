@@ -204,7 +204,7 @@ Vacancy Waterfall and Requisitions Active in Selected Period share the common re
 - YTD: 1 January through selected month end; PR date ≤ end, derived SLA deadline ≥ 1 January, and no resolved close before 1 January.
 - PIM: selected month start through end; PR date ≤ end and no resolved close before start.
 - Custom range: required inclusive Start/End dates, with PIM eligibility. Defaults to the completed sourcing week: Saturday seven days before the current Bangkok sourcing-cycle Saturday through its preceding Friday. Restored URL dates and user-edited dates take precedence and survive switching metric views. Invalid or reversed ranges show no report data and disable exports. Calendar views use `reportView` + `reportMonth`; custom uses `reportView=custom` + `start` + `end`.
-- Cancelled requisitions are excluded. Close date is latest `filled` requisition log, falling back to latest accepted offer for legacy rows. Filled vacancy counts are accepted offers in range whose requisition is also eligible for the selected report; denominator is eligible original headcount; Open Requisitions are eligible rows with `ongoing` status. The waterfall and Active in Selected Period share this eligibility population.
+- Requisitions cancelled by the selected end date are excluded. A cancellation after the period does not remove historical membership; rows without status history retain the current-status fallback. Close date is latest `filled` requisition log, falling back to latest accepted offer for legacy rows. Filled vacancy counts are accepted offers in range whose requisition is also eligible for the selected report; denominator is eligible original headcount; Open Requisitions are eligible rows with `ongoing` status. The waterfall and Active in Selected Period share this eligibility population.
 - Dashboard calls the authenticated, read-only company report RPC. It exposes no candidate information and does not alter raw record or write permissions.
 
 - Week Start: open headcount before the selected start date.
@@ -218,7 +218,7 @@ Dashboard export actions:
 
 - Dashboard export buttons show a localized **Export** label with an image-download icon for PNG and a spreadsheet icon for XLSX; distinct accessible names identify the report and format. The Requisitions launcher opens its format-choice dialog with a general export icon.
 - `Export PNG` for the Vacancy Waterfall chart report, active requisitions, and Pipeline Funnel. A shared in-viewport capture surface waits for fonts/layout, captures the complete localized report at 2× resolution, validates non-blank pixels, then downloads its title, `DD/MM/YYYY` date range, metadata, and all report rows/segments.
-- `Export XLSX` for requisitions active in the selected period.
+- `Export XLSX` for requisitions active in the selected period. Preparation and failures name Excel or PNG according to the selected format. Export retrieves every cursor page in the selected sort order, verifies unique rows and exact totals, and retries with fresh reads after failure. Date, filter, refresh, access changes or unmount prevent an obsolete download. Format/column/close controls are disabled during preparation; failures remain visible in the dialog for manual retry.
 
 Dashboard has no PDF export. PNG download uses deterministic names: `vacancy-waterfall-<start>-to-<end>.png`, `active-requisitions-<start>-to-<end>.png`, and `pipeline-funnel-<start>-to-<end>.png`; the existing preparation overlay applies to every PNG export.
 

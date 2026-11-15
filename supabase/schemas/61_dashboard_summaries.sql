@@ -533,13 +533,14 @@ begin
     select b.*,
       (select l.status from app_private.report_requisition_logs l where l.doc_id=b.doc_id and l.log_date<=p_end order by l.log_date desc,l.log_id desc limit 1) last_status,
       (select l.log_date from app_private.report_requisition_logs l where l.doc_id=b.doc_id and l.status='filled' and l.log_date<=p_end order by l.log_date desc,l.log_id desc limit 1) logged_filled,
+      exists(select 1 from app_private.report_requisition_logs l where l.doc_id=b.doc_id) has_logs,
       greatest(coalesce(b.head_count,0)-(select count(*) from app_private.report_offers o where o.doc_id=b.doc_id and o.accepted_date is not null and o.accepted_date<p_start and (o.start_confirmation is distinct from 'did_not_start' or o.start_confirmed_at is null or (o.start_confirmed_at at time zone 'UTC')::date>=p_start)),0)::int open_at_start,
       (select max(o.accepted_date) from app_private.report_offers o where o.doc_id=b.doc_id and o.accepted_date<=p_end and (select count(*) from app_private.report_offers x where x.doc_id=b.doc_id and x.accepted_date is not null and x.accepted_date<=o.accepted_date and (x.start_confirmation is distinct from 'did_not_start' or x.start_confirmed_at is null or (x.start_confirmed_at at time zone 'UTC')::date>=p_end+1))>=b.head_count) offer_filled
     from base b
   ), eligible as (
     select v.*,coalesce(v.offer_filled,case when v.last_status='filled' then v.logged_filled end) filled_date,coalesce(v.pr_approved_date,(v.created_at at time zone 'UTC')::date) opened_date
     from valid v where v.pr_approved_date is not null and v.pr_approved_date<=p_end and v.last_status is distinct from 'cancel'
-      and (v.last_status is not null or v.status is distinct from 'cancel')
+      and not (not v.has_logs and v.status='cancel')
       and (coalesce(v.offer_filled,case when v.last_status='filled' then v.logged_filled end) is null or coalesce(v.offer_filled,case when v.last_status='filled' then v.logged_filled end)>=p_start)
       and (p_period in ('pim','custom') or (case when btrim(coalesce(v.level,'')) ~* '^L?(0|[1-9]|1[0-4])$' then case when substring(btrim(v.level) from '([0-9]+)$')::int<=6 then 30 when substring(btrim(v.level) from '([0-9]+)$')::int<=9 then 45 else 60 end end is not null and v.pr_approved_date+(case when substring(btrim(v.level) from '([0-9]+)$')::int<=6 then 30 when substring(btrim(v.level) from '([0-9]+)$')::int<=9 then 45 else 60 end)>=p_start))
   ), movement as (
