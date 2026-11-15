@@ -26,4 +26,4 @@ Declarative owner: `supabase/schemas/61_dashboard_summaries.sql`. CLI-generated 
 
 ## Rollout
 
-Staging migration applied and verified. Production promotion pending completion of the release checks. This SQL-only release uses `[skip render]` commits to avoid restarting the unchanged frontend.
+Staging and production migrations applied and verified on 15 November, with production complete by 20:22 Bangkok. Both installed function bodies exactly match the reviewed migration, retain stable invoker execution with the empty search path, deny anonymous execution and allow authenticated execution. Staging source is `d9caaec`; production source is `41abb2c`. This SQL-only release uses `[skip render]` commits to avoid restarting the unchanged frontend. Existing security/performance advisor categories and counts were unchanged; remediation links remain in the parent [verification record](verification.md). No authenticated production user session was available, so real-user list recovery remains to be confirmed after refresh/manual retry; synthetic SQL observations are not presented as production latency.
