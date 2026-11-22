@@ -5,6 +5,19 @@ import type { DashboardData, EnrichedOffer, EnrichedRequisition, RequisitionRequ
 export type PerformancePeriod = "mtd" | "ytd" | "pim" | "custom";
 export type PerformanceBand = "NML" | "FML" | "MML" | "SML" | "Executive" | "Unknown";
 export const PERFORMANCE_BANDS: PerformanceBand[] = ["NML", "FML", "MML", "SML", "Executive", "Unknown"];
+export type StartAttendance = { site: string; due: number; started: number; didNotStart: number; historyIncomplete: boolean };
+
+export function summarizeStartAttendance(rows: StartAttendance[], sites: string[], totalLabel: string) {
+  const bySite = new Map(rows.map(row => [row.site, row]));
+  const empty = (site: string): StartAttendance => ({ site, due: 0, started: 0, didNotStart: 0, historyIncomplete: false });
+  const siteRows = [...new Set([...sites, ...rows.map(row => row.site)])].map(site => bySite.get(site) ?? empty(site));
+  const total = siteRows.reduce((result, row) => ({
+    ...result, due: result.due + row.due, started: result.started + row.started, didNotStart: result.didNotStart + row.didNotStart,
+    historyIncomplete: result.historyIncomplete || row.historyIncomplete
+  }), empty(totalLabel));
+  return [...siteRows, total];
+}
+
 export type PerformanceRange = { start: string; end: string };
 export type PerformanceCell = { site: string; band: PerformanceBand; vacancies: number; filled: number; open: number; onTime: number; late: number; unknownSla: number; newVacancies: number; replacementVacancies: number };
 export type PerformanceMetrics = { vacancies: number; filled: number; open: number; filledPct: number | null; slaPct: number | null; avgTimeToFill: number | null; onTime: number; late: number; unknownSla: number };

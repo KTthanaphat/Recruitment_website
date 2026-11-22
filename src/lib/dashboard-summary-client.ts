@@ -4,11 +4,11 @@ import { requisitionQueryAffected, type RequisitionActionReceipt } from "./requi
 import { scheduleRecruitmentRead } from "./recruitment-read-scheduler";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { DashboardLevel } from "@/lib/dashboard-filters";
-import type { PerformanceBand, PerformanceCell, PerformanceMetrics, PerformanceRange } from "@/lib/recruitment-performance";
+import type { PerformanceBand, PerformanceCell, PerformanceMetrics, PerformanceRange, StartAttendance } from "@/lib/recruitment-performance";
 import type { PipelineFunnelRow } from "@/components/ui/PipelineFunnel";
 import type { SourceEffectivenessRow } from "@/components/dashboard/SourceEffectiveness";
 
-export type PerformanceSummaryRange = { range: PerformanceRange; metrics: PerformanceMetrics; cells: PerformanceCell[]; sites: string[] };
+export type PerformanceSummaryRange = { range: PerformanceRange; metrics: PerformanceMetrics; cells: PerformanceCell[]; sites: string[]; attendance?: StartAttendance[] };
 export type PerformanceSummary = {
   current: PerformanceSummaryRange;
   prior: PerformanceSummaryRange;
@@ -323,7 +323,7 @@ export type PipelineSummary = {
   reassignments: { in: number; out: number };
   funnelRows: PipelineFunnelRow[];
   sourceRows: SourceEffectivenessRow[];
-  waterfallRows: { waterfall_category: string; site: string; request_type: string; vacancy_count: number; filledInSla: number; filledSlaUnknown: number }[];
+  waterfallRows: { waterfall_category: string; site: string; request_type: string; vacancy_count: number; filledInSla: number; filledSlaUnknown: number; reopened?: number }[];
   channelOptions: string[];
 };
 
@@ -368,22 +368,32 @@ export async function loadRiskPage(client: SupabaseClient, input: {
   });
 }
 
+export type RequisitionStartStatuses = Partial<Record<"started" | "didNotStart" | "scheduled" | "awaiting" | "unavailable", number>>;
 export type ActiveRequisitionReportRow = {
   doc_id:string; site:string; department:string; section:string|null; position:string; level:string; vacancy:number;
   applicant_count:number; applicant_channels:Record<string,number>; request_type:"New"|"Replacement"; requisition_date:string;
   actual_age_days:number|null; person_in_charge:string; stage_counts:Record<string,number>;
   sla_state:{ageDays:number|null;endDate:string|null;inSla:boolean|null;isOverdue:boolean;label:string;slaDays:number|null;startDate:string|null};
-  filled_date:string|null; period_status:"ongoing"|"filled"|"cancel"; period_detail:string|null;
+  filled_date:string|null; period_status:"ongoing"|"filled"|"cancel"|"unavailable"; period_detail:string|null;
+  open_headcount:number|null; opened_in_period:boolean; start_statuses:RequisitionStartStatuses; history_incomplete:boolean;
 };
-export type ActiveRequisitionReportPage = {rows:ActiveRequisitionReportRow[];total:number;hasMore:boolean;nextCursor:{value:string;id:string}|null};
+export type ActiveRequisitionReportPage = {
+  rows: ActiveRequisitionReportRow[];
+  total: number;
+  hasMore: boolean;
+  nextCursor: { value: string; id: string } | null;
+  asOf: string;
+  waterfallRows: PipelineSummary["waterfallRows"] | null;
+  historyIncomplete: boolean;
+};
 export type ActiveRequisitionReportCriteria={filters:Record<string,string>;search:string;sortKey:string|null;sortDirection:"asc"|"desc"|null};
-export async function loadActiveRequisitionReportPage(client:SupabaseClient,input:{start:string;end:string;period:string;stageMode:"status"|"activity"|"accum";scope:DashboardSummaryScope;criteria:ActiveRequisitionReportCriteria;cursor?:ActiveRequisitionReportPage["nextCursor"]|null;profileKey:string;refreshKey?:number|string}):Promise<ActiveRequisitionReportPage>{
-  const namespace=await cacheNamespace(client,input.profileKey),key=JSON.stringify(["active-requisition-report",namespace,input.start,input.end,input.period,input.stageMode,input.scope,input.criteria,input.cursor??null,input.refreshKey??0]);
+export async function loadActiveRequisitionReportPage(client:SupabaseClient,input:{start:string;end:string;period:string;stageMode:"status"|"activity"|"accum";scope:DashboardSummaryScope;criteria:ActiveRequisitionReportCriteria;asOf?:string;cursor?:ActiveRequisitionReportPage["nextCursor"]|null;profileKey:string;refreshKey?:number|string}):Promise<ActiveRequisitionReportPage>{
+  const namespace=await cacheNamespace(client,input.profileKey),key=JSON.stringify(["active-requisition-report",namespace,input.start,input.end,input.period,input.stageMode,input.scope,input.criteria,input.asOf??null,input.cursor??null,input.refreshKey??0]);
   return memo(client, key,async()=>{
-    const {data,error}=await client.rpc("app_dashboard_active_requisitions_page_v1",{p_start:input.start,p_end:input.end,p_period:input.period,p_stage_mode:input.stageMode,p_scope:input.scope,p_after_value:input.cursor?.value??null,p_after_id:input.cursor?.id??null,p_limit:25,p_search:input.criteria.search,p_filters:input.criteria.filters,p_sort:input.criteria.sortKey,p_direction:input.criteria.sortDirection});
+    const {data,error}=await client.rpc("app_dashboard_active_requisitions_page_v2",{p_start:input.start,p_end:input.end,p_period:input.period,p_stage_mode:input.stageMode,p_scope:input.scope,p_after_value:input.cursor?.value??null,p_after_id:input.cursor?.id??null,p_limit:25,p_search:input.criteria.search,p_filters:input.criteria.filters,p_sort:input.criteria.sortKey,p_direction:input.criteria.sortDirection,p_as_of:input.asOf??null});
     if(error)throw new Error(error.message);
     const result=data as ActiveRequisitionReportPage|null;
-    if(!result||!Array.isArray(result.rows)||result.rows.length>25||!Number.isInteger(result.total)||typeof result.hasMore!=="boolean"||result.hasMore&&!result.nextCursor)throw new Error("Active requisition report response is incomplete");
+    if(!result||!Array.isArray(result.rows)||result.rows.length>25||!Number.isInteger(result.total)||typeof result.hasMore!=="boolean"||result.hasMore&&!result.nextCursor||!result.asOf||(!input.cursor&&!Array.isArray(result.waterfallRows)))throw new Error("Active requisition report response is incomplete");
     return result;
   });
 }

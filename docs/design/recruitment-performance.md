@@ -23,6 +23,10 @@ The reference-style overview lives in the Recruitment Performance tab at `/dashb
 - SLA keeps all scoped site axes and the five aligned descending levels even without fills, with clear site separators and a shared count scale. Its maximum is `max(2, ceil(highest filled count × 1.1 / 2) × 2)`, with ticks at zero, half and maximum. Green on-time, red late and gray unknown segments have accessible exact counts and measurable percentages. Always place the percentage after the complete stack, reserving space before the next site separator. Unknown results are excluded from the percentage; empty fills retain the chart frame and a quiet message. Waterfall likewise retains Opening, each scoped site's Open/Filled, and Closing categories when empty; Pipeline retains its full stage list.
 - Every overview chart, Waterfall and Pipeline Funnel has localized explanatory tooltips available on hover, focus and tap; Escape dismisses them. Tooltips stay inside the viewport. Data bars expose counts and percentages where applicable. Hide interactive help controls from exported PNGs; the Pipeline export uses a static info icon beside each card title.
 
+## Period-end table and start confirmation
+
+Place Opened in Period after Requisition Date and Start Status at Period End after Status at Period End. The Vacancy cell keeps approved and open values together. Exports use separate columns so approved and open headcounts remain numeric. Mark the table-only filters in a short line above the controls. The Performance matrix ends with a small inline Start confirmation remark on screen and in PNG. Each site and the weighted Total show a no-show count and confirmed starts over due starts with the percentage. Site entries wrap at narrow widths. The [behavior contract](../WEBSITE_STRUCTURE.md#period-end-requisition-and-start-reporting) owns aggregation and cutoff rules.
+
 ## PNG and verification
 
 Capture a dedicated desktop report surface with title, dates, applied filters, all four visible KPIs and all three complete charts. Expand internal scrolling and use the existing 2× non-blank PNG validation. The export remains independent of the current phone viewport.

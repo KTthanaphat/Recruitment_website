@@ -135,7 +135,7 @@ export function DashboardPortal({ language, data, requisitions, offers, candidat
   const riskReportDefinition = registry.find(report => report.id === "performance");
   const riskRange = dashboardReportRange(preferences, today, riskReportDefinition?.filters ?? []);
   const pipelineScope = useMemo(() => ({ headerSite: globalSite, headerPic: globalOwner, priorityOnly: globalPriorityOnly, sites: preferences.sites, departments: preferences.departments, levels: preferences.levels }), [globalSite, globalOwner, globalPriorityOnly, preferences.sites, preferences.departments, preferences.levels]);
-  const needsPipelineSummary = preferences.tab === "pipeline" && preferences.pipelineSubview === "overview" || preferences.tab === "performance" && preferences.performanceSubview === "vacancy";
+  const needsPipelineSummary = preferences.tab === "pipeline" && preferences.pipelineSubview === "overview";
   const pipelineSummaryKey = JSON.stringify([profileKey, pipelineRange.start, pipelineRange.end, preferences.period, pipelineScope, preferences.funnelChannel]);
   useEffect(() => {
     if (!ready || !needsPipelineSummary || !pipelineRange.valid) return;
@@ -207,7 +207,7 @@ export function DashboardPortal({ language, data, requisitions, offers, candidat
     if (report.filters.includes("level")) parts.push(`${t.level}: ${effective.levels.map(level => `L${level.replace("-", "–L")}`).join(", ") || t.all}`);
     parts.push(`${t.pic}: ${globalOwner || t.all}`);
     if (globalPriorityOnly) parts.push(t.priority);
-    const wantsSummary = report.id === "pipeline" || report.id === "performance" && preferences.performanceSubview === "vacancy";
+    const wantsSummary = report.id === "pipeline";
     const wantsRiskSummary = report.id === "performance" && preferences.performanceSubview === "risk";
     const wantsBottleneckSummary=report.id==="pipeline"&&preferences.pipelineSubview==="bottlenecks";
     const wantsRejectionSummary=report.id==="pipeline"&&preferences.pipelineSubview==="rejections";

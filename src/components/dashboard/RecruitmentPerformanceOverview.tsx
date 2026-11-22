@@ -31,7 +31,7 @@ export function RecruitmentPerformanceOverview({ context }: { context: Dashboard
     loadPerformanceSummary(supabase, { start: range.start, end: range.end, priorStart: previous.start, priorEnd: previous.end, period,
       scope: { headerSite: context.headerScope.site, headerPic: context.headerScope.owner, priorityOnly: context.headerScope.priorityOnly,
         sites: preferences.sites, departments: preferences.departments, levels: preferences.levels },
-      refreshKey: context.refreshRevision, profileKey: `${context.data.profile?.id ?? ""}:${context.data.profile?.updated_at ?? ""}` })
+      refreshKey: (context.refreshRevision ?? 0) + retrySummary, profileKey: `${context.data.profile?.id ?? ""}:${context.data.profile?.updated_at ?? ""}` })
       .then(result => { if (!cancelled) setReportResult({ key: requestKey, current: result.current, prior: result.prior }); })
       .catch(() => { if (!cancelled) setReportError(true); }).finally(() => { if (!cancelled) setReportLoading(false); });
     return () => { cancelled = true; };
@@ -69,7 +69,7 @@ export function RecruitmentPerformanceOverview({ context }: { context: Dashboard
     const exportContext = { ...context, data: exportData, requisitions: exportRequisitions, offers: exportOffers };
     const exportReport = buildPerformanceReport(exportData, exportRequisitions, exportOffers, { start: range.start, end: range.end }, period);
     const exportPrior = buildPerformanceReport(exportData, exportRequisitions, exportOffers, previous, period);
-    const snapshot = buildPerformanceExportSnapshot(exportContext, exportReport, exportPrior, chartSites);
+    const snapshot = buildPerformanceExportSnapshot(exportContext, exportReport, exportPrior, chartSites, undefined, report.attendance);
     await downloadDashboardWorkbook(snapshot);
   }
   async function exportPng() {

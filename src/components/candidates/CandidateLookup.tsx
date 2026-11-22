@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Info, Loader2, Mail, Phone, Search, UserRoundSearch, X } from "lucide-react";
 import Image from "next/image";
+import lookupArtwork from "../../../public/images/candidate-lookup-detective-v5-900.webp";
 import { createPortal } from "react-dom";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Language } from "@/types/recruitment";
@@ -74,7 +75,7 @@ export function CandidateLookup({client,scope,language,onOpen}:{client:SupabaseC
     <header className="relative z-10 grid shrink-0 grid-cols-2 gap-2 px-3 pt-2">
      <div className="relative min-h-[4.5rem] min-w-0 self-stretch" data-lookup-illustration>
       <LookupBackdrop className="pointer-events-none absolute inset-x-0 bottom-0 h-[calc(100%-0.5rem)] w-full"/>
-      <Image src="/images/candidate-lookup-detective-original-v5.png" fill sizes="(max-width: 639px) 45vw, 170px" alt="" aria-hidden="true" className="object-contain object-left-bottom"/>
+      <Image src={lookupArtwork} fill priority unoptimized alt="" aria-hidden="true" className="object-contain object-left-bottom"/>
       <svg aria-hidden="true" focusable="false" viewBox="0 0 30 30" className="absolute right-0 top-1 h-5 w-5 text-[#146EFA]"><path d="M8 3 5 12M22 8l-8 7M27 23h-9" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/></svg>
      </div>
      <div className="grid min-w-0 content-start gap-0.5 pl-2" data-lookup-heading>

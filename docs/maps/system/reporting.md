@@ -4,6 +4,11 @@
 
 Read this node for this feature only. It indexes ownership; product rules remain in [Dashboard behavior](../../WEBSITE_STRUCTURE.md#dashboard-page). Visual work uses [Recruitment Performance](../../design/recruitment-performance.md) and [Controls](../../design/controls.md).
 
+## Period-end vacancy and start confirmation
+
+- The [dashboard summary SQL](../../../supabase/schemas/61_dashboard_summaries.sql) owns period-end audit reconstruction and aggregate queries. [Vacancy & Requisitions](../../../src/components/dashboard/VacancyWaterfallView.tsx) and the [Performance report](../../../src/components/dashboard/PerformanceReport.tsx) consume those results.
+- See [canonical behavior](../../WEBSITE_STRUCTURE.md#period-end-requisition-and-start-reporting), [design](../../design/recruitment-performance.md#period-end-table-and-start-confirmation), and [SQL rehearsal](../../../scripts/rehearse-dashboard-period-end.cjs) for the focused path.
+
 ## Owners and search keys
 
 ### Common dashboard portal
