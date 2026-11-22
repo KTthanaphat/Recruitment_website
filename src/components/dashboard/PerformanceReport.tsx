@@ -3,7 +3,7 @@ import { formatDate, formatNumber } from "@/lib/format";
 import { Building2, Factory, ChartColumnIncreasing } from "lucide-react";
 import { ReportHelp } from "./ReportHelp";
 import { useId } from "react";
-import { PERFORMANCE_BANDS, type PerformanceBand, type PerformanceCell, type PerformanceReport as Report } from "@/lib/recruitment-performance";
+import { PERFORMANCE_BANDS, summarizeStartAttendance, type StartAttendance, type PerformanceBand, type PerformanceCell, type PerformanceReport as Report } from "@/lib/recruitment-performance";
 import type { Language } from "@/types/recruitment";
 import styles from "./performance.module.css";
 
@@ -12,7 +12,7 @@ export const performanceCopy = {
   th: { title: "ผลการสรรหา", period: "ช่วงเวลา", year: "ปี", month: "เดือน", site: "สถานที่", department: "ฝ่าย", all: "ทั้งหมด", vacancies: "อัตราว่างทั้งหมด", filled: "บรรจุแล้ว", filledPct: "สัดส่วนบรรจุ", slaPct: "บรรจุภายใน SLA", time: "เวลาบรรจุเฉลี่ย", day: "วัน", noData: "ไม่มีอัตราว่างที่เข้าเกณฑ์ในช่วงเวลานี้", noFills: "ไม่มีการบรรจุในช่วงเวลานี้", noComparison: "ไม่มีค่าช่วงก่อนหน้า", prior: "เทียบช่วงก่อนหน้า", vacancyType: "อัตราว่างใหม่และทดแทนตามระดับงาน", matrix: "อัตราบรรจุและคงค้างตามระดับงานและสถานที่", sla: "การบรรจุภายใน SLA ตามระดับงานและสถานที่", new: "ใหม่", replacement: "ทดแทน", open: "คงค้าง", onTime: "ใน SLA", late: "เกิน SLA", unknown: "ไม่ทราบ SLA", cumulative: "สัดส่วนอัตราว่างสะสม", total: "รวม", export: "ส่งออกภาพรวม PNG", exportFailed: "ส่งออกภาพรวม PNG ไม่สำเร็จ", loading: "กำลังเตรียม PNG…", unknownLevel: "ไม่ทราบระดับ", level: "ระดับงาน", count: "อัตราว่าง", unknownHelp: "ไม่รวมรายการที่ไม่ทราบ SLA ในเปอร์เซ็นต์", increased: "เพิ่มขึ้น", decreased: "ลดลง", unchanged: "ไม่เปลี่ยนแปลง", pp: "จุดเปอร์เซ็นต์", pim: "ผลการดำเนินงานรายเดือน" }
 } as const;
 
-export type PerformanceReportView = Pick<Report, "range" | "metrics" | "cells" | "sites">;
+export type PerformanceReportView = Pick<Report, "range" | "metrics" | "cells" | "sites"> & { attendance?: StartAttendance[] };
 
 const BLUE = "#0A3CDC", AMBER = "#FFC107", GREEN = "#65C91A", RED = "#F23852", GRAY = "#94A3B8";
 const sitePalette: Record<string, [string, string]> = { HQ: ["#0AA0C3", "#CDEEF3"], KT1: ["#146EFA", "#CDE0FF"], KT2: ["#411EDC", "#DAD2FA"], Total: [BLUE, "#D0DAFA"] };
@@ -61,6 +61,7 @@ export function PerformanceReport({ report, previous, language, sites, period = 
     <section className={`${styles.panel} ${styles.matrix}`} aria-label={t.matrix}>
       <ChartHeading title={t.matrix} help={language === "th" ? "แท่งสีคือจำนวนบรรจุ สีอ่อนคือคงค้าง ทุกสถานที่ใช้มาตราส่วนจำนวนเดียวกัน ตัวเลขท้ายแท่งคืออัตราอนุมัติทั้งหมด แถวล่างแสดงบรรจุ/อนุมัติและเปอร์เซ็นต์" : "Colored bars count fills; pale bars count open positions. Every site uses the same count scale. The label after each bar is approved headcount. Footers show filled/approved and fill percentage."} /><Legend entries={[[BLUE, t.filled], ["#D0DAFA", t.open]]} />
       <Matrix cells={report.cells} sites={sites} language={language} />
+      <StartAttendanceRemark rows={report.attendance} sites={sites} language={language} />
       {report.metrics.vacancies === 0 ? <p className={styles.empty}>{t.noData}</p> : null}
     </section>
     <section className={`${styles.panel} ${styles.vacancy}`} aria-label={t.vacancyType}>
@@ -73,6 +74,27 @@ export function PerformanceReport({ report, previous, language, sites, period = 
       <p className={styles.note}>{t.unknownHelp}: {report.metrics.unknownSla}</p>
     </section>
   </div>;
+}
+
+function StartAttendanceRemark({ rows, sites, language }: { rows?: StartAttendance[]; sites: string[]; language: Language }) {
+  const th = language === "th";
+  const title = th ? "การยืนยันเริ่มงาน" : "Start confirmation";
+  if (!rows) return <p className={styles.note}>{th ? "ไม่มีข้อมูลการยืนยันเริ่มงาน" : "Start confirmation data unavailable."}</p>;
+  const summaries = summarizeStartAttendance(rows, orderedReportSites([...sites, ...rows.map(row => row.site)]), performanceCopy[language].total);
+  const number = (value: number) => formatNumber(value, language);
+  const percent = new Intl.NumberFormat(th ? "th-TH" : "en-GB", { style: "percent", maximumFractionDigits: 1 });
+  return <p className={styles.attendance} data-start-attendance>
+    <strong>{title}</strong>
+    <span className="sr-only">{th ? "ยืนยันเริ่มงานแล้ว / ถึงกำหนดเริ่มงาน" : "Confirmed starts / due starts."}</span>
+    {summaries.map((row, index) => {
+      const noShowLabel = th ? "ไม่มาเริ่มงาน" : row.didNotStart === 1 ? "no-show" : "no-shows";
+      const rate = row.due && !row.historyIncomplete ? `${number(row.started)}/${number(row.due)} (${percent.format(row.started / row.due)})` : "—";
+      return <span key={index} data-attendance-site={row.site}>
+        <strong>{row.site}</strong>{" "}{number(row.didNotStart)} {noShowLabel} · {rate}
+        {row.historyIncomplete ? th ? " · ข้อมูลย้อนหลังไม่ครบ" : " · Incomplete history" : null}
+      </span>;
+    })}
+  </p>;
 }
 
 function metricHelp(key: string, language: Language) {

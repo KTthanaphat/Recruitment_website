@@ -33,6 +33,10 @@ pnpm exec playwright test tests/e2e/ux-enhancements.spec.ts -g "home calendar"
 
 Date-selector and command-dropdown keyboard/empty-list/collision behavior is an acceptance requirement in [Controls](../design/controls.md), not a verified dedicated suite. When such a control changes, add a focused regression scenario and exercise it during verification. Do not label a broad sourcing or form test as comprehensive selector accessibility coverage.
 
+## Period-end report fixture
+
+Run `node scripts/rehearse-dashboard-period-end.cjs` using the disposable PGlite tool directory. The optional [loopback preview API](../../scripts/preview-dashboard-period-end.cjs) shares that fixture. Point the Next development process at `NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54329` and `NEXT_PUBLIC_SUPABASE_ANON_KEY=local-preview-only`. Sign in as `recruitment-preview@example.test` with password `local-preview-only` and select October 2026. The synthetic API supports read-only preview flows. With both processes running, set `RECRUITMENT_PERIOD_END_PREVIEW=1` and run `pnpm exec playwright test tests/e2e/dashboard-period-end.spec.ts` with Chrome installed.
+
 ## Unmocked, database and external checks
 
 [login.spec.ts](../../tests/e2e/login.spec.ts) does not install the mock helper; it observes public/protected route behavior against the configured app. It does not prove authentication correctness.

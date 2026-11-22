@@ -6,7 +6,7 @@ import { isReportEligible, validDateOnly, requisitionSnapshotAt, dateOnly } from
 import { applicationCandidates, belongsToApplication, assignmentGroup, applicationKey } from "@/lib/applications";
 import { buildPipelineReport } from "@/lib/pipeline-report";
 import { loadCompletePipelineReportData } from "@/lib/dashboard-report-loader";
-import { loadActiveRequisitionReportPage, loadActiveRequisitionCandidatePage, type ActiveRequisitionReportRow, type ActiveRequisitionReportPage, type ActiveRequisitionCandidatePage, type ActiveRequisitionReportCriteria } from "@/lib/dashboard-summary-client";
+import { loadActiveRequisitionReportPage, loadActiveRequisitionCandidatePage, type ActiveRequisitionReportRow, type ActiveRequisitionReportPage, type ActiveRequisitionCandidatePage, type ActiveRequisitionReportCriteria, type RequisitionStartStatuses } from "@/lib/dashboard-summary-client";
 import { enrichRequisitions } from "@/lib/data";
 import { scopeDashboardRequisitions } from "@/lib/dashboard-filters";
 import { supabase } from "@/lib/supabase/client";
@@ -68,6 +68,7 @@ type WaterfallRow = {
   vacancy_count: number;
   filledInSla?: number;
   filledSlaUnknown?: number;
+  reopened?: number;
 };
 
 type RequisitionDetailRow = {
@@ -87,11 +88,14 @@ type RequisitionDetailRow = {
   stage_counts: Record<ProcessStage, number>;
   sla_state: RequisitionSlaState;
   filled_date: string | null;
-  period_status: "ongoing" | "filled" | "cancel";
+  period_status: ActiveRequisitionReportRow["period_status"];
   period_detail: string | null;
+  open_headcount: number | null;
+  opened_in_period: boolean;
+  start_statuses: RequisitionStartStatuses;
 };
 type StageCountMode = "status" | "activity" | "accum";
-type ExportColumnKey = "site" | "department" | "department_th" | "section" | "section_th" | "position" | "level" | "vacancy" | "request_type" | "requisition_date" | "person_in_charge" | "status" | "detail" | "applicants" | (typeof SOURCING_CHANNELS)[number]["count"] | ProcessStage | "actual_age" | "sla" | "filled_date";
+type ExportColumnKey = "site" | "department" | "department_th" | "section" | "section_th" | "position" | "level" | "vacancy" | "request_type" | "requisition_date" | "person_in_charge" | "status" | "detail" | "applicants" | (typeof SOURCING_CHANNELS)[number]["count"] | ProcessStage | "actual_age" | "sla" | "filled_date" | "start_status" | "opened_in_period" | "open_headcount";
 type StageCandidateMatch = { applicationId?: string; candidateId: string; name: string; stage: ProcessStage; pendingDate: string; resultDate: string | null; remark: string | null; result: 0 | 1 | null };
 type StageCandidateReportDetail = StageCandidateMatch & { personInCharge: string };
 
@@ -130,12 +134,6 @@ export function VacancyWaterfallView({ context, reportGroup }: { context: Dashbo
   const startDate = range.start, endDate = range.end, validReportRange = range.valid;
   const funnelStartDate = range.start, funnelEndDate = range.end, validFunnelRange = range.valid;
 
-  const waterfallRows = useMemo(
-    () => reportGroup === "vacancy" && context.pipelineSummaryStatus === "ready" && context.pipelineSummary
-      ? context.pipelineSummary.waterfallRows.map(row => ({ waterfall_category: row.waterfall_category as VacancyWaterfallCategory, site: row.site, request_type: row.request_type as RequisitionRequestType, vacancy_count: row.vacancy_count, filledInSla: row.filledInSla, filledSlaUnknown: row.filledSlaUnknown }))
-      : [],
-    [context.pipelineSummary, context.pipelineSummaryStatus, reportGroup]
-  );
   const activeReqScope = useMemo(() => ({ headerSite: context.headerScope.site, headerPic: context.headerScope.owner, priorityOnly: context.headerScope.priorityOnly,
     sites: preferences.sites, departments: preferences.departments, levels: preferences.levels }), [context.headerScope, preferences.departments, preferences.levels, preferences.sites]);
   useEffect(()=>{
@@ -145,7 +143,12 @@ export function VacancyWaterfallView({ context, reportGroup }: { context: Dashbo
     return ()=>window.clearTimeout(timer);
   },[activeReqCriteriaDraft,activeReqCriteria]);
   const activeReqCriteriaPending=JSON.stringify(activeReqCriteriaDraft)!==JSON.stringify(activeReqCriteria);
-  const activeReqDataKey = JSON.stringify([startDate,endDate,reportView,stageCountMode,activeReqScope,activeReqCriteria,context.data.profile?.id,context.data.profile?.role,context.data.profile?.site,context.data.profile?.updated_at]);
+  const reportScopeKey = JSON.stringify([startDate, endDate, reportView, activeReqScope, context.data.profile?.id,
+    context.data.profile?.role, context.data.profile?.site, context.data.profile?.updated_at, context.refreshRevision, activeReqRetry]);
+  const [vacancySnapshot, setVacancySnapshot] = useState<{ key: string; asOf: string; rows: WaterfallRow[]; historyIncomplete: boolean } | null>(null);
+  const snapshot = vacancySnapshot?.key === reportScopeKey ? vacancySnapshot : null;
+  const waterfallRows = snapshot?.rows ?? [];
+  const activeReqDataKey = JSON.stringify([reportScopeKey, stageCountMode, activeReqCriteria]);
   const activeReqKey = JSON.stringify([activeReqDataKey,activeReqRetry]);
   const activeReqKeyRef=useRef(activeReqKey); activeReqKeyRef.current=activeReqKey;
   useEffect(() => {
@@ -154,8 +157,17 @@ export function VacancyWaterfallView({ context, reportGroup }: { context: Dashbo
     setActiveReqError(false); setStageDrilldown(null);
     if (reportGroup !== "vacancy" || !validReportRange || !supabase) { setActiveReqLoading(false); return () => { active = false; }; }
     setActiveReqLoading(true);
-    void loadActiveRequisitionReportPage(supabase,{start:startDate,end:endDate,period:reportView,stageMode:stageCountMode,scope:activeReqScope,criteria:activeReqCriteria,profileKey:`${context.data.profile?.id??""}:${context.data.profile?.updated_at??""}`,refreshKey:activeReqRetry})
-      .then(page => { if (!active) return; setActiveReqRows(page.rows.map(mapActiveRequisitionRow)); setActiveReqTotal(page.total); setActiveReqLoadedKey(activeReqDataKey); setActiveReqCursor(page.nextCursor); })
+    void loadActiveRequisitionReportPage(supabase,{start:startDate,end:endDate,period:reportView,stageMode:stageCountMode,scope:activeReqScope,criteria:activeReqCriteria,asOf:snapshot?.asOf,profileKey:`${context.data.profile?.id??""}:${context.data.profile?.updated_at??""}`,refreshKey:(context.refreshRevision ?? 0) + activeReqRetry})
+      .then(page => {
+        if (!active) return;
+        setVacancySnapshot({ key: reportScopeKey, asOf: page.asOf, historyIncomplete: page.historyIncomplete,
+          rows: (page.waterfallRows ?? []).map(row => ({ ...row, waterfall_category: row.waterfall_category as VacancyWaterfallCategory,
+            request_type: row.request_type as RequisitionRequestType })) });
+        setActiveReqRows(page.rows.map(mapActiveRequisitionRow));
+        setActiveReqTotal(page.total);
+        setActiveReqLoadedKey(activeReqDataKey);
+        setActiveReqCursor(page.nextCursor);
+      })
       .catch(() => { if (active) setActiveReqError(true); })
       .finally(() => { if (active) setActiveReqLoading(false); });
     return () => { active = false; };
@@ -208,7 +220,7 @@ export function VacancyWaterfallView({ context, reportGroup }: { context: Dashbo
     const requestKey=activeReqKey;
     setActiveReqLoading(true); setActiveReqError(false);
     try {
-      const page = await loadActiveRequisitionReportPage(supabase,{start:startDate,end:endDate,period:reportView,stageMode:stageCountMode,scope:activeReqScope,criteria:activeReqCriteria,cursor:activeReqCursor,profileKey:`${context.data.profile?.id??""}:${context.data.profile?.updated_at??""}`,refreshKey:activeReqRetry});
+      const page = await loadActiveRequisitionReportPage(supabase,{start:startDate,end:endDate,period:reportView,stageMode:stageCountMode,scope:activeReqScope,criteria:activeReqCriteria,asOf:snapshot?.asOf,cursor:activeReqCursor,profileKey:`${context.data.profile?.id??""}:${context.data.profile?.updated_at??""}`,refreshKey:(context.refreshRevision ?? 0) + activeReqRetry});
       if(activeReqKeyRef.current===requestKey){setActiveReqRows(current => [...current,...page.rows.map(mapActiveRequisitionRow)]); setActiveReqCursor(page.nextCursor);}
     } catch { if(activeReqKeyRef.current===requestKey)setActiveReqError(true); } finally { if(activeReqKeyRef.current===requestKey)setActiveReqLoading(false); }
   }
@@ -220,7 +232,7 @@ export function VacancyWaterfallView({ context, reportGroup }: { context: Dashbo
     let cursor: ActiveRequisitionReportPage["nextCursor"] = null;
     let expected: number | null = null;
     for (;;) {
-      const page = await loadActiveRequisitionReportPage(supabase,{start:startDate,end:endDate,period:reportView,stageMode:stageCountMode,scope:activeReqScope,criteria:activeReqCriteria,cursor,profileKey:`${context.data.profile?.id??""}:${context.data.profile?.updated_at??""}`,refreshKey});
+      const page = await loadActiveRequisitionReportPage(supabase,{start:startDate,end:endDate,period:reportView,stageMode:stageCountMode,scope:activeReqScope,criteria:activeReqCriteria,asOf:snapshot?.asOf,cursor,profileKey:`${context.data.profile?.id??""}:${context.data.profile?.updated_at??""}`,refreshKey});
       assertCurrent();
       if (expected !== null && page.total !== expected) throw new Error("Requisition report changed during export; retry");
       expected = page.total;
@@ -237,7 +249,7 @@ export function VacancyWaterfallView({ context, reportGroup }: { context: Dashbo
     setStageDrilldown({row,stage,matches:[],total:0,cursor:null,loading:true,error:false});
     if(!supabase) { setStageDrilldown(current=>current?{...current,loading:false,error:true}:current); return; }
     try {
-      const page=await loadActiveRequisitionCandidatePage(supabase,{docId:row.doc_id,stage,start:startDate,end:endDate,requisitionDate:row.requisition_date,stageMode:stageCountMode,profileKey:`${context.data.profile?.id??""}:${context.data.profile?.updated_at??""}`,refreshKey:activeReqRetry});
+      const page=await loadActiveRequisitionCandidatePage(supabase,{docId:row.doc_id,stage,start:startDate,end:endDate,requisitionDate:row.requisition_date,stageMode:stageCountMode,profileKey:`${context.data.profile?.id??""}:${context.data.profile?.updated_at??""}`,refreshKey:(context.refreshRevision ?? 0) + activeReqRetry});
       setStageDrilldown(current=>current?.row.doc_id===row.doc_id&&current.stage===stage?{...current,matches:page.matches as StageCandidateMatch[],total:page.total,cursor:page.nextCursor,loading:false}:current);
     } catch { setStageDrilldown(current=>current?.row.doc_id===row.doc_id&&current.stage===stage?{...current,loading:false,error:true}:current); }
   }
@@ -246,7 +258,7 @@ export function VacancyWaterfallView({ context, reportGroup }: { context: Dashbo
     if(!current?.cursor||!supabase||current.loading)return;
     setStageDrilldown({...current,loading:true,error:false});
     try {
-      const page=await loadActiveRequisitionCandidatePage(supabase,{docId:current.row.doc_id,stage:current.stage,start:startDate,end:endDate,requisitionDate:current.row.requisition_date,stageMode:stageCountMode,cursor:current.cursor,profileKey:`${context.data.profile?.id??""}:${context.data.profile?.updated_at??""}`,refreshKey:activeReqRetry});
+      const page=await loadActiveRequisitionCandidatePage(supabase,{docId:current.row.doc_id,stage:current.stage,start:startDate,end:endDate,requisitionDate:current.row.requisition_date,stageMode:stageCountMode,cursor:current.cursor,profileKey:`${context.data.profile?.id??""}:${context.data.profile?.updated_at??""}`,refreshKey:(context.refreshRevision ?? 0) + activeReqRetry});
       setStageDrilldown(value=>value?.row.doc_id===current.row.doc_id&&value.stage===current.stage?{...value,matches:[...value.matches,...page.matches as StageCandidateMatch[]],cursor:page.nextCursor,total:page.total,loading:false}:value);
     } catch { setStageDrilldown(value=>value?.row.doc_id===current.row.doc_id&&value.stage===current.stage?{...value,loading:false,error:true}:value); }
   }
@@ -360,27 +372,29 @@ export function VacancyWaterfallView({ context, reportGroup }: { context: Dashbo
           <h2 className="min-w-0 flex-1"><span><strong className="block text-lg font-semibold text-navy">{translate(language, "vacancyWaterfall")} &amp; {translate(language, "activeRequisitionsSelectedRange")}</strong><span className="text-sm font-medium text-slate">{summary} · {activeReqMatches ? translate(language, "activeRequisitionsInRange", { count: formatNumber(activeReqTotal, language), start: formatDate(startDate, language), end: formatDate(endDate, language) }) : activeReqError ? "—" : <NumberSkeleton/>} · {activeReqMatches ? formatNumber(requisitionRows.length,language) : activeReqError ? "—" : <NumberSkeleton/>} {language === "th" ? "แถวที่โหลดแล้ว" : "rows loaded"}</span></span></h2>
           <div className="flex flex-wrap items-center gap-2 print:hidden">
           <ReportHelp label={language === "th" ? "คำอธิบายกราฟอัตราว่าง" : "Vacancy Waterfall help"} text={language === "th" ? "แสดงการเปลี่ยนแปลงอัตราว่างจากต้นช่วงถึงปลายช่วง แท่งสีแยกสถานที่และประเภทคำขอ การบรรจุลดอัตราว่าง รายงานนี้ใช้ตัวกรองร่วมของแดชบอร์ด" : "Tracks open vacancies from the start to the end of the selected range. Stacks separate sites and request types; fills reduce open vacancies. The common dashboard filters apply to this report."} />
-          <Button type="button" size="toolbar" variant="secondary" icon={<ImageDown size={16} />} aria-label={`${translate(language, "export")} ${translate(language, "vacancyWaterfall")} PNG`} title={`${translate(language, "export")} ${translate(language, "vacancyWaterfall")} PNG`} disabled={exportPreparing || !validReportRange || context.pipelineSummaryStatus !== "ready"} onClick={() => exportPng(chartExportRef.current, `vacancy-waterfall-${startDate}-to-${endDate}.png`)}>{translate(language, "export")}</Button>
-          <Button type="button" size="toolbar" variant="secondary" icon={<Download size={16} />} aria-label={`${translate(language, "export")} ${translate(language, "activeRequisitionsSelectedRange")}`} title={`${translate(language, "export")} ${translate(language, "activeRequisitionsSelectedRange")}`} disabled={exportPreparing || !validReportRange || activeReqCriteriaPending} onClick={() => { if (!exportColumns.length) setExportColumns(defaultExportColumns()); setExportOpen(true); }}>{translate(language, "export")}</Button>
+          <Button type="button" size="toolbar" variant="secondary" icon={<ImageDown size={16} />} aria-label={`${translate(language, "export")} ${translate(language, "vacancyWaterfall")} PNG`} title={`${translate(language, "export")} ${translate(language, "vacancyWaterfall")} PNG`} disabled={exportPreparing || !validReportRange || !snapshot} onClick={() => exportPng(chartExportRef.current, `vacancy-waterfall-${startDate}-to-${endDate}.png`)}>{translate(language, "export")}</Button>
+          <Button type="button" size="toolbar" variant="secondary" icon={<Download size={16} />} aria-label={`${translate(language, "export")} ${translate(language, "activeRequisitionsSelectedRange")}`} title={`${translate(language, "export")} ${translate(language, "activeRequisitionsSelectedRange")}`} disabled={exportPreparing || !validReportRange || !activeReqMatches} onClick={() => { if (!exportColumns.length) setExportColumns(defaultExportColumns()); setExportOpen(true); }}>{translate(language, "export")}</Button>
           </div>
         </div>
         <div className="border-t border-[#E4E9F2] bg-white py-4">
         {activeReqError ? <div className="mx-4 mb-4 rounded-xl border border-[#E4E9F2] p-3 sm:mx-6 lg:mx-8"><p role="alert" className="text-sm text-danger">{language === "th" ? "โหลดรายการคำขอไม่สำเร็จ" : "Could not load requisition rows."}</p><RetryIconButton title={`${language === "th" ? "ลองโหลดข้อมูลอีกครั้ง" : "Retry loading"}: Vacancy Waterfall`} type="button" className="mt-2"  onClick={() => setActiveReqRetry(value => value + 1)}>{language === "th" ? "ลองอีกครั้ง" : "Retry"}</RetryIconButton></div> : null}
 
 
-        {context.pipelineSummaryStatus === "error" ? <div className="px-4 sm:px-6 lg:px-8"><p role="alert" className="text-sm text-danger">{language === "th" ? "โหลดสรุปอัตราว่างไม่สำเร็จ" : "Could not load the vacancy summary."}</p><RetryIconButton type="button" className="mt-2"  onClick={context.onRetryPipelineSummary}>{language === "th" ? "ลองอีกครั้ง" : "Retry"}</RetryIconButton></div> : context.pipelineSummaryStatus !== "ready" ? <LoadingSkeleton variant="chart" label={<>{language === "th" ? "กำลังโหลดสรุปอัตราว่าง..." : "Loading vacancy summary..."}</>} className="px-4 text-sm text-slate sm:px-6 lg:px-8" /> : waterfallRows.length === 0 ? (
+        {snapshot?.historyIncomplete ? <p className="px-4 text-sm text-slate sm:px-6 lg:px-8" role="status">{translate(language, "historicalReportGap")}</p> : null}
+        {activeReqError ? null : !snapshot ? <LoadingSkeleton variant="chart" label={<>{language === "th" ? "กำลังโหลดสรุปอัตราว่าง..." : "Loading vacancy summary..."}</>} className="px-4 text-sm text-slate sm:px-6 lg:px-8" /> : waterfallRows.length === 0 ? (
           <div className="px-4 sm:px-6 lg:px-8">
             <EmptyState variant="quiet" message={translate(language, "noWaterfallData")} />
           </div>
         ) : null}
-        {validReportRange ? (
+        {validReportRange && snapshot ? (
           <div className="bg-white">
             <VacancyWaterfallChart sites={Array.from(new Set(waterfallRows.map(row => row.site)))} breakdownOpen={executiveBreakdownOpen} onBreakdownChange={setExecutiveBreakdownOpen} language={language} rows={waterfallRows} startDate={startDate} endDate={endDate} />
           </div>
         ) : null}
         {exportError && !exportOpen ? <p className="mx-4 mb-1 text-sm font-medium text-danger sm:mx-6 lg:mx-8" role="alert">{translate(language, exportFormat === "xlsx" ? "exportXlsxFailed" : "exportPngFailed")}</p> : null}
         <div className="min-w-0 max-w-full overflow-hidden border-t border-[#E4E9F2] bg-white p-4 sm:p-6 lg:p-8">
-          <h3 className="mb-3 text-lg font-semibold text-navy">{translate(language, "activeRequisitionsSelectedRange")}</h3>
+          <h3 className="mb-1 text-lg font-semibold text-navy">{translate(language, "activeRequisitionsSelectedRange")}</h3>
+          <p className="mb-3 text-xs text-slate">{translate(language, "vacancyTableScope")}</p>
             <div className="mb-3 inline-flex rounded-xl border border-[#C9D5E6] bg-[#F8FAFD] p-1" role="group" aria-label={translate(language, "stageCountMode")}>
               {(["activity", "status", "accum"] as StageCountMode[]).map((mode) => <button key={mode} type="button" className={`rounded-lg px-3 py-2 text-sm font-semibold ${stageCountMode === mode ? "bg-primary text-white shadow-sm" : "text-slate hover:bg-white"}`} aria-pressed={stageCountMode === mode} onClick={() => setStageCountMode(mode)}>{translate(language, mode === "status" ? "pipelineStatus" : mode === "activity" ? "pipelineActivity" : "pipelineAccum")}</button>)}
             </div>
@@ -427,6 +441,7 @@ export function VacancyWaterfallView({ context, reportGroup }: { context: Dashbo
 
       {reportGroup === "vacancy" ? <div ref={requisitionExportRef} className="export-report-surface" aria-hidden="true">
         <ReportHeader exportMode language={language} title={translate(language, "activeRequisitionsSelectedRange")} startDate={startDate} endDate={endDate} meta={`${summary} · ${translate(language, "stageCountModeMeta", { mode: translate(language, stageCountMode === "status" ? "pipelineStatus" : stageCountMode === "activity" ? "pipelineActivity" : "pipelineAccum") })}`} />
+        {snapshot?.historyIncomplete ? <p className="px-4 text-sm text-slate">{translate(language, "historicalReportGap")}</p> : null}
         <RequisitionExportTable rows={requisitionPngRows ?? requisitionRows} language={language} organizationRows={organizationRows} columns={exportColumns} />
       </div> : null}
       <ActiveRequisitionExportModal open={exportOpen} busy={exportPreparing} error={exportError ? translate(language, exportFormat === "xlsx" ? "exportXlsxFailed" : "exportPngFailed") : null} language={language} rows={requisitionRows} organizationRows={organizationRows} columns={exportColumns} onClose={() => { if (!exportPreparing) setExportOpen(false); }} onColumnsChange={setExportColumns} onExportXlsx={() => exportRequisitionDetailXlsx(exportColumns)} onExportPng={exportRequisitionDetailPng} />
@@ -435,6 +450,7 @@ export function VacancyWaterfallView({ context, reportGroup }: { context: Dashbo
 
       {reportGroup === "vacancy" ? <div ref={chartExportRef} className="export-report-surface" aria-hidden="true">
         <p className="px-4 py-2 text-sm text-slate">{summary}</p>
+        {snapshot?.historyIncomplete ? <p className="px-4 text-sm text-slate">{translate(language, "historicalReportGap")}</p> : null}
         <VacancyWaterfallChart sites={Array.from(new Set(waterfallRows.map(row => row.site)))} isExport breakdownOpen={executiveBreakdownOpen} language={language} rows={waterfallRows} startDate={startDate} endDate={endDate} />
       </div> : null}
 
@@ -527,6 +543,7 @@ function VacancyWaterfallChart({ language, rows, sites = [], startDate, endDate,
             {isExport ? <><h3 className="screen-chart-title px-1 text-2xl font-semibold leading-tight tracking-normal text-navy sm:text-[26px]">{(language === "th" ? "ผลการสรรหาในช่วงเวลาที่เลือก" : "Recruitment Performance in Selected Period")}</h3><p className="mt-1 px-1 text-sm font-light text-slate">{formatDate(startDate!, language)} - {formatDate(endDate!, language)}</p></> : null}
             {!isExport && startDate && endDate ? <p className="mt-1 px-1 text-sm text-slate">{formatDate(startDate, language)} – {formatDate(endDate, language)}</p> : null}
             <WaterfallExecutiveSummary language={language} rows={rows} />
+            <p className="mt-1 px-1 text-xs text-slate">{language === "th" ? "เปิดอัตราซ้ำหลังไม่มาเริ่มงาน" : "Vacancies reopened after no-shows"}{" · "}{formatNumber(rows.reduce((total, row) => total + (row.reopened ?? 0), 0), language)}</p>
           </div>
           <WaterfallExecutiveSummaryTable language={language} rows={rows} breakdownOpen={breakdownOpen} onBreakdownChange={onBreakdownChange} />
         </div>
@@ -660,7 +677,7 @@ function RightSegmentBrackets({
 }
 
 function defaultExportColumns(): ExportColumnKey[] {
-  return ["site", "department", "section", "position", "level", "vacancy", "request_type", "requisition_date", "person_in_charge", "status", "detail", "applicants", ...detailStages, "actual_age", "sla", "filled_date"];
+  return ["site", "department", "section", "position", "level", "vacancy", "open_headcount", "request_type", "requisition_date", "opened_in_period", "person_in_charge", "status", "start_status", "detail", "applicants", ...detailStages, "actual_age", "sla", "filled_date"];
 }
 
 function LeftSegmentBrackets({ x, segments }: { x: number; segments: { key: string; label: string; yTop: number; yBottom: number }[] }) {
@@ -755,14 +772,41 @@ function siteSummarySegments(
   return Array.from(grouped, ([site, summary]) => ({ key: site, label: `${site}${separator} ${formatNumber(summary.value, language)}`, yTop: yScale(summary.top), yBottom: yScale(summary.bottom) }));
 }
 
+const startStatusLabels = [
+  ["started", "reportStartStarted"], ["scheduled", "reportStartScheduled"], ["awaiting", "reportStartAwaiting"],
+  ["didNotStart", "reportStartNoShow"], ["unavailable", "reportStartUnavailable"]
+] as const;
+
+function startStatusValue(row: RequisitionDetailRow, language: Language) {
+  const counts = startStatusLabels.flatMap(([key, label]) => {
+    const count = row.start_statuses[key] ?? 0;
+    return count > 0 ? [{ count, label: translate(language, label) }] : [];
+  });
+  if (!counts.length) return "—";
+  if (counts.length === 1 && counts[0].count === 1) return counts[0].label;
+  return counts.map(({ count, label }) => `${formatNumber(count, language)} ${language === "en" ? label.toLowerCase() : label}`).join(" · ");
+}
+
+function vacancyValue(row: RequisitionDetailRow, language: Language) {
+  return translate(language, "vacancyApprovedOpen", { approved: formatNumber(row.vacancy, language),
+    open: row.open_headcount === null ? "—" : formatNumber(row.open_headcount, language) });
+}
+
+function periodStatusValue(row: RequisitionDetailRow, language: Language) {
+  return row.period_status === "unavailable" ? translate(language, "unknown") : translate(language, row.period_status);
+}
+
 function exportColumnLabel(key: ExportColumnKey, language: Language) {
+  if (key === "start_status") return translate(language, "startStatusAtPeriodEnd");
+  if (key === "open_headcount") return translate(language, "openHeadcountAtPeriodEnd");
+  if (key === "opened_in_period") return translate(language, "openedInPeriod");
   const channel = SOURCING_CHANNELS.find((item) => item.count === key);
   if (channel) return `${channel.label} ${translate(language, "applicants")}`;
   return key === "department" ? "Department" : key === "section" ? "Section" : key === "department_th" ? translate(language, "departmentThai") : key === "section_th" ? translate(language, "sectionThai") : key === "request_type" ? translate(language, "requestType") : key === "requisition_date" ? translate(language, "requisitionDate") : key === "person_in_charge" ? translate(language, "personInCharge") : key === "actual_age" ? translate(language, "actualAge") : key === "filled_date" ? translate(language, "filledDate") : key === "applicants" ? translate(language, "applicants") : key === "sla" ? translate(language, "slaAtPeriodEnd") : detailStages.includes(key as ProcessStage) ? processStageLabel(language, key as ProcessStage) : translate(language, key);
 }
 
 function ActiveRequisitionExportModal({ open, busy, error, language, rows, organizationRows, columns, onClose, onColumnsChange, onExportXlsx, onExportPng }: { open: boolean; busy: boolean; error: string | null; language: Language; rows: RequisitionDetailRow[]; organizationRows: DepartmentSectionRow[]; columns: ExportColumnKey[]; onClose: () => void; onColumnsChange: (columns: ExportColumnKey[]) => void; onExportXlsx: () => void; onExportPng: () => void }) {
-  const registry: ExportColumnKey[] = ["site", "department", "department_th", "section", "section_th", "position", "level", "vacancy", "request_type", "requisition_date", "person_in_charge", "status", "detail", "applicants", ...SOURCING_CHANNELS.map((channel) => channel.count), ...detailStages, "actual_age", "sla", "filled_date"];
+  const registry: ExportColumnKey[] = ["site", "department", "department_th", "section", "section_th", "position", "level", "vacancy", "open_headcount", "request_type", "requisition_date", "opened_in_period", "person_in_charge", "status", "start_status", "detail", "applicants", ...SOURCING_CHANNELS.map((channel) => channel.count), ...detailStages, "actual_age", "sla", "filled_date"];
   const label = (key: ExportColumnKey) => exportColumnLabel(key, language);
   const [dragging, setDragging] = useState<ExportColumnKey | null>(null);
   const [insertBefore, setInsertBefore] = useState<ExportColumnKey | null>(null);
@@ -775,6 +819,9 @@ function RequisitionExportTable({ rows, language, organizationRows, columns }: {
 
 function previewValue(value: string | number) { const text = String(value); return text.length > 28 ? `${text.slice(0, 25)}...` : text; }
 function exportFieldDescription(key: ExportColumnKey, language: Language) {
+  if (key === "open_headcount") return language === "th" ? "จำนวนอัตราคงค้าง ณ สิ้นช่วง" : "Approved headcount still uncovered at the reporting cutoff.";
+  if (key === "start_status") return language === "th" ? "สถานะเริ่มงานของข้อเสนอที่ตอบรับ ณ สิ้นช่วง" : "Attendance outcomes for accepted offers as of the reporting cutoff.";
+  if (key === "opened_in_period") return language === "th" ? "วันที่อนุมัติอัตราอยู่ในช่วงที่เลือก" : "Whether PR approval fell within the inclusive selected dates.";
   const channel = SOURCING_CHANNELS.find((item) => item.count === key);
   if (channel) return language === "th" ? `จำนวนผู้สมัคร ${channel.label} จากข้อมูลรายสัปดาห์ของกลุ่มที่เชื่อมกับคำขอ กลุ่มที่เชื่อมหลายคำขอจะนับซ้ำในแต่ละคำขอ` : `${channel.label} applicants from linked groups' saved weekly updates. A group linked to multiple requisitions contributes its count to each.`;
   const english: Partial<Record<ExportColumnKey, string>> = {
@@ -788,7 +835,7 @@ function exportValue(row: RequisitionDetailRow, key: ExportColumnKey, language: 
   const channel = SOURCING_CHANNELS.find((item) => item.count === key);
   if (channel) return row.applicant_channels[channel.count];
   if (detailStages.includes(key as ProcessStage)) return row.stage_counts[key as ProcessStage] ?? 0;
-  const values: Record<string, string | number> = { site: row.site, department: organizationLabel(organizationRows, language, row.site, row.department, "department"), department_th: organizationLabel(organizationRows, "th", row.site, row.department, "department"), section: organizationLabel(organizationRows, language, row.site, row.section, "section") || "-", section_th: organizationLabel(organizationRows, "th", row.site, row.section, "section") || "-", position: row.position, level: row.level, vacancy: row.vacancy, request_type: requestTypeLabel(language, row.request_type), requisition_date: formatDate(row.requisition_date, language), person_in_charge: row.person_in_charge, status: translate(language, row.period_status === "ongoing" ? "ongoing" : row.period_status === "filled" ? "filled" : "cancel"), detail: row.period_detail ?? "-", applicants: row.applicant_count, actual_age: row.actual_age_days === null ? "-" : `${row.actual_age_days}d`, sla: slaExportValue(row.sla_state, language), filled_date: row.filled_date ? formatDate(row.filled_date, language) : "-" };
+  const values: Record<string, string | number> = { site: row.site, department: organizationLabel(organizationRows, language, row.site, row.department, "department"), department_th: organizationLabel(organizationRows, "th", row.site, row.department, "department"), section: organizationLabel(organizationRows, language, row.site, row.section, "section") || "-", section_th: organizationLabel(organizationRows, "th", row.site, row.section, "section") || "-", position: row.position, level: row.level, vacancy: row.vacancy, open_headcount: row.open_headcount ?? "—", request_type: requestTypeLabel(language, row.request_type), requisition_date: formatDate(row.requisition_date, language), opened_in_period: translate(language, row.opened_in_period ? "reportYes" : "reportNo"), person_in_charge: row.person_in_charge, status: periodStatusValue(row, language), start_status: startStatusValue(row, language), detail: row.period_detail ?? "-", applicants: row.applicant_count, actual_age: row.actual_age_days === null ? "-" : `${row.actual_age_days}d`, sla: slaExportValue(row.sla_state, language), filled_date: row.filled_date ? formatDate(row.filled_date, language) : "-" };
   return values[key];
 }
 
@@ -808,11 +855,13 @@ function RequisitionDetailTable({ rows, language, loading = false, printMode = f
     { key: "section", label: translate(language, "section"), value: (row) => row.section ?? "-" },
     { key: "position", label: translate(language, "position"), value: (row) => row.position },
     { key: "level", label: translate(language, "jobLevel"), value: (row) => row.level },
-    { key: "vacancy", label: translate(language, "vacancy"), value: (row) => row.vacancy },
+    { key: "vacancy", label: translate(language, "vacancy"), value: (row) => vacancyValue(row, language), sortValue: (row) => row.vacancy },
     { key: "request_type", label: translate(language, "requestType"), value: (row) => requestTypeLabel(language, row.request_type) },
     { key: "requisition_date", label: translate(language, "requisitionDate"), value: (row) => formatDate(row.requisition_date, language), sortValue: (row) => row.requisition_date },
+    { key: "opened_in_period", label: translate(language, "openedInPeriod"), value: (row) => translate(language, row.opened_in_period ? "reportYes" : "reportNo") },
     { key: "person_in_charge", label: translate(language, "personInCharge"), value: (row) => row.person_in_charge },
-    { key: "status", label: translate(language, "statusAtPeriodEnd"), value: (row) => translate(language, row.period_status === "ongoing" ? "ongoing" : row.period_status === "filled" ? "filled" : "cancel") },
+    { key: "status", label: translate(language, "statusAtPeriodEnd"), value: (row) => periodStatusValue(row, language) },
+    { key: "start_status", label: translate(language, "startStatusAtPeriodEnd"), value: (row) => startStatusValue(row, language) },
     { key: "detail", label: translate(language, "detail"), value: (row) => row.period_detail ?? "-" },
     { key: "applicants", label: translate(language, "applicants"), value: (row) => row.applicant_count },
     ...detailStages.map((stage): TableColumn<RequisitionDetailRow> => ({
@@ -828,7 +877,7 @@ function RequisitionDetailTable({ rows, language, loading = false, printMode = f
   const criteriaCallback=useRef(onCriteriaChange);criteriaCallback.current=onCriteriaChange;
   useEffect(()=>{if(serverControlled)criteriaCallback.current?.({filters:table.filters,search:table.search,sortKey:table.sortDirection?table.sortKey:null,sortDirection:table.sortDirection});},[serverControlled,table.filters,table.search,table.sortDirection,table.sortKey]);
   const visibleRows = printMode || serverControlled ? rows : table.controlledRows;
-  if (rows.length === 0 && !loading) return <EmptyState message={translate(language, "noActiveRequisitionsInRange")} />;
+  const showEmpty = rows.length === 0 && !loading;
 
   return (
     <div className={`min-w-0 max-w-full overflow-x-auto ${printMode ? "print-detail-scroll" : "dashboard-detail-scroll"}`}>
@@ -856,17 +905,19 @@ function RequisitionDetailTable({ rows, language, loading = false, printMode = f
         </thead>
         <tbody aria-busy={loading}>{loading && !visibleRows.length ? <TableSkeletonRows language={language} columns={columns.map(column => ({ kind: ["vacancy","applicants","actual_age","sla",...detailStages].includes(column.key) ? "number" as const : /date/.test(column.key) ? "date" as const : "text" as const }))}/> : null}
           {visibleRows.map((row) => (
-            <tr key={row.doc_id} className="align-top">
+            <tr key={row.doc_id} className="align-top" data-open-headcount={row.open_headcount ?? undefined}>
               <td className={`${detailCellClass("Site")} border border-[#D7DEE8] px-2 py-2`}>{row.site}</td>
               <td className={`${detailCellClass("Department")} border border-[#D7DEE8] px-2 py-2`}>{row.department}</td>
               <td className={`${detailCellClass("Section")} border border-[#D7DEE8] px-2 py-2`}>{row.section ?? "-"}</td>
               <td className={`${detailCellClass("Position")} border border-[#D7DEE8] px-2 py-2`}>{row.position}</td>
               <td className={`${detailCellClass("Job Level")} border border-[#D7DEE8] px-2 py-2`}>{row.level}</td>
-              <td className={`${detailCellClass("Vacancy")} border border-[#D7DEE8] px-2 py-2 text-right`}>{row.vacancy}</td>
+              <td className={`${detailCellClass("Vacancy")} border border-[#D7DEE8] px-2 py-2 text-right`}>{vacancyValue(row, language)}</td>
               <td className={`${detailCellClass("Requisition Type")} border border-[#D7DEE8] px-2 py-2`}>{requestTypeLabel(language, row.request_type)}</td>
               <td className={`${detailCellClass("Requisition Date")} border border-[#D7DEE8] px-2 py-2`}>{formatDate(row.requisition_date, language)}</td>
+              <td className="border border-[#D7DEE8] px-2 py-2">{translate(language, row.opened_in_period ? "reportYes" : "reportNo")}</td>
               <td className={`${detailCellClass("Person in Charge")} border border-[#D7DEE8] px-2 py-2`}>{row.person_in_charge}</td>
-              <td className={`${detailCellClass("Status at Period End")} border border-[#D7DEE8] px-2 py-2`}>{translate(language, row.period_status === "ongoing" ? "ongoing" : row.period_status === "filled" ? "filled" : "cancel")}</td>
+              <td className={`${detailCellClass("Status at Period End")} border border-[#D7DEE8] px-2 py-2`}>{periodStatusValue(row, language)}</td>
+              <td className="min-w-40 border border-[#D7DEE8] px-2 py-2">{startStatusValue(row, language)}</td>
               <td className={`${detailCellClass("Detail")} border border-[#D7DEE8] px-2 py-2`}>{row.period_detail ?? "-"}</td>
               <td className={`${detailCellClass("Applicants")} border border-[#D7DEE8] px-2 py-2 text-right`}>{row.applicant_count}</td>
               {detailStages.map((stage) => (
@@ -879,6 +930,7 @@ function RequisitionDetailTable({ rows, language, loading = false, printMode = f
           ))}
         </tbody>
       </table>
+      {showEmpty ? <EmptyState message={translate(language, "noActiveRequisitionsInRange")} /> : null}
     </div>
   );
 }
@@ -1149,6 +1201,9 @@ function buildActiveRequisitionRows(data: DashboardData, requisitions: EnrichedR
         }),
         filled_date: filledDate,
         period_status: snapshot.status,
+        open_headcount: null,
+        opened_in_period: Boolean(requisition.pr_approved_date && requisition.pr_approved_date >= startDate && requisition.pr_approved_date <= endDate),
+        start_statuses: {},
         period_detail: snapshot.remark
       };
     })

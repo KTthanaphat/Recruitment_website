@@ -98,3 +98,6 @@
 }
 
 @container performance (max-width:399px) { .kpis { grid-template-columns:minmax(0,1fr); } }
+
+.attendance { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; margin-top: 6px; color: #475569; font-size: 12px; line-height: 1.45; }
+.attendance strong { color: #0b132b; font-weight: 600; }

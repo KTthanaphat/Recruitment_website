@@ -1,6 +1,6 @@
 import type { DashboardReportContext } from "@/components/dashboard/DashboardPortal";
-import type { PerformanceReport, PerformanceCell } from "@/lib/recruitment-performance";
-import { PERFORMANCE_BANDS } from "@/lib/recruitment-performance";
+import type { PerformanceReport, PerformanceCell, StartAttendance } from "@/lib/recruitment-performance";
+import { PERFORMANCE_BANDS, summarizeStartAttendance } from "@/lib/recruitment-performance";
 import type { PipelineReport } from "@/lib/pipeline-report";
 import { validDateOnly } from "@/lib/dashboard-report-eligibility";
 import type { EnrichedRequisition, Language } from "@/types/recruitment";
@@ -36,6 +36,7 @@ const labels: Record<string, [
     string,
     string
 ]> = {
+    due: ["Due starts", "ครบกำหนดเริ่มงาน"], started: ["Confirmed started", "ยืนยันว่าเริ่มงานแล้ว"], didNotStart: ["Did not start", "ไม่มาเริ่มงาน"], startRate: ["Confirmed start rate", "อัตรายืนยันเริ่มงาน"], history: ["History", "ข้อมูลย้อนหลัง"],
     period: ["Period", "ช่วงข้อมูล"], rowType: ["Row Type", "ประเภทแถว"], site: ["Site", "สถานที่"], band: ["Job Band", "กลุ่มระดับงาน"], vacancies: ["Vacancies", "อัตราอนุมัติ"], filled: ["Filled", "บรรจุ"], open: ["Open", "คงค้าง"], filledPct: ["Filled %", "สัดส่วนบรรจุ"], onTime: ["On-time", "ภายใน SLA"], late: ["Late", "เกิน SLA"], unknownSla: ["Unknown SLA", "ไม่ทราบ SLA"], slaPct: ["SLA %", "สัดส่วนภายใน SLA"], assessed: ["Assessed Fills", "บรรจุที่ทราบ SLA"], new: ["New", "อัตราใหม่"], replacement: ["Replacement", "อัตราทดแทน"], cumulative: ["Cumulative Share", "สัดส่วนสะสม"],
     metric: ["Metric", "ตัวชี้วัด"], current: ["Current Value", "ค่าช่วงปัจจุบัน"], prior: ["Prior Value", "ค่าช่วงเปรียบเทียบ"], change: ["Absolute Change", "ผลต่าง"], unit: ["Unit", "หน่วย"], currentStart: ["Current Start", "เริ่มช่วงปัจจุบัน"], currentEnd: ["Current End", "สิ้นสุดช่วงปัจจุบัน"], priorStart: ["Prior Start", "เริ่มช่วงเปรียบเทียบ"], priorEnd: ["Prior End", "สิ้นสุดช่วงเปรียบเทียบ"],
     docId: ["Requisition ID", "รหัสใบขออัตรา"], department: ["Department", "ฝ่าย"], section: ["Section", "แผนก"], position: ["Position", "ตำแหน่ง"], level: ["Job Level", "ระดับงาน"], requestType: ["Request Type", "ประเภทคำขอ"], owner: ["PIC", "ผู้รับผิดชอบ"], priority: ["Priority", "คำขอสำคัญ"], pr: ["PR Approval Date", "วันที่อนุมัติอัตรา"], status: ["Period-end Status", "สถานะสิ้นช่วง"], headcount: ["Approved Headcount", "จำนวนอัตราอนุมัติ"], timeTotal: ["Time-to-fill Day Total", "รวมวันใช้บรรจุ"], timeCount: ["Time-to-fill Contribution", "จำนวนที่ใช้คำนวณวันบรรจุ"],
@@ -46,10 +47,10 @@ const labels: Record<string, [
 const titles: Record<string, [
     string,
     string
-]> = { readme: ["Read Me", "คำแนะนำ"], kpi: ["KPI Summary", "สรุปตัวชี้วัด"], matrix: ["Site & Level", "สถานที่และระดับงาน"], mix: ["Vacancy Mix", "อัตราใหม่และทดแทน"], sla: ["SLA", "SLA"], requisitions: ["Requisitions", "ใบขออัตรา"], acceptances: ["Acceptances", "การตอบรับ"], pipeline: ["Pipeline Summary", "สรุปขั้นตอนสรรหา"], channels: ["Pipeline Channels", "ขั้นตอนตามช่องทาง"], sources: ["Source Summary", "สรุปช่องทางสรรหา"], stages: ["Stage Records", "กิจกรรมผู้สมัคร"], hires: ["Hire Records", "รายการตอบรับ"], sourcing: ["Sourcing Rows", "ยอดสรรหารายสัปดาห์"] };
-const percentKeys = new Set(["filledPct", "slaPct", "cumulative", "conversion", "yield", "share", "applicantShare", "phoneShare", "hiredShare", "phoneApplicants", "hiredPhone", "hiredApplicants"]);
+]> = { readme: ["Read Me", "คำแนะนำ"], kpi: ["KPI Summary", "สรุปตัวชี้วัด"], matrix: ["Site & Level", "สถานที่และระดับงาน"], attendance: ["Start confirmation", "การยืนยันเริ่มงาน"], mix: ["Vacancy Mix", "อัตราใหม่และทดแทน"], sla: ["SLA", "SLA"], requisitions: ["Requisitions", "ใบขออัตรา"], acceptances: ["Acceptances", "การตอบรับ"], pipeline: ["Pipeline Summary", "สรุปขั้นตอนสรรหา"], channels: ["Pipeline Channels", "ขั้นตอนตามช่องทาง"], sources: ["Source Summary", "สรุปช่องทางสรรหา"], stages: ["Stage Records", "กิจกรรมผู้สมัคร"], hires: ["Hire Records", "รายการตอบรับ"], sourcing: ["Sourcing Rows", "ยอดสรรหารายสัปดาห์"] };
+const percentKeys = new Set(["startRate", "filledPct", "slaPct", "cumulative", "conversion", "yield", "share", "applicantShare", "phoneShare", "hiredShare", "phoneApplicants", "hiredPhone", "hiredApplicants"]);
 const dateKeys = new Set(["currentStart", "currentEnd", "priorStart", "priorEnd", "pr", "accepted", "working", "entry", "outcome", "activity", "week", "weekStart", "weekEnd"]);
-const numeric = new Set(["vacancies", "filled", "open", "onTime", "late", "unknownSla", "assessed", "new", "replacement", "current", "prior", "change", "headcount", "timeTotal", "timeCount", "priority", "identity", "within", "effective", "counted", "days", "count", "applicants", "phone", "hired", "round", "resume", "passed", "sourcePhone", "hireContribution", "recorded", "countedApplicants"]);
+const numeric = new Set(["due", "started", "didNotStart", "vacancies", "filled", "open", "onTime", "late", "unknownSla", "assessed", "new", "replacement", "current", "prior", "change", "headcount", "timeTotal", "timeCount", "priority", "identity", "within", "effective", "counted", "days", "count", "applicants", "phone", "hired", "round", "resume", "passed", "sourcePhone", "hireContribution", "recorded", "countedApplicants"]);
 const ratio = (n: number, d: number) => d ? n / d : null;
 const day = (value: unknown): Date | null => { const valid = validDateOnly(typeof value === "string" ? value : null); return valid ? new Date(`${valid}T00:00:00Z`) : null; };
 const bangkok = (value: string | null) => { const time = value ? Date.parse(value) : NaN; return Number.isFinite(time) ? new Date(time + 7 * 3600000) : null; };
@@ -79,7 +80,7 @@ function compactSheets(tables: DashboardTableSpec[], guide: DashboardTableSpec, 
         { id: "source", title: language === "th" ? "ข้อมูลต้นทาง" : "Source Data", tables: tables.filter(table => sourceIds.has(table.id)) }
     ];
 }
-export function buildPerformanceExportSnapshot(context: DashboardReportContext, current: PerformanceReport, prior: PerformanceReport, sites: string[], generatedAt = new Date().toISOString()): ReportExportSnapshot {
+export function buildPerformanceExportSnapshot(context: DashboardReportContext, current: PerformanceReport, prior: PerformanceReport, sites: string[], generatedAt = new Date().toISOString(), attendance?: StartAttendance[]): ReportExportSnapshot {
     const language = context.language, th = language === "th", text = (en: string, thai: string) => th ? thai : en;
     const detail = text("Detail", "รายละเอียด"), total = text("Total", "รวม");
     const periodReports = [{ period: text("Current", "ปัจจุบัน"), report: current }, { period: text("Comparison", "เปรียบเทียบ"), report: prior }];
@@ -114,6 +115,14 @@ export function buildPerformanceExportSnapshot(context: DashboardReportContext, 
         }
     }
     const sheets = [sheet("kpi", ["metric", "current", "prior", "change", "unit", "currentStart", "currentEnd", "priorStart", "priorEnd"], kpi, language, text("One row per KPI; rates use ratio cells and changes use percentage points.", "หนึ่งแถวต่อ KPI สัดส่วนเก็บเป็นตัวเลข ผลต่างเป็นจุดเปอร์เซ็นต์")), sheet("matrix", ["period", "rowType", "site", "band", "vacancies", "filled", "open", "filledPct"], matrix, language, text("One site/job-band row per period plus marked totals.", "หนึ่งแถวต่อสถานที่และกลุ่มระดับต่อช่วง พร้อมแถวรวม")), sheet("mix", ["period", "rowType", "band", "new", "replacement", "vacancies", "cumulative"], mix, language, text("Job-band approved headcount and cumulative share.", "อัตราอนุมัติตามกลุ่มระดับและสัดส่วนสะสม")), sheet("sla", ["period", "rowType", "site", "band", "onTime", "late", "unknownSla", "assessed", "slaPct"], slaRows, language, text("SLA results; unknown outcomes excluded from the ratio.", "ผล SLA ไม่รวมรายการไม่ทราบในสัดส่วน")), sheet("requisitions", ["period", ...reqKeys, "band", "requestType", "status", "vacancies", "filled", "open", "onTime", "late", "unknownSla", "timeTotal", "timeCount"], requisitions, language, text("One eligible requisition per period; contribution columns reproduce the summaries.", "หนึ่งใบขออัตราที่เข้าเกณฑ์ต่อช่วง คอลัมน์จำนวนใช้ตรวจสอบผลรวม")), sheet("acceptances", ["period", "offerId", ...reqKeys, "candidateId", "name", "identity", "accepted", "working", "confirmation", "confirmedAt", "within", "effective", "counted", "sla", "days", "timeCount", "reason"], acceptances, language, text("Related accepted offers per eligible requisition/period, including historical/outside-range context; sum contributions, not rows.", "ข้อเสนอที่ตอบรับของใบขออัตราในแต่ละช่วง รวมข้อมูลประวัติและนอกช่วง ให้รวมคอลัมน์จำนวนที่นับแทนจำนวนแถว"))];
+    if (attendance) {
+        const rows = summarizeStartAttendance(attendance, sites, total).map(row => ({
+            ...row, startRate: row.historyIncomplete ? null : ratio(row.started, row.due),
+            history: row.historyIncomplete ? text("Incomplete history", "ข้อมูลย้อนหลังไม่ครบ") : null
+        }));
+        sheets.splice(2, 0, sheet("attendance", ["site", "due", "started", "didNotStart", "startRate", "history"], rows, language,
+            text("Starts due in the selected period. Pending confirmations are included in due starts.", "ผู้ครบกำหนดเริ่มงานในช่วงที่เลือก รวมผู้ที่ยังรอยืนยัน")));
+    }
     const extra = [{ field: text("Comparison range", "ช่วงเปรียบเทียบ"), value: `${prior.range.start} / ${prior.range.end}` }, { field: text("Performance definitions", "นิยามผลการสรรหา"), value: text("Approved eligible headcount; effective accepted fills capped by requisition headcount. No-shows are excluded at period end. Average time = contributing PR-to-acceptance day total / contributing offer count. YTD compares prior year; other modes compare the preceding equal-length range.", "อัตราอนุมัติที่เข้าเกณฑ์ นับตอบรับที่มีผลไม่เกินอัตราอนุมัติ ไม่รวมไม่เริ่มงาน ณ สิ้นช่วง วันบรรจุเฉลี่ย = รวมวันอนุมัติถึงตอบรับ / จำนวนที่ใช้คำนวณ YTD เทียบปีก่อน โหมดอื่นเทียบช่วงก่อนหน้าที่ยาวเท่ากัน") }];
     return { reportId: "performance", language, generatedAt, filename: `recruitment-performance-${current.range.start}-to-${current.range.end}.xlsx`, scope: context.summary, sheets: compactSheets(sheets, readme(context, generatedAt, sheets, extra), language) };
 }
