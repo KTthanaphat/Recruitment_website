@@ -107,7 +107,7 @@ test("period-end reporting, exports and lookup work with the synthetic SQL fixtu
       expect(timing).toBeLessThanOrEqual(250);
       await test.step(`Search and reopen the lookup at ${viewport.width}px`, async () => {
         const welcome = observed.getByRole("dialog", { name: "Welcome back" });
-        await welcome.getByRole("button", { name: "Close", exact: true }).click();
+        await welcome.locator('button[aria-label="Close"]').click();
         await lookup.getByRole("textbox", { name: "Find by phone prefix or full email" }).fill("080123");
         await expect(lookup).toContainText("Sample candidate");
         await lookup.getByRole("button", { name: "Close lookup" }).click();
