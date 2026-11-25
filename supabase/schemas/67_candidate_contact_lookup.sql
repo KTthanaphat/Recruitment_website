@@ -74,12 +74,15 @@ revoke all on function public.app_normalize_lookup_phone(text),public.app_candid
 grant execute on function public.app_normalize_lookup_phone(text),public.app_candidate_contact_lookup_v1(text,text,integer),public.app_candidate_lookup_applications_v1(text,uuid,integer) to authenticated;
 
 
--- The complete stored phone normalizer stays unchanged; only search input accepts prefixes.
+-- Search accepts four or more consecutive digits, or a formatted full Thai number.
 create or replace function public.app_normalize_lookup_phone_prefix(p_value text)
 returns text language sql immutable strict set search_path='' as $$
-  select case when btrim(p_value) ~ '^\+?[0-9 () .-]+$' then
-    case when digits ~ '^0[0-9]{4,9}$' then digits
-         when digits ~ '^66[0-9]{4,9}$' then '0'||substr(digits,3) end end
+  select case when btrim(p_value) ~ '^\+[0-9 () .-]+$' then
+           case when digits ~ '^66[0-9]{4,9}$' then '0'||substr(digits,3) end
+         when btrim(p_value) ~ '^[0-9 () .-]+$' then
+           case when digits ~ '^66[0-9]{9}$' then '0'||substr(digits,3)
+                when digits ~ '^[0-9]{4,10}$' then digits end
+         end
   from (select regexp_replace(p_value,'[^0-9]','','g') digits) x
 $$;
 
@@ -100,14 +103,14 @@ begin
     v_value:=public.app_normalize_lookup_phone_prefix(p_contact);
     if v_value is null then raise exception 'LOOKUP_INPUT_INVALID'; end if;
   end if;
-  -- Exact email and normalized phone-prefix branches stay bounded before enrichment.
+  -- Match normalized phone substrings and keep the authorized page bounded before enrichment.
   with contact_matches as not materialized (
     select c.candidate_id,c.name,c.nickname,c.phone_no,c.email from public.candidates c
     where v_email and lower(btrim(c.email))=v_value and (p_after_id is null or c.candidate_id>p_after_id)
     union all
     select c.candidate_id,c.name,c.nickname,c.phone_no,c.email from public.candidates c
-    where not v_email and public.app_normalize_lookup_phone(c.phone_no) collate "C">=v_value collate "C"
-      and public.app_normalize_lookup_phone(c.phone_no) collate "C"<(v_value||':') collate "C" and (p_after_id is null or c.candidate_id>p_after_id)
+    where not v_email and public.app_normalize_lookup_phone(c.phone_no) like '%'||v_value||'%'
+      and (p_after_id is null or c.candidate_id>p_after_id)
   ), matches as materialized (
     select c.* from contact_matches c where app_private.can_read_candidate(c.candidate_id)
       and (not p_active_only or exists(

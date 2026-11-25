@@ -35,7 +35,25 @@ Date-selector and command-dropdown keyboard/empty-list/collision behavior is an 
 
 ## Period-end report fixture
 
-Run `node scripts/rehearse-dashboard-period-end.cjs` using the disposable PGlite tool directory. The optional [loopback preview API](../../scripts/preview-dashboard-period-end.cjs) shares that fixture. Point the Next development process at `NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54329` and `NEXT_PUBLIC_SUPABASE_ANON_KEY=local-preview-only`. Sign in as `recruitment-preview@example.test` with password `local-preview-only` and select October 2026. The synthetic API supports read-only preview flows. With both processes running, set `RECRUITMENT_PERIOD_END_PREVIEW=1` and run `pnpm exec playwright test tests/e2e/dashboard-period-end.spec.ts` with Chrome installed.
+This local, read-only demo uses synthetic data and runs the canonical report SQL in disposable PGlite. It covers Candidate Lookup, Vacancy & Requisitions, the Performance start-confirmation remark and their exports. It has a single synthetic admin account and a limited API allowlist. Other pages, mutations, real Supabase Auth and full integration behavior need a separate environment.
+
+From the app checkout, install PGlite in a temporary tool directory, then start the API and app in separate PowerShell terminals:
+
+```powershell
+$demoTools = Join-Path $env:TEMP 'recruitment-db-tools'
+New-Item -ItemType Directory -Force -Path $demoTools | Out-Null
+pnpm --dir $demoTools add @electric-sql/pglite@0.3.14
+node scripts/preview-dashboard-period-end.cjs
+```
+
+```powershell
+$env:NEXT_PUBLIC_SUPABASE_URL = 'http://127.0.0.1:54329'
+$env:NEXT_PUBLIC_SUPABASE_ANON_KEY = 'local-preview-only'
+pnpm dev
+```
+
+Open `http://localhost:3000/login` and sign in as `recruitment-preview@example.test` with password `local-preview-only`. Select October 2026. The fixture resets when the API stops. Run `node scripts/rehearse-dashboard-period-end.cjs` for database assertions. With both processes running, set `RECRUITMENT_PERIOD_END_PREVIEW=1` and run `pnpm exec playwright test tests/e2e/dashboard-period-end.spec.ts` with Chrome installed.
+
 
 ## Unmocked, database and external checks
 
