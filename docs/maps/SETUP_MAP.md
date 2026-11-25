@@ -20,7 +20,7 @@ Use for install, run or local-server problems.
 Use for auth/configuration or branch-to-service mismatch.
 
 - Variable names and server-only boundaries: [environment variables](../DEPLOYMENT.md#environment-variables).
-- Branch mapping: [README Supabase mapping](../../README.md#supabase-branch-mapping). Read configured identifiers without exposing secret values.
+- Branch mapping and current availability: [deployment targets](../DEPLOYMENT.md#target-deployment). For a local synthetic demo, use the [period-end fixture](../workflows/TEST_ENVIRONMENTS.md#period-end-report-fixture). Read configured identifiers without exposing secret values.
 - Verified branch/service targets and the plain-Git release process: [Deployment](../DEPLOYMENT.md#target-deployment). Recheck the actual service/branch/database before each release; the earlier Vercel section is historical.
 - Edges: `configures` → [SYS-PLATFORM](system/platform.md), [SYS-INTEGRATIONS](system/integrations.md); `used by` → SETUP-LOCAL / SETUP-RELEASE.
 

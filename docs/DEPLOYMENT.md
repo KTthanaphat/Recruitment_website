@@ -11,6 +11,10 @@ Verified existing Render services (2026-11-14):
 | `develop` | `Recruitment_website` — https://recruitment-website-1heg.onrender.com | `mppnlkldlctvketcsald` |
 | `main` | `Recruitment_website-Production` — https://recruitment-website-1.onrender.com | `sawiklexaafczfmzqhnr` |
 
+As of 22 November 2026, the develop Supabase project is **inactive**. Supabase rejected its restore because the account has reached its two-active-free-project limit. The develop application deployment is live, but database-backed workflows require an available backend. Production remains active. The period-end migration is applied to production and remains pending on develop. Recheck project status and migration history before changing this record.
+
+For a local synthetic demo, use the [period-end fixture](workflows/TEST_ENVIRONMENTS.md#period-end-report-fixture). It supports the lookup and reporting review with an in-memory database. For broader shared testing, provision an isolated Supabase environment with synthetic seed data after resolving the project limit.
+
 Both services track this repository and automatically deploy on commit. Push the intended branch with plain Git, then monitor that exact commit until Render reports `live`; verify the public response and assets. Do not trigger an additional manual deployment after an automatic push. A develop release does not promote changes or migrations to main/production. Never print environment secrets while checking configuration.
 
 For the UI/lookup/confidentiality release see the [verification record](work-items/confidential-recruitment/release.md).

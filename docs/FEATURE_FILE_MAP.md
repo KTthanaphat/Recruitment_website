@@ -4,7 +4,7 @@ Updated: 2026-10-04. Start with the row closest to the task; read one feature no
 
 | Task | Entry |
 | --- | --- |
-| Bottom-right automatic phone-prefix/email lookup and active-only filter | [Platform owner](maps/system/platform.md#candidate-contact-lookup) → [design](design/candidate-lookup.md) → [checks](../tests/e2e/candidate-lookup.spec.ts) |
+| Bottom-right automatic phone substring/email lookup and active-only filter | [Platform owner](maps/system/platform.md#candidate-contact-lookup) → [design](design/candidate-lookup.md) → [checks](../tests/e2e/candidate-lookup.spec.ts) |
 | Lookup artwork loads late | [Lookup design and asset](design/candidate-lookup.md) → [component](../src/components/candidates/CandidateLookup.tsx) → [browser checks](../tests/e2e/candidate-lookup.spec.ts) |
 | Period-end vacancy, historical recruiter or Waterfall reconciliation | [Reporting owner](maps/system/reporting.md#period-end-vacancy-and-start-confirmation) → [behavior](WEBSITE_STRUCTURE.md#period-end-requisition-and-start-reporting) → [SQL rehearsal](../scripts/rehearse-dashboard-period-end.cjs) |
 | Performance start confirmation remark or rollup | [Performance design](design/recruitment-performance.md#period-end-table-and-start-confirmation) → [report component](../src/components/dashboard/PerformanceReport.tsx) → [browser checks](../tests/e2e/dashboard-period-end.spec.ts) |
